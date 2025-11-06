@@ -113,6 +113,24 @@ export async function deleteFile(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// 파일명을 URL-safe하게 변환 (Supabase Storage 경로용)
+function sanitizeFileName(fileName: string): string {
+  // 확장자 추출
+  const lastDotIndex = fileName.lastIndexOf('.');
+  const name = lastDotIndex > 0 ? fileName.substring(0, lastDotIndex) : fileName;
+  const extension = lastDotIndex > 0 ? fileName.substring(lastDotIndex) : '';
+
+  // 파일명을 안전한 형식으로 변환
+  // 한글, 특수문자를 제거하고 영문, 숫자, _, - 만 허용
+  const sanitizedName = name
+    .replace(/[^a-zA-Z0-9_-]/g, '_') // 영문, 숫자, _, - 외의 문자를 _로 변환
+    .replace(/_+/g, '_') // 연속된 _를 하나로
+    .replace(/^_|_$/g, '') // 앞뒤 _ 제거
+    .substring(0, 100) || 'file'; // 길이 제한, 빈 문자열이면 'file' 사용
+
+  return `${sanitizedName}${extension}`;
+}
+
 // 파일 업로드
 export async function uploadFile(
   file: globalThis.File,
@@ -121,7 +139,8 @@ export async function uploadFile(
   description?: string
 ): Promise<File> {
   const timestamp = Date.now();
-  const fileName = `${timestamp}-${file.name}`;
+  const sanitizedFileName = sanitizeFileName(file.name);
+  const fileName = `${timestamp}-${sanitizedFileName}`;
   const storagePath = `${cutId}/${processId}/${fileName}`;
 
   // Storage에 파일 업로드

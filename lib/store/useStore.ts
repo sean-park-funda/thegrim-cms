@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { Webtoon, Episode, Cut, Process, File } from '../supabase';
+import { UserProfile } from '../api/auth';
+import type { User } from '@supabase/supabase-js';
 
 interface AppState {
   // 선택된 항목들
@@ -19,6 +21,11 @@ interface AppState {
   searchQuery: string;
   searchResults: File[];
 
+  // 인증
+  user: User | null;
+  profile: UserProfile | null;
+  isLoading: boolean;
+
   // Actions
   setSelectedWebtoon: (webtoon: Webtoon | null) => void;
   setSelectedEpisode: (episode: Episode | null) => void;
@@ -29,6 +36,9 @@ interface AppState {
   setViewMode: (mode: 'webtoon' | 'process') => void;
   setSearchQuery: (query: string) => void;
   setSearchResults: (results: File[]) => void;
+  setUser: (user: User | null) => void;
+  setProfile: (profile: UserProfile | null) => void;
+  setLoading: (loading: boolean) => void;
   reset: () => void;
 }
 
@@ -43,6 +53,9 @@ export const useStore = create<AppState>((set) => ({
   viewMode: 'webtoon',
   searchQuery: '',
   searchResults: [],
+  user: null,
+  profile: null,
+  isLoading: true,
 
   // Actions
   setSelectedWebtoon: (webtoon) => set({ selectedWebtoon: webtoon, selectedEpisode: null, selectedCut: null }),
@@ -54,13 +67,18 @@ export const useStore = create<AppState>((set) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSearchResults: (results) => set({ searchResults: results }),
+  setUser: (user) => set({ user }),
+  setProfile: (profile) => set({ profile }),
+  setLoading: (loading) => set({ isLoading: loading }),
   reset: () => set({
     selectedWebtoon: null,
     selectedEpisode: null,
     selectedCut: null,
     selectedProcess: null,
     searchQuery: '',
-    searchResults: []
+    searchResults: [],
+    user: null,
+    profile: null
   })
 }));
 

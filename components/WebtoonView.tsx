@@ -9,22 +9,28 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export function WebtoonView() {
   return (
     <div className="grid grid-cols-12 h-full divide-x">
-      <div className="col-span-2 border-r">
+      <div className="col-span-2 border-r h-full overflow-hidden">
         <ScrollArea className="h-full">
-          <WebtoonList />
+          <div>
+            <WebtoonList />
+          </div>
         </ScrollArea>
       </div>
-      <div className="col-span-2 border-r">
+      <div className="col-span-2 border-r h-full overflow-hidden">
         <ScrollArea className="h-full">
-          <EpisodeList />
+          <div>
+            <EpisodeList />
+          </div>
         </ScrollArea>
       </div>
-      <div className="col-span-2 border-r">
+      <div className="col-span-2 border-r h-full overflow-hidden">
         <ScrollArea className="h-full">
-          <CutList />
+          <div>
+            <CutList />
+          </div>
         </ScrollArea>
       </div>
-      <div className="col-span-6">
+      <div className="col-span-6 h-full overflow-hidden">
         <FileGrid />
       </div>
     </div>

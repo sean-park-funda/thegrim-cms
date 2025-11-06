@@ -2,20 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store/useStore';
-import { getProcesses } from '@/lib/api/processes';
+import { getProcesses, createProcess, updateProcess, deleteProcess, reorderProcesses } from '@/lib/api/processes';
 import { getFilesByProcess } from '@/lib/api/files';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Settings, FileIcon } from 'lucide-react';
+import { Plus, FileIcon, MoreVertical, Edit, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Process, FileWithRelations } from '@/lib/supabase';
 import Image from 'next/image';
+import { canManageProcesses } from '@/lib/utils/permissions';
 
 export function ProcessView() {
-  const { processes, setProcesses, selectedProcess, setSelectedProcess } = useStore();
+  const { processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingProcess, setEditingProcess] = useState<Process | null>(null);
+  const [formData, setFormData] = useState({ name: '', description: '', color: '#3b82f6' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadProcesses();
@@ -52,6 +61,108 @@ export function ProcessView() {
     }
   };
 
+  const handleCreate = () => {
+    setFormData({ name: '', description: '', color: '#3b82f6' });
+    setEditingProcess(null);
+    setCreateDialogOpen(true);
+  };
+
+  const handleEdit = (process: Process, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProcess(process);
+    setFormData({
+      name: process.name,
+      description: process.description || '',
+      color: process.color
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleDelete = async (process: Process, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`"${process.name}" 공정을 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      await deleteProcess(process.id);
+      if (selectedProcess?.id === process.id) {
+        setSelectedProcess(null);
+      }
+      await loadProcesses();
+      alert('공정이 삭제되었습니다.');
+    } catch (error) {
+      console.error('공정 삭제 실패:', error);
+      alert('공정 삭제에 실패했습니다.');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      alert('공정 이름을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      if (editingProcess) {
+        await updateProcess(editingProcess.id, formData);
+        alert('공정이 수정되었습니다.');
+      } else {
+        const maxOrderIndex = processes.length > 0 ? Math.max(...processes.map(p => p.order_index)) : 0;
+        await createProcess({
+          ...formData,
+          order_index: maxOrderIndex + 1
+        });
+        alert('공정이 생성되었습니다.');
+      }
+      await loadProcesses();
+      setCreateDialogOpen(false);
+      setEditDialogOpen(false);
+      setEditingProcess(null);
+      setFormData({ name: '', description: '', color: '#3b82f6' });
+    } catch (error) {
+      console.error('공정 저장 실패:', error);
+      alert(editingProcess ? '공정 수정에 실패했습니다.' : '공정 생성에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMoveUp = async (process: Process, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentIndex = processes.findIndex(p => p.id === process.id);
+    if (currentIndex <= 0) return;
+
+    try {
+      const newProcesses = [...processes];
+      [newProcesses[currentIndex - 1], newProcesses[currentIndex]] = [newProcesses[currentIndex], newProcesses[currentIndex - 1]];
+      const processIds = newProcesses.map(p => p.id);
+      await reorderProcesses(processIds);
+      await loadProcesses();
+    } catch (error) {
+      console.error('공정 순서 변경 실패:', error);
+      alert('공정 순서 변경에 실패했습니다.');
+    }
+  };
+
+  const handleMoveDown = async (process: Process, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentIndex = processes.findIndex(p => p.id === process.id);
+    if (currentIndex >= processes.length - 1) return;
+
+    try {
+      const newProcesses = [...processes];
+      [newProcesses[currentIndex], newProcesses[currentIndex + 1]] = [newProcesses[currentIndex + 1], newProcesses[currentIndex]];
+      const processIds = newProcesses.map(p => p.id);
+      await reorderProcesses(processIds);
+      await loadProcesses();
+    } catch (error) {
+      console.error('공정 순서 변경 실패:', error);
+      alert('공정 순서 변경에 실패했습니다.');
+    }
+  };
+
   const renderFilePreview = (file: FileWithRelations) => {
     const isImage = file.file_type === 'image';
 
@@ -72,23 +183,51 @@ export function ProcessView() {
 
   return (
     <div className="grid grid-cols-12 h-full divide-x">
-      <div className="col-span-3">
+      <div className="col-span-3 h-full overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">공정 목록</h2>
-              <Button size="sm" variant="ghost">
-                <Settings className="h-4 w-4" />
-              </Button>
             </div>
 
             <div className="space-y-2">
-              {processes.map((process) => (
+              {processes.map((process, index) => (
                 <Card key={process.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedProcess?.id === process.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedProcess(process)}>
                   <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: process.color }} />
-                      <CardTitle className="text-base">{process.name}</CardTitle>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: process.color }} />
+                        <CardTitle className="text-base">{process.name}</CardTitle>
+                      </div>
+                      {profile && canManageProcesses(profile.role) && (
+                        <div className="flex items-center gap-1">
+                          <div className="flex flex-col">
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => handleMoveUp(process, e)} disabled={index === 0}>
+                              <ChevronUp className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => handleMoveDown(process, e)} disabled={index === processes.length - 1}>
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => handleEdit(process, e)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                수정
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => handleDelete(process, e)} className="text-destructive">
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                삭제
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                   {process.description && (
@@ -99,16 +238,18 @@ export function ProcessView() {
                 </Card>
               ))}
 
-              <Button variant="outline" className="w-full" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                새 공정 추가
-              </Button>
+              {profile && canManageProcesses(profile.role) && (
+                <Button variant="outline" className="w-full" size="sm" onClick={handleCreate}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  새 공정 추가
+                </Button>
+              )}
             </div>
           </div>
         </ScrollArea>
       </div>
 
-      <div className="col-span-9">
+      <div className="col-span-9 h-full overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-4">
             {!selectedProcess ? (
@@ -166,6 +307,112 @@ export function ProcessView() {
           </div>
         </ScrollArea>
       </div>
+
+      {/* 공정 생성 Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="z-[100]">
+          <DialogHeader>
+            <DialogTitle>새 공정 추가</DialogTitle>
+            <DialogDescription>새로운 공정을 추가합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">이름 *</label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="공정 이름을 입력하세요"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">설명</label>
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="공정 설명을 입력하세요"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">색상</label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="w-16 h-10 cursor-pointer"
+                />
+                <Input
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  placeholder="#3b82f6"
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={saving}>
+              취소
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? '저장 중...' : '생성'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 공정 수정 Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>공정 수정</DialogTitle>
+            <DialogDescription>공정 정보를 수정합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">이름 *</label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="공정 이름을 입력하세요"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">설명</label>
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="공정 설명을 입력하세요"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">색상</label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="w-16 h-10 cursor-pointer"
+                />
+                <Input
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  placeholder="#3b82f6"
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>
+              취소
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? '저장 중...' : '수정'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
