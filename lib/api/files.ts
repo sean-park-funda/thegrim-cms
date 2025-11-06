@@ -34,29 +34,145 @@ export async function getFilesByProcess(processId: string): Promise<FileWithRela
   return data || [];
 }
 
-// 파일 검색 (description 기반)
-export async function searchFiles(query: string): Promise<FileWithRelations[]> {
-  const { data, error } = await supabase
-    .from('files')
-    .select(`
-      *,
-      cut:cuts (
-        *,
-        episode:episodes (
-          *,
-          webtoon:webtoons (*)
-        )
-      ),
-      process:processes (*)
-    `)
-    .textSearch('description', query, {
-      type: 'websearch',
-      config: 'korean'
-    })
-    .order('created_at', { ascending: false });
+// 검색어를 여러 형태로 확장하는 헬퍼 함수
+// 한국어 동사/형용사의 다양한 어미 형태를 생성
+function expandSearchQuery(query: string): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
 
-  if (error) throw error;
-  return data || [];
+  const queries = [trimmed]; // 원본 검색어 포함
+
+  // 한국어 어미 패턴 (일반적인 경우)
+  const endings = ['는', '은', '을', '를', '이', '가', '다', '음', '람', '람이', '라', '라는', '라서', '라도', 'ㅁ'];
+
+  // 검색어가 어미로 끝나는 경우, 어미를 제거한 어간 생성
+  for (const ending of endings) {
+    if (trimmed.endsWith(ending) && trimmed.length > ending.length) {
+      const stem = trimmed.slice(0, -ending.length);
+      if (stem.length >= 2) {
+        // 어간에 다른 어미들을 붙여서 검색어 확장
+        queries.push(stem);
+        queries.push(stem + '는');
+        queries.push(stem + '은');
+        queries.push(stem + '을');
+        queries.push(stem + '를');
+        queries.push(stem + '이');
+        queries.push(stem + '가');
+        queries.push(stem + '다');
+        queries.push(stem + '음');
+        queries.push(stem + '람');
+        queries.push(stem + '라');
+        queries.push(stem + '라는');
+      }
+    }
+  }
+
+  // 특수 케이스: "놀람" -> "놀라" 추출
+  // "람"으로 끝나는 경우, "라" + "ㅁ" 받침으로 분석
+  if (trimmed.endsWith('람') && trimmed.length > 1) {
+    const stemWithoutM = trimmed.slice(0, -1); // "놀람" -> "놀라"
+    if (stemWithoutM.length >= 2) {
+      queries.push(stemWithoutM); // "놀라"
+      queries.push(stemWithoutM + '는');
+      queries.push(stemWithoutM + '은');
+      queries.push(stemWithoutM + '을');
+      queries.push(stemWithoutM + '를');
+      queries.push(stemWithoutM + '이');
+      queries.push(stemWithoutM + '가');
+      queries.push(stemWithoutM + '다');
+      queries.push(stemWithoutM + '음');
+      queries.push(stemWithoutM + '라');
+      queries.push(stemWithoutM + '라는');
+    }
+  }
+
+  // 중복 제거
+  return Array.from(new Set(queries));
+}
+
+// 파일 검색 (description 및 file_name 기반, Full-Text Search 사용)
+export async function searchFiles(query: string): Promise<FileWithRelations[]> {
+  try {
+    // 검색어가 비어있으면 빈 배열 반환
+    if (!query || query.trim().length === 0) {
+      return [];
+    }
+
+    const trimmedQuery = query.trim();
+    
+    // 검색어를 여러 형태로 확장
+    const expandedQueries = expandSearchQuery(trimmedQuery);
+    
+    // 모든 확장된 검색어로 검색 수행
+    const allFileIds = new Set<string>();
+
+    for (const searchTerm of expandedQueries) {
+      try {
+        const { data: searchResults, error: rpcError } = await supabase
+          .rpc('search_files_fulltext', { search_query: searchTerm });
+
+        if (rpcError) {
+          console.warn(`검색어 "${searchTerm}" 검색 중 오류:`, rpcError);
+          continue; // 하나의 검색어 실패해도 다른 검색어는 계속 시도
+        }
+
+        if (searchResults && searchResults.length > 0) {
+          searchResults.forEach((file: File) => {
+            allFileIds.add(file.id);
+          });
+        }
+      } catch (err) {
+        console.warn(`검색어 "${searchTerm}" 검색 중 예외:`, err);
+        continue;
+      }
+    }
+
+    // 검색 결과가 없으면 빈 배열 반환
+    if (allFileIds.size === 0) {
+      return [];
+    }
+
+    // 검색된 파일 ID 배열 추출
+    const fileIds = Array.from(allFileIds);
+
+    // 파일 ID를 사용하여 관계 데이터를 포함한 전체 파일 정보 조회
+    const { data, error } = await supabase
+      .from('files')
+      .select(`
+        *,
+        cut:cuts (
+          *,
+          episode:episodes (
+            *,
+            webtoon:webtoons (*)
+          )
+        ),
+        process:processes (*)
+      `)
+      .in('id', fileIds)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('검색 쿼리 오류:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw error;
+    }
+
+    return data || [];
+  } catch (error: any) {
+    console.error('파일 검색 실패:', {
+      query,
+      error: error?.message || error,
+      details: error?.details,
+      code: error?.code,
+      stack: error?.stack
+    });
+    throw error;
+  }
 }
 
 // 파일 생성

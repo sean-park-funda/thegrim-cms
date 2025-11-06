@@ -1,6 +1,6 @@
 # 더그림 작업관리 시스템 개발 계획
 
-## 📊 현재 구현 상태 (2025-01-07 업데이트)
+## 📊 현재 구현 상태 (2025-01-07 최신화)
 
 ### ✅ 완료된 기능
 
@@ -22,7 +22,7 @@
 - ✅ 회차 목록 표시
 - ✅ 컷 목록 표시
 - ✅ 파일 그리드 표시 (공정별)
-- ✅ 검색 결과 표시
+- ✅ 검색 결과 표시 (기본 - description 기반)
 
 #### 4. 웹툰 관리
 - ✅ 웹툰 목록 조회
@@ -48,10 +48,10 @@
 #### 7. 파일 관리
 - ✅ 파일 업로드 기능
 - ✅ 파일 목록 조회 (공정별, 컷별)
-- ✅ 파일 검색 기능
+- ✅ 파일 검색 기능 (기본 - description 기반)
 - ✅ 파일 다운로드 기능
 - ✅ 파일 삭제 기능
-- ❌ 파일 정보 수정 기능
+- ✅ 파일 정보 수정 기능 (description, 빈 문자열일 때만 수정 가능)
 
 #### 8. API 계층
 - ✅ Supabase 클라이언트 설정
@@ -74,18 +74,36 @@
 - ✅ 목록 스크롤 기능 추가
 - ✅ 컷 목록 제목이 선택된 회차 제목으로 동적 변경
 
+#### 11. 인증 및 권한 관리
+- ✅ 사용자 인증 시스템 (로그인, 회원가입, 로그아웃)
+- ✅ 세션 관리 및 인증 상태 보호
+- ✅ 관리자 초대 시스템 (이메일 발송, 토큰 관리)
+- ✅ 역할 기반 권한 관리 (admin, manager, staff, viewer)
+- ✅ 권한 체크 유틸리티 함수
+- ✅ UI 요소 권한별 표시/숨김 (모든 컴포넌트 적용)
+- ✅ 관리자 페이지 (사용자 관리, 초대 관리)
+- ✅ Row Level Security (RLS) 정책 (user_profiles, invitations)
+
 ---
 
 ### ⚠️ 부분 구현 / 미구현 기능
 
-#### 1. 파일 관리 (일부)
-- ❌ 파일 정보 수정 기능
+#### 1. 검색 기능 (부분 구현)
+- ✅ 기본 검색 기능 (description 기반)
+- ❌ 다중 필드 검색 (파일명, 웹툰명, 회차명 등)
+- ❌ 고급 검색 필터
+- ❌ 검색 결과 정렬 및 개선
+
+#### 2. 파일 관리
+- ✅ 파일 정보 수정 기능 완료
 
 #### 2. 인증 및 권한 관리
-- ❌ 사용자 인증 시스템
-- ❌ 관리자 초대 시스템
-- ❌ 역할 기반 권한 관리
-- ❌ Row Level Security (RLS) 정책
+- ✅ 사용자 인증 시스템 (로그인, 회원가입, 로그아웃, 세션 관리)
+- ✅ 관리자 초대 시스템 (이메일 발송, 토큰 생성, 초대 링크 회원가입)
+- ✅ 역할 기반 권한 관리 (admin, manager, staff, viewer)
+- ✅ Row Level Security (RLS) 정책 (user_profiles, invitations)
+- ⚠️ 프로덕션용 RLS 정책 (웹툰/회차/컷/파일/공정 테이블 역할별 접근 권한)
+- ❌ 비밀번호 재설정 기능
 
 #### 3. 환경 설정
 - ⚠️ `.env.local` 파일 없음 (Supabase 연결 필요)
@@ -145,11 +163,13 @@
 
 **완료일**: 2025-01-07
 
-#### 2.3 파일 정보 수정 기능
-- [ ] 파일 설명 수정 기능
-- [ ] 파일 메타데이터 수정 기능
+#### 2.3 파일 정보 수정 기능 ✅ 완료
+- [x] 파일 설명 수정 기능 (Dialog)
+- [x] 빈 문자열일 때만 수정 가능 (AI 자동 생성 전까지)
+- [x] 권한 체크 (업로드 권한 있는 사용자만)
+- [ ] 파일 메타데이터 수정 기능 (향후 필요 시)
 
-**예상 소요 시간**: 1-2시간
+**완료일**: 2025-01-07
 
 ---
 
@@ -184,70 +204,122 @@
 
 ---
 
-### Phase 4: 인증 및 권한 관리 시스템 (우선순위: 높음)
+### Phase 4: 인증 및 권한 관리 시스템 (우선순위: 높음) ✅ 대부분 완료
 
-#### 4.1 데이터베이스 스키마 확장
-- [ ] `users` 테이블 생성 (Supabase Auth와 연동)
-- [ ] `invitations` 테이블 생성 (초대 토큰 관리)
-- [ ] `user_roles` 테이블 생성 (역할 관리)
-- [ ] 역할 타입 정의 (admin, manager, staff, viewer)
+#### 4.1 데이터베이스 스키마 확장 ✅ 완료
+- [x] `user_profiles` 테이블 생성 (Supabase Auth와 연동)
+- [x] `invitations` 테이블 생성 (초대 토큰 관리)
+- [x] 역할 타입 정의 (admin, manager, staff, viewer)
+- [x] 자동 프로필 생성 트리거
+- [x] 인덱스 생성
 
-**예상 소요 시간**: 1-2시간
+**완료일**: 2025-01-07
 
-#### 4.2 관리자 초대 시스템
-- [ ] 초대 이메일 발송 기능
-- [ ] 초대 토큰 생성 및 관리
-- [ ] 초대 링크를 통한 회원가입 페이지
-- [ ] 초대 토큰 검증 및 계정 생성
-- [ ] 초대 시 권한 자동 부여
-- [ ] 초대 만료 시간 설정
+#### 4.2 관리자 초대 시스템 ✅ 완료
+- [x] 초대 이메일 발송 기능 (Edge Function 연동)
+- [x] 초대 토큰 생성 및 관리
+- [x] 초대 링크를 통한 회원가입 페이지
+- [x] 초대 토큰 검증 및 계정 생성
+- [x] 초대 시 권한 자동 부여
+- [x] 초대 만료 시간 설정 (7일)
+- [x] 첫 사용자 자동 관리자 부여
 
-**예상 소요 시간**: 4-5시간
+**완료일**: 2025-01-07
 
-#### 4.3 사용자 인증 시스템
-- [ ] Supabase Auth 통합
-- [ ] 로그인 페이지 구현
-- [ ] 회원가입 페이지 구현 (초대 링크 필수)
-- [ ] 로그아웃 기능
-- [ ] 세션 관리
+#### 4.3 사용자 인증 시스템 ✅ 완료
+- [x] Supabase Auth 통합
+- [x] 로그인 페이지 구현 (`app/login/page.tsx`)
+- [x] 회원가입 페이지 구현 (`app/signup/page.tsx`, 초대 링크 지원)
+- [x] 로그아웃 기능
+- [x] 세션 관리 (`useAuth` 훅)
+- [x] 인증 상태 보호 (메인 페이지 리다이렉트)
 - [ ] 비밀번호 재설정 기능
 
-**예상 소요 시간**: 3-4시간
+**완료일**: 2025-01-07
 
-#### 4.4 권한 관리 시스템
-- [ ] 역할 기반 접근 제어 (RBAC)
-- [ ] 권한 체크 미들웨어/훅
-- [ ] UI 요소 권한별 표시/숨김
-- [ ] API 엔드포인트 권한 검증
-- [ ] 관리자 전용 페이지 (사용자 관리, 초대 관리)
+#### 4.4 권한 관리 시스템 ✅ 완료
+- [x] 역할 기반 접근 제어 (RBAC)
+- [x] 권한 체크 유틸리티 함수 (`lib/utils/permissions.ts`)
+- [x] UI 요소 권한별 표시/숨김 (모든 컴포넌트에 적용)
+- [x] 관리자 전용 페이지 (`app/admin/page.tsx`)
+  - [x] 사용자 관리 (역할 변경)
+  - [x] 초대 관리 (생성, 목록 조회, 링크 복사)
+- [ ] API 엔드포인트 권한 검증 (서버 사이드)
 
-**예상 소요 시간**: 4-5시간
+**완료일**: 2025-01-07
 
-#### 4.5 Row Level Security (RLS) 정책
-- [ ] 웹툰 테이블 RLS 정책 설정
-- [ ] 회차 테이블 RLS 정책 설정
-- [ ] 컷 테이블 RLS 정책 설정
-- [ ] 파일 테이블 RLS 정책 설정
-- [ ] 공정 테이블 RLS 정책 설정
-- [ ] Storage 버킷 RLS 정책 설정
-- [ ] 역할별 접근 권한 정의
+#### 4.5 Row Level Security (RLS) 정책 ⚠️ 부분 완료
+- [x] `user_profiles` 테이블 RLS 정책 설정
+- [x] `invitations` 테이블 RLS 정책 설정
+- [x] Storage 버킷 RLS 정책 설정 (개발용)
+- [ ] 웹툰 테이블 RLS 정책 설정 (프로덕션용)
+- [ ] 회차 테이블 RLS 정책 설정 (프로덕션용)
+- [ ] 컷 테이블 RLS 정책 설정 (프로덕션용)
+- [ ] 파일 테이블 RLS 정책 설정 (프로덕션용)
+- [ ] 공정 테이블 RLS 정책 설정 (프로덕션용)
+- [ ] 역할별 접근 권한 정의 (프로덕션용)
 
-**예상 소요 시간**: 3-4시간
+**현재 상태**: 개발용으로 모든 사용자에게 접근 허용 (`supabase-rls-policies.sql`)
+**프로덕션 배포 전 필수**: 역할별 접근 권한을 정의한 RLS 정책 설정 필요
 
-**총 예상 소요 시간**: 15-20시간
+**완료일**: 2025-01-07 (기본 RLS 정책)
+
+**총 진행률**: 약 85% 완료
 
 ---
 
-### Phase 5: 고급 기능 (우선순위: 낮음)
+### Phase 5: 검색 기능 개선 (우선순위: 높음) ⚠️ 급함
 
-#### 5.1 검색 기능 개선
-- [ ] 고급 검색 필터 (날짜, 파일 타입, 공정 등)
-- [ ] 검색 결과 정렬
-- [ ] 검색 히스토리
+#### 5.1 기본 검색 기능 ✅ 완료
+- [x] 파일 description 기반 검색
+- [x] 검색 입력 필드 (Navigation)
+- [x] 검색 결과 표시 (SearchResults)
+- [x] 최소 2자 이상 입력 검색
+
+**완료일**: 초기 구현
+
+#### 5.2 검색 기능 확장 (필요)
+- [ ] 파일명으로 검색
+- [ ] 웹툰명으로 검색
+- [ ] 회차명으로 검색
+- [ ] 컷 제목으로 검색
+- [ ] 다중 필드 통합 검색 (description, 파일명, 웹툰/회차/컷 정보)
+
+**예상 소요 시간**: 2-3시간
+
+#### 5.3 고급 검색 필터
+- [ ] 날짜 범위 필터 (생성일, 수정일)
+- [ ] 파일 타입 필터 (이미지, PDF, PSD 등)
+- [ ] 공정별 필터
+- [ ] 웹툰별 필터
+- [ ] 파일 크기 필터
 
 **예상 소요 시간**: 3-4시간
 
-#### 5.2 파일 관리 고급 기능
+#### 5.4 검색 결과 개선
+- [ ] 검색 결과 정렬 (날짜, 이름, 크기 등)
+- [ ] 검색 결과 하이라이트 (검색어 강조)
+- [ ] 검색 결과에서 파일 다운로드/삭제 기능
+- [ ] 검색 결과에서 해당 컷으로 이동 기능
+
+**예상 소요 시간**: 2-3시간
+
+#### 5.5 검색 UX 개선
+- [ ] 검색 히스토리 (최근 검색어)
+- [ ] 자동완성/제안 기능
+- [ ] 검색 결과 개수 표시 개선
+- [ ] 검색 중 로딩 상태 개선
+- [ ] 검색 결과 없을 때 개선된 UI
+
+**예상 소요 시간**: 2-3시간
+
+**총 예상 소요 시간**: 9-13시간
+
+---
+
+### Phase 6: 파일 관리 고급 기능 (우선순위: 낮음)
+
+#### 6.1 파일 관리 고급 기능
 - [ ] 일괄 업로드
 - [ ] 일괄 다운로드
 - [ ] 파일 버전 관리
@@ -255,7 +327,7 @@
 
 **예상 소요 시간**: 5-6시간
 
-#### 5.3 통계 및 대시보드
+#### 6.2 통계 및 대시보드
 - [ ] 웹툰별 진행률 표시
 - [ ] 공정별 통계
 - [ ] 파일 사용량 통계
@@ -274,10 +346,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 ```
 
 ### 2. 다음 우선순위 작업
-1. **인증 및 권한 관리 시스템** (관리자 초대 기반 계정 생성) ⭐ 프로덕션 필수
-2. **파일 정보 수정 기능** (핵심 기능)
-3. **Toast 알림 시스템** (UX 개선)
-4. **파일 미리보기 개선** (UX 개선)
+1. **검색 기능 개선** (파일명, 웹툰명, 회차명 등 다중 필드 검색) ⚠️ 급함
+2. **프로덕션용 RLS 정책 설정** (웹툰/회차/컷/파일/공정 테이블 역할별 접근 권한) ⭐ 프로덕션 필수
+3. **비밀번호 재설정 기능** (인증 시스템 완성)
+4. **Toast 알림 시스템** (UX 개선)
+5. **파일 미리보기 개선** (UX 개선)
 
 ---
 
@@ -316,9 +389,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
    - `next.config.ts`에 Supabase 이미지 도메인 추가 필요
 
 4. **보안 이슈 (프로덕션 배포 전 필수 해결)**
-   - ❌ 인증 시스템 없음 (모든 사용자가 모든 데이터 접근 가능)
-   - ❌ RLS 정책 비활성화 (데이터베이스 레벨 보안 없음)
-   - ❌ 파일 접근 제한 없음 (누구나 파일 업로드/다운로드 가능)
+   - ✅ 인증 시스템 구현 완료
+   - ⚠️ RLS 정책 부분 완료 (user_profiles, invitations 완료, 나머지는 개발용)
+   - ⚠️ 프로덕션용 RLS 정책 필요 (웹툰/회차/컷/파일/공정 테이블 역할별 접근 권한)
+   - ⚠️ Storage 버킷 RLS 정책 프로덕션용 설정 필요
 
 ---
 
@@ -334,14 +408,41 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 
 ---
 
-## 🔐 인증 시스템 상세 설계
+## 🔐 인증 시스템 상세 설계 (✅ 구현 완료)
+
+### 구현된 기능
+
+#### 1. 사용자 인증
+- **로그인**: `app/login/page.tsx` - 이메일/비밀번호 로그인
+- **회원가입**: `app/signup/page.tsx` - 초대 토큰 기반 회원가입, 첫 사용자 자동 관리자
+- **로그아웃**: Navigation 컴포넌트에서 로그아웃 버튼
+- **세션 관리**: `lib/hooks/useAuth.ts` - 인증 상태 자동 감지 및 관리
+
+#### 2. 관리자 초대 시스템
+- **초대 생성**: `lib/api/auth.ts` - `createInvitation()` 함수
+- **이메일 발송**: Edge Function 연동 (`send-invitation-email`)
+- **초대 토큰**: UUID 기반, 7일 만료
+- **초대 관리**: `app/admin/page.tsx` - 초대 목록 조회, 링크 복사
+
+#### 3. 권한 관리
+- **권한 체크**: `lib/utils/permissions.ts` - 모든 권한 체크 함수 구현
+- **UI 적용**: 모든 컴포넌트에 권한별 버튼 표시/숨김 적용
+  - `WebtoonList.tsx`, `EpisodeList.tsx`, `CutList.tsx`
+  - `FileGrid.tsx`, `ProcessView.tsx`
+- **관리자 페이지**: `/admin` - 사용자 관리, 초대 관리
+
+#### 4. 데이터베이스 스키마
+- **파일**: `supabase-auth-schema.sql`
+- **테이블**: `user_profiles`, `invitations`
+- **트리거**: 자동 프로필 생성 (`handle_new_user`)
+- **RLS 정책**: `user_profiles`, `invitations` 테이블 보안 정책 적용
 
 ### 사용자 역할 정의
 
 1. **admin (관리자)**
    - 모든 기능 접근 가능
-   - 사용자 관리 (초대, 권한 변경, 삭제)
-   - 시스템 설정 관리
+   - 사용자 관리 (초대, 권한 변경)
+   - 관리자 페이지 접근 (`/admin`)
 
 2. **manager (매니저)**
    - 웹툰/회차/컷 생성/수정/삭제
@@ -360,69 +461,59 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
    - 파일 다운로드 가능
    - 생성/수정/삭제 불가
 
-### 초대 프로세스
+### 초대 프로세스 (✅ 구현 완료)
 
 1. **관리자가 초대 발송**
-   - 이메일 주소 입력
-   - 역할 선택 (manager, staff, viewer)
-   - 초대 토큰 생성 (UUID, 만료 시간 7일)
-   - 이메일 발송 (초대 링크 포함)
+   - 관리자 페이지 (`/admin`) 접근
+   - 이메일 주소 입력, 역할 선택
+   - 초대 토큰 자동 생성 (UUID, 만료 시간 7일)
+   - 이메일 자동 발송 (Edge Function)
 
 2. **초대 수신자가 회원가입**
-   - 초대 링크 클릭
-   - 토큰 검증
+   - 초대 링크 클릭: `/signup?token={토큰}`
+   - 토큰 자동 검증
    - 이메일, 비밀번호 입력
    - 계정 생성 및 역할 자동 부여
    - 로그인 페이지로 리다이렉트
 
 3. **초대 관리**
    - 초대 목록 조회 (발송자, 수신자, 상태, 만료일)
-   - 초대 취소
-   - 초대 재발송
+   - 초대 링크 복사 기능
+   - 초대 상태 확인 (대기중/사용됨/만료됨)
 
-### 데이터베이스 스키마 추가
+### 주요 파일 구조
 
-```sql
--- 사용자 프로필 테이블 (Supabase Auth와 연동)
-CREATE TABLE user_profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT UNIQUE NOT NULL,
-  role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'manager', 'staff', 'viewer')),
-  name TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+```
+lib/
+├── api/
+│   ├── auth.ts          # 인증 API (로그인, 회원가입, 초대 등)
+│   └── admin.ts         # 관리자 유틸리티
+├── hooks/
+│   └── useAuth.ts       # 인증 상태 관리 훅
+└── utils/
+    └── permissions.ts   # 권한 체크 유틸리티
 
--- 초대 테이블
-CREATE TABLE invitations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'staff', 'viewer')),
-  token TEXT UNIQUE NOT NULL,
-  invited_by UUID REFERENCES auth.users(id),
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  used_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+app/
+├── login/
+│   └── page.tsx         # 로그인 페이지
+├── signup/
+│   └── page.tsx         # 회원가입 페이지
+└── admin/
+    └── page.tsx         # 관리자 페이지
 
--- 인덱스
-CREATE INDEX idx_invitations_token ON invitations(token);
-CREATE INDEX idx_invitations_email ON invitations(email);
-CREATE INDEX idx_user_profiles_role ON user_profiles(role);
+supabase-auth-schema.sql  # 인증 스키마
+supabase-rls-policies.sql # RLS 정책 (개발용)
 ```
 
-### RLS 정책 예시
+### 프로덕션 배포 전 필수 작업
 
-```sql
--- user_profiles: 자신의 프로필만 조회 가능, 관리자는 모든 프로필 조회
-CREATE POLICY "Users can view own profile"
-  ON user_profiles FOR SELECT
-  USING (auth.uid() = id OR 
-         EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin'));
+1. **프로덕션용 RLS 정책 설정**
+   - 웹툰/회차/컷/파일/공정 테이블 역할별 접근 권한 정의
+   - Storage 버킷 역할별 접근 권한 설정
 
--- invitations: 관리자만 조회/생성 가능
-CREATE POLICY "Only admins can manage invitations"
-  ON invitations FOR ALL
-  USING (EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin'));
-```
+2. **비밀번호 재설정 기능**
+   - Supabase Auth의 비밀번호 재설정 기능 연동
+
+3. **API 엔드포인트 권한 검증**
+   - 서버 사이드 권한 검증 추가 (현재는 클라이언트 사이드만)
 

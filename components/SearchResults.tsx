@@ -27,8 +27,15 @@ export function SearchResults() {
       setLoading(true);
       const data = await searchFiles(searchQuery);
       setResults(data);
-    } catch (error) {
-      console.error('검색 실패:', error);
+    } catch (error: any) {
+      console.error('검색 실패:', {
+        query: searchQuery,
+        error: error?.message || error,
+        details: error?.details,
+        code: error?.code
+      });
+      // 사용자에게 에러 표시
+      setResults([]);
     } finally {
       setLoading(false);
     }

@@ -2,18 +2,19 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store/useStore';
-import { getFilesByCut, uploadFile, deleteFile } from '@/lib/api/files';
+import { getFilesByCut, uploadFile, deleteFile, updateFile } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileIcon, Download, Trash2, Upload, Plus } from 'lucide-react';
+import { FileIcon, Download, Trash2, Upload, Plus, Edit } from 'lucide-react';
 import { File as FileType } from '@/lib/supabase';
 import Image from 'next/image';
 import { useDropzone } from 'react-dropzone';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
+import { cn } from '@/lib/utils';
 
 export function FileGrid() {
   const { selectedCut, processes, setProcesses, profile } = useStore();
@@ -24,6 +25,10 @@ export function FileGrid() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileType | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [fileToEdit, setFileToEdit] = useState<FileType | null>(null);
+  const [editDescription, setEditDescription] = useState('');
+  const [editing, setEditing] = useState(false);
 
   const loadProcesses = useCallback(async () => {
     try {
@@ -129,6 +134,37 @@ export function FileGrid() {
     e.stopPropagation();
     setFileToDelete(file);
     setDeleteDialogOpen(true);
+  };
+
+  const handleEditClick = (file: FileType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 빈 문자열일 때만 수정 가능
+    if (file.description && file.description.trim() !== '') {
+      alert('이미 설명이 있는 파일입니다. AI 자동 생성 후에는 수정할 수 없습니다.');
+      return;
+    }
+    setFileToEdit(file);
+    setEditDescription(file.description || '');
+    setEditDialogOpen(true);
+  };
+
+  const handleEditConfirm = async () => {
+    if (!fileToEdit) return;
+
+    try {
+      setEditing(true);
+      await updateFile(fileToEdit.id, { description: editDescription.trim() });
+      await loadFiles();
+      setEditDialogOpen(false);
+      setFileToEdit(null);
+      setEditDescription('');
+      alert('파일 정보가 수정되었습니다.');
+    } catch (error) {
+      console.error('파일 정보 수정 실패:', error);
+      alert('파일 정보 수정에 실패했습니다.');
+    } finally {
+      setEditing(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -315,6 +351,11 @@ export function FileGrid() {
                                     <Button size="sm" variant="ghost" className="h-7 px-2 flex-1" onClick={(e) => handleDownload(file, e)}>
                                       <Download className="h-3 w-3" />
                                     </Button>
+                                    {profile && canUploadFile(profile.role) && (!file.description || file.description.trim() === '') && (
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 flex-1" onClick={(e) => handleEditClick(file, e)}>
+                                        <Edit className="h-3 w-3" />
+                                      </Button>
+                                    )}
                                     {profile && canDeleteFile(profile.role) && (
                                       <Button size="sm" variant="ghost" className="h-7 px-2 flex-1 text-destructive hover:text-destructive" onClick={(e) => handleDeleteClick(file, e)}>
                                         <Trash2 className="h-3 w-3" />
@@ -357,6 +398,55 @@ export function FileGrid() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
               {deleting ? '삭제 중...' : '삭제'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 파일 정보 수정 Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>파일 정보 수정</DialogTitle>
+            <DialogDescription>파일 설명을 입력하세요. (AI 자동 생성 전까지 수정 가능)</DialogDescription>
+          </DialogHeader>
+          {fileToEdit && (
+            <div className="py-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-2">파일명</p>
+                <p className="text-sm text-muted-foreground">{fileToEdit.file_name}</p>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="description" className="text-sm font-medium">
+                  설명
+                </label>
+                <textarea
+                  id="description"
+                  className={cn(
+                    "w-full min-h-[100px] px-3 py-2 text-sm border rounded-md resize-none",
+                    "placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground",
+                    "bg-transparent shadow-xs transition-[color,box-shadow] outline-none",
+                    "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                    "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                  )}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="파일에 대한 설명을 입력하세요..."
+                  disabled={editing}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setEditDialogOpen(false);
+              setFileToEdit(null);
+              setEditDescription('');
+            }} disabled={editing}>
+              취소
+            </Button>
+            <Button onClick={handleEditConfirm} disabled={editing}>
+              {editing ? '수정 중...' : '수정'}
             </Button>
           </DialogFooter>
         </DialogContent>

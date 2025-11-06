@@ -301,11 +301,27 @@ export async function signOut() {
 // 현재 사용자 세션 가져오기
 export async function getSession() {
   try {
-    const { data: { session }, error } = await supabase.auth.getSession();
+    // 타임아웃 설정 (5초)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('세션 조회 타임아웃')), 5000);
+    });
+    
+    const sessionPromise = supabase.auth.getSession();
+    const result = await Promise.race([
+      sessionPromise,
+      timeoutPromise
+    ]).catch(() => ({ data: { session: null }, error: null }));
+    
+    const { data: { session }, error } = result as Awaited<ReturnType<typeof supabase.auth.getSession>>;
+    
     if (error) throw error;
     return session;
   } catch (error: any) {
     console.error('세션 가져오기 오류:', error);
+    // 타임아웃이나 네트워크 오류인 경우 null 반환하여 로딩이 멈추지 않도록 함
+    if (error.message?.includes('타임아웃') || error.message?.includes('network')) {
+      return null;
+    }
     throw error;
   }
 }
@@ -326,19 +342,37 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
 // 사용자 프로필 가져오기
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
+    // 타임아웃 설정 (5초)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
+    });
+    
     // 세션 확인
-    const { data: { session } } = await supabase.auth.getSession();
+    const sessionPromise = supabase.auth.getSession();
+    const sessionResult = await Promise.race([
+      sessionPromise,
+      timeoutPromise
+    ]).catch(() => ({ data: { session: null } }));
+    
+    const { data: { session } } = sessionResult as Awaited<ReturnType<typeof supabase.auth.getSession>>;
     
     if (!session) {
       // 세션이 없으면 null 반환 (호출자가 처리)
       return null;
     }
 
-    const { data, error } = await supabase
+    const queryPromise = supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
+    
+    const queryResult = await Promise.race([
+      queryPromise,
+      timeoutPromise
+    ]).catch(() => ({ data: null, error: { message: '타임아웃' } })) as { data: UserProfile | null; error: { message: string; code?: string } | null };
+    
+    const { data, error } = queryResult;
 
     if (error) {
       // PGRST116 에러는 데이터가 없다는 의미이므로 null 반환
@@ -357,6 +391,11 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     }
     return data;
   } catch (error: any) {
+    // 타임아웃이나 네트워크 오류인 경우 null 반환
+    if (error.message?.includes('타임아웃') || error.message?.includes('network')) {
+      console.warn('프로필 조회 타임아웃 또는 네트워크 오류:', error);
+      return null;
+    }
     // PGRST116 에러는 데이터가 없다는 의미이므로 null 반환
     if (error.code === 'PGRST116') {
       return null;

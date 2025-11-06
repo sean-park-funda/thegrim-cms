@@ -130,6 +130,65 @@ CREATE TRIGGER update_files_updated_at BEFORE UPDATE ON files
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('webtoon-files', 'webtoon-files', true);
 
 -- ========================================
+-- Full-Text Search RPC 함수
+-- ========================================
+
+-- 파일 검색을 위한 Full-Text Search 함수
+-- description 필드에 대해 simple 설정을 사용한 검색 수행
+-- 클라이언트에서 검색어를 여러 형태로 확장하여 어간이 같은 단어도 검색 가능
+CREATE OR REPLACE FUNCTION search_files_fulltext(search_query TEXT)
+RETURNS TABLE (
+  id UUID,
+  cut_id UUID,
+  process_id UUID,
+  file_name VARCHAR(255),
+  file_path TEXT,
+  storage_path TEXT,
+  file_size BIGINT,
+  file_type VARCHAR(100),
+  mime_type VARCHAR(100),
+  description TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    f.id,
+    f.cut_id,
+    f.process_id,
+    f.file_name,
+    f.file_path,
+    f.storage_path,
+    f.file_size,
+    f.file_type,
+    f.mime_type,
+    f.description,
+    f.metadata,
+    f.created_at,
+    f.updated_at
+  FROM files f
+  WHERE
+    -- Full-Text Search: description 필드에 대해 simple 설정 사용 (형태소 분석 없이)
+    -- 클라이언트에서 검색어를 여러 형태로 확장하여 검색
+    (
+      f.description IS NOT NULL
+      AND f.description != ''
+      AND (
+        -- 정확한 매칭
+        f.description ILIKE '%' || search_query || '%'
+        -- Full-Text Search (simple 설정 사용)
+        OR to_tsvector('simple', f.description) @@ plainto_tsquery('simple', search_query)
+      )
+    )
+    -- file_name에 대해서는 기존 ilike 검색 유지 (파일명은 정확한 매칭이 중요)
+    OR f.file_name ILIKE '%' || search_query || '%'
+  ORDER BY f.created_at DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ========================================
 -- Row Level Security (RLS) 정책
 -- ========================================
 
