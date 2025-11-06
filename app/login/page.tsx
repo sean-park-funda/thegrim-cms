@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
@@ -30,11 +30,11 @@ export default function LoginPage() {
     // URL 파라미터에서 이메일과 회원가입 성공 메시지 확인
     const emailParam = searchParams.get('email');
     const signupSuccess = searchParams.get('signup');
-    
+
     if (emailParam) {
       setEmail(emailParam);
     }
-    
+
     if (signupSuccess === 'success') {
       setSuccess('회원가입이 완료되었습니다. 로그인해주세요.');
     }
@@ -125,6 +125,18 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-muted-foreground">로딩 중...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
 
