@@ -29,23 +29,23 @@ export function BreadcrumbNav() {
   };
 
   return (
-    <nav className="border-b bg-background px-4 py-2 sm:py-3">
-      <div className="flex items-center gap-1 sm:gap-2 text-sm">
+    <nav className="border-b border-border/20 bg-foreground/95 px-4 py-2">
+      <div className="flex items-center gap-1.5 text-xs">
         <Button
           variant="ghost"
           size="sm"
-          className="h-auto p-1 sm:p-2 text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-background/70 hover:text-background hover:bg-background/10 transition-colors duration-150"
           onClick={handleWebtoonClick}
         >
-          <Home className="h-4 w-4 sm:h-5 sm:w-5" />
+          <Home className="h-3.5 w-3.5" />
         </Button>
         {selectedWebtoon && (
           <>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-3 w-3 text-background/40" />
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto px-2 sm:px-3 py-1 sm:py-2 text-muted-foreground hover:text-foreground truncate max-w-[120px] sm:max-w-none"
+              className="h-7 px-2 text-background/70 hover:text-background hover:bg-background/10 truncate max-w-[120px] sm:max-w-none transition-colors duration-150 text-xs"
               onClick={handleWebtoonClick}
             >
               {selectedWebtoon.title}
@@ -54,11 +54,11 @@ export function BreadcrumbNav() {
         )}
         {selectedEpisode && (
           <>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-3 w-3 text-background/40" />
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto px-2 sm:px-3 py-1 sm:py-2 text-muted-foreground hover:text-foreground truncate max-w-[120px] sm:max-w-none"
+              className="h-7 px-2 text-background/70 hover:text-background hover:bg-background/10 truncate max-w-[120px] sm:max-w-none transition-colors duration-150 text-xs"
               onClick={handleEpisodeClick}
             >
               {selectedEpisode.episode_number}화
@@ -67,11 +67,11 @@ export function BreadcrumbNav() {
         )}
         {selectedCut && (
           <>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-3 w-3 text-background/40" />
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto px-2 sm:px-3 py-1 sm:py-2 text-muted-foreground hover:text-foreground truncate max-w-[120px] sm:max-w-none"
+              className="h-7 px-2 text-background/70 hover:text-background hover:bg-background/10 truncate max-w-[120px] sm:max-w-none transition-colors duration-150 text-xs"
               onClick={handleCutClick}
             >
               컷 {selectedCut.cut_number}

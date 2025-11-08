@@ -90,7 +90,7 @@ function SignupForm() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-muted-foreground">로딩 중...</div>
       </div>
     );
@@ -206,7 +206,7 @@ function SignupForm() {
 export default function SignupPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-muted-foreground">로딩 중...</div>
       </div>
     }>

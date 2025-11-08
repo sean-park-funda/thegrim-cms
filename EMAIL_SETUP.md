@@ -94,3 +94,4 @@ RESEND_FROM_EMAIL=noreply@yourdomain.com
 - API 키가 유출된 경우 즉시 Resend에서 재발급하세요
 
 
+

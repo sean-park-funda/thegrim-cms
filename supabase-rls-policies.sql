@@ -81,3 +81,4 @@ ON storage.objects FOR DELETE
 USING ( bucket_id = 'webtoon-files' );
 
 
+

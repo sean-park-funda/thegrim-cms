@@ -213,7 +213,7 @@ export function FileGrid() {
   }
 
   if (loading) {
-    return <div className="p-4 text-center text-muted-foreground">로딩 중...</div>;
+    return <div className="p-4 text-center text-muted-foreground text-sm">로딩 중...</div>;
   }
 
   return (
@@ -321,11 +321,11 @@ export function FileGrid() {
                             )}
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                             {/* 업로드 버튼 카드 */}
                             {profile && canUploadFile(profile.role) && (
                               <Card 
-                                className="overflow-hidden border-dashed opacity-40 hover:opacity-100 active:opacity-100 transition-opacity cursor-pointer group touch-manipulation"
+                                className="overflow-hidden border-dashed opacity-40 hover:opacity-100 active:opacity-100 transition-opacity cursor-pointer group touch-manipulation p-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   open();
@@ -340,7 +340,7 @@ export function FileGrid() {
                               </Card>
                             )}
                             {processFiles.map((file: FileType) => (
-                              <Card key={file.id} className="overflow-hidden">
+                              <Card key={file.id} className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out">
                                 {renderFilePreview(file)}
                                 <div className="p-2 sm:p-3">
                                   <p className="text-xs sm:text-sm font-medium truncate">{file.file_name}</p>

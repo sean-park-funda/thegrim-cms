@@ -182,8 +182,8 @@ export function ProcessView() {
   };
 
   return (
-    <div className="grid grid-cols-12 h-full divide-x">
-      <div className="col-span-3 h-full overflow-hidden">
+    <div className="grid grid-cols-12 h-full">
+      <div className="col-span-3 border-r border-border/40 h-full overflow-hidden bg-background">
         <ScrollArea className="h-full">
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
@@ -192,8 +192,8 @@ export function ProcessView() {
 
             <div className="space-y-2">
               {processes.map((process, index) => (
-                <Card key={process.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedProcess?.id === process.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedProcess(process)}>
-                  <CardHeader className="pb-3">
+                <Card key={process.id} className={`cursor-pointer transition-all duration-200 ease-in-out hover:bg-accent/50 ${selectedProcess?.id === process.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedProcess(process)}>
+                  <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: process.color }} />
@@ -249,7 +249,7 @@ export function ProcessView() {
         </ScrollArea>
       </div>
 
-      <div className="col-span-9 h-full overflow-hidden">
+      <div className="col-span-9 h-full overflow-hidden bg-background">
         <ScrollArea className="h-full">
           <div className="p-4">
             {!selectedProcess ? (
@@ -258,13 +258,13 @@ export function ProcessView() {
                 <p>공정을 선택해주세요</p>
               </div>
             ) : loading ? (
-              <div className="text-center text-muted-foreground py-12">로딩 중...</div>
+              <div className="text-center text-muted-foreground py-12 text-sm">로딩 중...</div>
             ) : (
               <>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-4 h-4 rounded-full" style={{ backgroundColor: selectedProcess.color }} />
-                    <h2 className="text-2xl font-bold">{selectedProcess.name}</h2>
+                    <h2 className="text-2xl font-semibold">{selectedProcess.name}</h2>
                     <Badge>{files.length}개 파일</Badge>
                   </div>
                   {selectedProcess.description && (
@@ -282,7 +282,7 @@ export function ProcessView() {
                 ) : (
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     {files.map((file) => (
-                      <Card key={file.id} className="overflow-hidden">
+                      <Card key={file.id} className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out">
                         {renderFilePreview(file)}
                         <div className="p-4">
                           <div className="mb-2">

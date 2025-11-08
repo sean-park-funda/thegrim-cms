@@ -145,8 +145,8 @@ export function CutList() {
         ) : (
           <div className="grid gap-2 sm:gap-3">
             {cuts.map((cut) => (
-              <Card key={cut.id} className={`cursor-pointer transition-all hover:shadow-md active:scale-[0.98] touch-manipulation ${selectedCut?.id === cut.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedCut(cut)}>
-                <CardHeader className="pb-2 sm:pb-3 p-3 sm:p-6">
+              <Card key={cut.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation hover:bg-accent/50 ${selectedCut?.id === cut.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedCut(cut)}>
+                <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-sm sm:text-base">
@@ -180,7 +180,7 @@ export function CutList() {
                   </div>
                 </CardHeader>
                 {cut.description && (
-                  <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
+                  <CardContent className="pt-0 pb-4">
                     <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{cut.description}</p>
                   </CardContent>
                 )}

@@ -121,3 +121,4 @@ CREATE POLICY "Users can view own invitation by token"
   USING (true); -- 토큰 검증은 애플리케이션 레벨에서 처리
 
 
+

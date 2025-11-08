@@ -25,7 +25,7 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-muted-foreground">로딩 중...</div>
+        <div className="text-muted-foreground text-sm">로딩 중...</div>
       </div>
     );
   }
@@ -37,7 +37,7 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-background">
       <Navigation />
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden bg-background">
         {showSearchResults ? (
           <SearchResults />
         ) : viewMode === 'webtoon' ? (

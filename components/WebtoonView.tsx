@@ -51,15 +51,15 @@ export function WebtoonView() {
           </ScrollArea>
         )}
         {selectedWebtoon && selectedEpisode && (
-          <div className="flex-1 grid grid-cols-12 h-full divide-x overflow-hidden">
-            <div className="col-span-4 border-r h-full overflow-hidden">
+          <div className="flex-1 grid grid-cols-12 h-full overflow-hidden">
+            <div className="col-span-4 border-r border-border/40 h-full overflow-hidden bg-background">
               <ScrollArea className="h-full">
                 <div>
                   <CutList />
                 </div>
               </ScrollArea>
             </div>
-            <div className="col-span-8 h-full overflow-hidden">
+            <div className="col-span-8 h-full overflow-hidden bg-background">
               <FileGrid />
             </div>
           </div>

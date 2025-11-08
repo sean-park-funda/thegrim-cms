@@ -146,8 +146,8 @@ export function WebtoonList() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {webtoons.map((webtoon) => (
-              <Card key={webtoon.id} className={`cursor-pointer transition-all hover:shadow-lg active:scale-[0.98] touch-manipulation flex flex-col ${selectedWebtoon?.id === webtoon.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedWebtoon(webtoon)}>
-                <CardHeader className="pb-2 sm:pb-3 p-4 sm:p-6 flex-shrink-0">
+              <Card key={webtoon.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-accent/50 ${selectedWebtoon?.id === webtoon.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedWebtoon(webtoon)}>
+                <CardHeader className="pb-2 flex-shrink-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-sm sm:text-base line-clamp-2">{webtoon.title}</CardTitle>
@@ -183,7 +183,7 @@ export function WebtoonList() {
                   </div>
                 </CardHeader>
                 {webtoon.description && (
-                  <CardContent className="pt-0 px-4 sm:px-6 pb-4 sm:pb-6 flex-1 flex flex-col justify-end">
+                  <CardContent className="pt-0 pb-4 flex-1 flex flex-col justify-end">
                     <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{webtoon.description}</p>
                   </CardContent>
                 )}

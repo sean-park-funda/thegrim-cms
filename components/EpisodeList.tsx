@@ -152,8 +152,8 @@ export function EpisodeList() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {episodes.map((episode) => (
-              <Card key={episode.id} className={`cursor-pointer transition-all hover:shadow-lg active:scale-[0.98] touch-manipulation flex flex-col ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedEpisode(episode)}>
-                <CardHeader className="pb-2 sm:pb-3 p-4 sm:p-6 flex-shrink-0">
+              <Card key={episode.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-accent/50 ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedEpisode(episode)}>
+                <CardHeader className="pb-2 flex-shrink-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-sm sm:text-base line-clamp-2">
@@ -191,7 +191,7 @@ export function EpisodeList() {
                   </div>
                 </CardHeader>
                 {episode.description && (
-                  <CardContent className="pt-0 px-4 sm:px-6 pb-4 sm:pb-6 flex-1 flex flex-col justify-end">
+                  <CardContent className="pt-0 pb-4 flex-1 flex flex-col justify-end">
                     <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{episode.description}</p>
                   </CardContent>
                 )}
