@@ -133,10 +133,10 @@ export function EpisodeList() {
 
   return (
     <>
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-3">{selectedWebtoon.title}</h2>
+      <div className="p-3 sm:p-4">
+        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedWebtoon.title}</h2>
         {profile && canCreateContent(profile.role) && (
-          <Button size="sm" onClick={handleCreate} className="w-full mb-4">
+          <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
             <Plus className="h-4 w-4 mr-2" />
             새 회차
           </Button>
@@ -144,30 +144,30 @@ export function EpisodeList() {
 
         {episodes.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <BookOpen className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>등록된 회차가 없습니다.</p>
+            <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
+              <BookOpen className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm sm:text-base">등록된 회차가 없습니다.</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {episodes.map((episode) => (
-              <Card key={episode.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedEpisode(episode)}>
-                <CardHeader className="pb-3">
+              <Card key={episode.id} className={`cursor-pointer transition-all hover:shadow-lg active:scale-[0.98] touch-manipulation flex flex-col ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedEpisode(episode)}>
+                <CardHeader className="pb-2 sm:pb-3 p-4 sm:p-6 flex-shrink-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-base">
+                      <CardTitle className="text-sm sm:text-base line-clamp-2">
                         {episode.episode_number}화 - {episode.title}
                       </CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={episode.status === 'completed' ? 'default' : episode.status === 'in_progress' ? 'secondary' : 'outline'}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      <Badge variant={episode.status === 'completed' ? 'default' : episode.status === 'in_progress' ? 'secondary' : 'outline'} className="text-xs whitespace-nowrap">
                         {episode.status === 'completed' ? '완료' : episode.status === 'in_progress' ? '진행중' : '대기'}
                       </Badge>
                       {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -191,8 +191,8 @@ export function EpisodeList() {
                   </div>
                 </CardHeader>
                 {episode.description && (
-                  <CardContent className="pt-0">
-                    <p className="text-sm text-muted-foreground line-clamp-2">{episode.description}</p>
+                  <CardContent className="pt-0 px-4 sm:px-6 pb-4 sm:pb-6 flex-1 flex flex-col justify-end">
+                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{episode.description}</p>
                   </CardContent>
                 )}
               </Card>

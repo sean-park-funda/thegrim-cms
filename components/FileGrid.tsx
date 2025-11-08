@@ -190,15 +190,15 @@ export function FileGrid() {
 
     if (isImage) {
       return (
-        <div className="relative w-full h-48 bg-muted rounded-md overflow-hidden">
+        <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
           <Image src={file.file_path} alt={file.file_name} fill className="object-cover" />
         </div>
       );
     }
 
     return (
-      <div className="w-full h-48 bg-muted rounded-md flex items-center justify-center">
-        <FileIcon className="h-16 w-16 text-muted-foreground" />
+      <div className="w-full h-40 sm:h-48 bg-muted rounded-md flex items-center justify-center">
+        <FileIcon className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground" />
       </div>
     );
   };
@@ -218,13 +218,13 @@ export function FileGrid() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-4">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold">공정별 파일</h2>
-          <p className="text-sm text-muted-foreground">컷 {selectedCut.cut_number}의 제작 파일들</p>
+      <div className="p-3 sm:p-4">
+        <div className="mb-3 sm:mb-4">
+          <h2 className="text-base sm:text-lg font-semibold">공정별 파일</h2>
+          <p className="text-xs sm:text-sm text-muted-foreground">컷 {selectedCut.cut_number}의 제작 파일들</p>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {processes.map((process) => {
             const processFiles = getFilesByProcess(process.id);
             const processUploadingFiles = uploadingFiles[process.id] || [];
@@ -261,8 +261,8 @@ export function FileGrid() {
                   {isDragActive && (
                     <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10">
                       <div className="text-center">
-                        <Upload className="h-12 w-12 mx-auto mb-2 text-primary" />
-                        <p className="text-primary font-medium">파일을 여기에 놓으세요</p>
+                        <Upload className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 text-primary" />
+                        <p className="text-sm sm:text-base text-primary font-medium">파일을 여기에 놓으세요</p>
                       </div>
                     </div>
                   )}
@@ -272,23 +272,23 @@ export function FileGrid() {
 
             return (
               <Card key={process.id}>
-                <CardHeader>
+                <CardHeader className="p-3 sm:p-6">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: process.color }} />
-                    <CardTitle className="text-base">{process.name}</CardTitle>
-                    <Badge variant="outline">{processFiles.length}개</Badge>
+                    <CardTitle className="text-sm sm:text-base">{process.name}</CardTitle>
+                    <Badge variant="outline" className="text-xs">{processFiles.length}개</Badge>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 sm:p-6">
                   <ProcessDropzone>
                     {(open) => (
                       <>
                         {processUploadingFiles.length > 0 && (
-                          <div className="mb-4 space-y-2 p-4 bg-muted rounded-lg">
-                            <p className="text-sm font-medium mb-2">업로드 중...</p>
+                          <div className="mb-3 sm:mb-4 space-y-2 p-3 sm:p-4 bg-muted rounded-lg">
+                            <p className="text-xs sm:text-sm font-medium mb-2">업로드 중...</p>
                             {processUploadingFiles.map((file: globalThis.File) => (
                               <div key={file.name} className="space-y-1">
-                                <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center justify-between text-xs sm:text-sm">
                                   <span className="truncate flex-1">{file.name}</span>
                                   <span className="text-muted-foreground ml-2">
                                     {processProgress[file.name] || 0}%
@@ -306,35 +306,35 @@ export function FileGrid() {
                         )}
 
                         {processFiles.length === 0 ? (
-                          <div className="py-12 text-center border-2 border-dashed border-muted-foreground/25 rounded-lg">
+                          <div className="py-8 sm:py-12 text-center border-2 border-dashed border-muted-foreground/25 rounded-lg">
                             {profile && canUploadFile(profile.role) ? (
                               <>
-                                <Upload className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
-                                <p className="text-sm text-muted-foreground mb-1">파일을 드래그하여 업로드</p>
+                                <Upload className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 sm:mb-3 text-muted-foreground opacity-50" />
+                                <p className="text-xs sm:text-sm text-muted-foreground mb-1">파일을 드래그하여 업로드</p>
                                 <p className="text-xs text-muted-foreground">또는 클릭하여 파일 선택</p>
                               </>
                             ) : (
                               <>
-                                <FileIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
-                                <p className="text-sm text-muted-foreground">파일이 없습니다</p>
+                                <FileIcon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 sm:mb-3 text-muted-foreground opacity-50" />
+                                <p className="text-xs sm:text-sm text-muted-foreground">파일이 없습니다</p>
                               </>
                             )}
                           </div>
                         ) : (
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                             {/* 업로드 버튼 카드 */}
                             {profile && canUploadFile(profile.role) && (
                               <Card 
-                                className="overflow-hidden border-dashed opacity-40 hover:opacity-100 transition-opacity cursor-pointer group"
+                                className="overflow-hidden border-dashed opacity-40 hover:opacity-100 active:opacity-100 transition-opacity cursor-pointer group touch-manipulation"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   open();
                                 }}
                               >
-                                <div className="w-full h-48 bg-muted/50 rounded-md flex items-center justify-center border-2 border-dashed border-muted-foreground/30 group-hover:border-primary/50">
-                                  <Plus className="h-12 w-12 text-muted-foreground group-hover:text-primary transition-colors" />
+                                <div className="w-full h-40 sm:h-48 bg-muted/50 rounded-md flex items-center justify-center border-2 border-dashed border-muted-foreground/30 group-hover:border-primary/50">
+                                  <Plus className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground group-hover:text-primary transition-colors" />
                                 </div>
-                                <div className="p-3 text-center">
+                                <div className="p-2 sm:p-3 text-center">
                                   <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">파일 추가</p>
                                 </div>
                               </Card>
@@ -342,23 +342,23 @@ export function FileGrid() {
                             {processFiles.map((file: FileType) => (
                               <Card key={file.id} className="overflow-hidden">
                                 {renderFilePreview(file)}
-                                <div className="p-3">
-                                  <p className="text-sm font-medium truncate">{file.file_name}</p>
+                                <div className="p-2 sm:p-3">
+                                  <p className="text-xs sm:text-sm font-medium truncate">{file.file_name}</p>
                                   {file.description && (
                                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
                                   )}
-                                  <div className="flex gap-2 mt-2">
-                                    <Button size="sm" variant="ghost" className="h-7 px-2 flex-1" onClick={(e) => handleDownload(file, e)}>
-                                      <Download className="h-3 w-3" />
+                                  <div className="flex gap-1.5 sm:gap-2 mt-2">
+                                    <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={(e) => handleDownload(file, e)}>
+                                      <Download className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                                     </Button>
                                     {profile && canUploadFile(profile.role) && (!file.description || file.description.trim() === '') && (
-                                      <Button size="sm" variant="ghost" className="h-7 px-2 flex-1" onClick={(e) => handleEditClick(file, e)}>
-                                        <Edit className="h-3 w-3" />
+                                      <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={(e) => handleEditClick(file, e)}>
+                                        <Edit className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                                       </Button>
                                     )}
                                     {profile && canDeleteFile(profile.role) && (
-                                      <Button size="sm" variant="ghost" className="h-7 px-2 flex-1 text-destructive hover:text-destructive" onClick={(e) => handleDeleteClick(file, e)}>
-                                        <Trash2 className="h-3 w-3" />
+                                      <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 text-destructive hover:text-destructive touch-manipulation" onClick={(e) => handleDeleteClick(file, e)}>
+                                        <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                                       </Button>
                                     )}
                                   </div>

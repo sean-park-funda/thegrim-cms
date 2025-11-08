@@ -1,37 +1,33 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { getSession, getCurrentUserProfile } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
 import { supabase } from '@/lib/supabase';
 
 export function useAuth() {
   const { user, profile, isLoading, setUser, setProfile, setLoading } = useStore();
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
-  useEffect(() => {
-    // 초기 인증 상태 확인
-    checkAuth();
-
-    // 인증 상태 변경 감지
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+  // 세션 상태를 동기화하는 헬퍼 함수
+  const syncSessionState = useCallback(async (session: any) => {
+    if (session?.user) {
+      try {
         const userProfile = await getCurrentUserProfile();
         setUser(session.user);
         setProfile(userProfile);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
+      } catch (profileError) {
+        console.warn('프로필 조회 실패, 사용자 정보만 설정:', profileError);
+        setUser(session.user);
         setProfile(null);
       }
-    });
+    } else {
+      setUser(null);
+      setProfile(null);
+    }
+  }, [setUser, setProfile]);
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -70,7 +66,45 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setUser, setProfile, setLoading]);
+
+  useEffect(() => {
+    // 초기 인증 상태 확인
+    checkAuth();
+
+    // 기존 리스너가 있으면 정리
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+    }
+
+    // 인증 상태 변경 감지
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('인증 상태 변경:', event, session?.user?.id);
+      
+      // 세션이 있는 모든 이벤트에서 상태 갱신
+      if (session?.user) {
+        // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED 등 세션이 있는 경우
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          await syncSessionState(session);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        // 로그아웃 시 상태 초기화
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    subscriptionRef.current = subscription;
+
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
+    };
+  }, [checkAuth, syncSessionState, setUser, setProfile]);
 
   return { user, profile, isLoading };
 }

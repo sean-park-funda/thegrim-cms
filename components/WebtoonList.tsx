@@ -117,8 +117,8 @@ export function WebtoonList() {
 
   return (
     <>
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-3">웹툰 목록</h2>
+      <div className="p-3 sm:p-4">
+        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3">웹툰 목록</h2>
         {profile && canCreateContent(profile.role) && (
           <button
             type="button"
@@ -128,7 +128,7 @@ export function WebtoonList() {
               console.log('Button clicked - raw button');
               handleCreate();
             }}
-            className="w-full mb-4 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all h-8 rounded-md gap-1.5 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="w-full mb-3 sm:mb-4 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all h-9 sm:h-8 rounded-md gap-1.5 px-3 bg-primary text-primary-foreground hover:bg-primary/90 touch-manipulation"
           >
             <Plus className="h-4 w-4" />
             새 웹툰
@@ -137,29 +137,29 @@ export function WebtoonList() {
 
         {webtoons.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <Film className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>등록된 웹툰이 없습니다.</p>
-              <p className="text-sm mt-1">새 웹툰을 추가해주세요.</p>
+            <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
+              <Film className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm sm:text-base">등록된 웹툰이 없습니다.</p>
+              <p className="text-xs sm:text-sm mt-1">새 웹툰을 추가해주세요.</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {webtoons.map((webtoon) => (
-              <Card key={webtoon.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedWebtoon?.id === webtoon.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedWebtoon(webtoon)}>
-                <CardHeader className="pb-3">
+              <Card key={webtoon.id} className={`cursor-pointer transition-all hover:shadow-lg active:scale-[0.98] touch-manipulation flex flex-col ${selectedWebtoon?.id === webtoon.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedWebtoon(webtoon)}>
+                <CardHeader className="pb-2 sm:pb-3 p-4 sm:p-6 flex-shrink-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-base">{webtoon.title}</CardTitle>
+                      <CardTitle className="text-sm sm:text-base line-clamp-2">{webtoon.title}</CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={webtoon.status === 'active' ? 'default' : 'secondary'}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      <Badge variant={webtoon.status === 'active' ? 'default' : 'secondary'} className="text-xs whitespace-nowrap">
                         {webtoon.status === 'active' ? '진행중' : '완료'}
                       </Badge>
                       {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -183,8 +183,8 @@ export function WebtoonList() {
                   </div>
                 </CardHeader>
                 {webtoon.description && (
-                  <CardContent className="pt-0">
-                    <p className="text-sm text-muted-foreground line-clamp-2">{webtoon.description}</p>
+                  <CardContent className="pt-0 px-4 sm:px-6 pb-4 sm:pb-6 flex-1 flex flex-col justify-end">
+                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{webtoon.description}</p>
                   </CardContent>
                 )}
               </Card>

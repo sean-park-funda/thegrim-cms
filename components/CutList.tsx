@@ -126,10 +126,10 @@ export function CutList() {
 
   return (
     <>
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-3">{selectedEpisode ? `${selectedEpisode.episode_number}화 - ${selectedEpisode.title}` : '컷 목록'}</h2>
+      <div className="p-3 sm:p-4">
+        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedEpisode ? `${selectedEpisode.episode_number}화 - ${selectedEpisode.title}` : '컷 목록'}</h2>
         {profile && canCreateContent(profile.role) && (
-          <Button size="sm" onClick={handleCreate} className="w-full mb-4">
+          <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
             <Plus className="h-4 w-4 mr-2" />
             새 컷
           </Button>
@@ -137,19 +137,19 @@ export function CutList() {
 
         {cuts.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>등록된 컷이 없습니다.</p>
+            <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
+              <Image className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm sm:text-base">등록된 컷이 없습니다.</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-2 sm:gap-3">
             {cuts.map((cut) => (
-              <Card key={cut.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedCut?.id === cut.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedCut(cut)}>
-                <CardHeader className="pb-3">
+              <Card key={cut.id} className={`cursor-pointer transition-all hover:shadow-md active:scale-[0.98] touch-manipulation ${selectedCut?.id === cut.id ? 'ring-2 ring-primary' : ''}`} onClick={() => setSelectedCut(cut)}>
+                <CardHeader className="pb-2 sm:pb-3 p-3 sm:p-6">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-base">
+                      <CardTitle className="text-sm sm:text-base">
                         컷 {cut.cut_number}
                         {cut.title && ` - ${cut.title}`}
                       </CardTitle>
@@ -157,7 +157,7 @@ export function CutList() {
                     {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -180,8 +180,8 @@ export function CutList() {
                   </div>
                 </CardHeader>
                 {cut.description && (
-                  <CardContent className="pt-0">
-                    <p className="text-sm text-muted-foreground line-clamp-2">{cut.description}</p>
+                  <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
+                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{cut.description}</p>
                   </CardContent>
                 )}
               </Card>
