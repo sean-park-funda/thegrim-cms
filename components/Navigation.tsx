@@ -51,9 +51,8 @@ export function Navigation() {
       <div className="container mx-auto max-w-[1600px] px-4 sm:px-6">
         <div className="flex items-center h-14 gap-6">
           {/* 타이틀 - Linear 스타일: 왼쪽에 깔끔하게 */}
-          <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity duration-150 flex-shrink-0" onClick={handleTitleClick}>
-            <Film className="h-4 w-4 text-background" />
-            <h1 className="text-sm font-medium text-background">더그림</h1>
+          <div className="cursor-pointer hover:opacity-80 transition-opacity duration-150 flex-shrink-0" onClick={handleTitleClick}>
+            <h1 className="text-sm font-bold" style={{ color: '#00BFFF' }}>더그림 CMS</h1>
           </div>
 
           {/* 탭 네비게이션 - Linear 스타일: 미니멀한 탭 */}
