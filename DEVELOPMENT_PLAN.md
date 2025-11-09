@@ -1,6 +1,6 @@
 # 더그림 작업관리 시스템 개발 계획
 
-## 📊 현재 구현 상태 (2025-01-07 최신화)
+## 📊 현재 구현 상태 (2025-01-08 최신화)
 
 ### ✅ 완료된 기능
 
@@ -22,7 +22,8 @@
 - ✅ 회차 목록 표시
 - ✅ 컷 목록 표시
 - ✅ 파일 그리드 표시 (공정별)
-- ✅ 검색 결과 표시 (기본 - description 기반)
+- ✅ 검색 결과 표시 (description 및 메타데이터 기반)
+- ✅ 파일 상세 정보 Dialog
 
 #### 4. 웹툰 관리
 - ✅ 웹툰 목록 조회
@@ -60,6 +61,7 @@
 - ✅ 컷 API (CRUD)
 - ✅ 공정 API (CRUD, 순서 변경)
 - ✅ 파일 API (조회, 검색, 업로드, 다운로드, 삭제)
+- ✅ 이미지 분석 API (Gemini 2.5 Pro 연동)
 
 #### 9. 공정 관리
 - ✅ 공정 생성 기능
@@ -167,9 +169,33 @@
 - [x] 파일 설명 수정 기능 (Dialog)
 - [x] 빈 문자열일 때만 수정 가능 (AI 자동 생성 전까지)
 - [x] 권한 체크 (업로드 권한 있는 사용자만)
-- [ ] 파일 메타데이터 수정 기능 (향후 필요 시)
+- [x] 파일 메타데이터 수정 기능 (재분석 기능으로 구현)
 
 **완료일**: 2025-01-07
+
+#### 2.4 이미지 메타데이터 자동 생성 기능 ✅ 완료
+- [x] Gemini 2.5 Pro API 통합 (`app/api/analyze-image/route.ts`)
+- [x] 이미지 업로드 시 자동 분석 기능
+- [x] 수동 분석/재분석 기능 (파일 그리드에서 버튼 클릭)
+- [x] 메타데이터 자동 폴링 및 UI 업데이트 (3초 간격)
+- [x] 메타데이터 표시 UI (파일 그리드 및 상세 정보)
+- [x] 메타데이터 구조: `scene_summary`, `tags`, `characters_count`, `analyzed_at`
+- [x] 분석 진행 상태 표시 (로딩 애니메이션)
+- [x] 이미지 URL 접근 대기 및 재시도 로직
+- [x] 상세 디버깅 로그 추가
+
+**완료일**: 2025-01-08
+
+#### 2.5 파일 상세 정보 Dialog ✅ 완료
+- [x] 파일 클릭 시 상세 정보 팝업 표시
+- [x] 화면 전체 크기 Dialog (95vw x 95vh)
+- [x] 파일 미리보기 (이미지: 60vh 높이)
+- [x] 기본 정보 카드 (파일명, 크기, MIME 타입, 생성일, 설명)
+- [x] 메타데이터 카드 (장면 요약, 태그, 등장 인물 수, 분석 일시)
+- [x] 반응형 레이아웃 (PC: 가로 배열, 모바일: 세로 배열)
+- [x] 액션 버튼 (다운로드, 분석, 삭제)
+
+**완료일**: 2025-01-08
 
 ---
 
@@ -278,14 +304,25 @@
 
 **완료일**: 초기 구현
 
-#### 5.2 검색 기능 확장 (필요)
+#### 5.1.1 메타데이터 검색 기능 ✅ 완료
+- [x] `metadata.scene_summary` 검색 지원
+- [x] `metadata.tags` 배열 검색 지원
+- [x] `search_files_fulltext` RPC 함수 확장
+- [x] 메타데이터 JSONB 필드 GIN 인덱스 추가
+- [x] 검색 성능 최적화
+
+**완료일**: 2025-01-08
+
+#### 5.2 검색 기능 확장 (부분 완료)
+- [x] 메타데이터 검색 (scene_summary, tags) ✅
 - [ ] 파일명으로 검색
 - [ ] 웹툰명으로 검색
 - [ ] 회차명으로 검색
 - [ ] 컷 제목으로 검색
 - [ ] 다중 필드 통합 검색 (description, 파일명, 웹툰/회차/컷 정보)
 
-**예상 소요 시간**: 2-3시간
+**완료일**: 2025-01-08 (메타데이터 검색)
+**예상 소요 시간**: 2-3시간 (나머지 기능)
 
 #### 5.3 고급 검색 필터
 - [ ] 날짜 범위 필터 (생성일, 수정일)
@@ -343,7 +380,10 @@
 # .env.local 파일 생성 필요
 NEXT_PUBLIC_SUPABASE_URL=your-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
+
+**참고**: Gemini API 키는 [Google AI Studio](https://makersuite.google.com/app/apikey)에서 발급받을 수 있습니다.
 
 ### 2. 다음 우선순위 작업
 1. **검색 기능 개선** (파일명, 웹툰명, 회차명 등 다중 필드 검색) ⚠️ 급함
@@ -402,6 +442,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 - [Supabase 문서](https://supabase.com/docs)
 - [Supabase Auth 문서](https://supabase.com/docs/guides/auth)
 - [Supabase RLS 문서](https://supabase.com/docs/guides/auth/row-level-security)
+- [Gemini API 문서](https://ai.google.dev/docs)
+- [Google AI Studio](https://makersuite.google.com/app/apikey) - API 키 발급
 - [shadcn/ui 문서](https://ui.shadcn.com)
 - [Zustand 문서](https://zustand-demo.pmnd.rs)
 - [react-dropzone 문서](https://react-dropzone.js.org)
@@ -487,13 +529,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
 lib/
 ├── api/
 │   ├── auth.ts          # 인증 API (로그인, 회원가입, 초대 등)
-│   └── admin.ts         # 관리자 유틸리티
+│   ├── admin.ts         # 관리자 유틸리티
+│   └── files.ts         # 파일 API (업로드, 다운로드, 삭제, 분석)
 ├── hooks/
 │   └── useAuth.ts       # 인증 상태 관리 훅
 └── utils/
     └── permissions.ts   # 권한 체크 유틸리티
 
 app/
+├── api/
+│   └── analyze-image/
+│       └── route.ts     # Gemini API 이미지 분석 엔드포인트
 ├── login/
 │   └── page.tsx         # 로그인 페이지
 ├── signup/
@@ -501,8 +547,12 @@ app/
 └── admin/
     └── page.tsx         # 관리자 페이지
 
+components/
+└── FileGrid.tsx         # 파일 그리드 (업로드, 메타데이터 표시, 상세 정보)
+
 supabase-auth-schema.sql  # 인증 스키마
-supabase-rls-policies.sql # RLS 정책 (개발용)
+supabase-rls-policies.sql  # RLS 정책 (개발용)
+supabase-schema.sql        # 데이터베이스 스키마 (메타데이터 검색 함수 포함)
 ```
 
 ### 프로덕션 배포 전 필수 작업
@@ -516,4 +566,109 @@ supabase-rls-policies.sql # RLS 정책 (개발용)
 
 3. **API 엔드포인트 권한 검증**
    - 서버 사이드 권한 검증 추가 (현재는 클라이언트 사이드만)
+
+---
+
+## 🤖 이미지 메타데이터 자동 생성 시스템 (✅ 구현 완료)
+
+### 개요
+Gemini 2.5 Pro API를 활용하여 웹툰 장면 이미지의 메타데이터를 자동으로 생성하고 검색에 활용하는 시스템입니다.
+
+### 구현된 기능
+
+#### 1. 이미지 분석 API
+- **파일**: `app/api/analyze-image/route.ts`
+- **기능**: 
+  - Gemini 2.5 Pro API를 통한 이미지 분석
+  - 장면 요약, 태그, 등장 인물 수 추출
+  - JSON 형식 응답 반환
+- **프롬프트**: 웹툰 장면 분석에 특화된 프롬프트 사용
+- **에러 처리**: 상세한 디버깅 로그 및 에러 메시지
+
+#### 2. 자동 분석 기능
+- **파일**: `lib/api/files.ts`
+- **기능**:
+  - 이미지 업로드 시 자동으로 분석 시작 (비동기)
+  - 이미지 URL 접근 가능 여부 확인 및 재시도 로직
+  - 분석 결과를 `metadata` JSONB 필드에 저장
+- **메타데이터 구조**:
+  ```json
+  {
+    "scene_summary": "한 문장으로 된 장면 요약",
+    "tags": ["태그1", "태그2", "태그3"],
+    "characters_count": 2,
+    "analyzed_at": "2025-01-08T12:00:00.000Z"
+  }
+  ```
+
+#### 3. 수동 분석/재분석 기능
+- **파일**: `components/FileGrid.tsx`
+- **기능**:
+  - 파일 그리드에서 Sparkles 아이콘 버튼 클릭
+  - 메타데이터가 없으면 "분석" 버튼 표시
+  - 메타데이터가 있으면 "재분석" 버튼 표시
+  - 분석 중 로딩 상태 표시
+
+#### 4. 메타데이터 자동 업데이트
+- **파일**: `components/FileGrid.tsx`
+- **기능**:
+  - 업로드된 이미지 파일을 `pendingAnalysisFiles`에 추가
+  - 3초마다 폴링하여 메타데이터 생성 여부 확인
+  - 메타데이터 생성 완료 시 자동으로 파일 목록 업데이트
+  - "메타데이터 생성 중..." 상태 표시
+
+#### 5. 메타데이터 표시 UI
+- **파일 그리드**: 
+  - 장면 요약 표시 (line-clamp-2)
+  - 태그를 Badge 형태로 표시 (최대 5개 + 나머지 개수)
+- **상세 정보 Dialog**:
+  - 기본 정보 카드와 메타데이터 카드로 분리
+  - PC: 가로 배열, 모바일: 세로 배열
+  - 전체 메타데이터 정보 표시
+
+#### 6. 검색 기능 확장
+- **파일**: `supabase-schema.sql`
+- **기능**:
+  - `search_files_fulltext` RPC 함수 확장
+  - `metadata.scene_summary` 검색 지원
+  - `metadata.tags` 배열 검색 지원
+  - 메타데이터 JSONB 필드 GIN 인덱스 추가
+
+### 기술 스택
+- **Gemini API**: Google Gemini 2.5 Pro
+- **Next.js API Routes**: 서버 사이드 API 호출
+- **Supabase**: 메타데이터 JSONB 저장 및 검색
+
+### 환경 변수
+```bash
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+### 메타데이터 생성 프로세스
+
+1. **이미지 업로드**
+   - 파일이 Supabase Storage에 업로드됨
+   - DB에 파일 정보 저장 (`metadata: {}`)
+   - 이미지 파일인 경우 자동으로 분석 시작
+
+2. **이미지 분석**
+   - 이미지 URL 접근 가능 여부 확인 (최대 5초 대기)
+   - Gemini API 호출
+   - 분석 결과 파싱 및 검증
+
+3. **메타데이터 저장**
+   - 분석 결과를 `metadata` JSONB 필드에 저장
+   - `analyzed_at` 타임스탬프 추가
+
+4. **UI 업데이트**
+   - 폴링을 통해 메타데이터 생성 완료 감지
+   - 파일 목록 자동 업데이트
+   - 메타데이터 표시
+
+### 검색 활용
+- 메타데이터의 `scene_summary`와 `tags`가 검색 대상에 포함됨
+- 예: "화해" 태그로 검색하면 해당 태그가 포함된 이미지 검색 가능
+- 예: "두 사람이 대화하는 장면" 같은 자연어 검색 가능
+
+**완료일**: 2025-01-08
 

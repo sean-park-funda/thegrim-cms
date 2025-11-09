@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store/useStore';
 import { searchFiles } from '@/lib/api/files';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import { FileIcon, Search } from 'lucide-react';
 import { FileWithRelations } from '@/lib/supabase';
 import Image from 'next/image';
@@ -102,6 +103,34 @@ export function SearchResults() {
                         {file.description && (
                           <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
                         )}
+                        {(() => {
+                          const metadata = file.metadata as {
+                            scene_summary?: string;
+                            tags?: string[];
+                          } | undefined;
+                          const hasMetadata = metadata && metadata.scene_summary && metadata.tags;
+                          return hasMetadata ? (
+                            <div className="mt-2 space-y-2">
+                              {metadata.scene_summary && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">{metadata.scene_summary}</p>
+                              )}
+                              {metadata.tags && metadata.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {metadata.tags.slice(0, 5).map((tag, idx) => (
+                                    <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                  {metadata.tags.length > 5 && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                      +{metadata.tags.length - 5}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                       {file.cut?.episode?.webtoon && (
                         <div className="text-sm space-y-1">

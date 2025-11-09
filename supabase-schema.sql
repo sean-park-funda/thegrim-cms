@@ -81,6 +81,10 @@ CREATE INDEX IF NOT EXISTS idx_processes_order ON processes(order_index);
 CREATE INDEX IF NOT EXISTS idx_files_description ON files USING GIN (to_tsvector('korean', COALESCE(description, '')));
 CREATE INDEX IF NOT EXISTS idx_webtoons_search ON webtoons USING GIN (to_tsvector('korean', title || ' ' || COALESCE(description, '')));
 
+-- metadata JSONB 필드 검색을 위한 인덱스
+CREATE INDEX IF NOT EXISTS idx_files_metadata ON files USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_files_metadata_scene_summary ON files USING GIN (to_tsvector('simple', COALESCE(metadata->>'scene_summary', '')));
+
 -- ========================================
 -- 기본 공정 데이터 삽입
 -- ========================================
@@ -184,6 +188,25 @@ BEGIN
     )
     -- file_name에 대해서는 기존 ilike 검색 유지 (파일명은 정확한 매칭이 중요)
     OR f.file_name ILIKE '%' || search_query || '%'
+    -- metadata.scene_summary 검색
+    OR (
+      f.metadata IS NOT NULL
+      AND f.metadata->>'scene_summary' IS NOT NULL
+      AND (
+        f.metadata->>'scene_summary' ILIKE '%' || search_query || '%'
+        OR to_tsvector('simple', f.metadata->>'scene_summary') @@ plainto_tsquery('simple', search_query)
+      )
+    )
+    -- metadata.tags 검색 (배열 내 태그 검색)
+    OR (
+      f.metadata IS NOT NULL
+      AND f.metadata->'tags' IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(f.metadata->'tags') AS tag
+        WHERE tag ILIKE '%' || search_query || '%'
+      )
+    )
   ORDER BY f.created_at DESC;
 END;
 $$ LANGUAGE plpgsql STABLE;

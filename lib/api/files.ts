@@ -247,6 +247,135 @@ function sanitizeFileName(fileName: string): string {
   return `${sanitizedName}${extension}`;
 }
 
+// 이미지 URL이 접근 가능한지 확인하는 헬퍼 함수
+async function waitForImageUrl(imageUrl: string, maxRetries = 5, delayMs = 1000): Promise<void> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(imageUrl, { method: 'HEAD' });
+      if (response.ok) {
+        return; // 이미지가 접근 가능함
+      }
+    } catch (error) {
+      // 에러 무시하고 재시도
+    }
+    
+    if (i < maxRetries - 1) {
+      // 마지막 시도가 아니면 대기
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  // 모든 재시도 실패 시에도 계속 진행 (이미지가 실제로는 접근 가능할 수 있음)
+}
+
+// 이미지 분석 및 메타데이터 업데이트
+export async function analyzeImage(fileId: string, retryCount = 0): Promise<File> {
+  console.log(`[클라이언트] 이미지 분석 시작 (fileId: ${fileId}, retryCount: ${retryCount})`);
+  
+  // 파일 정보 가져오기
+  const { data: file, error: fetchError } = await supabase
+    .from('files')
+    .select('*')
+    .eq('id', fileId)
+    .single();
+
+  if (fetchError) {
+    console.error('[클라이언트] 파일 조회 실패:', fetchError);
+    throw fetchError;
+  }
+  
+  if (!file) {
+    console.error('[클라이언트] 파일을 찾을 수 없음:', fileId);
+    throw new Error('파일을 찾을 수 없습니다.');
+  }
+
+  console.log('[클라이언트] 파일 정보:', {
+    fileId: file.id,
+    fileName: file.file_name,
+    fileType: file.file_type,
+    filePath: file.file_path,
+    storagePath: file.storage_path
+  });
+
+  // 이미지 파일인지 확인
+  if (file.file_type !== 'image') {
+    console.error('[클라이언트] 이미지 파일이 아님:', file.file_type);
+    throw new Error('이미지 파일만 분석할 수 있습니다.');
+  }
+
+  // 이미지 URL이 접근 가능할 때까지 대기 (최대 5초)
+  console.log('[클라이언트] 이미지 URL 접근 가능 여부 확인 시작...');
+  await waitForImageUrl(file.file_path, 5, 1000);
+  console.log('[클라이언트] 이미지 URL 접근 가능 확인 완료');
+
+  // 분석 API 호출
+  console.log('[클라이언트] 분석 API 호출 시작...');
+  const apiStartTime = Date.now();
+  
+  const response = await fetch('/api/analyze-image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      imageUrl: file.file_path,
+    }),
+  });
+
+  const apiTime = Date.now() - apiStartTime;
+  console.log('[클라이언트] 분석 API 응답:', {
+    status: response.status,
+    statusText: response.statusText,
+    apiTime: `${apiTime}ms`
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[클라이언트] 분석 API 실패:', {
+      status: response.status,
+      statusText: response.statusText,
+      errorData,
+      retryCount
+    });
+    
+    // 400 에러이고 "이미지를 가져올 수 없습니다"인 경우 재시도
+    if (response.status === 400 && errorData.error === '이미지를 가져올 수 없습니다.' && retryCount < 3) {
+      console.log(`[클라이언트] 재시도 예정 (${retryCount + 1}/3)...`);
+      // 2초 대기 후 재시도
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return analyzeImage(fileId, retryCount + 1);
+    }
+    
+    const errorMessage = errorData.error || '이미지 분석에 실패했습니다.';
+    const errorDetails = errorData.details ? `\n상세 정보: ${JSON.stringify(errorData.details, null, 2)}` : '';
+    throw new Error(`${errorMessage}${errorDetails}`);
+  }
+
+  const analysisResult = await response.json();
+  console.log('[클라이언트] 분석 결과 수신:', {
+    hasSceneSummary: !!analysisResult.scene_summary,
+    tagsCount: analysisResult.tags?.length,
+    charactersCount: analysisResult.characters_count
+  });
+
+  // 메타데이터 업데이트
+  const updatedMetadata = {
+    ...file.metadata,
+    scene_summary: analysisResult.scene_summary,
+    tags: analysisResult.tags,
+    characters_count: analysisResult.characters_count,
+    analyzed_at: new Date().toISOString(),
+  };
+
+  console.log('[클라이언트] 메타데이터 업데이트 시작...');
+  const updatedFile = await updateFile(fileId, {
+    metadata: updatedMetadata,
+  });
+  console.log('[클라이언트] 이미지 분석 완료');
+
+  return updatedFile;
+}
+
 // 파일 업로드
 export async function uploadFile(
   file: globalThis.File,
@@ -272,7 +401,7 @@ export async function uploadFile(
     .getPublicUrl(storagePath);
 
   // DB에 파일 정보 저장
-  return createFile({
+  const createdFile = await createFile({
     cut_id: cutId,
     process_id: processId,
     file_name: file.name,
@@ -284,6 +413,16 @@ export async function uploadFile(
     description: description || '',
     metadata: {}
   });
+
+  // 이미지 파일인 경우 자동 분석 (비동기 처리)
+  if (createdFile.file_type === 'image') {
+    analyzeImage(createdFile.id).catch((error) => {
+      console.error('이미지 자동 분석 실패:', error);
+      // 분석 실패해도 파일 업로드는 성공 처리
+    });
+  }
+
+  return createdFile;
 }
 
 
