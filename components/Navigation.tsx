@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +17,18 @@ import {
 
 export function Navigation() {
   const router = useRouter();
-  const { viewMode, setViewMode, searchQuery, setSearchQuery, user, profile, setSelectedWebtoon } = useStore();
+  const { viewMode, setViewMode, searchQuery, setSearchQuery, setActiveSearchQuery, user, profile, setSelectedWebtoon } = useStore();
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      setActiveSearchQuery(searchQuery.trim());
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setActiveSearchQuery('');
+  };
 
   const handleLogout = async () => {
     try {
@@ -80,11 +91,21 @@ export function Navigation() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-background/60 pointer-events-none" />
             <Input 
               type="text" 
-              placeholder="검색..." 
+              placeholder="검색... (Enter)" 
               value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              className="pl-9 h-8 text-xs bg-background/10 border-background/20 text-background placeholder:text-background/50 focus-visible:ring-1 focus-visible:ring-background/30" 
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="pl-9 pr-9 h-8 text-xs bg-background/10 border-background/20 text-background placeholder:text-background/50 focus-visible:ring-1 focus-visible:ring-background/30" 
             />
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-background/60 hover:text-background transition-colors"
+                aria-label="검색 초기화"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           {/* 오른쪽 액션 - Linear 스타일: 미니멀한 버튼 */}

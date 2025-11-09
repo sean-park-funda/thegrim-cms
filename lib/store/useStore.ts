@@ -19,6 +19,7 @@ interface AppState {
 
   // 검색
   searchQuery: string;
+  activeSearchQuery: string; // 실제 검색에 사용되는 쿼리
   searchResults: File[];
 
   // 인증
@@ -35,6 +36,7 @@ interface AppState {
   setProcesses: (processes: Process[]) => void;
   setViewMode: (mode: 'webtoon' | 'process') => void;
   setSearchQuery: (query: string) => void;
+  setActiveSearchQuery: (query: string) => void;
   setSearchResults: (results: File[]) => void;
   setUser: (user: User | null) => void;
   setProfile: (profile: UserProfile | null) => void;
@@ -52,6 +54,7 @@ export const useStore = create<AppState>((set) => ({
   processes: [],
   viewMode: 'webtoon',
   searchQuery: '',
+  activeSearchQuery: '',
   searchResults: [],
   user: null,
   profile: null,
@@ -66,6 +69,7 @@ export const useStore = create<AppState>((set) => ({
   setProcesses: (processes) => set({ processes }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),
+  setActiveSearchQuery: (query) => set({ activeSearchQuery: query }),
   setSearchResults: (results) => set({ searchResults: results }),
   setUser: (user) => set({ user }),
   setProfile: (profile) => set({ profile }),
@@ -76,6 +80,7 @@ export const useStore = create<AppState>((set) => ({
     selectedCut: null,
     selectedProcess: null,
     searchQuery: '',
+    activeSearchQuery: '',
     searchResults: [],
     user: null,
     profile: null

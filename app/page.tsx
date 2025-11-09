@@ -11,7 +11,7 @@ import { SearchResults } from '@/components/SearchResults';
 
 export default function Home() {
   const router = useRouter();
-  const { viewMode, searchQuery, isLoading, user } = useStore();
+  const { viewMode, activeSearchQuery, isLoading, user } = useStore();
   useAuth();
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function Home() {
     }
   }, [isLoading, user, router]);
 
-  const showSearchResults = searchQuery.trim().length >= 2;
+  const showSearchResults = activeSearchQuery.trim().length >= 1;
 
   if (isLoading) {
     return (
