@@ -92,27 +92,27 @@ export function Navigation() {
               variant="ghost" 
               size="sm" 
               onClick={() => setViewMode('webtoon')} 
-              className={`h-8 px-3 text-xs font-medium transition-colors duration-150 ${
+              className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
                 viewMode === 'webtoon' 
                   ? 'bg-background/20 text-background' 
                   : 'text-background/70 hover:text-background hover:bg-background/10'
               }`}
             >
-              <Film className="h-3.5 w-3.5 mr-1.5" />
-              웹툰
+              <Film className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">웹툰</span>
             </Button>
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={() => setViewMode('process')} 
-              className={`h-8 px-3 text-xs font-medium transition-colors duration-150 ${
+              className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
                 viewMode === 'process' 
                   ? 'bg-background/20 text-background' 
                   : 'text-background/70 hover:text-background hover:bg-background/10'
               }`}
             >
-              <FolderTree className="h-3.5 w-3.5 mr-1.5" />
-              공정
+              <FolderTree className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">공정</span>
             </Button>
           </div>
 

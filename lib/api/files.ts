@@ -34,6 +34,17 @@ export async function getFilesByProcess(processId: string): Promise<FileWithRela
   return data || [];
 }
 
+// 공정별 파일 개수 조회
+export async function getFileCountByProcess(processId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('files')
+    .select('*', { count: 'exact', head: true })
+    .eq('process_id', processId);
+
+  if (error) throw error;
+  return count || 0;
+}
+
 // 검색어를 여러 형태로 확장하는 헬퍼 함수
 // 한국어 동사/형용사의 다양한 어미 형태를 생성
 function expandSearchQuery(query: string): string[] {

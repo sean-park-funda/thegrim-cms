@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getProcesses, createProcess, updateProcess, deleteProcess, reorderProcesses } from '@/lib/api/processes';
-import { getFilesByProcess } from '@/lib/api/files';
+import { getFilesByProcess, getFileCountByProcess } from '@/lib/api/files';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,24 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, FileIcon, MoreVertical, Edit, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, FileIcon, MoreVertical, Edit, Trash2, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Process, FileWithRelations } from '@/lib/supabase';
 import Image from 'next/image';
 import { canManageProcesses } from '@/lib/utils/permissions';
@@ -20,6 +37,9 @@ export function ProcessView() {
   const { processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
+  const [processesLoading, setProcessesLoading] = useState(true);
+  const [processesError, setProcessesError] = useState<string | null>(null);
+  const [processFileCounts, setProcessFileCounts] = useState<Record<string, number>>({});
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -27,28 +47,40 @@ export function ProcessView() {
   const [formData, setFormData] = useState({ name: '', description: '', color: '#3b82f6' });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadProcesses();
-  }, []);
-
-  useEffect(() => {
-    if (selectedProcess) {
-      loadFiles();
-    } else {
-      setFiles([]);
-    }
-  }, [selectedProcess]);
-
-  const loadProcesses = async () => {
+  const loadProcesses = useCallback(async () => {
     try {
+      setProcessesLoading(true);
+      setProcessesError(null);
       const data = await getProcesses();
       setProcesses(data);
+      
+      // 각 공정별 파일 개수 조회
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        data.map(async (process) => {
+          try {
+            const count = await getFileCountByProcess(process.id);
+            counts[process.id] = count;
+          } catch (error) {
+            console.error(`공정 ${process.id} 파일 개수 조회 실패:`, error);
+            counts[process.id] = 0;
+          }
+        })
+      );
+      setProcessFileCounts(counts);
     } catch (error) {
       console.error('공정 목록 로드 실패:', error);
+      setProcessesError('공정 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setProcessesLoading(false);
     }
-  };
+  }, [setProcesses]);
 
-  const loadFiles = async () => {
+  useEffect(() => {
+    loadProcesses();
+  }, [loadProcesses]);
+
+  const loadFiles = useCallback(async () => {
     if (!selectedProcess) return;
 
     try {
@@ -62,7 +94,15 @@ export function ProcessView() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProcess]);
+
+  useEffect(() => {
+    if (selectedProcess) {
+      loadFiles();
+    } else {
+      setFiles([]);
+    }
+  }, [selectedProcess, loadFiles]);
 
   const handleCreate = () => {
     setFormData({ name: '', description: '', color: '#3b82f6' });
@@ -132,38 +172,111 @@ export function ProcessView() {
     }
   };
 
-  const handleMoveUp = async (process: Process, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const currentIndex = processes.findIndex(p => p.id === process.id);
-    if (currentIndex <= 0) return;
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-    try {
-      const newProcesses = [...processes];
-      [newProcesses[currentIndex - 1], newProcesses[currentIndex]] = [newProcesses[currentIndex], newProcesses[currentIndex - 1]];
-      const processIds = newProcesses.map(p => p.id);
-      await reorderProcesses(processIds);
-      await loadProcesses();
-    } catch (error) {
-      console.error('공정 순서 변경 실패:', error);
-      alert('공정 순서 변경에 실패했습니다.');
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = processes.findIndex((p) => p.id === active.id);
+      const newIndex = processes.findIndex((p) => p.id === over.id);
+
+      const newProcesses = arrayMove(processes, oldIndex, newIndex);
+      setProcesses(newProcesses);
+
+      try {
+        const processIds = newProcesses.map((p) => p.id);
+        await reorderProcesses(processIds);
+      } catch (error) {
+        console.error('공정 순서 변경 실패:', error);
+        alert('공정 순서 변경에 실패했습니다.');
+        await loadProcesses(); // 실패 시 원래대로 복구
+      }
     }
   };
 
-  const handleMoveDown = async (process: Process, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const currentIndex = processes.findIndex(p => p.id === process.id);
-    if (currentIndex >= processes.length - 1) return;
+  // SortableItem 컴포넌트
+  const SortableItem = ({ process, index }: { process: Process; index: number }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: process.id });
 
-    try {
-      const newProcesses = [...processes];
-      [newProcesses[currentIndex], newProcesses[currentIndex + 1]] = [newProcesses[currentIndex + 1], newProcesses[currentIndex]];
-      const processIds = newProcesses.map(p => p.id);
-      await reorderProcesses(processIds);
-      await loadProcesses();
-    } catch (error) {
-      console.error('공정 순서 변경 실패:', error);
-      alert('공정 순서 변경에 실패했습니다.');
-    }
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <div ref={setNodeRef} style={style}>
+        <Card
+          className={`cursor-pointer transition-all duration-200 ease-in-out hover:bg-accent/50 ${selectedProcess?.id === process.id ? 'ring-2 ring-primary bg-accent' : ''}`}
+          onClick={() => setSelectedProcess(process)}
+        >
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {profile && canManageProcesses(profile.role) && (
+                  <div
+                    {...attributes}
+                    {...listeners}
+                    className="cursor-grab active:cursor-grabbing touch-none"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: process.color }} />
+                <div className="flex-1 min-w-0">
+                  <CardTitle className="text-sm sm:text-base">{process.name}</CardTitle>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="secondary" className="text-xs">
+                      {processFileCounts[process.id] ?? 0}개 파일
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              {profile && canManageProcesses(profile.role) && (
+                <div className="flex items-center gap-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={(e) => handleEdit(process, e)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        수정
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => handleDelete(process, e)} className="text-destructive">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        삭제
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          {process.description && (
+            <CardContent className="pt-0">
+              <p className="text-xs sm:text-sm text-muted-foreground">{process.description}</p>
+            </CardContent>
+          )}
+        </Card>
+      </div>
+    );
   };
 
   const renderFilePreview = (file: FileWithRelations) => {
@@ -179,13 +292,13 @@ export function ProcessView() {
           : `https://${file.file_path}`;
 
       return (
-        <div className="relative w-full h-64 bg-muted rounded-md overflow-hidden">
+        <div className="relative w-full h-48 sm:h-64 bg-muted rounded-md overflow-hidden">
           <Image 
             src={imageUrl} 
             alt={file.file_name} 
             fill 
             className="object-cover" 
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
@@ -197,137 +310,161 @@ export function ProcessView() {
     }
 
     return (
-      <div className="w-full h-64 bg-muted rounded-md flex items-center justify-center">
-        <FileIcon className="h-16 w-16 text-muted-foreground" />
+      <div className="w-full h-48 sm:h-64 bg-muted rounded-md flex items-center justify-center">
+        <FileIcon className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground" />
       </div>
     );
   };
 
-  return (
-    <div className="grid grid-cols-12 h-full">
-      <div className="col-span-3 border-r border-border/40 h-full overflow-hidden bg-background">
-        <ScrollArea className="h-full">
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">공정 목록</h2>
+  const renderProcessList = () => (
+    <ScrollArea className="h-full">
+      <div className="p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h2 className="text-base sm:text-lg font-semibold">공정 목록</h2>
+        </div>
+
+        {processesLoading ? (
+          <div className="text-center text-muted-foreground py-8 sm:py-12 text-sm">로딩 중...</div>
+        ) : processesError ? (
+          <div className="text-center text-muted-foreground py-8 sm:py-12">
+            <p className="text-sm sm:text-base text-destructive mb-2">{processesError}</p>
+            <Button variant="outline" size="sm" onClick={loadProcesses}>
+              다시 시도
+            </Button>
+          </div>
+        ) : processes.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8 sm:py-12">
+            <FileIcon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+            <p className="text-sm sm:text-base mb-4">등록된 공정이 없습니다</p>
+            {profile && canManageProcesses(profile.role) && (
+              <Button variant="outline" size="sm" onClick={handleCreate}>
+                <Plus className="h-4 w-4 mr-2" />
+                새 공정 추가
+              </Button>
+            )}
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={processes.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {processes.map((process, index) => (
+                  <SortableItem key={process.id} process={process} index={index} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+
+        {!processesLoading && !processesError && processes.length > 0 && profile && canManageProcesses(profile.role) && (
+          <div className="mt-3">
+            <Button variant="outline" className="w-full" size="sm" onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              새 공정 추가
+            </Button>
+          </div>
+        )}
+      </div>
+    </ScrollArea>
+  );
+
+  const renderFileList = () => (
+    <ScrollArea className="h-full">
+      <div className="p-3 sm:p-4">
+        {!selectedProcess ? (
+          <div className="text-center text-muted-foreground py-8 sm:py-12">
+            <FileIcon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+            <p className="text-sm sm:text-base">공정을 선택해주세요</p>
+          </div>
+        ) : loading ? (
+          <div className="text-center text-muted-foreground py-8 sm:py-12 text-sm">로딩 중...</div>
+        ) : (
+          <>
+            <div className="mb-4 sm:mb-6">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full" style={{ backgroundColor: selectedProcess.color }} />
+                <h2 className="text-lg sm:text-2xl font-semibold">{selectedProcess.name}</h2>
+                <Badge className="text-xs">{files.length}개 파일</Badge>
+              </div>
+              {selectedProcess.description && (
+                <p className="text-xs sm:text-sm text-muted-foreground">{selectedProcess.description}</p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              {processes.map((process, index) => (
-                <Card key={process.id} className={`cursor-pointer transition-all duration-200 ease-in-out hover:bg-accent/50 ${selectedProcess?.id === process.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedProcess(process)}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: process.color }} />
-                        <CardTitle className="text-base">{process.name}</CardTitle>
+            {files.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 sm:py-12 text-center text-muted-foreground">
+                  <FileIcon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm sm:text-base">이 공정에 업로드된 파일이 없습니다</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                {files.map((file) => (
+                  <Card key={file.id} className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out">
+                    {renderFilePreview(file)}
+                    <div className="p-3 sm:p-4">
+                      <div className="mb-2">
+                        <p className="font-medium truncate text-sm sm:text-base">{file.file_name}</p>
+                        {file.description && (
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
+                        )}
                       </div>
-                      {profile && canManageProcesses(profile.role) && (
-                        <div className="flex items-center gap-1">
-                          <div className="flex flex-col">
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => handleMoveUp(process, e)} disabled={index === 0}>
-                              <ChevronUp className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => handleMoveDown(process, e)} disabled={index === processes.length - 1}>
-                              <ChevronDown className="h-3 w-3" />
-                            </Button>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => handleEdit(process, e)}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                수정
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => handleDelete(process, e)} className="text-destructive">
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                삭제
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                      {file.cut?.episode?.webtoon && (
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p className="truncate">{file.cut.episode.webtoon.title}</p>
+                          <p>{file.cut.episode.episode_number}화 - 컷 {file.cut.cut_number}</p>
                         </div>
                       )}
                     </div>
-                  </CardHeader>
-                  {process.description && (
-                    <CardContent className="pt-0">
-                      <p className="text-sm text-muted-foreground">{process.description}</p>
-                    </CardContent>
-                  )}
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </ScrollArea>
+  );
 
-              {profile && canManageProcesses(profile.role) && (
-                <Button variant="outline" className="w-full" size="sm" onClick={handleCreate}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  새 공정 추가
-                </Button>
-              )}
-            </div>
+  return (
+    <>
+      {/* 모바일: 세로 스택 레이아웃 */}
+      <div className="flex flex-col lg:hidden h-full overflow-hidden">
+        {!selectedProcess ? (
+          <div className="flex-1 overflow-hidden bg-background">
+            {renderProcessList()}
           </div>
-        </ScrollArea>
+        ) : (
+          <>
+            <div className="flex-shrink-0 border-b border-border/40 bg-background">
+              <div className="p-3 sm:p-4">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedProcess(null)} className="text-xs sm:text-sm">
+                  ← 공정 목록으로
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden bg-background">
+              {renderFileList()}
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="col-span-9 h-full overflow-hidden bg-background">
-        <ScrollArea className="h-full">
-          <div className="p-4">
-            {!selectedProcess ? (
-              <div className="text-center text-muted-foreground py-12">
-                <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>공정을 선택해주세요</p>
-              </div>
-            ) : loading ? (
-              <div className="text-center text-muted-foreground py-12 text-sm">로딩 중...</div>
-            ) : (
-              <>
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: selectedProcess.color }} />
-                    <h2 className="text-2xl font-semibold">{selectedProcess.name}</h2>
-                    <Badge>{files.length}개 파일</Badge>
-                  </div>
-                  {selectedProcess.description && (
-                    <p className="text-muted-foreground">{selectedProcess.description}</p>
-                  )}
-                </div>
-
-                {files.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                      <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>이 공정에 업로드된 파일이 없습니다</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                    {files.map((file) => (
-                      <Card key={file.id} className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out">
-                        {renderFilePreview(file)}
-                        <div className="p-4">
-                          <div className="mb-2">
-                            <p className="font-medium truncate">{file.file_name}</p>
-                            {file.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
-                            )}
-                          </div>
-                          {file.cut?.episode?.webtoon && (
-                            <div className="text-xs text-muted-foreground space-y-1">
-                              <p className="truncate">{file.cut.episode.webtoon.title}</p>
-                              <p>{file.cut.episode.episode_number}화 - 컷 {file.cut.cut_number}</p>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </ScrollArea>
+      {/* 데스크톱: 가로 레이아웃 */}
+      <div className="hidden lg:grid lg:grid-cols-12 h-full">
+        <div className="col-span-3 border-r border-border/40 h-full overflow-hidden bg-background">
+          {renderProcessList()}
+        </div>
+        <div className="col-span-9 h-full overflow-hidden bg-background">
+          {renderFileList()}
+        </div>
       </div>
 
       {/* 공정 생성 Dialog */}
@@ -435,7 +572,7 @@ export function ProcessView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 
