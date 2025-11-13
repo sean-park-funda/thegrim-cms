@@ -5,11 +5,9 @@ import { useStore } from '@/lib/store/useStore';
 import { getWebtoons, createWebtoon, updateWebtoon, deleteWebtoon } from '@/lib/api/webtoons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Film, MoreVertical, Edit, Trash2 } from 'lucide-react';
 import { Webtoon } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
@@ -24,7 +22,7 @@ export function WebtoonList() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingWebtoon, setEditingWebtoon] = useState<Webtoon | null>(null);
-  const [formData, setFormData] = useState({ title: '', description: '', status: 'active' as 'active' | 'completed' });
+  const [formData, setFormData] = useState({ title: '', description: '' });
   const [saving, setSaving] = useState(false);
 
   // Dialog 상태 디버깅
@@ -63,7 +61,7 @@ export function WebtoonList() {
 
   const handleCreate = () => {
     console.log('handleCreate called');
-    setFormData({ title: '', description: '', status: 'active' });
+    setFormData({ title: '', description: '' });
     setEditingWebtoon(null);
     setCreateDialogOpen(true);
     console.log('createDialogOpen should be true');
@@ -74,8 +72,7 @@ export function WebtoonList() {
     setEditingWebtoon(webtoon);
     setFormData({
       title: webtoon.title,
-      description: webtoon.description || '',
-      status: webtoon.status as 'active' | 'completed'
+      description: webtoon.description || ''
     });
     setEditDialogOpen(true);
   };
@@ -118,7 +115,7 @@ export function WebtoonList() {
       setCreateDialogOpen(false);
       setEditDialogOpen(false);
       setEditingWebtoon(null);
-      setFormData({ title: '', description: '', status: 'active' });
+      setFormData({ title: '', description: '' });
     } catch (error) {
       console.error('웹툰 저장 실패:', error);
       alert(editingWebtoon ? '웹툰 수정에 실패했습니다.' : '웹툰 생성에 실패했습니다.');
@@ -169,9 +166,6 @@ export function WebtoonList() {
                       <CardTitle className="text-sm sm:text-base line-clamp-2">{webtoon.title}</CardTitle>
                     </div>
                     <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                      <Badge variant={webtoon.status === 'active' ? 'default' : 'secondary'} className="text-xs whitespace-nowrap">
-                        {webtoon.status === 'active' ? '진행중' : '완료'}
-                      </Badge>
                       {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -233,18 +227,6 @@ export function WebtoonList() {
                 placeholder="웹툰 설명을 입력하세요"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">상태</label>
-              <Select value={formData.status} onValueChange={(value: 'active' | 'completed') => setFormData({ ...formData, status: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">진행중</SelectItem>
-                  <SelectItem value="completed">완료</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={saving}>
@@ -280,18 +262,6 @@ export function WebtoonList() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="웹툰 설명을 입력하세요"
               />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">상태</label>
-              <Select value={formData.status} onValueChange={(value: 'active' | 'completed') => setFormData({ ...formData, status: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">진행중</SelectItem>
-                  <SelectItem value="completed">완료</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
           <DialogFooter>
