@@ -198,7 +198,7 @@ export function Navigation() {
       <Dialog open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
         <DialogContent 
           showCloseButton={false}
-          className="md:hidden !fixed !top-0 !left-0 !right-0 !bottom-auto !translate-x-0 !translate-y-0 data-[state=open]:!translate-y-0 data-[state=closed]:!translate-y-[-100%] !rounded-b-lg !rounded-t-none !border-t-0 !p-0 !gap-0 !max-w-full !w-full !h-auto !min-h-[200px] !m-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top duration-200"
+          className="md:hidden !fixed !top-0 !inset-x-0 !bottom-auto !translate-x-0 !translate-y-0 data-[state=open]:!translate-y-0 data-[state=closed]:!translate-y-[-100%] !rounded-b-lg !rounded-t-none !border-t-0 !border-x-0 !p-0 !gap-0 !max-w-none !w-full !h-auto !min-h-[200px] !m-0 !box-border overflow-x-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top duration-200"
         >
           <DialogHeader className="px-4 pt-4 pb-3 border-b">
             <div className="flex items-center justify-between">
