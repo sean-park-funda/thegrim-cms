@@ -20,6 +20,7 @@ export function ProcessView() {
   const { processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<Process | null>(null);
@@ -52,10 +53,12 @@ export function ProcessView() {
 
     try {
       setLoading(true);
+      setImageErrors(new Set()); // 파일 로드 시 이미지 에러 상태 초기화
       const data = await getFilesByProcess(selectedProcess.id);
       setFiles(data);
     } catch (error) {
       console.error('파일 목록 로드 실패:', error);
+      setImageErrors(new Set());
     } finally {
       setLoading(false);
     }
@@ -165,11 +168,30 @@ export function ProcessView() {
 
   const renderFilePreview = (file: FileWithRelations) => {
     const isImage = file.file_type === 'image';
+    const hasError = imageErrors.has(file.id);
 
-    if (isImage) {
+    if (isImage && !hasError) {
+      // 이미지 URL이 절대 URL인지 확인하고, 상대 경로인 경우 처리
+      const imageUrl = file.file_path?.startsWith('http') 
+        ? file.file_path 
+        : file.file_path?.startsWith('/') 
+          ? file.file_path 
+          : `https://${file.file_path}`;
+
       return (
         <div className="relative w-full h-64 bg-muted rounded-md overflow-hidden">
-          <Image src={file.file_path} alt={file.file_name} fill className="object-cover" />
+          <Image 
+            src={imageUrl} 
+            alt={file.file_name} 
+            fill 
+            className="object-cover" 
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            unoptimized={!imageUrl.includes('supabase.co')}
+            onError={() => {
+              console.error('이미지 로딩 실패:', imageUrl, file.id);
+              setImageErrors(prev => new Set(prev).add(file.id));
+            }}
+          />
         </div>
       );
     }

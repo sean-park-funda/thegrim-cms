@@ -8,19 +8,20 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { FileIcon, Search, Download, Trash2, Sparkles, Calendar, HardDrive } from 'lucide-react';
+import { FileIcon, Search, Download, Trash2, Sparkles, Calendar, HardDrive, X } from 'lucide-react';
 import { FileWithRelations } from '@/lib/supabase';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 
 export function SearchResults() {
-  const { activeSearchQuery, profile } = useStore();
+  const { activeSearchQuery, profile, setSearchQuery, setActiveSearchQuery } = useStore();
   const [results, setResults] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [fileToView, setFileToView] = useState<FileWithRelations | null>(null);
   const [analyzingFiles, setAnalyzingFiles] = useState<Set<string>>(new Set());
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (activeSearchQuery.trim().length >= 1) {
@@ -33,6 +34,7 @@ export function SearchResults() {
   const performSearch = async () => {
     try {
       setLoading(true);
+      setImageErrors(new Set()); // 검색 시 이미지 에러 상태 초기화
       const data = await searchFiles(activeSearchQuery);
       setResults(data);
     } catch (error: any) {
@@ -44,6 +46,7 @@ export function SearchResults() {
       });
       // 사용자에게 에러 표시
       setResults([]);
+      setImageErrors(new Set());
     } finally {
       setLoading(false);
     }
@@ -110,11 +113,30 @@ export function SearchResults() {
 
   const renderFilePreview = (file: FileWithRelations) => {
     const isImage = file.file_type === 'image';
+    const hasError = imageErrors.has(file.id);
 
-    if (isImage) {
+    if (isImage && !hasError) {
+      // 이미지 URL이 절대 URL인지 확인하고, 상대 경로인 경우 처리
+      const imageUrl = file.file_path?.startsWith('http') 
+        ? file.file_path 
+        : file.file_path?.startsWith('/') 
+          ? file.file_path 
+          : `https://${file.file_path}`;
+
       return (
         <div className="relative w-32 h-32 bg-muted rounded-md overflow-hidden flex-shrink-0">
-          <Image src={file.file_path} alt={file.file_name} fill className="object-cover" />
+          <Image 
+            src={imageUrl} 
+            alt={file.file_name} 
+            fill 
+            className="object-cover" 
+            sizes="128px"
+            unoptimized={!imageUrl.includes('supabase.co')}
+            onError={() => {
+              console.error('이미지 로딩 실패:', imageUrl, file.id);
+              setImageErrors(prev => new Set(prev).add(file.id));
+            }}
+          />
         </div>
       );
     }
@@ -135,18 +157,64 @@ export function SearchResults() {
     );
   }
 
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setActiveSearchQuery('');
+  };
+
   if (loading) {
-    return <div className="p-8 text-center text-muted-foreground">검색 중...</div>;
+    return (
+      <ScrollArea className="h-full">
+        <div className="p-4">
+          <div className="mb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold">검색 중...</h2>
+                <p className="text-sm text-muted-foreground">
+                  &quot;{activeSearchQuery}&quot; 검색 중...
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearSearch}
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground flex-shrink-0"
+                aria-label="검색 초기화"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="p-8 text-center text-muted-foreground">
+            <Search className="h-12 w-12 mx-auto mb-2 opacity-50 animate-pulse" />
+            <p>검색 중...</p>
+          </div>
+        </div>
+      </ScrollArea>
+    );
   }
 
   return (
     <ScrollArea className="h-full">
       <div className="p-4">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold">검색 결과</h2>
-          <p className="text-sm text-muted-foreground">
-            &quot;{activeSearchQuery}&quot;에 대한 {results.length}개의 결과
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold">검색 결과</h2>
+              <p className="text-sm text-muted-foreground">
+                &quot;{activeSearchQuery}&quot;에 대한 {results.length}개의 결과
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSearch}
+              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground flex-shrink-0"
+              aria-label="검색 초기화"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {results.length === 0 ? (
@@ -242,18 +310,33 @@ export function SearchResults() {
               <div className="space-y-6">
               {/* 파일 미리보기 */}
               <div className="w-full">
-                {fileToView.file_type === 'image' ? (
+                {fileToView.file_type === 'image' && !imageErrors.has(fileToView.id) ? (
                   <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
                     <Image 
-                      src={fileToView.file_path} 
+                      src={fileToView.file_path?.startsWith('http') 
+                        ? fileToView.file_path 
+                        : fileToView.file_path?.startsWith('/') 
+                          ? fileToView.file_path 
+                          : `https://${fileToView.file_path}`} 
                       alt={fileToView.file_name} 
                       fill 
                       className="object-contain" 
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                      unoptimized={!fileToView.file_path?.includes('supabase.co')}
+                      onError={() => {
+                        console.error('이미지 로딩 실패:', fileToView.file_path);
+                        setImageErrors(prev => new Set(prev).add(fileToView.id));
+                      }}
                     />
                   </div>
                 ) : (
-                  <div className="w-full h-64 bg-muted rounded-md flex items-center justify-center">
-                    <FileIcon className="h-16 w-16 text-muted-foreground" />
+                  <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
+                    <div className="text-center">
+                      <FileIcon className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
+                      {fileToView.file_type === 'image' && (
+                        <p className="text-sm text-muted-foreground">이미지를 불러올 수 없습니다</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

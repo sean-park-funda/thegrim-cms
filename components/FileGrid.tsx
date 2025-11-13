@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 
 export function FileGrid() {
   const { selectedCut, processes, setProcesses, profile } = useStore();
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<FileType[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
@@ -49,10 +50,12 @@ export function FileGrid() {
 
     try {
       setLoading(true);
+      setImageErrors(new Set()); // 파일 로드 시 이미지 에러 상태 초기화
       const data = await getFilesByCut(selectedCut.id);
       setFiles(data);
     } catch (error) {
       console.error('파일 목록 로드 실패:', error);
+      setImageErrors(new Set());
     } finally {
       setLoading(false);
     }
@@ -303,11 +306,30 @@ export function FileGrid() {
 
   const renderFilePreview = (file: FileType) => {
     const isImage = file.file_type === 'image';
+    const hasError = imageErrors.has(file.id);
 
-    if (isImage) {
+    if (isImage && !hasError) {
+      // 이미지 URL이 절대 URL인지 확인하고, 상대 경로인 경우 처리
+      const imageUrl = file.file_path?.startsWith('http') 
+        ? file.file_path 
+        : file.file_path?.startsWith('/') 
+          ? file.file_path 
+          : `https://${file.file_path}`;
+
       return (
         <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
-          <Image src={file.file_path} alt={file.file_name} fill className="object-cover" />
+          <Image 
+            src={imageUrl} 
+            alt={file.file_name} 
+            fill 
+            className="object-cover" 
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            unoptimized={!imageUrl.includes('supabase.co')}
+            onError={() => {
+              console.error('이미지 로딩 실패:', imageUrl, file.id);
+              setImageErrors(prev => new Set(prev).add(file.id));
+            }}
+          />
         </div>
       );
     }
@@ -642,18 +664,33 @@ export function FileGrid() {
               <div className="space-y-6">
               {/* 파일 미리보기 */}
               <div className="w-full">
-                {fileToView.file_type === 'image' ? (
+                {fileToView.file_type === 'image' && !imageErrors.has(fileToView.id) ? (
                   <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
                     <Image 
-                      src={fileToView.file_path} 
+                      src={fileToView.file_path?.startsWith('http') 
+                        ? fileToView.file_path 
+                        : fileToView.file_path?.startsWith('/') 
+                          ? fileToView.file_path 
+                          : `https://${fileToView.file_path}`} 
                       alt={fileToView.file_name} 
                       fill 
                       className="object-contain" 
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                      unoptimized={!fileToView.file_path?.includes('supabase.co')}
+                      onError={() => {
+                        console.error('이미지 로딩 실패:', fileToView.file_path);
+                        setImageErrors(prev => new Set(prev).add(fileToView.id));
+                      }}
                     />
                   </div>
                 ) : (
-                  <div className="w-full h-64 bg-muted rounded-md flex items-center justify-center">
-                    <FileIcon className="h-16 w-16 text-muted-foreground" />
+                  <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
+                    <div className="text-center">
+                      <FileIcon className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
+                      {fileToView.file_type === 'image' && (
+                        <p className="text-sm text-muted-foreground">이미지를 불러올 수 없습니다</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
