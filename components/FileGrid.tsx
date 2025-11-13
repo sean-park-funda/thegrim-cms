@@ -324,7 +324,7 @@ export function FileGrid() {
             fill 
             className="object-cover" 
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            unoptimized={!imageUrl.includes('supabase.co')}
+            unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
               setImageErrors(prev => new Set(prev).add(file.id));
@@ -676,7 +676,7 @@ export function FileGrid() {
                       fill 
                       className="object-contain" 
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-                      unoptimized={!fileToView.file_path?.includes('supabase.co')}
+                      unoptimized={true}
                       onError={() => {
                         console.error('이미지 로딩 실패:', fileToView.file_path);
                         setImageErrors(prev => new Set(prev).add(fileToView.id));

@@ -124,14 +124,14 @@ export function SearchResults() {
           : `https://${file.file_path}`;
 
       return (
-        <div className="relative w-32 h-32 bg-muted rounded-md overflow-hidden flex-shrink-0">
+        <div className="relative w-full max-w-full sm:w-32 sm:max-w-32 h-48 sm:h-32 bg-muted rounded-md overflow-hidden flex-shrink-0">
           <Image 
             src={imageUrl} 
             alt={file.file_name} 
             fill 
             className="object-cover" 
-            sizes="128px"
-            unoptimized={!imageUrl.includes('supabase.co')}
+            sizes="(max-width: 640px) 100vw, 128px"
+            unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
               setImageErrors(prev => new Set(prev).add(file.id));
@@ -142,7 +142,7 @@ export function SearchResults() {
     }
 
     return (
-      <div className="w-32 h-32 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
+      <div className="w-full max-w-full sm:w-32 sm:max-w-32 h-48 sm:h-32 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
         <FileIcon className="h-12 w-12 text-muted-foreground" />
       </div>
     );
@@ -229,16 +229,16 @@ export function SearchResults() {
             {results.map((file) => (
               <Card 
                 key={file.id} 
-                className="hover:shadow-md transition-shadow cursor-pointer"
+                className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                 onClick={() => {
                   setFileToView(file);
                   setDetailDialogOpen(true);
                 }}
               >
                 <CardContent className="p-4">
-                  <div className="flex gap-4">
+                  <div className="flex flex-col sm:flex-row gap-4 min-w-0">
                     {renderFilePreview(file)}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 w-full sm:w-auto">
                       <div className="mb-2">
                         <p className="font-medium truncate">{file.file_name}</p>
                         {file.description && (
@@ -322,7 +322,7 @@ export function SearchResults() {
                       fill 
                       className="object-contain" 
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-                      unoptimized={!fileToView.file_path?.includes('supabase.co')}
+                      unoptimized={true}
                       onError={() => {
                         console.error('이미지 로딩 실패:', fileToView.file_path);
                         setImageErrors(prev => new Set(prev).add(fileToView.id));

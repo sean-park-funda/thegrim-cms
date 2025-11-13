@@ -186,7 +186,7 @@ export function ProcessView() {
             fill 
             className="object-cover" 
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            unoptimized={!imageUrl.includes('supabase.co')}
+            unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
               setImageErrors(prev => new Set(prev).add(file.id));
