@@ -196,13 +196,27 @@ export function Navigation() {
 
       {/* 모바일 검색 다이얼로그 */}
       <Dialog open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
-        <DialogContent className="md:hidden fixed top-0 left-0 right-0 bottom-auto translate-x-0 data-[state=open]:translate-y-0 data-[state=closed]:translate-y-[-100%] rounded-b-lg rounded-t-none border-t-0 p-0 gap-0 max-w-full w-full h-auto min-h-[200px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top duration-200">
+        <DialogContent 
+          showCloseButton={false}
+          className="md:hidden !fixed !top-0 !left-0 !right-0 !bottom-auto !translate-x-0 !translate-y-0 data-[state=open]:!translate-y-0 data-[state=closed]:!translate-y-[-100%] !rounded-b-lg !rounded-t-none !border-t-0 !p-0 !gap-0 !max-w-full !w-full !h-auto !min-h-[200px] !m-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top duration-200"
+        >
           <DialogHeader className="px-4 pt-4 pb-3 border-b">
-            <DialogTitle className="text-base font-semibold">검색</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-base font-semibold">검색</DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileSearchOpen(false)}
+                className="h-8 w-8 p-0 -mr-2"
+                aria-label="닫기"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </DialogHeader>
-          <div className="px-4 py-4 space-y-3">
+          <div className="px-4 py-4 pb-6 space-y-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
               <Input 
                 ref={searchInputRef}
                 type="text" 
@@ -210,12 +224,12 @@ export function Navigation() {
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleMobileSearchKeyDown}
-                className="pl-9 pr-9 h-11 text-base bg-background border-border" 
+                className="pl-9 pr-9 h-12 text-base bg-background border-border w-full" 
               />
               {searchQuery && (
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10"
                   aria-label="검색 초기화"
                 >
                   <X className="h-5 w-5" />
@@ -225,7 +239,7 @@ export function Navigation() {
             <div className="flex gap-2">
               <Button 
                 onClick={handleMobileSearchSubmit}
-                className="flex-1 h-10"
+                className="flex-1 h-11 text-base"
                 disabled={!searchQuery.trim()}
               >
                 검색
@@ -233,7 +247,7 @@ export function Navigation() {
               <Button 
                 variant="outline"
                 onClick={() => setMobileSearchOpen(false)}
-                className="h-10 px-4"
+                className="h-11 px-4 text-base"
               >
                 취소
               </Button>
