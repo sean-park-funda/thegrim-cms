@@ -1,19 +1,26 @@
 'use client';
 
 import { useEffect, useCallback, useRef } from 'react';
-import { getSession, getCurrentUserProfile } from '@/lib/api/auth';
+import { getSession, getUserProfile } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
 import { supabase } from '@/lib/supabase';
 
 export function useAuth() {
   const { user, profile, isLoading, setUser, setProfile, setLoading } = useStore();
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const isCheckingAuthRef = useRef(false);
 
   // 세션 상태를 동기화하는 헬퍼 함수
   const syncSessionState = useCallback(async (session: any) => {
+    // 이미 인증 확인 중이면 중복 호출 방지
+    if (isCheckingAuthRef.current) {
+      return;
+    }
+    
     if (session?.user) {
       try {
-        const userProfile = await getCurrentUserProfile();
+        // 이미 가져온 세션을 재사용하여 중복 조회 방지
+        const userProfile = await getUserProfile(session.user.id, session);
         setUser(session.user);
         setProfile(userProfile);
       } catch (profileError) {
@@ -28,7 +35,13 @@ export function useAuth() {
   }, [setUser, setProfile]);
 
   const checkAuth = useCallback(async () => {
+    // 이미 인증 확인 중이면 중복 호출 방지
+    if (isCheckingAuthRef.current) {
+      return;
+    }
+    
     try {
+      isCheckingAuthRef.current = true;
       setLoading(true);
       
       // 타임아웃 설정 (10초)
@@ -40,14 +53,14 @@ export function useAuth() {
       const session = await Promise.race([sessionPromise, timeoutPromise]).catch(() => null) as Awaited<ReturnType<typeof getSession>> | null;
       
       if (session?.user) {
-        // 프로필 가져오기도 타임아웃 설정
-        const profilePromise = getCurrentUserProfile();
+        // 이미 가져온 세션을 재사용하여 중복 조회 방지
         const profileTimeoutPromise = new Promise<null>((_, reject) => {
           setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
         });
         
         try {
-          const userProfile = await Promise.race([profilePromise, profileTimeoutPromise]).catch(() => null) as Awaited<ReturnType<typeof getCurrentUserProfile>> | null;
+          const profilePromise = getUserProfile(session.user.id, session);
+          const userProfile = await Promise.race([profilePromise, profileTimeoutPromise]).catch(() => null) as Awaited<ReturnType<typeof getUserProfile>> | null;
           setUser(session.user);
           setProfile(userProfile);
         } catch (profileError) {
@@ -65,6 +78,7 @@ export function useAuth() {
       setProfile(null);
     } finally {
       setLoading(false);
+      isCheckingAuthRef.current = false;
     }
   }, [setUser, setProfile, setLoading]);
 
@@ -82,6 +96,11 @@ export function useAuth() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('인증 상태 변경:', event, session?.user?.id);
+      
+      // INITIAL_SESSION 이벤트는 checkAuth에서 이미 처리하므로 무시
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
       
       // 세션이 있는 모든 이벤트에서 상태 갱신
       if (session?.user) {
@@ -104,7 +123,8 @@ export function useAuth() {
         subscriptionRef.current = null;
       }
     };
-  }, [checkAuth, syncSessionState, setUser, setProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 의존성 배열을 비워서 한 번만 실행되도록 함
 
   return { user, profile, isLoading };
 }

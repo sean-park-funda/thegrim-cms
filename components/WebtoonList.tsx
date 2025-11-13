@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getWebtoons, createWebtoon, updateWebtoon, deleteWebtoon } from '@/lib/api/webtoons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,9 +14,13 @@ import { Plus, Film, MoreVertical, Edit, Trash2 } from 'lucide-react';
 import { Webtoon } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
+// 모듈 레벨 변수로 전역 로딩 상태 관리 (여러 컴포넌트 인스턴스 간 공유)
+let isLoadingGlobally = false;
+let hasLoadedGlobally = false;
+
 export function WebtoonList() {
   const { webtoons, setWebtoons, selectedWebtoon, setSelectedWebtoon, profile } = useStore();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingWebtoon, setEditingWebtoon] = useState<Webtoon | null>(null);
@@ -28,22 +32,34 @@ export function WebtoonList() {
     console.log('createDialogOpen changed:', createDialogOpen);
   }, [createDialogOpen]);
 
-  useEffect(() => {
-    loadWebtoons();
-  }, []);
-
-  const loadWebtoons = async () => {
+  const loadWebtoons = useCallback(async () => {
+    // 이미 로딩 중이거나 데이터가 있으면 중복 호출 방지
+    if (isLoadingGlobally || webtoons.length > 0 || hasLoadedGlobally) {
+      return;
+    }
     try {
+      isLoadingGlobally = true;
+      hasLoadedGlobally = true;
       setLoading(true);
       const data = await getWebtoons();
       setWebtoons(data);
     } catch (error) {
       console.error('웹툰 목록 로드 실패:', error);
       alert('웹툰 목록을 불러오는데 실패했습니다.');
+      hasLoadedGlobally = false; // 실패 시 다시 시도 가능하도록
     } finally {
+      isLoadingGlobally = false;
       setLoading(false);
     }
-  };
+  }, [setWebtoons, webtoons.length]);
+
+  useEffect(() => {
+    // 웹툰 목록이 이미 로드되어 있으면 다시 로드하지 않음
+    if (webtoons.length === 0 && !hasLoadedGlobally && !isLoadingGlobally) {
+      loadWebtoons();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 마운트 시 한 번만 실행
 
   const handleCreate = () => {
     console.log('handleCreate called');

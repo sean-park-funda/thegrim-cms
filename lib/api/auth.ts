@@ -332,7 +332,8 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
     const session = await getSession();
     if (!session?.user) return null;
 
-    return await getUserProfile(session.user.id);
+    // 세션을 전달하여 중복 조회 방지
+    return await getUserProfile(session.user.id, session);
   } catch (error: any) {
     console.error('사용자 프로필 가져오기 오류:', error);
     return null;
@@ -340,37 +341,55 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
 }
 
 // 사용자 프로필 가져오기
-export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+// session 파라미터가 제공되면 세션 조회를 건너뛰어 중복 조회 방지
+export async function getUserProfile(userId: string, session?: any): Promise<UserProfile | null> {
   try {
-    // 타임아웃 설정 (5초)
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
-    });
+    // 세션이 제공되지 않은 경우에만 조회
+    let currentSession = session;
+    if (!currentSession) {
+      // 타임아웃 설정 (5초)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
+      });
+      
+      const sessionPromise = supabase.auth.getSession();
+      const sessionResult = await Promise.race([
+        sessionPromise,
+        timeoutPromise
+      ]).catch(() => ({ data: { session: null } }));
+      
+      const { data: { session: fetchedSession } } = sessionResult as Awaited<ReturnType<typeof supabase.auth.getSession>>;
+      currentSession = fetchedSession;
+    }
     
-    // 세션 확인
-    const sessionPromise = supabase.auth.getSession();
-    const sessionResult = await Promise.race([
-      sessionPromise,
-      timeoutPromise
-    ]).catch(() => ({ data: { session: null } }));
-    
-    const { data: { session } } = sessionResult as Awaited<ReturnType<typeof supabase.auth.getSession>>;
-    
-    if (!session) {
+    if (!currentSession) {
       // 세션이 없으면 null 반환 (호출자가 처리)
       return null;
     }
 
+    // 쿼리 실행 (세션이 제공된 경우 타임아웃 없이 빠르게 실행)
     const queryPromise = supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
     
-    const queryResult = await Promise.race([
-      queryPromise,
-      timeoutPromise
-    ]).catch(() => ({ data: null, error: { message: '타임아웃' } })) as { data: UserProfile | null; error: { message: string; code?: string } | null };
+    // 세션이 제공된 경우 타임아웃 없이 실행, 제공되지 않은 경우에만 타임아웃 적용
+    let queryResult: { data: UserProfile | null; error: { message: string; code?: string } | null };
+    if (session) {
+      // 세션이 이미 제공된 경우 빠르게 실행 (타임아웃 없음)
+      const result = await queryPromise;
+      queryResult = { data: result.data, error: result.error };
+    } else {
+      // 세션을 조회한 경우에만 타임아웃 적용
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
+      });
+      queryResult = await Promise.race([
+        queryPromise.then(result => ({ data: result.data, error: result.error })),
+        timeoutPromise
+      ]).catch(() => ({ data: null, error: { message: '타임아웃' } })) as { data: UserProfile | null; error: { message: string; code?: string } | null };
+    }
     
     const { data, error } = queryResult;
 
@@ -383,7 +402,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       if (error.code === '42501') {
         console.error('RLS 정책 위반 - 프로필 조회 실패:', {
           userId,
-          sessionUserId: session?.user?.id,
+          sessionUserId: currentSession?.user?.id,
           error: error.message,
         });
       }
