@@ -11,7 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, FileIcon, MoreVertical, Edit, Trash2, GripVertical } from 'lucide-react';
+import { Plus, FileIcon, MoreVertical, Edit, Trash2, GripVertical, Download, Sparkles, Calendar, HardDrive } from 'lucide-react';
+import { format } from 'date-fns';
+import { analyzeImage, deleteFile, updateFile } from '@/lib/api/files';
+import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
+import { cn } from '@/lib/utils';
 import {
   DndContext,
   closestCenter,
@@ -41,6 +45,13 @@ export function ProcessView() {
   const [processesError, setProcessesError] = useState<string | null>(null);
   const [processFileCounts, setProcessFileCounts] = useState<Record<string, number>>({});
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [fileToView, setFileToView] = useState<FileWithRelations | null>(null);
+  const [fileEditDialogOpen, setFileEditDialogOpen] = useState(false);
+  const [fileToEdit, setFileToEdit] = useState<FileWithRelations | null>(null);
+  const [editDescription, setEditDescription] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [analyzingFiles, setAnalyzingFiles] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<Process | null>(null);
@@ -200,6 +211,96 @@ export function ProcessView() {
     }
   };
 
+  const handleDownload = async (file: FileWithRelations, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(file.file_path);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.file_name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('파일 다운로드 실패:', error);
+      alert('파일 다운로드에 실패했습니다.');
+    }
+  };
+
+  const handleAnalyzeClick = async (file: FileWithRelations, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!file || file.file_type !== 'image') return;
+
+    try {
+      setAnalyzingFiles(prev => new Set(prev).add(file.id));
+      await analyzeImage(file.id);
+      await loadFiles();
+      setAnalyzingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(file.id);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('이미지 분석 실패:', error);
+      alert('이미지 분석에 실패했습니다.');
+      setAnalyzingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(file.id);
+        return newSet;
+      });
+    }
+  };
+
+  const handleEditClick = (file: FileWithRelations, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 빈 문자열일 때만 수정 가능
+    if (file.description && file.description.trim() !== '') {
+      alert('이미 설명이 있는 파일입니다. AI 자동 생성 후에는 수정할 수 없습니다.');
+      return;
+    }
+    setFileToEdit(file);
+    setEditDescription(file.description || '');
+    setFileEditDialogOpen(true);
+  };
+
+  const handleEditConfirm = async () => {
+    if (!fileToEdit) return;
+
+    try {
+      setEditing(true);
+      await updateFile(fileToEdit.id, { description: editDescription.trim() });
+      await loadFiles();
+      setFileEditDialogOpen(false);
+      setFileToEdit(null);
+      setEditDescription('');
+      alert('파일 정보가 수정되었습니다.');
+    } catch (error) {
+      console.error('파일 정보 수정 실패:', error);
+      alert('파일 정보 수정에 실패했습니다.');
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDeleteClick = async (file: FileWithRelations, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`"${file.file_name}" 파일을 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      await deleteFile(file.id);
+      await loadFiles();
+      alert('파일이 삭제되었습니다.');
+    } catch (error) {
+      console.error('파일 삭제 실패:', error);
+      alert('파일 삭제에 실패했습니다.');
+    }
+  };
+
   // SortableItem 컴포넌트
   const SortableItem = ({ process, index }: { process: Process; index: number }) => {
     const {
@@ -292,13 +393,13 @@ export function ProcessView() {
           : `https://${file.file_path}`;
 
       return (
-        <div className="relative w-full h-48 sm:h-64 bg-muted rounded-md overflow-hidden">
+        <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
           <Image 
             src={imageUrl} 
             alt={file.file_name} 
             fill 
             className="object-cover" 
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
@@ -310,7 +411,7 @@ export function ProcessView() {
     }
 
     return (
-      <div className="w-full h-48 sm:h-64 bg-muted rounded-md flex items-center justify-center">
+      <div className="w-full h-40 sm:h-48 bg-muted rounded-md flex items-center justify-center">
         <FileIcon className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground" />
       </div>
     );
@@ -405,26 +506,94 @@ export function ProcessView() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                {files.map((file) => (
-                  <Card key={file.id} className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out">
-                    {renderFilePreview(file)}
-                    <div className="p-3 sm:p-4">
-                      <div className="mb-2">
-                        <p className="font-medium truncate text-sm sm:text-base">{file.file_name}</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {files.map((file) => {
+                  const metadata = file.metadata as {
+                    scene_summary?: string;
+                    tags?: string[];
+                    characters_count?: number;
+                  } | undefined;
+                  const hasMetadata = metadata && metadata.scene_summary && metadata.tags;
+                  const isAnalyzing = analyzingFiles.has(file.id);
+
+                  return (
+                    <Card 
+                      key={file.id} 
+                      className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFileToView(file);
+                        setDetailDialogOpen(true);
+                      }}
+                    >
+                      {renderFilePreview(file)}
+                      <div className="p-2 sm:p-3">
+                        <p className="text-xs sm:text-sm font-medium truncate">{file.file_name}</p>
                         {file.description && (
-                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
                         )}
-                      </div>
-                      {file.cut?.episode?.webtoon && (
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="truncate">{file.cut.episode.webtoon.title}</p>
-                          <p>{file.cut.episode.episode_number}화 - 컷 {file.cut.cut_number}</p>
+                        {hasMetadata && (
+                          <div className="mt-2 space-y-2">
+                            {metadata.scene_summary && (
+                              <p className="text-xs text-muted-foreground line-clamp-2">{metadata.scene_summary}</p>
+                            )}
+                            {metadata.tags && metadata.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {metadata.tags.slice(0, 5).map((tag, idx) => (
+                                  <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                                {metadata.tags.length > 5 && (
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    +{metadata.tags.length - 5}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!hasMetadata && file.file_type === 'image' && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <p className="text-xs text-muted-foreground">메타데이터 없음</p>
+                          </div>
+                        )}
+                        {file.cut?.episode?.webtoon && (
+                          <div className="text-xs text-muted-foreground space-y-1 mt-2">
+                            <p className="truncate">{file.cut.episode.webtoon.title}</p>
+                            <p>{file.cut.episode.episode_number}화 - 컷 {file.cut.cut_number}</p>
+                          </div>
+                        )}
+                        <div className="flex gap-1.5 sm:gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                          <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={(e) => handleDownload(file, e)}>
+                            <Download className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                          </Button>
+                          {file.file_type === 'image' && profile && canUploadFile(profile.role) && (
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" 
+                              onClick={(e) => handleAnalyzeClick(file, e)}
+                              disabled={isAnalyzing}
+                            >
+                              <Sparkles className={`h-3.5 w-3.5 sm:h-3 sm:w-3 ${isAnalyzing ? 'animate-pulse' : ''}`} />
+                            </Button>
+                          )}
+                          {profile && canUploadFile(profile.role) && (!file.description || file.description.trim() === '') && (
+                            <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={(e) => handleEditClick(file, e)}>
+                              <Edit className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                            </Button>
+                          )}
+                          {profile && canDeleteFile(profile.role) && (
+                            <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 text-destructive hover:text-destructive touch-manipulation" onClick={(e) => handleDeleteClick(file, e)}>
+                              <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                            </Button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </Card>
-                ))}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </>
@@ -520,6 +689,55 @@ export function ProcessView() {
         </DialogContent>
       </Dialog>
 
+      {/* 파일 정보 수정 Dialog */}
+      <Dialog open={fileEditDialogOpen} onOpenChange={setFileEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>파일 정보 수정</DialogTitle>
+            <DialogDescription>파일 설명을 입력하세요. (AI 자동 생성 전까지 수정 가능)</DialogDescription>
+          </DialogHeader>
+          {fileToEdit && (
+            <div className="py-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-2">파일명</p>
+                <p className="text-sm text-muted-foreground">{fileToEdit.file_name}</p>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="description" className="text-sm font-medium">
+                  설명
+                </label>
+                <textarea
+                  id="description"
+                  className={cn(
+                    "w-full min-h-[100px] px-3 py-2 text-sm border rounded-md resize-none",
+                    "placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground",
+                    "bg-transparent shadow-xs transition-[color,box-shadow] outline-none",
+                    "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                    "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                  )}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="파일에 대한 설명을 입력하세요..."
+                  disabled={editing}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setFileEditDialogOpen(false);
+              setFileToEdit(null);
+              setEditDescription('');
+            }} disabled={editing}>
+              취소
+            </Button>
+            <Button onClick={handleEditConfirm} disabled={editing}>
+              {editing ? '수정 중...' : '수정'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 공정 수정 Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
@@ -570,6 +788,210 @@ export function ProcessView() {
               {saving ? '저장 중...' : '수정'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 파일 상세 정보 Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
+          {fileToView && (
+            <>
+              <DialogTitle asChild>
+                <h2 className="text-xl font-semibold break-words mb-0">{fileToView.file_name}</h2>
+              </DialogTitle>
+              <div className="space-y-6">
+              {/* 파일 미리보기 */}
+              <div className="w-full">
+                {fileToView.file_type === 'image' && !imageErrors.has(fileToView.id) ? (
+                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
+                    <Image 
+                      src={fileToView.file_path?.startsWith('http') 
+                        ? fileToView.file_path 
+                        : fileToView.file_path?.startsWith('/') 
+                          ? fileToView.file_path 
+                          : `https://${fileToView.file_path}`} 
+                      alt={fileToView.file_name} 
+                      fill 
+                      className="object-contain" 
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                      unoptimized={true}
+                      onError={() => {
+                        console.error('이미지 로딩 실패:', fileToView.file_path);
+                        setImageErrors(prev => new Set(prev).add(fileToView.id));
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
+                    <div className="text-center">
+                      <FileIcon className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
+                      {fileToView.file_type === 'image' && (
+                        <p className="text-sm text-muted-foreground">이미지를 불러올 수 없습니다</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 기본 정보 및 메타데이터 */}
+              <div className="flex flex-col md:flex-row gap-4">
+                {/* 기본 정보 카드 */}
+                <Card className="flex-1">
+                  <CardHeader>
+                    <CardTitle className="text-base">기본 정보</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start justify-between">
+                      <span className="text-sm text-muted-foreground">파일명</span>
+                      <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{fileToView.file_name}</span>
+                    </div>
+                    {fileToView.file_size && (
+                      <div className="flex items-start justify-between">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <HardDrive className="h-3 w-3" />
+                          파일 크기
+                        </span>
+                        <span className="text-sm font-medium text-right flex-1 ml-4">
+                          {(fileToView.file_size / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                      </div>
+                    )}
+                    {fileToView.mime_type && (
+                      <div className="flex items-start justify-between">
+                        <span className="text-sm text-muted-foreground">MIME 타입</span>
+                        <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{fileToView.mime_type}</span>
+                      </div>
+                    )}
+                    <div className="flex items-start justify-between">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        생성일
+                      </span>
+                      <span className="text-sm font-medium text-right flex-1 ml-4">
+                        {format(new Date(fileToView.created_at), 'yyyy년 MM월 dd일 HH:mm')}
+                      </span>
+                    </div>
+                    {fileToView.description && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs text-muted-foreground mb-1">설명</p>
+                        <p className="text-sm">{fileToView.description}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* 메타데이터 카드 */}
+                {fileToView.file_type === 'image' && (
+                  <Card className="flex-1">
+                    <CardHeader>
+                      <CardTitle className="text-base">메타데이터</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const metadata = fileToView.metadata as {
+                          scene_summary?: string;
+                          tags?: string[];
+                          characters_count?: number;
+                          analyzed_at?: string;
+                        } | undefined;
+                        
+                        if (metadata && metadata.scene_summary && metadata.tags) {
+                          return (
+                            <div className="space-y-3">
+                              {metadata.scene_summary && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">장면 요약</p>
+                                  <p className="text-sm">{metadata.scene_summary}</p>
+                                </div>
+                              )}
+                              {metadata.tags && metadata.tags.length > 0 && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-2">태그</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {metadata.tags.map((tag, idx) => (
+                                      <Badge key={idx} variant="secondary" className="text-xs">
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {typeof metadata.characters_count === 'number' && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">등장 인물 수</p>
+                                  <p className="text-sm">{metadata.characters_count}명</p>
+                                </div>
+                              )}
+                              {metadata.analyzed_at && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">분석 일시</p>
+                                  <p className="text-sm">
+                                    {format(new Date(metadata.analyzed_at), 'yyyy년 MM월 dd일 HH:mm')}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Sparkles className="h-4 w-4" />
+                              <span>메타데이터가 없습니다. 분석 버튼을 눌러 생성하세요.</span>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* 액션 버튼 */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  className="flex-1" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownload(fileToView, e);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  다운로드
+                </Button>
+                {fileToView.file_type === 'image' && profile && canUploadFile(profile.role) && (
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailDialogOpen(false);
+                      handleAnalyzeClick(fileToView, e);
+                    }}
+                    disabled={analyzingFiles.has(fileToView.id)}
+                  >
+                    <Sparkles className={`h-4 w-4 mr-2 ${analyzingFiles.has(fileToView.id) ? 'animate-pulse' : ''}`} />
+                    {analyzingFiles.has(fileToView.id) ? '분석 중...' : '분석'}
+                  </Button>
+                )}
+                {profile && canDeleteFile(profile.role) && (
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailDialogOpen(false);
+                      handleDeleteClick(fileToView, e);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    삭제
+                  </Button>
+                )}
+              </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>
