@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileIcon, Download, Trash2, Upload, Plus, Edit, Sparkles, Calendar, HardDrive } from 'lucide-react';
+import { FileIcon, Download, Trash2, Upload, Plus, Edit, Sparkles, Calendar, HardDrive, Wand2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { File as FileType } from '@/lib/supabase';
 import Image from 'next/image';
@@ -35,6 +35,20 @@ export function FileGrid() {
   const [pendingAnalysisFiles, setPendingAnalysisFiles] = useState<Set<string>>(new Set());
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [fileToView, setFileToView] = useState<FileType | null>(null);
+  const [styleSelectionOpen, setStyleSelectionOpen] = useState(false);
+  const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
+  const [regeneratedImageUrl, setRegeneratedImageUrl] = useState<string | null>(null);
+  const [lastUsedPrompt, setLastUsedPrompt] = useState<string | null>(null);
+
+  // 스타일 옵션 정의
+  const styleOptions = [
+    { id: 'berserk', name: '베르세르크풍', prompt: '이 그림을 베르세르크 풍의 세밀한 라인으로 다시 그려줘' },
+    { id: 'japanese', name: '일본 만화풍', prompt: '이 그림을 일본 만화 스타일로 다시 그려줘' },
+    { id: 'digital', name: '디지털 아트풍', prompt: '이 그림을 디지털 아트 스타일로 다시 그려줘' },
+    { id: 'watercolor', name: '수채화풍', prompt: '이 그림을 수채화 스타일로 다시 그려줘' },
+    { id: 'oil', name: '유화풍', prompt: '이 그림을 유화 스타일로 다시 그려줘' },
+    { id: 'sketch', name: '스케치풍', prompt: '이 그림을 연필 스케치 스타일로 다시 그려줘' },
+  ];
 
   const loadProcesses = useCallback(async () => {
     try {
@@ -74,6 +88,15 @@ export function FileGrid() {
     // 컷이 변경되면 대기 목록 초기화
     setPendingAnalysisFiles(new Set());
   }, [selectedCut, loadFiles]);
+
+  // Dialog가 닫힐 때 Blob URL 정리
+  useEffect(() => {
+    return () => {
+      if (regeneratedImageUrl) {
+        URL.revokeObjectURL(regeneratedImageUrl);
+      }
+    };
+  }, [regeneratedImageUrl]);
 
   // 메타데이터가 없는 이미지 파일들에 대해 주기적으로 폴링
   useEffect(() => {
@@ -301,6 +324,107 @@ export function FileGrid() {
       alert('파일 삭제에 실패했습니다.');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRegenerateImage = async (stylePrompt: string) => {
+    if (!fileToView || fileToView.file_type !== 'image') return;
+
+    try {
+      setRegeneratingImage(fileToView.id);
+      setRegeneratedImageUrl(null);
+      setStyleSelectionOpen(false);
+
+      const imageUrl = fileToView.file_path?.startsWith('http')
+        ? fileToView.file_path
+        : fileToView.file_path?.startsWith('/')
+          ? fileToView.file_path
+          : `https://${fileToView.file_path}`;
+
+      const response = await fetch('/api/regenerate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageUrl,
+          stylePrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '이미지 재생성에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      const { imageData, mimeType } = data;
+
+      // base64 데이터를 Blob URL로 변환
+      const byteCharacters = atob(imageData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
+      const imageUrl_new = URL.createObjectURL(blob);
+
+      setRegeneratedImageUrl(imageUrl_new);
+      setLastUsedPrompt(stylePrompt);
+    } catch (error: any) {
+      console.error('이미지 재생성 실패:', error);
+      alert(error.message || '이미지 재생성에 실패했습니다.');
+    } finally {
+      setRegeneratingImage(null);
+    }
+  };
+
+  const handleDownloadRegeneratedImage = () => {
+    if (!regeneratedImageUrl || !fileToView) return;
+
+    try {
+      const a = document.createElement('a');
+      a.href = regeneratedImageUrl;
+      a.download = `regenerated-${fileToView.file_name}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('재생성된 이미지 다운로드 실패:', error);
+      alert('이미지 다운로드에 실패했습니다.');
+    }
+  };
+
+  const handleSaveRegeneratedImage = async () => {
+    if (!regeneratedImageUrl || !fileToView || !selectedCut) return;
+
+    try {
+      // Blob URL에서 Blob 가져오기
+      const response = await fetch(regeneratedImageUrl);
+      const blob = await response.blob();
+
+      // 원본 파일명에서 확장자 추출
+      const originalFileName = fileToView.file_name;
+      const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
+      const newFileName = `regenerated-${originalFileName.replace(fileExtension, '')}${fileExtension}`;
+
+      // Blob을 File 객체로 변환
+      const file = new File([blob], newFileName, { type: blob.type });
+
+      // 원본 파일과 같은 공정에 업로드
+      await uploadFile(file, selectedCut.id, fileToView.process_id, `AI 재생성: ${fileToView.file_name}`);
+
+      // 파일 목록 새로고침
+      await loadFiles();
+
+      // 재생성된 이미지 URL 초기화
+      setRegeneratedImageUrl(null);
+
+      alert('재생성된 이미지가 파일로 등록되었습니다.');
+    } catch (error) {
+      console.error('재생성된 이미지 저장 실패:', error);
+      alert('이미지 저장에 실패했습니다.');
     }
   };
 
@@ -653,8 +777,42 @@ export function FileGrid() {
         </DialogContent>
       </Dialog>
 
+      {/* 스타일 선택 Dialog */}
+      <Dialog open={styleSelectionOpen} onOpenChange={setStyleSelectionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>스타일 선택</DialogTitle>
+            <DialogDescription>이미지를 재생성할 스타일을 선택하세요.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 py-4">
+            {styleOptions.map((style) => (
+              <Button
+                key={style.id}
+                variant="outline"
+                className="h-auto py-3 flex flex-col items-center gap-2"
+                onClick={() => handleRegenerateImage(style.prompt)}
+                disabled={regeneratingImage !== null}
+              >
+                <span className="text-sm font-medium">{style.name}</span>
+              </Button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStyleSelectionOpen(false)} disabled={regeneratingImage !== null}>
+              취소
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 파일 상세 정보 Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+      <Dialog open={detailDialogOpen} onOpenChange={(open) => {
+        setDetailDialogOpen(open);
+        if (!open) {
+          setRegeneratedImageUrl(null);
+          setLastUsedPrompt(null);
+        }
+      }}>
         <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
           {fileToView && (
             <>
@@ -808,11 +966,67 @@ export function FileGrid() {
                 )}
               </div>
 
+              {/* 재생성된 이미지 표시 */}
+              {regeneratedImageUrl && (
+                <div className="w-full space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">재생성된 이미지</h3>
+                    <div className="flex gap-2">
+                      {profile && canUploadFile(profile.role) && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={handleSaveRegeneratedImage}
+                        >
+                          <Upload className="h-3 w-3 mr-1" />
+                          파일로 등록
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDownloadRegeneratedImage}
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        다운로드
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
+                    {lastUsedPrompt && (
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        className={cn(
+                          "absolute top-2 right-2 z-10 h-8 w-8",
+                          regeneratingImage === fileToView?.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                        )}
+                        onClick={() => handleRegenerateImage(lastUsedPrompt)}
+                        disabled={regeneratingImage === fileToView?.id}
+                      >
+                        <RefreshCw className={cn(
+                          "h-4 w-4",
+                          regeneratingImage === fileToView?.id && 'animate-spin'
+                        )} />
+                      </Button>
+                    )}
+                    <Image
+                      src={regeneratedImageUrl}
+                      alt="재생성된 이미지"
+                      fill
+                      className="object-contain"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                      unoptimized={true}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* 액션 버튼 */}
-              <div className="flex gap-2 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
+              <div className="flex gap-2 pt-4 border-t flex-wrap">
+                <Button
+                  variant="outline"
+                  className="flex-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDownload(fileToView, e);
@@ -822,23 +1036,40 @@ export function FileGrid() {
                   다운로드
                 </Button>
                 {fileToView.file_type === 'image' && profile && canUploadFile(profile.role) && (
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDetailDialogOpen(false);
-                      handleAnalyzeClick(fileToView, e);
-                    }}
-                    disabled={analyzingFiles.has(fileToView.id)}
-                  >
-                    <Sparkles className={`h-4 w-4 mr-2 ${analyzingFiles.has(fileToView.id) ? 'animate-pulse' : ''}`} />
-                    {analyzingFiles.has(fileToView.id) ? '분석 중...' : '분석'}
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailDialogOpen(false);
+                        handleAnalyzeClick(fileToView, e);
+                      }}
+                      disabled={analyzingFiles.has(fileToView.id)}
+                    >
+                      <Sparkles className={`h-4 w-4 mr-2 ${analyzingFiles.has(fileToView.id) ? 'animate-pulse' : ''}`} />
+                      {analyzingFiles.has(fileToView.id) ? '분석 중...' : '분석'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "flex-1",
+                        regeneratingImage === fileToView.id && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStyleSelectionOpen(true);
+                      }}
+                      disabled={regeneratingImage === fileToView.id}
+                    >
+                      <Wand2 className={`h-4 w-4 mr-2 ${regeneratingImage === fileToView.id ? 'animate-pulse' : ''}`} />
+                      {regeneratingImage === fileToView.id ? '재생성 중...' : 'AI 다시그리기'}
+                    </Button>
+                  </>
                 )}
                 {profile && canDeleteFile(profile.role) && (
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     className="flex-1"
                     onClick={(e) => {
                       e.stopPropagation();

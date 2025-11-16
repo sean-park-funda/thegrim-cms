@@ -123,3 +123,18 @@
     @apply bg-background text-foreground overflow-x-hidden;
   }
 }
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@layer utilities {
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+}
