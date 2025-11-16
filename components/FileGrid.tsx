@@ -42,12 +42,10 @@ export function FileGrid() {
 
   // 스타일 옵션 정의
   const styleOptions = [
-    { id: 'berserk', name: '베르세르크풍', prompt: '이 그림을 베르세르크 풍의 세밀한 라인으로 다시 그려줘' },
-    { id: 'japanese', name: '일본 만화풍', prompt: '이 그림을 일본 만화 스타일로 다시 그려줘' },
-    { id: 'digital', name: '디지털 아트풍', prompt: '이 그림을 디지털 아트 스타일로 다시 그려줘' },
-    { id: 'watercolor', name: '수채화풍', prompt: '이 그림을 수채화 스타일로 다시 그려줘' },
-    { id: 'oil', name: '유화풍', prompt: '이 그림을 유화 스타일로 다시 그려줘' },
-    { id: 'sketch', name: '스케치풍', prompt: '이 그림을 연필 스케치 스타일로 다시 그려줘' },
+    { id: 'berserk', name: '베르세르크풍', prompt: '이 그림을 베르세르크 만화 풍으로 조밀한 선들로 다시 그려줘' },
+    { id: 'grayscale', name: '채색 빼기(흑백으로 만들기)', prompt: '이 그림의 채색을 제거하고 흑백으로 변환해줘' },
+    { id: 'remove-background', name: '배경 지우기', prompt: '이 그림의 배경을 제거하고 투명하게 만들어줘' },
+    { id: 'storyboard', name: '콘티화', prompt: '이 그림을 콘티화하여 캐릭터의 특징을 제거하고 인물들의 자세와 구도만 남겨줘' },
   ];
 
   const loadProcesses = useCallback(async () => {
@@ -420,6 +418,10 @@ export function FileGrid() {
 
       // 재생성된 이미지 URL 초기화
       setRegeneratedImageUrl(null);
+      setLastUsedPrompt(null);
+
+      // 파일 디테일 다이얼로그 닫기
+      setDetailDialogOpen(false);
 
       alert('재생성된 이미지가 파일로 등록되었습니다.');
     } catch (error) {

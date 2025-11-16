@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenAI } from '@google/genai';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
 
 interface RegenerateImageRequest {
   imageUrl: string;
@@ -91,182 +91,90 @@ export async function POST(request: NextRequest) {
     console.log('[이미지 재생성] Gemini API 호출 시작...');
     const geminiRequestStart = Date.now();
 
-    const geminiResponse = await fetch(
-      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+    const ai = new GoogleGenAI({
+      apiKey: GEMINI_API_KEY,
+    });
+
+    const config = {
+      responseModalities: ['IMAGE', 'TEXT'],
+      imageConfig: {
+        imageSize: '1K',
+      },
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 32768,
+    };
+
+    const model = 'gemini-2.5-flash-image';
+
+    const contents = [
       {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: stylePrompt,
-                },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: imageBase64,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseModalities: ['IMAGE', 'TEXT'],
-            imageConfig: {
-              imageSize: '1K',
-            },
-            temperature: 1.0,
-            topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 32768,
+        role: 'user' as const,
+        parts: [
+          {
+            text: stylePrompt,
           },
-        }),
-      }
-    );
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: imageBase64,
+            },
+          },
+        ],
+      },
+    ];
 
-    const geminiRequestTime = Date.now() - geminiRequestStart;
-    console.log('[이미지 재생성] Gemini API 응답:', {
-      status: geminiResponse.status,
-      statusText: geminiResponse.statusText,
-      requestTime: `${geminiRequestTime}ms`
+    const response = await ai.models.generateContentStream({
+      model,
+      config,
+      contents,
     });
 
-    if (!geminiResponse.ok) {
-      const errorData = await geminiResponse.text().catch(() => '응답 본문을 읽을 수 없음');
-      console.error('[이미지 재생성] Gemini API 오류:', {
-        status: geminiResponse.status,
-        statusText: geminiResponse.statusText,
-        errorData: errorData.substring(0, 500),
-        url: GEMINI_API_URL
-      });
-      return NextResponse.json(
-        {
-          error: '이미지 재생성에 실패했습니다.',
-          details: {
-            status: geminiResponse.status,
-            statusText: geminiResponse.statusText,
-            errorData: errorData.substring(0, 500)
-          }
-        },
-        { status: 500 }
-      );
-    }
-
-    const geminiData = await geminiResponse.json();
-    console.log('[이미지 재생성] Gemini API 응답 데이터 구조:', {
-      hasCandidates: !!geminiData.candidates,
-      candidatesLength: geminiData.candidates?.length,
-      firstCandidate: geminiData.candidates?.[0] ? {
-        hasContent: !!geminiData.candidates[0].content,
-        hasParts: !!geminiData.candidates[0].content?.parts,
-        partsLength: geminiData.candidates[0].content?.parts?.length
-      } : null
-    });
-
-    // 전체 응답 구조 로깅 (디버깅용)
-    console.log('[이미지 재생성] 전체 응답 구조:', JSON.stringify(geminiData, null, 2));
-
-    // Gemini 응답에서 이미지 데이터 추출
-    const parts = geminiData.candidates?.[0]?.content?.parts || [];
     let generatedImageData: string | null = null;
     let generatedImageMimeType: string | null = null;
 
-    console.log('[이미지 재생성] Parts 배열:', {
-      partsLength: parts.length,
-      partsTypes: parts.map((part: unknown, index: number) => {
-        const p = part as { 
-          text?: string; 
-          inline_data?: { mime_type?: string; data?: string };
-          inlineData?: { mimeType?: string; data?: string };
-        };
-        return {
-          index,
-          hasText: !!p.text,
-          hasInlineData_snake: !!p.inline_data,
-          hasInlineData_camel: !!p.inlineData,
-          inlineDataType_snake: p.inline_data?.mime_type || null,
-          inlineDataType_camel: p.inlineData?.mimeType || null,
-          inlineDataLength_snake: p.inline_data?.data?.length || null,
-          inlineDataLength_camel: p.inlineData?.data?.length || null,
-          keys: Object.keys(p)
-        };
-      })
-    });
+    // 스트림에서 모든 chunk 수집
+    for await (const chunk of response) {
+      if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
+        continue;
+      }
 
-    // 모든 parts를 순회하며 이미지 데이터 찾기
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i] as { 
-        text?: string; 
-        inline_data?: { mime_type?: string; data?: string };
-        inlineData?: { mimeType?: string; data?: string };
-      };
-      console.log(`[이미지 재생성] Part ${i}:`, {
-        hasText: !!part.text,
-        hasInlineData_snake: !!part.inline_data,
-        hasInlineData_camel: !!part.inlineData,
-        keys: Object.keys(part)
-      });
-
-      // 카멜케이스 형식 (inlineData) 확인
-      if (part.inlineData) {
-        const inlineData = part.inlineData;
-        if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-          generatedImageData = inlineData.data;
-          generatedImageMimeType = inlineData.mimeType || 'image/png';
-          console.log(`[이미지 재생성] 이미지 데이터를 Part ${i}에서 찾음 (카멜케이스):`, {
-            dataLength: generatedImageData.length,
-            mimeType: generatedImageMimeType
-          });
-          break;
+      const parts = chunk.candidates[0].content.parts;
+      
+      for (const part of parts) {
+        if (part.inlineData) {
+          const inlineData = part.inlineData;
+          if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
+            generatedImageData = inlineData.data;
+            generatedImageMimeType = inlineData.mimeType || 'image/png';
+            console.log('[이미지 재생성] 이미지 데이터를 찾음:', {
+              dataLength: generatedImageData.length,
+              mimeType: generatedImageMimeType
+            });
+            break;
+          }
         }
       }
 
-      // 스네이크케이스 형식 (inline_data) 확인 (하위 호환성)
-      if (part.inline_data) {
-        const inlineData = part.inline_data;
-        if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-          generatedImageData = inlineData.data;
-          generatedImageMimeType = inlineData.mime_type || 'image/png';
-          console.log(`[이미지 재생성] 이미지 데이터를 Part ${i}에서 찾음 (스네이크케이스):`, {
-            dataLength: generatedImageData.length,
-            mimeType: generatedImageMimeType
-          });
-          break;
-        }
+      // 이미지 데이터를 찾았으면 더 이상 처리하지 않음
+      if (generatedImageData) {
+        break;
       }
     }
 
-    console.log('[이미지 재생성] 이미지 데이터 추출 결과:', {
+    const geminiRequestTime = Date.now() - geminiRequestStart;
+    console.log('[이미지 재생성] Gemini API 응답:', {
+      requestTime: `${geminiRequestTime}ms`,
       hasImageData: !!generatedImageData,
-      mimeType: generatedImageMimeType,
-      dataLength: generatedImageData?.length
+      mimeType: generatedImageMimeType
     });
 
     if (!generatedImageData) {
-      console.error('[이미지 재생성] 생성된 이미지 데이터가 없음. 전체 응답:', JSON.stringify(geminiData, null, 2));
+      console.error('[이미지 재생성] 생성된 이미지 데이터가 없음');
       return NextResponse.json(
         {
           error: '생성된 이미지를 받을 수 없습니다.',
-          details: {
-            responseStructure: {
-              hasCandidates: !!geminiData.candidates,
-              candidatesLength: geminiData.candidates?.length,
-              partsCount: parts.length,
-              partsDetails: parts.map((part: unknown) => {
-                const p = part as { text?: string; inline_data?: unknown };
-                return {
-                  hasText: !!p.text,
-                  hasInlineData: !!p.inline_data,
-                  keys: Object.keys(p)
-                };
-              })
-            }
-          }
         },
         { status: 500 }
       );
