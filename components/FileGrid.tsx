@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileIcon, Download, Trash2, Upload, Plus, Edit, Sparkles, Calendar, HardDrive, Wand2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { File as FileType } from '@/lib/supabase';
@@ -37,16 +38,89 @@ export function FileGrid() {
   const [fileToView, setFileToView] = useState<FileType | null>(null);
   const [styleSelectionOpen, setStyleSelectionOpen] = useState(false);
   const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
-  const [regeneratedImageUrl, setRegeneratedImageUrl] = useState<string | null>(null);
-  const [lastUsedPrompt, setLastUsedPrompt] = useState<string | null>(null);
+  const [regeneratedImages, setRegeneratedImages] = useState<Array<{ id: string; url: string; prompt: string; selected: boolean; base64Data: string; mimeType: string }>>([]);
+  const [generationCount, setGenerationCount] = useState<number>(2);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
 
   // 스타일 옵션 정의
   const styleOptions = [
-    { id: 'berserk', name: '베르세르크풍', prompt: '이 그림을 베르세르크 만화 풍으로 조밀한 선들로 다시 그려줘' },
-    { id: 'grayscale', name: '채색 빼기(흑백으로 만들기)', prompt: '이 그림의 채색을 제거하고 흑백으로 변환해줘' },
-    { id: 'remove-background', name: '배경 지우기', prompt: '이 그림의 배경을 제거하고 투명하게 만들어줘' },
-    { id: 'storyboard', name: '콘티화', prompt: '이 그림을 콘티화하여 캐릭터의 특징을 제거하고 인물들의 자세와 구도만 남겨줘' },
+    { id: 'berserk', name: '베르세르크풍', prompt: 'Redraw this image in Berserk manga style with dense lines' },
+    { id: 'grayscale', name: '채색 빼기(흑백으로 만들기)', prompt: 'Remove the color from this image and convert it to grayscale' },
+    { id: 'remove-background', name: '배경 지우기', prompt: 'Remove the background from this image and make it transparent' },
+    { id: 'storyboard', name: '콘티화', prompt: 'Convert this image into a storyboard by removing character features and keeping only the poses and composition of the figures' },
   ];
+
+  // 베르세르크 스타일 변형 키워드
+  const berserkVariationKeywords = {
+    lighting: [
+      'extreme chiaroscuro',
+      'dramatic lighting',
+      'high contrast',
+      'deep shadows',
+      'intense highlights',
+    ],
+    detail: [
+      'highly detailed',
+      'intricate details',
+      'fine linework',
+      'meticulous rendering',
+      'precise linework',
+    ],
+    hatching: [
+      'cross-hatching',
+      'dense cross-hatching',
+      'fine hatching',
+      'hatching techniques',
+      'intricate hatching',
+    ],
+    linework: [
+      'tight linework',
+      'precise lines',
+      'intricate linework',
+      'fine lines',
+    ],
+    tone: [
+      'dark tones',
+      'moody atmosphere',
+      'gritty texture',
+      'atmospheric depth',
+    ],
+  };
+
+  // 프롬프트 변형 생성 함수
+  const generateVariedPrompt = (basePrompt: string, styleId: string): string => {
+    // 베르세르크 스타일인 경우에만 변형 적용
+    if (styleId !== 'berserk') {
+      return basePrompt;
+    }
+
+    // 랜덤하게 2-3개의 키워드 선택
+    const numKeywords = 2 + Math.floor(Math.random() * 2); // 2 또는 3
+    const selectedKeywords: string[] = [];
+
+    // 각 카테고리에서 최대 1개씩 선택
+    const categories = Object.keys(berserkVariationKeywords) as Array<keyof typeof berserkVariationKeywords>;
+    const shuffledCategories = [...categories].sort(() => Math.random() - 0.5);
+
+    for (const category of shuffledCategories) {
+      if (selectedKeywords.length >= numKeywords) break;
+      
+      const keywords = berserkVariationKeywords[category];
+      const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+      
+      if (!selectedKeywords.includes(randomKeyword)) {
+        selectedKeywords.push(randomKeyword);
+      }
+    }
+
+    // 선택된 키워드를 프롬프트에 추가
+    if (selectedKeywords.length > 0) {
+      const keywordsString = selectedKeywords.join(', ');
+      return `${basePrompt}, ${keywordsString}`;
+    }
+
+    return basePrompt;
+  };
 
   const loadProcesses = useCallback(async () => {
     try {
@@ -90,11 +164,11 @@ export function FileGrid() {
   // Dialog가 닫힐 때 Blob URL 정리
   useEffect(() => {
     return () => {
-      if (regeneratedImageUrl) {
-        URL.revokeObjectURL(regeneratedImageUrl);
-      }
+      regeneratedImages.forEach((img) => {
+        URL.revokeObjectURL(img.url);
+      });
     };
-  }, [regeneratedImageUrl]);
+  }, [regeneratedImages]);
 
   // 메타데이터가 없는 이미지 파일들에 대해 주기적으로 폴링
   useEffect(() => {
@@ -270,7 +344,7 @@ export function FileGrid() {
       });
       
       alert('이미지 분석이 완료되었습니다.');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('이미지 분석 실패:', error);
       // 실패 시에도 대기 목록에서 제거
       setPendingAnalysisFiles(prev => {
@@ -278,7 +352,8 @@ export function FileGrid() {
         newSet.delete(file.id);
         return newSet;
       });
-      alert(error.message || '이미지 분석에 실패했습니다.');
+      const errorMessage = error instanceof Error ? error.message : '이미지 분석에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setAnalyzingFiles(prev => {
         const newSet = new Set(prev);
@@ -325,13 +400,19 @@ export function FileGrid() {
     }
   };
 
-  const handleRegenerateImage = async (stylePrompt: string) => {
+  const handleRegenerateImage = async (stylePrompt: string, count?: number) => {
     if (!fileToView || fileToView.file_type !== 'image') return;
 
     try {
       setRegeneratingImage(fileToView.id);
-      setRegeneratedImageUrl(null);
-      setStyleSelectionOpen(false);
+      const regenerateCount = count ?? generationCount;
+      
+      // count가 지정되지 않았으면 (새로 생성하는 경우) 기존 이미지 초기화
+      if (count === undefined) {
+        setRegeneratedImages([]);
+        setSelectedImageIds(new Set());
+        setStyleSelectionOpen(false);
+      }
 
       const imageUrl = fileToView.file_path?.startsWith('http')
         ? fileToView.file_path
@@ -339,91 +420,120 @@ export function FileGrid() {
           ? fileToView.file_path
           : `https://${fileToView.file_path}`;
 
-      const response = await fetch('/api/regenerate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageUrl,
-          stylePrompt,
-        }),
-      });
+      const newImages: Array<{ id: string; url: string; prompt: string; selected: boolean; base64Data: string; mimeType: string }> = [];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '이미지 재생성에 실패했습니다.');
+      // 생성 개수만큼 반복하여 API 호출
+      for (let i = 0; i < regenerateCount; i++) {
+        // 스타일 ID 찾기 (베르세르크 변형을 위해)
+        const styleOption = styleOptions.find(opt => opt.prompt === stylePrompt);
+        const styleId = styleOption?.id || '';
+        
+        // 변형된 프롬프트 생성 (여러 장 생성 시 각각 다른 변형 적용)
+        const variedPrompt = regenerateCount > 1 
+          ? generateVariedPrompt(stylePrompt, styleId)
+          : stylePrompt;
+
+        const response = await fetch('/api/regenerate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            imageUrl,
+            stylePrompt: variedPrompt,
+            index: i, // 홀수는 Gemini, 짝수는 Seedream
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `이미지 재생성에 실패했습니다. (${i + 1}/${regenerateCount})`);
+        }
+
+        const data = await response.json();
+        const { imageData, mimeType } = data;
+
+        // base64 데이터를 Blob URL로 변환
+        const byteCharacters = atob(imageData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let j = 0; j < byteCharacters.length; j++) {
+          byteNumbers[j] = byteCharacters.charCodeAt(j);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
+        const imageUrl_new = URL.createObjectURL(blob);
+
+        const imageId = `${Date.now()}-${i}`;
+        newImages.push({
+          id: imageId,
+          url: imageUrl_new,
+          prompt: variedPrompt, // 변형된 프롬프트 저장
+          selected: false,
+          base64Data: imageData,
+          mimeType: mimeType || 'image/png',
+        });
+
+        // 진행 상태 업데이트를 위해 중간 결과도 반영
+        if (count === undefined) {
+          // 새로 생성하는 경우에만 중간 결과 반영
+          setRegeneratedImages([...newImages]);
+        }
       }
 
-      const data = await response.json();
-      const { imageData, mimeType } = data;
-
-      // base64 데이터를 Blob URL로 변환
-      const byteCharacters = atob(imageData);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      // count가 지정된 경우 (다시그리기) 기존 배열에 추가, 아니면 새로 설정
+      if (count !== undefined) {
+        setRegeneratedImages(prev => [...prev, ...newImages]);
+      } else {
+        setRegeneratedImages(newImages);
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
-      const imageUrl_new = URL.createObjectURL(blob);
-
-      setRegeneratedImageUrl(imageUrl_new);
-      setLastUsedPrompt(stylePrompt);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('이미지 재생성 실패:', error);
-      alert(error.message || '이미지 재생성에 실패했습니다.');
+      const errorMessage = error instanceof Error ? error.message : '이미지 재생성에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setRegeneratingImage(null);
     }
   };
 
-  const handleDownloadRegeneratedImage = () => {
-    if (!regeneratedImageUrl || !fileToView) return;
-
-    try {
-      const a = document.createElement('a');
-      a.href = regeneratedImageUrl;
-      a.download = `regenerated-${fileToView.file_name}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('재생성된 이미지 다운로드 실패:', error);
-      alert('이미지 다운로드에 실패했습니다.');
-    }
-  };
 
   const handleSaveRegeneratedImage = async () => {
-    if (!regeneratedImageUrl || !fileToView || !selectedCut) return;
+    if (selectedImageIds.size === 0 || !fileToView || !selectedCut) return;
 
     try {
-      // Blob URL에서 Blob 가져오기
-      const response = await fetch(regeneratedImageUrl);
-      const blob = await response.blob();
+      const selectedImages = regeneratedImages.filter(img => selectedImageIds.has(img.id));
+      
+      // 선택된 이미지들을 순차적으로 업로드
+      for (const img of selectedImages) {
+        // base64 데이터를 Blob으로 변환
+        const byteCharacters = atob(img.base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: img.mimeType });
 
-      // 원본 파일명에서 확장자 추출
-      const originalFileName = fileToView.file_name;
-      const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
-      const newFileName = `regenerated-${originalFileName.replace(fileExtension, '')}${fileExtension}`;
+        // 원본 파일명에서 확장자 추출
+        const originalFileName = fileToView.file_name;
+        const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
+        const baseFileName = originalFileName.replace(fileExtension, '');
+        const timestamp = Date.now();
+        const newFileName = `regenerated-${baseFileName}-${timestamp}${fileExtension}`;
 
-      // Blob을 File 객체로 변환
-      const file = new File([blob], newFileName, { type: blob.type });
+        // Blob을 File 객체로 변환
+        const file = new File([blob], newFileName, { type: img.mimeType });
 
-      // 원본 파일과 같은 공정에 업로드
-      await uploadFile(file, selectedCut.id, fileToView.process_id, `AI 재생성: ${fileToView.file_name}`);
+        // 원본 파일과 같은 공정에 업로드
+        await uploadFile(file, selectedCut.id, fileToView.process_id, `AI 재생성: ${fileToView.file_name}`);
+      }
 
       // 파일 목록 새로고침
       await loadFiles();
 
-      // 재생성된 이미지 URL 초기화
-      setRegeneratedImageUrl(null);
-      setLastUsedPrompt(null);
+      // 선택된 이미지 ID 초기화
+      setSelectedImageIds(new Set());
 
-      // 파일 디테일 다이얼로그 닫기
-      setDetailDialogOpen(false);
-
-      alert('재생성된 이미지가 파일로 등록되었습니다.');
+      alert(`${selectedImages.length}개의 재생성된 이미지가 파일로 등록되었습니다.`);
     } catch (error) {
       console.error('재생성된 이미지 저장 실패:', error);
       alert('이미지 저장에 실패했습니다.');
@@ -786,18 +896,35 @@ export function FileGrid() {
             <DialogTitle>스타일 선택</DialogTitle>
             <DialogDescription>이미지를 재생성할 스타일을 선택하세요.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-2 py-4">
-            {styleOptions.map((style) => (
-              <Button
-                key={style.id}
-                variant="outline"
-                className="h-auto py-3 flex flex-col items-center gap-2"
-                onClick={() => handleRegenerateImage(style.prompt)}
-                disabled={regeneratingImage !== null}
-              >
-                <span className="text-sm font-medium">{style.name}</span>
-              </Button>
-            ))}
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">한번에 몇 장을 그릴지</label>
+              <Select value={generationCount.toString()} onValueChange={(value) => setGenerationCount(parseInt(value))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 10 }, (_, i) => (i + 1) * 2).map((count) => (
+                    <SelectItem key={count} value={count.toString()}>
+                      {count}장
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {styleOptions.map((style) => (
+                <Button
+                  key={style.id}
+                  variant="outline"
+                  className="h-auto py-3 flex flex-col items-center gap-2"
+                  onClick={() => handleRegenerateImage(style.prompt)}
+                  disabled={regeneratingImage !== null}
+                >
+                  <span className="text-sm font-medium">{style.name}</span>
+                </Button>
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStyleSelectionOpen(false)} disabled={regeneratingImage !== null}>
@@ -811,8 +938,12 @@ export function FileGrid() {
       <Dialog open={detailDialogOpen} onOpenChange={(open) => {
         setDetailDialogOpen(open);
         if (!open) {
-          setRegeneratedImageUrl(null);
-          setLastUsedPrompt(null);
+          // Blob URL 정리
+          regeneratedImages.forEach((img) => {
+            URL.revokeObjectURL(img.url);
+          });
+          setRegeneratedImages([]);
+          setSelectedImageIds(new Set());
         }
       }}>
         <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
@@ -969,57 +1100,91 @@ export function FileGrid() {
               </div>
 
               {/* 재생성된 이미지 표시 */}
-              {regeneratedImageUrl && (
-                <div className="w-full space-y-2">
+              {regeneratedImages.length > 0 && (
+                <div className="w-full space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">재생성된 이미지</h3>
+                    <h3 className="text-sm font-semibold">재생성된 이미지 ({regeneratedImages.length}장)</h3>
                     <div className="flex gap-2">
                       {profile && canUploadFile(profile.role) && (
                         <Button
                           size="sm"
                           variant="default"
                           onClick={handleSaveRegeneratedImage}
+                          disabled={selectedImageIds.size === 0}
                         >
                           <Upload className="h-3 w-3 mr-1" />
-                          파일로 등록
+                          선택한 이미지 등록 ({selectedImageIds.size})
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleDownloadRegeneratedImage}
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        다운로드
-                      </Button>
                     </div>
                   </div>
-                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
-                    {lastUsedPrompt && (
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        className={cn(
-                          "absolute top-2 right-2 z-10 h-8 w-8",
-                          regeneratingImage === fileToView?.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
-                        )}
-                        onClick={() => handleRegenerateImage(lastUsedPrompt)}
-                        disabled={regeneratingImage === fileToView?.id}
-                      >
-                        <RefreshCw className={cn(
-                          "h-4 w-4",
-                          regeneratingImage === fileToView?.id && 'animate-spin'
-                        )} />
-                      </Button>
-                    )}
-                    <Image
-                      src={regeneratedImageUrl}
-                      alt="재생성된 이미지"
-                      fill
-                      className="object-contain"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-                      unoptimized={true}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {regeneratedImages.map((img) => (
+                      <div key={img.id} className="relative space-y-2">
+                        <div className="relative w-full aspect-square bg-muted rounded-md overflow-hidden">
+                          <input
+                            type="checkbox"
+                            checked={selectedImageIds.has(img.id)}
+                            onChange={(e) => {
+                              const newSelected = new Set(selectedImageIds);
+                              if (e.target.checked) {
+                                newSelected.add(img.id);
+                              } else {
+                                newSelected.delete(img.id);
+                              }
+                              setSelectedImageIds(newSelected);
+                            }}
+                            className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
+                          />
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            className={cn(
+                              "absolute top-2 right-2 z-10 h-8 w-8",
+                              regeneratingImage === fileToView?.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                            )}
+                            onClick={() => handleRegenerateImage(img.prompt, 1)}
+                            disabled={regeneratingImage === fileToView?.id}
+                          >
+                            <RefreshCw className={cn(
+                              "h-4 w-4",
+                              regeneratingImage === fileToView?.id && 'animate-spin'
+                            )} />
+                          </Button>
+                          <Image
+                            src={img.url}
+                            alt="재생성된 이미지"
+                            fill
+                            className="object-contain"
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                            unoptimized={true}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => {
+                              try {
+                                const a = document.createElement('a');
+                                a.href = img.url;
+                                a.download = `regenerated-${fileToView?.file_name || 'image'}`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              } catch (error) {
+                                console.error('재생성된 이미지 다운로드 실패:', error);
+                                alert('이미지 다운로드에 실패했습니다.');
+                              }
+                            }}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            다운로드
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

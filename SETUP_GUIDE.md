@@ -45,9 +45,78 @@ npm install
 \`\`\`env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+# AI 이미지 생성 API 키 (선택사항)
+GEMINI_API_KEY=your-gemini-api-key-here
+SEEDREAM_API_KEY=your-seedream-api-key-here
+SEEDREAM_API_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
 \`\`\`
 
 ⚠️ **주의**: 실제 값으로 교체하세요!
+
+#### AI 이미지 생성 API 키 발급 방법
+
+**Google Gemini API 키:**
+1. [Google AI Studio](https://aistudio.google.com/app/apikey) 접속
+2. "Create API Key" 클릭
+3. API 키 복사 후 \`GEMINI_API_KEY\`에 설정
+
+**ByteDance Seedream API 키:**
+1. [ByteDance ARK](https://www.volcengine.com/product/ark) 접속
+2. 계정 생성 및 로그인
+3. API 키 발급 (ARK API Key)
+4. API 키 복사 후 \`SEEDREAM_API_KEY\`에 설정
+5. API Base URL 설정 (기본값: \`https://ark.ap-southeast.bytepluses.com/api/v3\`)
+   - 리전에 따라 다를 수 있으므로 ByteDance ARK 문서 확인
+   - 필요시 \`SEEDREAM_API_BASE_URL\` 환경 변수로 커스터마이징 가능
+
+**참고:**
+- AI 이미지 재생성 기능을 사용하려면 최소한 \`GEMINI_API_KEY\`는 필수입니다.
+- Seedream API를 사용하려면 \`SEEDREAM_API_KEY\`도 설정해야 합니다.
+- 이미지 생성 개수가 2, 4, 6, 8, ..., 20으로 제한되며, 홀수 인덱스는 Gemini, 짝수 인덱스는 Seedream을 사용합니다.
+
+⚠️ **중요: 프로덕션 환경 변수 설정**
+
+\`.env.local\` 파일은 **로컬 개발 환경에서만** 사용됩니다. 프로덕션 환경에는 적용되지 않습니다!
+
+#### Vercel 배포 시 환경 변수 설정
+
+1. [Vercel 대시보드](https://vercel.com/dashboard) 접속
+2. 프로젝트 선택
+3. **Settings** 메뉴 클릭
+4. **Environment Variables** 섹션으로 이동
+5. 다음 환경 변수들을 추가:
+
+\`\`\`
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+GEMINI_API_KEY=your-gemini-api-key-here
+SEEDREAM_API_KEY=your-seedream-api-key-here
+SEEDREAM_API_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
+\`\`\`
+
+6. 각 환경 변수에 대해 **Environment** 선택:
+   - **Production**: 프로덕션 환경
+   - **Preview**: 프리뷰/스테이징 환경
+   - **Development**: 개발 환경 (일반적으로 사용 안 함)
+
+7. **Save** 클릭
+
+8. 환경 변수 추가 후 **재배포** 필요:
+   - Vercel 대시보드에서 **Deployments** 탭
+   - 최신 배포의 **⋯** 메뉴 → **Redeploy** 클릭
+
+#### 다른 플랫폼 배포 시
+
+- **Netlify**: Site settings → Environment variables
+- **AWS/EC2**: 서버의 환경 변수 설정 또는 \`.env.production\` 파일 사용
+- **Docker**: \`docker-compose.yml\` 또는 컨테이너 환경 변수 설정
+- **기타**: 해당 플랫폼의 환경 변수 설정 방법 참고
+
+**보안 주의사항:**
+- 환경 변수는 절대 Git에 커밋하지 마세요 (이미 \`.gitignore\`에 포함됨)
+- 프로덕션 API 키는 안전하게 관리하세요
+- 필요시 환경별로 다른 API 키 사용 권장
 
 ### 5단계: 데이터베이스 스키마 생성
 
