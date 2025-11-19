@@ -342,7 +342,7 @@ export function ImageViewer({
 
           {/* 줌 레벨 표시 */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-black/50 text-white px-4 py-2 rounded-md text-sm">
-            {imageZoom}%
+            {Math.round(imageZoom)}%
           </div>
         </div>
       </DialogContent>
