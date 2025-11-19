@@ -9,7 +9,31 @@ export async function getCuts(episodeId: string): Promise<Cut[]> {
     .order('cut_number', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  if (!data || data.length === 0) return [];
+
+  // 각 컷의 파일 개수 조회
+  const cutIds = data.map(cut => cut.id);
+  const filesCountPromises = cutIds.map(async (cutId) => {
+    const { count, error: countError } = await supabase
+      .from('files')
+      .select('*', { count: 'exact', head: true })
+      .eq('cut_id', cutId);
+
+    if (countError) {
+      console.error(`파일 개수 조회 실패 (cut_id: ${cutId}):`, countError);
+      return { cutId, count: 0 };
+    }
+    return { cutId, count: count || 0 };
+  });
+
+  const filesCounts = await Promise.all(filesCountPromises);
+  const filesCountMap = new Map(filesCounts.map(item => [item.cutId, item.count]));
+
+  // 각 컷에 파일 개수 추가
+  return data.map(cut => ({
+    ...cut,
+    files_count: filesCountMap.get(cut.id) || 0
+  }));
 }
 
 // 컷 상세 조회 (파일 포함)

@@ -32,6 +32,7 @@ export interface Episode {
   status: string;
   created_at: string;
   updated_at: string;
+  files_count?: number;
 }
 
 export interface Cut {
@@ -42,6 +43,7 @@ export interface Cut {
   description?: string;
   created_at: string;
   updated_at: string;
+  files_count?: number;
 }
 
 export interface Process {

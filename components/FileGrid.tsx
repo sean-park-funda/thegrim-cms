@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileIcon, Download, Trash2, Upload, Plus, Edit, Sparkles, Calendar, HardDrive, Wand2, RefreshCw } from 'lucide-react';
+import { FileIcon, Download, Trash2, Upload, Plus, Edit, Sparkles, Calendar, HardDrive, Wand2, RefreshCw, ZoomIn, ZoomOut, Search, X, CheckSquare2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { File as FileType } from '@/lib/supabase';
 import Image from 'next/image';
@@ -41,13 +41,17 @@ export function FileGrid() {
   const [regeneratedImages, setRegeneratedImages] = useState<Array<{ id: string; url: string; prompt: string; selected: boolean; base64Data: string; mimeType: string }>>([]);
   const [generationCount, setGenerationCount] = useState<number>(2);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageZoom, setImageZoom] = useState(100);
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+  const [viewingImageName, setViewingImageName] = useState<string>('');
 
   // 스타일 옵션 정의
   const styleOptions = [
-    { id: 'berserk', name: '베르세르크풍', prompt: 'Redraw this image in Berserk manga style with dense lines' },
+    { id: 'berserk', name: '괴수디테일', prompt: 'Redraw this image in Berserk manga style with dense lines, adding detailed monster (괴수) or creature features. Even if the original is a rough sketch or simple drawing, enhance and transform it into a detailed monster with intricate details' },
     { id: 'grayscale', name: '채색 빼기(흑백으로 만들기)', prompt: 'Remove the color from this image and convert it to grayscale' },
     { id: 'remove-background', name: '배경 지우기', prompt: 'Remove the background from this image and make it transparent' },
-    { id: 'storyboard', name: '콘티화', prompt: 'Convert this image into a storyboard by removing character features and keeping only the poses and composition of the figures' },
   ];
 
   // 베르세르크 스타일 변형 키워드
@@ -463,7 +467,8 @@ export function FileGrid() {
         const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
         const imageUrl_new = URL.createObjectURL(blob);
 
-        const imageId = `${Date.now()}-${i}`;
+        // 고유한 ID 생성 (타임스탬프 + 인덱스 + 랜덤)
+        const imageId = `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
         newImages.push({
           id: imageId,
           url: imageUrl_new,
@@ -475,8 +480,13 @@ export function FileGrid() {
 
         // 진행 상태 업데이트를 위해 중간 결과도 반영
         if (count === undefined) {
-          // 새로 생성하는 경우에만 중간 결과 반영
-          setRegeneratedImages([...newImages]);
+          // 새로 생성하는 경우에만 중간 결과 반영 (함수형 업데이트로 최신 상태 보장)
+          setRegeneratedImages(prev => {
+            // 기존 이미지 중 현재 생성 중인 이미지들을 제외하고 새 이미지 추가
+            const existingIds = new Set(newImages.map(img => img.id));
+            const filtered = prev.filter(img => !existingIds.has(img.id));
+            return [...filtered, ...newImages];
+          });
         }
       }
 
@@ -484,6 +494,7 @@ export function FileGrid() {
       if (count !== undefined) {
         setRegeneratedImages(prev => [...prev, ...newImages]);
       } else {
+        // 모든 이미지 생성 완료 후 최종 상태 설정
         setRegeneratedImages(newImages);
       }
     } catch (error: unknown) {
@@ -497,10 +508,44 @@ export function FileGrid() {
 
 
   const handleSaveRegeneratedImage = async () => {
-    if (selectedImageIds.size === 0 || !fileToView || !selectedCut) return;
+    console.log('[이미지 등록] 함수 호출됨', {
+      selectedImageIdsSize: selectedImageIds.size,
+      selectedImageIds: Array.from(selectedImageIds),
+      fileToView: !!fileToView,
+      selectedCut: !!selectedCut,
+      regeneratedImagesCount: regeneratedImages.length,
+      regeneratedImageIds: regeneratedImages.map(img => img.id)
+    });
+
+    if (selectedImageIds.size === 0 || !fileToView || !selectedCut) {
+      console.warn('[이미지 등록] 조건 불만족으로 중단', {
+        selectedImageIdsSize: selectedImageIds.size,
+        fileToView: !!fileToView,
+        selectedCut: !!selectedCut
+      });
+      return;
+    }
 
     try {
       const selectedImages = regeneratedImages.filter(img => selectedImageIds.has(img.id));
+      
+      console.log('[이미지 등록] 선택된 이미지 필터링 결과', {
+        selectedImagesCount: selectedImages.length,
+        selectedImageIds: Array.from(selectedImageIds),
+        regeneratedImageIds: regeneratedImages.map(img => img.id),
+        matchedImages: selectedImages.map(img => img.id)
+      });
+      
+      // 디버깅: 선택된 이미지가 없는 경우 확인
+      if (selectedImages.length === 0) {
+        console.error('[이미지 등록] 선택된 이미지를 찾을 수 없습니다.', {
+          selectedImageIds: Array.from(selectedImageIds),
+          regeneratedImages: regeneratedImages.map(img => img.id),
+          regeneratedImagesCount: regeneratedImages.length
+        });
+        alert('선택된 이미지를 찾을 수 없습니다. 다시 선택해주세요.');
+        return;
+      }
       
       // 선택된 이미지들을 순차적으로 업로드
       for (const img of selectedImages) {
@@ -730,6 +775,7 @@ export function FileGrid() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setFileToView(file);
+                                    setImageDimensions(null); // 파일 변경 시 이미지 크기 초기화
                                     setDetailDialogOpen(true);
                                   }}
                                 >
@@ -944,6 +990,11 @@ export function FileGrid() {
           });
           setRegeneratedImages([]);
           setSelectedImageIds(new Set());
+          setImageDimensions(null);
+          setImageViewerOpen(false); // 파일 상세 닫을 때 이미지 뷰어도 닫기
+          setImageZoom(100); // 줌 초기화
+          setViewingImageUrl(null);
+          setViewingImageName('');
         }
       }}>
         <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
@@ -956,7 +1007,16 @@ export function FileGrid() {
               {/* 파일 미리보기 */}
               <div className="w-full">
                 {fileToView.file_type === 'image' && !imageErrors.has(fileToView.id) ? (
-                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
+                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden group cursor-pointer" onClick={() => {
+                    const imageUrl = fileToView.file_path?.startsWith('http')
+                      ? fileToView.file_path
+                      : fileToView.file_path?.startsWith('/')
+                        ? fileToView.file_path
+                        : `https://${fileToView.file_path}`;
+                    setViewingImageUrl(imageUrl);
+                    setViewingImageName(fileToView.file_name);
+                    setImageViewerOpen(true);
+                  }}>
                     <Image 
                       src={fileToView.file_path?.startsWith('http') 
                         ? fileToView.file_path 
@@ -968,11 +1028,26 @@ export function FileGrid() {
                       className="object-contain" 
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
                       unoptimized={true}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        if (img.naturalWidth && img.naturalHeight) {
+                          setImageDimensions({
+                            width: img.naturalWidth,
+                            height: img.naturalHeight
+                          });
+                        }
+                      }}
                       onError={() => {
                         console.error('이미지 로딩 실패:', fileToView.file_path);
                         setImageErrors(prev => new Set(prev).add(fileToView.id));
+                        setImageDimensions(null);
                       }}
                     />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-3">
+                        <Search className="h-6 w-6 text-white" />
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
@@ -1013,6 +1088,14 @@ export function FileGrid() {
                       <div className="flex items-start justify-between">
                         <span className="text-sm text-muted-foreground">MIME 타입</span>
                         <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{fileToView.mime_type}</span>
+                      </div>
+                    )}
+                    {fileToView.file_type === 'image' && imageDimensions && (
+                      <div className="flex items-start justify-between">
+                        <span className="text-sm text-muted-foreground">이미지 사이즈</span>
+                        <span className="text-sm font-medium text-right flex-1 ml-4">
+                          {imageDimensions.width} × {imageDimensions.height} px
+                        </span>
                       </div>
                     )}
                     <div className="flex items-start justify-between">
@@ -1106,34 +1189,79 @@ export function FileGrid() {
                     <h3 className="text-sm font-semibold">재생성된 이미지 ({regeneratedImages.length}장)</h3>
                     <div className="flex gap-2">
                       {profile && canUploadFile(profile.role) && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={handleSaveRegeneratedImage}
-                          disabled={selectedImageIds.size === 0}
-                        >
-                          <Upload className="h-3 w-3 mr-1" />
-                          선택한 이미지 등록 ({selectedImageIds.size})
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (selectedImageIds.size === regeneratedImages.length) {
+                                // 모두 선택되어 있으면 모두 해제
+                                setSelectedImageIds(new Set());
+                              } else {
+                                // 모두 선택
+                                setSelectedImageIds(new Set(regeneratedImages.map(img => img.id)));
+                              }
+                            }}
+                            title={selectedImageIds.size === regeneratedImages.length ? '전체 선택 해제' : '전체 선택'}
+                          >
+                            <CheckSquare2 className="h-3 w-3 mr-1" />
+                            {selectedImageIds.size === regeneratedImages.length ? '전체 해제' : '전체 선택'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={(e) => {
+                              console.log('[버튼] 클릭 이벤트 발생', {
+                                selectedImageIdsSize: selectedImageIds.size,
+                                selectedImageIds: Array.from(selectedImageIds),
+                                disabled: selectedImageIds.size === 0
+                              });
+                              e.stopPropagation();
+                              handleSaveRegeneratedImage();
+                            }}
+                            disabled={selectedImageIds.size === 0}
+                          >
+                            <Upload className="h-3 w-3 mr-1" />
+                            선택한 이미지 등록 ({selectedImageIds.size})
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {regeneratedImages.map((img) => (
                       <div key={img.id} className="relative space-y-2">
-                        <div className="relative w-full aspect-square bg-muted rounded-md overflow-hidden">
+                        <div 
+                          className="relative w-full aspect-square bg-muted rounded-md overflow-hidden group cursor-pointer"
+                          onClick={() => {
+                            setViewingImageUrl(img.url);
+                            setViewingImageName(`재생성된 이미지 - ${fileToView?.file_name || '이미지'}`);
+                            setImageViewerOpen(true);
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={selectedImageIds.has(img.id)}
                             onChange={(e) => {
+                              console.log('[체크박스] 변경 이벤트', {
+                                imageId: img.id,
+                                checked: e.target.checked,
+                                currentSelected: Array.from(selectedImageIds)
+                              });
                               const newSelected = new Set(selectedImageIds);
                               if (e.target.checked) {
                                 newSelected.add(img.id);
                               } else {
                                 newSelected.delete(img.id);
                               }
+                              console.log('[체크박스] 업데이트된 선택', {
+                                newSelected: Array.from(newSelected),
+                                size: newSelected.size
+                              });
                               setSelectedImageIds(newSelected);
                             }}
+                            onClick={(e) => e.stopPropagation()}
                             className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
                           />
                           <Button
@@ -1143,7 +1271,10 @@ export function FileGrid() {
                               "absolute top-2 right-2 z-10 h-8 w-8",
                               regeneratingImage === fileToView?.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
                             )}
-                            onClick={() => handleRegenerateImage(img.prompt, 1)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRegenerateImage(img.prompt, 1);
+                            }}
                             disabled={regeneratingImage === fileToView?.id}
                           >
                             <RefreshCw className={cn(
@@ -1151,6 +1282,11 @@ export function FileGrid() {
                               regeneratingImage === fileToView?.id && 'animate-spin'
                             )} />
                           </Button>
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
+                              <Search className="h-5 w-5 text-white" />
+                            </div>
+                          </div>
                           <Image
                             src={img.url}
                             alt="재생성된 이미지"
@@ -1254,6 +1390,109 @@ export function FileGrid() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 이미지 전체화면 뷰어 */}
+      {viewingImageUrl && (
+        <Dialog open={imageViewerOpen} onOpenChange={(open) => {
+          setImageViewerOpen(open);
+          if (!open) {
+            setImageZoom(100); // 닫을 때 줌 초기화
+            setViewingImageUrl(null);
+            setViewingImageName('');
+          }
+        }}>
+          <DialogContent className="!max-w-[100vw] !w-[100vw] !h-[100vh] !max-h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 !p-0 !border-0 !bg-black/95" showCloseButton={false}>
+            <DialogTitle className="sr-only">이미지 전체화면 보기: {viewingImageName || '이미지'}</DialogTitle>
+            <div className="relative w-full h-full flex items-center justify-center overflow-auto">
+              {/* 닫기 버튼 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/70 text-white"
+                onClick={() => {
+                  setImageViewerOpen(false);
+                  setImageZoom(100);
+                  setViewingImageUrl(null);
+                  setViewingImageName('');
+                }}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+
+              {/* 확대/축소 컨트롤 */}
+              <div className="absolute top-4 left-4 z-50 flex items-center gap-2 bg-black/50 rounded-lg p-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/20"
+                  onClick={() => {
+                    const zoomSteps = [25, 50, 75, 100, 125, 150, 200, 300, 400];
+                    const currentIndex = zoomSteps.findIndex(step => step >= imageZoom);
+                    const newIndex = Math.max(0, currentIndex - 1);
+                    setImageZoom(zoomSteps[newIndex] || 100);
+                  }}
+                  disabled={imageZoom <= 25}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-white text-sm min-w-[60px] text-center">{imageZoom}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/20"
+                  onClick={() => {
+                    const zoomSteps = [25, 50, 75, 100, 125, 150, 200, 300, 400];
+                    const currentIndex = zoomSteps.findIndex(step => step >= imageZoom);
+                    const newIndex = Math.min(zoomSteps.length - 1, currentIndex + 1);
+                    setImageZoom(zoomSteps[newIndex] || 100);
+                  }}
+                  disabled={imageZoom >= 400}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-white hover:bg-white/20 ml-2"
+                  onClick={() => setImageZoom(100)}
+                >
+                  리셋
+                </Button>
+              </div>
+
+              {/* 이미지 */}
+              <div className="flex items-center justify-center w-full h-full p-4 overflow-auto">
+                <div
+                  className="relative transition-transform duration-200"
+                  style={{
+                    transform: `scale(${imageZoom / 100})`,
+                    transformOrigin: 'center center',
+                  }}
+                >
+                  <img
+                    src={viewingImageUrl || ''}
+                    alt={viewingImageName || '이미지'}
+                    className="max-w-[90vw] max-h-[90vh] object-contain"
+                    style={{
+                      maxWidth: '90vw',
+                      maxHeight: '90vh',
+                    }}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      if (img.naturalWidth && img.naturalHeight) {
+                        setImageDimensions({
+                          width: img.naturalWidth,
+                          height: img.naturalHeight
+                        });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </ScrollArea>
   );
 }

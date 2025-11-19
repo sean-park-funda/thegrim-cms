@@ -5,10 +5,11 @@ import { useStore } from '@/lib/store/useStore';
 import { getCuts, createCut, updateCut, deleteCut } from '@/lib/api/cuts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Image, MoreVertical, Edit, Trash2 } from 'lucide-react';
+import { Plus, Image, MoreVertical, Edit, Trash2, File } from 'lucide-react';
 import { Cut } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
@@ -149,9 +150,17 @@ export function CutList() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-sm sm:text-base">
-                        컷 {cut.cut_number}
-                        {cut.title && ` - ${cut.title}`}
+                      <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                        <span>
+                          컷 {cut.cut_number}
+                          {cut.title && ` - ${cut.title}`}
+                        </span>
+                        {cut.files_count !== undefined && (
+                          <Badge variant="outline" className="text-xs whitespace-nowrap flex items-center gap-1">
+                            <File className="h-3 w-3" />
+                            {cut.files_count}
+                          </Badge>
+                        )}
                       </CardTitle>
                     </div>
                     {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (

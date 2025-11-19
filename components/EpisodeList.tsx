@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2 } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, File } from 'lucide-react';
 import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
@@ -38,7 +38,13 @@ export function EpisodeList() {
     try {
       setLoading(true);
       const data = await getEpisodes(selectedWebtoon.id);
-      setEpisodes(data);
+      // "기타" 회차(episode_number = 0)를 맨 위에 고정하고, 나머지는 episode_number 순으로 정렬
+      const sortedData = [...data].sort((a, b) => {
+        if (a.episode_number === 0) return -1;
+        if (b.episode_number === 0) return 1;
+        return a.episode_number - b.episode_number;
+      });
+      setEpisodes(sortedData);
     } catch (error) {
       console.error('회차 목록 로드 실패:', error);
       alert('회차 목록을 불러오는데 실패했습니다.');
@@ -49,7 +55,9 @@ export function EpisodeList() {
 
   const handleCreate = () => {
     if (!selectedWebtoon) return;
-    const nextEpisodeNumber = episodes.length > 0 ? Math.max(...episodes.map(e => e.episode_number)) + 1 : 1;
+    // episode_number = 0인 "기타" 회차는 제외하고 다음 번호 계산
+    const regularEpisodes = episodes.filter(e => e.episode_number !== 0);
+    const nextEpisodeNumber = regularEpisodes.length > 0 ? Math.max(...regularEpisodes.map(e => e.episode_number)) + 1 : 1;
     setFormData({ episode_number: nextEpisodeNumber, title: '', description: '', status: 'pending' });
     setEditingEpisode(null);
     setCreateDialogOpen(true);
@@ -69,6 +77,11 @@ export function EpisodeList() {
 
   const handleDelete = async (episode: Episode, e: React.MouseEvent) => {
     e.stopPropagation();
+    // "기타" 회차는 삭제 불가
+    if (episode.episode_number === 0) {
+      alert('"기타" 회차는 삭제할 수 없습니다.');
+      return;
+    }
     if (!confirm(`"${episode.episode_number}화 - ${episode.title}" 회차를 삭제하시겠습니까?`)) {
       return;
     }
@@ -92,11 +105,20 @@ export function EpisodeList() {
       alert('회차 제목을 입력해주세요.');
       return;
     }
+    // episode_number = 0은 사용 불가 (기타 회차는 자동 생성)
+    if (formData.episode_number === 0) {
+      alert('회차 번호 0은 사용할 수 없습니다. "기타" 회차는 자동으로 생성됩니다.');
+      return;
+    }
 
     try {
       setSaving(true);
       if (editingEpisode) {
-        await updateEpisode(editingEpisode.id, formData);
+        // "기타" 회차는 episode_number 변경 불가
+        const updateData = editingEpisode.episode_number === 0
+          ? { ...formData, episode_number: 0 }
+          : formData;
+        await updateEpisode(editingEpisode.id, updateData);
         alert('회차가 수정되었습니다.');
       } else {
         await createEpisode({
@@ -151,52 +173,59 @@ export function EpisodeList() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {episodes.map((episode) => (
-              <Card key={episode.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-accent/50 ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedEpisode(episode)}>
-                <CardHeader className="pb-2 flex-shrink-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-sm sm:text-base line-clamp-2">
-                        {episode.episode_number}화 - {episode.title}
-                      </CardTitle>
+            {episodes.map((episode) => {
+              const isMiscEpisode = episode.episode_number === 0;
+              return (
+                <Card key={episode.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-accent/50 ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary bg-accent' : ''} ${isMiscEpisode ? 'bg-muted/50 border-dashed' : ''}`} onClick={() => setSelectedEpisode(episode)}>
+                  <CardHeader className="pb-2 flex-shrink-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-sm sm:text-base line-clamp-2 flex items-center gap-1.5">
+                          {isMiscEpisode && <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                          <span>{isMiscEpisode ? '기타' : `${episode.episode_number}화`} - {episode.title}</span>
+                        </CardTitle>
+                      </div>
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        {episode.files_count !== undefined && (
+                          <Badge variant="outline" className="text-xs whitespace-nowrap flex items-center gap-1">
+                            <File className="h-3 w-3" />
+                            {episode.files_count}
+                          </Badge>
+                        )}
+                        {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canEditContent(profile.role) && (
+                                <DropdownMenuItem onClick={(e) => handleEdit(episode, e)}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  수정
+                                </DropdownMenuItem>
+                              )}
+                              {canDeleteContent(profile.role) && !isMiscEpisode && (
+                                <DropdownMenuItem onClick={(e) => handleDelete(episode, e)} className="text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  삭제
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                      <Badge variant={episode.status === 'completed' ? 'default' : episode.status === 'in_progress' ? 'secondary' : 'outline'} className="text-xs whitespace-nowrap">
-                        {episode.status === 'completed' ? '완료' : episode.status === 'in_progress' ? '진행중' : '대기'}
-                      </Badge>
-                      {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canEditContent(profile.role) && (
-                              <DropdownMenuItem onClick={(e) => handleEdit(episode, e)}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                수정
-                              </DropdownMenuItem>
-                            )}
-                            {canDeleteContent(profile.role) && (
-                              <DropdownMenuItem onClick={(e) => handleDelete(episode, e)} className="text-destructive">
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                삭제
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                {episode.description && (
-                  <CardContent className="pt-0 pb-4 flex-1 flex flex-col justify-end">
-                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{episode.description}</p>
-                  </CardContent>
-                )}
-              </Card>
-            ))}
+                  </CardHeader>
+                  {episode.description && (
+                    <CardContent className="pt-0 pb-4 flex-1 flex flex-col justify-end">
+                      <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{episode.description}</p>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
@@ -214,10 +243,18 @@ export function EpisodeList() {
               <Input
                 type="number"
                 value={formData.episode_number}
-                onChange={(e) => setFormData({ ...formData, episode_number: parseInt(e.target.value) || 1 })}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 1;
+                  if (value === 0) {
+                    alert('회차 번호 0은 사용할 수 없습니다. "기타" 회차는 자동으로 생성됩니다.');
+                    return;
+                  }
+                  setFormData({ ...formData, episode_number: value });
+                }}
                 placeholder="회차 번호"
                 min="1"
               />
+              <p className="text-xs text-muted-foreground">회차 번호 0은 "기타" 회차로 예약되어 있습니다.</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">제목 *</label>
@@ -273,10 +310,23 @@ export function EpisodeList() {
               <Input
                 type="number"
                 value={formData.episode_number}
-                onChange={(e) => setFormData({ ...formData, episode_number: parseInt(e.target.value) || 1 })}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 1;
+                  if (value === 0) {
+                    alert('회차 번호 0은 사용할 수 없습니다. "기타" 회차는 자동으로 생성됩니다.');
+                    return;
+                  }
+                  setFormData({ ...formData, episode_number: value });
+                }}
                 placeholder="회차 번호"
                 min="1"
+                disabled={editingEpisode?.episode_number === 0}
               />
+              {editingEpisode?.episode_number === 0 ? (
+                <p className="text-xs text-muted-foreground">"기타" 회차의 회차 번호는 변경할 수 없습니다.</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">회차 번호 0은 "기타" 회차로 예약되어 있습니다.</p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">제목 *</label>
