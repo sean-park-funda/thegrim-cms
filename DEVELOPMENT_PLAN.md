@@ -199,6 +199,16 @@
 
 **완료일**: 2025-01-08
 
+#### 2.6 FileGrid 컴포넌트 리팩토링 ✅ 완료
+- [x] 상수 분리 (`lib/constants/imageRegeneration.ts`)
+- [x] 커스텀 훅 분리 (`useFileGrid`, `useImageRegeneration`, `useImageViewer`)
+- [x] 작은 컴포넌트 분리 (`FileDeleteDialog`, `FileEditDialog`, `FileCard`, `ProcessFileSection`)
+- [x] 큰 컴포넌트 분리 (`FileDetailDialog`, `ImageViewer`, `ImageRegenerationDialog`)
+- [x] FileGrid.tsx 리팩토링 (1842줄 → 488줄, 73% 감소)
+
+**완료일**: 2025-01-08  
+**상세 내용**: [리팩토링 가이드](./REFACTORING_GUIDE.md) 참고
+
 ---
 
 ### Phase 3: 사용자 경험 개선 (우선순위: 중간)
@@ -687,6 +697,37 @@ GEMINI_API_KEY=your-gemini-api-key
 - 예: "두 사람이 대화하는 장면" 같은 자연어 검색 가능
 
 **완료일**: 2025-01-08
+
+---
+
+## 🏗️ 컴포넌트 아키텍처
+
+### FileGrid 컴포넌트 구조 (✅ 리팩토링 완료)
+
+FileGrid 컴포넌트는 대규모 리팩토링을 통해 여러 작은 컴포넌트와 커스텀 훅으로 분리되었습니다.
+
+**리팩토링 전**: 약 1842줄의 단일 파일  
+**리팩토링 후**: 약 488줄 + 여러 작은 파일들로 분리
+
+#### 구조 개요
+```
+FileGrid (메인 컴포넌트)
+├── 커스텀 훅
+│   ├── useFileGrid (파일 그리드 로직)
+│   ├── useImageRegeneration (이미지 재생성 로직)
+│   └── useImageViewer (이미지 뷰어 로직)
+├── 작은 컴포넌트
+│   ├── FileDeleteDialog (삭제 확인)
+│   ├── FileEditDialog (정보 수정)
+│   ├── FileCard (파일 카드)
+│   └── ProcessFileSection (공정별 섹션)
+└── 큰 컴포넌트
+    ├── FileDetailDialog (상세 정보)
+    ├── ImageViewer (전체화면 뷰어)
+    └── ImageRegenerationDialog (재생성 스타일 선택)
+```
+
+**상세 내용**: [리팩토링 가이드](./REFACTORING_GUIDE.md) 참고
 
 ---
 

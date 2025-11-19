@@ -30,7 +30,14 @@ thegrim-CMS/
 │   ├── WebtoonList.tsx          # 웹툰 목록
 │   ├── EpisodeList.tsx          # 회차 목록
 │   ├── CutList.tsx              # 컷 목록
-│   └── FileGrid.tsx             # 파일 그리드 (공정별)
+│   ├── FileGrid.tsx             # 파일 그리드 (메인 컴포넌트, 리팩토링됨)
+│   ├── FileCard.tsx             # 파일 카드 컴포넌트
+│   ├── FileDeleteDialog.tsx     # 파일 삭제 확인 다이얼로그
+│   ├── FileEditDialog.tsx       # 파일 정보 수정 다이얼로그
+│   ├── FileDetailDialog.tsx     # 파일 상세 정보 다이얼로그
+│   ├── ImageViewer.tsx          # 이미지 전체화면 뷰어
+│   ├── ImageRegenerationDialog.tsx  # 이미지 재생성 스타일 선택 다이얼로그
+│   └── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
 │
 ├── lib/                          # 유틸리티 및 라이브러리
 │   ├── api/                     # API 함수들
@@ -38,10 +45,24 @@ thegrim-CMS/
 │   │   ├── episodes.ts          # 회차 관련 API
 │   │   ├── cuts.ts              # 컷 관련 API
 │   │   ├── processes.ts         # 공정 관련 API
-│   │   └── files.ts             # 파일 관련 API
+│   │   ├── files.ts             # 파일 관련 API
+│   │   ├── auth.ts              # 인증 관련 API
+│   │   └── admin.ts             # 관리자 유틸리티
+│   │
+│   ├── constants/               # 상수 정의
+│   │   └── imageRegeneration.ts # 이미지 재생성 관련 상수
+│   │
+│   ├── hooks/                   # 커스텀 훅
+│   │   ├── useAuth.ts           # 인증 상태 관리 훅
+│   │   ├── useFileGrid.ts       # 파일 그리드 로직 훅
+│   │   ├── useImageRegeneration.ts  # 이미지 재생성 로직 훅
+│   │   └── useImageViewer.ts    # 이미지 뷰어 로직 훅
 │   │
 │   ├── store/                   # 상태 관리
 │   │   └── useStore.ts          # Zustand 스토어
+│   │
+│   ├── utils/                   # 유틸리티 함수
+│   │   └── permissions.ts       # 권한 체크 유틸리티
 │   │
 │   ├── supabase.ts              # Supabase 클라이언트 및 타입
 │   └── utils.ts                 # 유틸리티 함수
@@ -120,7 +141,36 @@ thegrim-CMS/
 **FileGrid.tsx**
 - 선택한 컷의 파일을 공정별로 그룹화하여 표시
 - 이미지 미리보기
-- 파일 다운로드/삭제 버튼 (향후 구현)
+- 파일 다운로드/삭제/수정 기능
+- AI 이미지 분석 및 재생성 기능
+- **리팩토링됨**: 여러 작은 컴포넌트와 커스텀 훅으로 분리 (1842줄 → 488줄)
+
+**FileCard.tsx**
+- 개별 파일 카드 컴포넌트
+- 썸네일 표시, 메타데이터 표시
+- 다운로드/분석/수정/삭제 버튼
+
+**FileDeleteDialog.tsx**
+- 파일 삭제 확인 다이얼로그
+
+**FileEditDialog.tsx**
+- 파일 정보 수정 다이얼로그
+
+**FileDetailDialog.tsx**
+- 파일 상세 정보 다이얼로그
+- 파일 미리보기, 기본 정보, 메타데이터 표시
+- 재생성된 이미지 관리
+
+**ImageViewer.tsx**
+- 이미지 전체화면 뷰어
+- 줌 인/아웃, 드래그, 모바일 핀치 줌 지원
+
+**ImageRegenerationDialog.tsx**
+- 이미지 재생성 스타일 선택 다이얼로그
+
+**ProcessFileSection.tsx**
+- 공정별 파일 섹션 컴포넌트
+- 드래그 앤 드롭 업로드 지원
 
 **SearchResults.tsx**
 - 검색 결과 표시
@@ -167,6 +217,9 @@ thegrim-CMS/
 - \`updateFile(id, data)\`: 파일 정보 수정
 - \`deleteFile(id)\`: 파일 삭제 (Storage + DB)
 - \`uploadFile(file, cutId, processId, description)\`: 파일 업로드
+- \`analyzeImage(fileId)\`: 이미지 메타데이터 자동 생성
+- \`generateThumbnail(fileId)\`: 썸네일 생성
+- \`getThumbnailUrl(file)\`: 썸네일 URL 가져오기 (없으면 생성)
 
 ### 상태 관리 (\`lib/store/\`)
 
@@ -176,6 +229,37 @@ thegrim-CMS/
 - 뷰 모드 (웹툰별/공정별)
 - 검색 쿼리 및 결과
 - 캐시된 데이터 (웹툰 목록, 공정 목록)
+- 사용자 프로필 및 권한 정보
+
+### 커스텀 훅 (\`lib/hooks/\`)
+
+**useAuth.ts**
+- 인증 상태 관리
+- 세션 자동 감지 및 관리
+- 로그인/로그아웃 처리
+
+**useFileGrid.ts**
+- 파일 그리드 관련 상태 및 로직
+- 파일 목록 로드, 썸네일 URL 관리
+- 이미지 에러 처리, 공정별 파일 필터링
+
+**useImageRegeneration.ts**
+- 이미지 재생성 관련 상태 및 로직
+- 재생성 API 호출, 재생성된 이미지 관리
+- 선택된 이미지 관리, 재생성된 이미지 저장
+
+**useImageViewer.ts**
+- 이미지 뷰어 관련 상태 및 로직
+- 이미지 줌 관리 (25% ~ 400%)
+- 이미지 위치 관리 (드래그)
+- 터치 이벤트 처리 (핀치 줌, 드래그)
+
+### 상수 정의 (\`lib/constants/\`)
+
+**imageRegeneration.ts**
+- 이미지 재생성 관련 상수
+- 스타일 옵션, 베르세르크 키워드
+- 프롬프트 변형 생성 함수
 
 ### Supabase 연동 (\`lib/supabase.ts\`)
 
