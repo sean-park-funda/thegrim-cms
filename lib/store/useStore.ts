@@ -10,6 +10,12 @@ interface AppState {
   selectedCut: Cut | null;
   selectedProcess: Process | null;
 
+  // URL 동기화를 위한 대기 ID
+  pendingWebtoonId: string | null;
+  pendingEpisodeId: string | null;
+  pendingCutId: string | null;
+  pendingProcessId: string | null;
+
   // 데이터
   webtoons: Webtoon[];
   processes: Process[];
@@ -32,6 +38,10 @@ interface AppState {
   setSelectedEpisode: (episode: Episode | null) => void;
   setSelectedCut: (cut: Cut | null) => void;
   setSelectedProcess: (process: Process | null) => void;
+  setPendingWebtoonId: (id: string | null) => void;
+  setPendingEpisodeId: (id: string | null) => void;
+  setPendingCutId: (id: string | null) => void;
+  setPendingProcessId: (id: string | null) => void;
   setWebtoons: (webtoons: Webtoon[]) => void;
   setProcesses: (processes: Process[]) => void;
   setViewMode: (mode: 'webtoon' | 'process') => void;
@@ -50,6 +60,10 @@ export const useStore = create<AppState>((set) => ({
   selectedEpisode: null,
   selectedCut: null,
   selectedProcess: null,
+  pendingWebtoonId: null,
+  pendingEpisodeId: null,
+  pendingCutId: null,
+  pendingProcessId: null,
   webtoons: [],
   processes: [],
   viewMode: 'webtoon',
@@ -61,10 +75,32 @@ export const useStore = create<AppState>((set) => ({
   isLoading: true,
 
   // Actions
-  setSelectedWebtoon: (webtoon) => set({ selectedWebtoon: webtoon, selectedEpisode: null, selectedCut: null }),
-  setSelectedEpisode: (episode) => set({ selectedEpisode: episode, selectedCut: null }),
-  setSelectedCut: (cut) => set({ selectedCut: cut }),
-  setSelectedProcess: (process) => set({ selectedProcess: process }),
+  setSelectedWebtoon: (webtoon) => set({
+    selectedWebtoon: webtoon,
+    selectedEpisode: null,
+    selectedCut: null,
+    pendingWebtoonId: null,
+    pendingEpisodeId: null,
+    pendingCutId: null,
+  }),
+  setSelectedEpisode: (episode) => set({
+    selectedEpisode: episode,
+    selectedCut: null,
+    pendingEpisodeId: null,
+    pendingCutId: null,
+  }),
+  setSelectedCut: (cut) => set({
+    selectedCut: cut,
+    pendingCutId: null,
+  }),
+  setSelectedProcess: (process) => set({
+    selectedProcess: process,
+    pendingProcessId: null,
+  }),
+  setPendingWebtoonId: (id) => set({ pendingWebtoonId: id }),
+  setPendingEpisodeId: (id) => set({ pendingEpisodeId: id }),
+  setPendingCutId: (id) => set({ pendingCutId: id }),
+  setPendingProcessId: (id) => set({ pendingProcessId: id }),
   setWebtoons: (webtoons) => set({ webtoons }),
   setProcesses: (processes) => set({ processes }),
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -79,6 +115,10 @@ export const useStore = create<AppState>((set) => ({
     selectedEpisode: null,
     selectedCut: null,
     selectedProcess: null,
+    pendingWebtoonId: null,
+    pendingEpisodeId: null,
+    pendingCutId: null,
+    pendingProcessId: null,
     searchQuery: '',
     activeSearchQuery: '',
     searchResults: [],
