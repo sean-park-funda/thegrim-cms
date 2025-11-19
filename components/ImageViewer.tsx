@@ -97,9 +97,89 @@ export function ImageViewer({
     setIsDragging(false);
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (imageZoom > 100 && e.touches.length === 1) {
+      // touch-action: none이 이미 설정되어 있어서 preventDefault 불필요
+      // e.preventDefault(); // passive 이벤트 리스너에서는 호출 불가
+      const touch = e.touches[0];
+      setDragStart({
+        x: touch.clientX - imagePosition.x,
+        y: touch.clientY - imagePosition.y,
+      });
+      setIsDragging(true);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ImageViewer] Touch drag started', { 
+          zoom: imageZoom,
+          touchPos: { x: touch.clientX, y: touch.clientY }
+        });
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isDragging && imageZoom > 100 && e.touches.length === 1) {
+      // touch-action: none이 이미 설정되어 있어서 preventDefault 불필요
+      // e.preventDefault(); // passive 이벤트 리스너에서는 호출 불가
+      const container = imageViewerRef.current;
+      if (!container) return;
+
+      const touch = e.touches[0];
+      const newX = touch.clientX - dragStart.x;
+      const newY = touch.clientY - dragStart.y;
+
+      const containerRect = container.getBoundingClientRect();
+      const imgElement = container.querySelector('img');
+      if (imgElement) {
+        const imgRect = imgElement.getBoundingClientRect();
+        const scaledWidth = imgRect.width;
+        const scaledHeight = imgRect.height;
+
+        let finalX = newX;
+        let finalY = newY;
+
+        if (scaledWidth > containerRect.width) {
+          const maxX = (scaledWidth - containerRect.width) / 2;
+          const minX = -maxX;
+          finalX = Math.max(minX, Math.min(maxX, newX));
+        } else {
+          finalX = 0;
+        }
+
+        if (scaledHeight > containerRect.height) {
+          const maxY = (scaledHeight - containerRect.height) / 2;
+          const minY = -maxY;
+          finalY = Math.max(minY, Math.min(maxY, newY));
+        } else {
+          finalY = 0;
+        }
+
+        setImagePosition({ x: finalX, y: finalY });
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ImageViewer] Touch drag move', { 
+            position: { x: finalX, y: finalY },
+            zoom: imageZoom
+          });
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ImageViewer] Touch drag ended');
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[100vw] !w-[100vw] !h-[100vh] !max-h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 !p-0 !border-0 !bg-black/95">
+      <DialogContent 
+        className="!max-w-[100vw] !w-[100vw] !h-[100vh] !max-h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 !p-0 !border-0 !bg-black/95"
+        style={{ touchAction: 'none' }}
+      >
         <DialogTitle className="sr-only">이미지 전체화면 보기: {imageName}</DialogTitle>
         <div className="relative w-full h-full flex items-center justify-center">
           {/* 닫기 버튼 */}
@@ -143,10 +223,14 @@ export function ImageViewer({
           <div
             ref={imageViewerRef}
             className="relative w-full h-full overflow-hidden cursor-move"
+            style={{ touchAction: 'none' }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
             <div
               className="absolute inset-0 flex items-center justify-center"
@@ -154,6 +238,7 @@ export function ImageViewer({
                 transform: `translate(${imagePosition.x}px, ${imagePosition.y}px) scale(${imageZoom / 100})`,
                 transformOrigin: 'center center',
                 transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                touchAction: 'none',
               }}
             >
               <Image
