@@ -387,6 +387,57 @@ export async function analyzeImage(fileId: string, retryCount = 0): Promise<File
   return updatedFile;
 }
 
+// 썸네일 생성
+export async function generateThumbnail(fileId: string): Promise<string> {
+  console.log(`[클라이언트] 썸네일 생성 시작 (fileId: ${fileId})`);
+
+  const response = await fetch('/api/generate-thumbnail', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fileId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.error || '썸네일 생성에 실패했습니다.';
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  console.log('[클라이언트] 썸네일 생성 완료:', data.thumbnailUrl);
+  return data.thumbnailUrl;
+}
+
+// 썸네일 URL 가져오기 (없으면 생성)
+export async function getThumbnailUrl(file: File): Promise<string> {
+  // 썸네일이 이미 있으면 반환
+  if (file.thumbnail_path) {
+    const { data: thumbnailUrlData } = supabase.storage
+      .from('webtoon-files')
+      .getPublicUrl(file.thumbnail_path);
+    return thumbnailUrlData.publicUrl;
+  }
+
+  // 이미지 파일이 아니면 원본 URL 반환
+  if (file.file_type !== 'image') {
+    return file.file_path;
+  }
+
+  // 썸네일이 없으면 생성 시도
+  try {
+    const thumbnailUrl = await generateThumbnail(file.id);
+    return thumbnailUrl;
+  } catch (error) {
+    console.error('[클라이언트] 썸네일 생성 실패, 원본 사용:', error);
+    // 생성 실패 시 원본 URL 반환 (Graceful degradation)
+    return file.file_path;
+  }
+}
+
 // 파일 업로드
 export async function uploadFile(
   file: globalThis.File,
@@ -425,11 +476,18 @@ export async function uploadFile(
     metadata: {}
   });
 
-  // 이미지 파일인 경우 자동 분석 (비동기 처리)
+  // 이미지 파일인 경우 자동 분석 및 썸네일 생성 (비동기 처리)
   if (createdFile.file_type === 'image') {
+    // 이미지 분석 (기존 로직)
     analyzeImage(createdFile.id).catch((error) => {
       console.error('이미지 자동 분석 실패:', error);
       // 분석 실패해도 파일 업로드는 성공 처리
+    });
+
+    // 썸네일 생성 (비동기 처리)
+    generateThumbnail(createdFile.id).catch((error) => {
+      console.error('썸네일 자동 생성 실패:', error);
+      // 썸네일 생성 실패해도 파일 업로드는 성공 처리
     });
   }
 

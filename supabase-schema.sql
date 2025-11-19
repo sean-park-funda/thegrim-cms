@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS files (
   file_name VARCHAR(255) NOT NULL,
   file_path TEXT NOT NULL,
   storage_path TEXT NOT NULL,
+  thumbnail_path TEXT,
   file_size BIGINT,
   file_type VARCHAR(100),
   mime_type VARCHAR(100),

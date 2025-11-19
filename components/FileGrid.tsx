@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store/useStore';
-import { getFilesByCut, uploadFile, deleteFile, updateFile, analyzeImage } from '@/lib/api/files';
+import { getFilesByCut, uploadFile, deleteFile, updateFile, analyzeImage, getThumbnailUrl } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ export function FileGrid() {
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<FileType[]>([]);
   const [loading, setLoading] = useState(false);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, Record<string, number>>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -52,6 +53,7 @@ export function FileGrid() {
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [pinchStart, setPinchStart] = useState<{ distance: number; zoom: number } | null>(null);
   const [isPinching, setIsPinching] = useState(false);
+  const imageViewerRef = useRef<HTMLDivElement>(null);
 
   // 스타일 옵션 정의
   const styleOptions = [
@@ -149,6 +151,27 @@ export function FileGrid() {
       setImageErrors(new Set()); // 파일 로드 시 이미지 에러 상태 초기화
       const data = await getFilesByCut(selectedCut.id);
       setFiles(data);
+
+      // 이미지 파일들의 썸네일 URL 가져오기 (비동기)
+      const imageFiles = data.filter(f => f.file_type === 'image');
+      const thumbnailUrlPromises = imageFiles.map(async (file) => {
+        try {
+          const thumbnailUrl = await getThumbnailUrl(file);
+          return { fileId: file.id, thumbnailUrl };
+        } catch (error) {
+          console.error(`썸네일 URL 가져오기 실패 (${file.id}):`, error);
+          return null;
+        }
+      });
+
+      const thumbnailResults = await Promise.all(thumbnailUrlPromises);
+      const thumbnailUrlMap: Record<string, string> = {};
+      thumbnailResults.forEach((result) => {
+        if (result) {
+          thumbnailUrlMap[result.fileId] = result.thumbnailUrl;
+        }
+      });
+      setThumbnailUrls(thumbnailUrlMap);
     } catch (error) {
       console.error('파일 목록 로드 실패:', error);
       setImageErrors(new Set());
@@ -166,6 +189,7 @@ export function FileGrid() {
       loadFiles();
     } else {
       setFiles([]);
+      setThumbnailUrls({});
     }
     // 컷이 변경되면 대기 목록 초기화
     setPendingAnalysisFiles(new Set());
@@ -179,6 +203,140 @@ export function FileGrid() {
       });
     };
   }, [regeneratedImages]);
+
+  // 이미지 뷰어 터치 이벤트 핸들러 (non-passive)
+  useEffect(() => {
+    const container = imageViewerRef.current;
+    if (!container || !imageViewerOpen) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const touches = e.touches;
+      
+      if (touches.length === 1) {
+        // 한 손가락: 드래그 시작
+        if (imageZoom > 100) {
+          const touch = touches[0];
+          setTouchStart({
+            x: touch.clientX - imagePosition.x,
+            y: touch.clientY - imagePosition.y
+          });
+          setIsDragging(true);
+        }
+      } else if (touches.length === 2) {
+        // 두 손가락: 핀치 줌 시작
+        const touch1 = touches[0];
+        const touch2 = touches[1];
+        const distance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+        setPinchStart({
+          distance,
+          zoom: imageZoom
+        });
+        setIsPinching(true);
+        setIsDragging(false);
+        setTouchStart(null);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touches = e.touches;
+      
+      if (touches.length === 1 && touchStart && imageZoom > 100 && !isPinching) {
+        // 한 손가락: 드래그
+        const touch = touches[0];
+        const newX = touch.clientX - touchStart.x;
+        const newY = touch.clientY - touchStart.y;
+        
+        // 이미지 크기와 컨테이너 크기를 고려한 제한
+        const containerRect = container.getBoundingClientRect();
+        const imgElement = container.querySelector('img');
+        if (imgElement) {
+          const imgRect = imgElement.getBoundingClientRect();
+          const scaledWidth = imgRect.width;
+          const scaledHeight = imgRect.height;
+          
+          let finalX = newX;
+          let finalY = newY;
+          
+          // 이미지가 컨테이너보다 크면 드래그 가능
+          if (scaledWidth > containerRect.width) {
+            const maxX = (scaledWidth - containerRect.width) / 2;
+            const minX = -maxX;
+            finalX = Math.max(minX, Math.min(maxX, newX));
+          } else {
+            finalX = 0;
+          }
+          
+          if (scaledHeight > containerRect.height) {
+            const maxY = (scaledHeight - containerRect.height) / 2;
+            const minY = -maxY;
+            finalY = Math.max(minY, Math.min(maxY, newY));
+          } else {
+            finalY = 0;
+          }
+          
+          setImagePosition({ x: finalX, y: finalY });
+        }
+      } else if (touches.length === 2 && pinchStart) {
+        // 두 손가락: 핀치 줌
+        const touch1 = touches[0];
+        const touch2 = touches[1];
+        const distance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+        
+        const zoomChange = distance / pinchStart.distance;
+        const newZoom = Math.max(25, Math.min(400, pinchStart.zoom * zoomChange));
+        setImageZoom(newZoom);
+        
+        // 줌이 100% 이하로 내려가면 위치 초기화
+        if (newZoom <= 100) {
+          setImagePosition({ x: 0, y: 0 });
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      const touches = e.touches;
+      
+      if (touches.length === 0) {
+        // 모든 손가락이 떼어짐
+        setIsDragging(false);
+        setIsPinching(false);
+        setTouchStart(null);
+        setPinchStart(null);
+      } else if (touches.length === 1 && isPinching) {
+        // 핀치 줌 중 한 손가락만 남음 -> 드래그로 전환
+        setIsPinching(false);
+        setPinchStart(null);
+        const touch = touches[0];
+        setTouchStart({
+          x: touch.clientX - imagePosition.x,
+          y: touch.clientY - imagePosition.y
+        });
+        if (imageZoom > 100) {
+          setIsDragging(true);
+        }
+      }
+    };
+
+    // non-passive 이벤트 리스너 등록
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [imageViewerOpen, imageZoom, imagePosition, touchStart, pinchStart, isPinching]);
 
   // 메타데이터가 없는 이미지 파일들에 대해 주기적으로 폴링
   useEffect(() => {
@@ -596,12 +754,14 @@ export function FileGrid() {
     const hasError = imageErrors.has(file.id);
 
     if (isImage && !hasError) {
-      // 이미지 URL이 절대 URL인지 확인하고, 상대 경로인 경우 처리
-      const imageUrl = file.file_path?.startsWith('http') 
+      // 썸네일 URL 우선 사용, 없으면 원본 URL 사용
+      const thumbnailUrl = thumbnailUrls[file.id];
+      const fallbackUrl = file.file_path?.startsWith('http') 
         ? file.file_path 
         : file.file_path?.startsWith('/') 
           ? file.file_path 
           : `https://${file.file_path}`;
+      const imageUrl = thumbnailUrl || fallbackUrl;
 
       return (
         <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
@@ -614,7 +774,17 @@ export function FileGrid() {
             unoptimized={true}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
-              setImageErrors(prev => new Set(prev).add(file.id));
+              // 썸네일 로딩 실패 시 원본으로 fallback
+              if (thumbnailUrl && imageUrl === thumbnailUrl) {
+                const originalUrl = file.file_path?.startsWith('http') 
+                  ? file.file_path 
+                  : file.file_path?.startsWith('/') 
+                    ? file.file_path 
+                    : `https://${file.file_path}`;
+                setThumbnailUrls(prev => ({ ...prev, [file.id]: originalUrl }));
+              } else {
+                setImageErrors(prev => new Set(prev).add(file.id));
+              }
             }}
           />
         </div>
@@ -1487,6 +1657,7 @@ export function FileGrid() {
 
               {/* 이미지 */}
               <div 
+                ref={imageViewerRef}
                 className="flex items-center justify-center w-full h-full p-4 overflow-hidden touch-none"
                 onMouseDown={(e) => {
                   if (imageZoom > 100 && !isPinching) {
@@ -1542,121 +1713,6 @@ export function FileGrid() {
                 }}
                 onMouseLeave={() => {
                   setIsDragging(false);
-                }}
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  const touches = e.touches;
-                  
-                  if (touches.length === 1) {
-                    // 한 손가락: 드래그 시작
-                    if (imageZoom > 100) {
-                      const touch = touches[0];
-                      setTouchStart({
-                        x: touch.clientX - imagePosition.x,
-                        y: touch.clientY - imagePosition.y
-                      });
-                      setIsDragging(true);
-                    }
-                  } else if (touches.length === 2) {
-                    // 두 손가락: 핀치 줌 시작
-                    const touch1 = touches[0];
-                    const touch2 = touches[1];
-                    const distance = Math.hypot(
-                      touch2.clientX - touch1.clientX,
-                      touch2.clientY - touch1.clientY
-                    );
-                    setPinchStart({
-                      distance,
-                      zoom: imageZoom
-                    });
-                    setIsPinching(true);
-                    setIsDragging(false);
-                    setTouchStart(null);
-                  }
-                }}
-                onTouchMove={(e) => {
-                  e.preventDefault();
-                  const touches = e.touches;
-                  
-                  if (touches.length === 1 && touchStart && imageZoom > 100 && !isPinching) {
-                    // 한 손가락: 드래그
-                    const touch = touches[0];
-                    const newX = touch.clientX - touchStart.x;
-                    const newY = touch.clientY - touchStart.y;
-                    
-                    // 이미지 크기와 컨테이너 크기를 고려한 제한
-                    const container = e.currentTarget;
-                    const containerRect = container.getBoundingClientRect();
-                    const imgElement = container.querySelector('img');
-                    if (imgElement) {
-                      const imgRect = imgElement.getBoundingClientRect();
-                      const scaledWidth = imgRect.width;
-                      const scaledHeight = imgRect.height;
-                      
-                      let finalX = newX;
-                      let finalY = newY;
-                      
-                      // 이미지가 컨테이너보다 크면 드래그 가능
-                      if (scaledWidth > containerRect.width) {
-                        const maxX = (scaledWidth - containerRect.width) / 2;
-                        const minX = -maxX;
-                        finalX = Math.max(minX, Math.min(maxX, newX));
-                      } else {
-                        finalX = 0;
-                      }
-                      
-                      if (scaledHeight > containerRect.height) {
-                        const maxY = (scaledHeight - containerRect.height) / 2;
-                        const minY = -maxY;
-                        finalY = Math.max(minY, Math.min(maxY, newY));
-                      } else {
-                        finalY = 0;
-                      }
-                      
-                      setImagePosition({ x: finalX, y: finalY });
-                    }
-                  } else if (touches.length === 2 && pinchStart) {
-                    // 두 손가락: 핀치 줌
-                    const touch1 = touches[0];
-                    const touch2 = touches[1];
-                    const distance = Math.hypot(
-                      touch2.clientX - touch1.clientX,
-                      touch2.clientY - touch1.clientY
-                    );
-                    
-                    const zoomChange = distance / pinchStart.distance;
-                    const newZoom = Math.max(25, Math.min(400, pinchStart.zoom * zoomChange));
-                    setImageZoom(newZoom);
-                    
-                    // 줌이 100% 이하로 내려가면 위치 초기화
-                    if (newZoom <= 100) {
-                      setImagePosition({ x: 0, y: 0 });
-                    }
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  const touches = e.touches;
-                  
-                  if (touches.length === 0) {
-                    // 모든 손가락이 떼어짐
-                    setIsDragging(false);
-                    setIsPinching(false);
-                    setTouchStart(null);
-                    setPinchStart(null);
-                  } else if (touches.length === 1 && isPinching) {
-                    // 핀치 줌 중 한 손가락만 남음 -> 드래그로 전환
-                    setIsPinching(false);
-                    setPinchStart(null);
-                    const touch = touches[0];
-                    setTouchStart({
-                      x: touch.clientX - imagePosition.x,
-                      y: touch.clientY - imagePosition.y
-                    });
-                    if (imageZoom > 100) {
-                      setIsDragging(true);
-                    }
-                  }
                 }}
                 style={{
                   cursor: imageZoom > 100 && !isPinching ? (isDragging ? 'grabbing' : 'grab') : 'default'

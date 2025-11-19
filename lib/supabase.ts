@@ -63,6 +63,7 @@ export interface File {
   file_name: string;
   file_path: string;
   storage_path: string;
+  thumbnail_path?: string | null;
   file_size?: number;
   file_type?: string;
   mime_type?: string;
