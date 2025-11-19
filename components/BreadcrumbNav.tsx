@@ -13,8 +13,8 @@ export function BreadcrumbNav() {
   }
 
   // 맨 하위 단계 판단: 컷 > 회차 > 웹툰 순서
-  const isWebtoonLowest = selectedWebtoon && !selectedEpisode && !selectedCut;
-  const isEpisodeLowest = selectedEpisode && !selectedCut;
+  const isWebtoonLowest = !!(selectedWebtoon && !selectedEpisode && !selectedCut);
+  const isEpisodeLowest = !!(selectedEpisode && !selectedCut);
   const isCutLowest = !!selectedCut;
 
   const handleHomeClick = () => {
