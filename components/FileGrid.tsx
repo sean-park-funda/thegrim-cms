@@ -1455,7 +1455,7 @@ export function FileGrid() {
                 >
                   <ZoomOut className="h-4 w-4" />
                 </Button>
-                <span className="text-white text-sm min-w-[60px] text-center">{imageZoom}%</span>
+                <span className="text-white text-sm min-w-[60px] text-center">{Math.round(imageZoom)}%</span>
                 <Button
                   variant="ghost"
                   size="icon"
