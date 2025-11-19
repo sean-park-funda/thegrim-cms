@@ -15,7 +15,7 @@ import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
 export function EpisodeList() {
-  const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile } = useStore();
+  const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile, pendingEpisodeId, setPendingEpisodeId } = useStore();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -117,6 +117,15 @@ export function EpisodeList() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingEpisodeId || episodes.length === 0) return;
+    const match = episodes.find((episode) => episode.id === pendingEpisodeId);
+    if (match) {
+      setSelectedEpisode(match);
+      setPendingEpisodeId(null);
+    }
+  }, [episodes, pendingEpisodeId, setPendingEpisodeId, setSelectedEpisode]);
 
   if (!selectedWebtoon) {
     return (

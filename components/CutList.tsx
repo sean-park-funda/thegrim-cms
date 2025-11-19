@@ -13,7 +13,7 @@ import { Cut } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
 export function CutList() {
-  const { selectedEpisode, selectedCut, setSelectedCut, profile } = useStore();
+  const { selectedEpisode, selectedCut, setSelectedCut, profile, pendingCutId, setPendingCutId } = useStore();
   const [cuts, setCuts] = useState<Cut[]>([]);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -110,6 +110,15 @@ export function CutList() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingCutId || cuts.length === 0) return;
+    const match = cuts.find((cut) => cut.id === pendingCutId);
+    if (match) {
+      setSelectedCut(match);
+      setPendingCutId(null);
+    }
+  }, [cuts, pendingCutId, setPendingCutId, setSelectedCut]);
 
   if (!selectedEpisode) {
     return (

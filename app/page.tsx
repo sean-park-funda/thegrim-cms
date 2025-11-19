@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -8,11 +8,13 @@ import { Navigation } from '@/components/Navigation';
 import { WebtoonView } from '@/components/WebtoonView';
 import { ProcessView } from '@/components/ProcessView';
 import { SearchResults } from '@/components/SearchResults';
+import { useAppHistorySync } from '@/lib/hooks/useAppHistorySync';
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const { viewMode, activeSearchQuery, isLoading, user } = useStore();
   useAuth();
+  useAppHistorySync();
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -47,5 +49,19 @@ export default function Home() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen bg-background">
+          <div className="text-muted-foreground text-sm">로딩 중...</div>
+        </div>
+      }
+    >
+      <HomeContent />
+    </Suspense>
   );
 }
