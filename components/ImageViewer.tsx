@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, RefreshCw, X } from 'lucide-react';
@@ -31,6 +32,9 @@ export function ImageViewer({
     setImagePosition,
     setIsDragging,
   } = useImageViewer({ enabled: open });
+
+  // 핀치 줌을 위한 ref
+  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
 
   const handleZoomIn = () => {
     setImageZoom(prev => Math.min(400, prev + 25));
@@ -98,15 +102,35 @@ export function ImageViewer({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (imageZoom > 100 && e.touches.length === 1) {
-      // touch-action: none이 이미 설정되어 있어서 preventDefault 불필요
-      // e.preventDefault(); // passive 이벤트 리스너에서는 호출 불가
+    if (e.touches.length === 2) {
+      // 두 손가락: 핀치 줌 시작
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      pinchStartRef.current = {
+        distance,
+        zoom: imageZoom
+      };
+      setIsDragging(false);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ImageViewer] Pinch zoom started', { 
+          distance,
+          zoom: imageZoom
+        });
+      }
+    } else if (imageZoom > 100 && e.touches.length === 1) {
+      // 한 손가락: 드래그 시작 (확대 상태에서만)
       const touch = e.touches[0];
       setDragStart({
         x: touch.clientX - imagePosition.x,
         y: touch.clientY - imagePosition.y,
       });
       setIsDragging(true);
+      pinchStartRef.current = null;
       
       if (process.env.NODE_ENV === 'development') {
         console.log('[ImageViewer] Touch drag started', { 
@@ -118,9 +142,33 @@ export function ImageViewer({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (isDragging && imageZoom > 100 && e.touches.length === 1) {
-      // touch-action: none이 이미 설정되어 있어서 preventDefault 불필요
-      // e.preventDefault(); // passive 이벤트 리스너에서는 호출 불가
+    if (e.touches.length === 2 && pinchStartRef.current) {
+      // 두 손가락: 핀치 줌
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      
+      const zoomChange = distance / pinchStartRef.current.distance;
+      const newZoom = Math.max(25, Math.min(400, pinchStartRef.current.zoom * zoomChange));
+      setImageZoom(newZoom);
+      
+      // 줌이 100% 이하로 내려가면 위치 초기화
+      if (newZoom <= 100) {
+        setImagePosition({ x: 0, y: 0 });
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ImageViewer] Pinch zoom move', { 
+          distance,
+          zoom: newZoom,
+          zoomChange
+        });
+      }
+    } else if (isDragging && imageZoom > 100 && e.touches.length === 1) {
+      // 한 손가락: 드래그 (확대 상태에서만)
       const container = imageViewerRef.current;
       if (!container) return;
 
@@ -163,14 +211,53 @@ export function ImageViewer({
           });
         }
       }
+    } else if (e.touches.length === 2 && !pinchStartRef.current) {
+      // 핀치 줌이 아직 시작되지 않았지만 두 손가락이 감지된 경우 (즉시 시작)
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      pinchStartRef.current = {
+        distance,
+        zoom: imageZoom
+      };
+      setIsDragging(false);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ImageViewer] Pinch zoom started in move', { 
+          distance,
+          zoom: imageZoom
+        });
+      }
     }
   };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[ImageViewer] Touch drag ended');
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length === 0) {
+      // 모든 손가락이 떼어짐
+      setIsDragging(false);
+      pinchStartRef.current = null;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ImageViewer] Touch ended');
+      }
+    } else if (e.touches.length === 1 && pinchStartRef.current) {
+      // 핀치 줌 중 한 손가락만 남음 -> 드래그로 전환 (확대 상태에서만)
+      pinchStartRef.current = null;
+      if (imageZoom > 100) {
+        const touch = e.touches[0];
+        setDragStart({
+          x: touch.clientX - imagePosition.x,
+          y: touch.clientY - imagePosition.y,
+        });
+        setIsDragging(true);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ImageViewer] Pinch to drag transition', { zoom: imageZoom });
+        }
+      }
     }
   };
 
