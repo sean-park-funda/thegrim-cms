@@ -46,6 +46,9 @@ export function FileGrid() {
   const [imageZoom, setImageZoom] = useState(100);
   const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
   const [viewingImageName, setViewingImageName] = useState<string>('');
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // 스타일 옵션 정의
   const styleOptions = [
@@ -1397,6 +1400,8 @@ export function FileGrid() {
           setImageViewerOpen(open);
           if (!open) {
             setImageZoom(100); // 닫을 때 줌 초기화
+            setImagePosition({ x: 0, y: 0 }); // 위치 초기화
+            setIsDragging(false);
             setViewingImageUrl(null);
             setViewingImageName('');
           }
@@ -1412,6 +1417,8 @@ export function FileGrid() {
                 onClick={() => {
                   setImageViewerOpen(false);
                   setImageZoom(100);
+                  setImagePosition({ x: 0, y: 0 });
+                  setIsDragging(false);
                   setViewingImageUrl(null);
                   setViewingImageName('');
                 }}
@@ -1429,7 +1436,11 @@ export function FileGrid() {
                     const zoomSteps = [25, 50, 75, 100, 125, 150, 200, 300, 400];
                     const currentIndex = zoomSteps.findIndex(step => step >= imageZoom);
                     const newIndex = Math.max(0, currentIndex - 1);
-                    setImageZoom(zoomSteps[newIndex] || 100);
+                    const newZoom = zoomSteps[newIndex] || 100;
+                    setImageZoom(newZoom);
+                    if (newZoom <= 100) {
+                      setImagePosition({ x: 0, y: 0 });
+                    }
                   }}
                   disabled={imageZoom <= 25}
                 >
@@ -1454,25 +1465,90 @@ export function FileGrid() {
                   variant="ghost"
                   size="sm"
                   className="text-white hover:bg-white/20 ml-2"
-                  onClick={() => setImageZoom(100)}
+                  onClick={() => {
+                    setImageZoom(100);
+                    setImagePosition({ x: 0, y: 0 });
+                  }}
                 >
                   리셋
                 </Button>
               </div>
 
               {/* 이미지 */}
-              <div className="flex items-center justify-center w-full h-full p-4 overflow-auto">
+              <div 
+                className="flex items-center justify-center w-full h-full p-4 overflow-hidden"
+                onMouseDown={(e) => {
+                  if (imageZoom > 100) {
+                    e.preventDefault();
+                    setIsDragging(true);
+                    setDragStart({
+                      x: e.clientX - imagePosition.x,
+                      y: e.clientY - imagePosition.y
+                    });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (isDragging && imageZoom > 100) {
+                    e.preventDefault();
+                    const newX = e.clientX - dragStart.x;
+                    const newY = e.clientY - dragStart.y;
+                    
+                    // 이미지 크기와 컨테이너 크기를 고려한 제한
+                    const container = e.currentTarget;
+                    const containerRect = container.getBoundingClientRect();
+                    const imgElement = container.querySelector('img');
+                    if (imgElement) {
+                      const imgRect = imgElement.getBoundingClientRect();
+                      const scaledWidth = imgRect.width;
+                      const scaledHeight = imgRect.height;
+                      
+                      let finalX = newX;
+                      let finalY = newY;
+                      
+                      // 이미지가 컨테이너보다 크면 드래그 가능
+                      if (scaledWidth > containerRect.width) {
+                        const maxX = (scaledWidth - containerRect.width) / 2;
+                        const minX = -maxX;
+                        finalX = Math.max(minX, Math.min(maxX, newX));
+                      } else {
+                        finalX = 0;
+                      }
+                      
+                      if (scaledHeight > containerRect.height) {
+                        const maxY = (scaledHeight - containerRect.height) / 2;
+                        const minY = -maxY;
+                        finalY = Math.max(minY, Math.min(maxY, newY));
+                      } else {
+                        finalY = 0;
+                      }
+                      
+                      setImagePosition({ x: finalX, y: finalY });
+                    }
+                  }
+                }}
+                onMouseUp={() => {
+                  setIsDragging(false);
+                }}
+                onMouseLeave={() => {
+                  setIsDragging(false);
+                }}
+                style={{
+                  cursor: imageZoom > 100 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+                }}
+              >
                 <div
-                  className="relative transition-transform duration-200"
+                  className="relative"
                   style={{
-                    transform: `scale(${imageZoom / 100})`,
+                    transform: `scale(${imageZoom / 100}) translate(${imagePosition.x / (imageZoom / 100)}px, ${imagePosition.y / (imageZoom / 100)}px)`,
                     transformOrigin: 'center center',
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out',
                   }}
                 >
                   <img
                     src={viewingImageUrl || ''}
                     alt={viewingImageName || '이미지'}
-                    className="max-w-[90vw] max-h-[90vh] object-contain"
+                    className="max-w-[90vw] max-h-[90vh] object-contain select-none pointer-events-none"
+                    draggable={false}
                     style={{
                       maxWidth: '90vw',
                       maxHeight: '90vh',
