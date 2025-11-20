@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 
 export function SearchResults() {
-  const { activeSearchQuery, profile, setSearchQuery, setActiveSearchQuery } = useStore();
+  const { selectedWebtoon, activeSearchQuery, profile, setSearchQuery, setActiveSearchQuery } = useStore();
   const [results, setResults] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -280,7 +280,7 @@ export function SearchResults() {
                             {' · '}
                             {file.cut.episode.episode_number}화
                             {' · '}
-                            컷 {file.cut.cut_number}
+                            {(file.cut.episode.webtoon.unit_type || 'cut') === 'cut' ? '컷' : '페이지'} {file.cut.cut_number}
                           </p>
                           {file.process && (
                             <div className="flex items-center gap-2">

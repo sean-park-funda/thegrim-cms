@@ -17,6 +17,9 @@ export function BreadcrumbNav() {
   const isEpisodeLowest = !!(selectedEpisode && !selectedCut);
   const isCutLowest = !!selectedCut;
 
+  const unitType = selectedWebtoon?.unit_type || 'cut';
+  const unitLabel = unitType === 'cut' ? '컷' : '페이지';
+
   const handleHomeClick = () => {
     // 홈 버튼 클릭 시 모든 선택 해제
     setSelectedCut(null);
@@ -100,7 +103,7 @@ export function BreadcrumbNav() {
               className="h-7 px-2 text-background/70 hover:text-background hover:bg-background/10 truncate max-w-[120px] sm:max-w-none transition-colors duration-150 text-xs disabled:opacity-50 disabled:cursor-default disabled:hover:text-background/70 disabled:hover:bg-transparent"
               onClick={isCutLowest ? undefined : handleCutClick}
             >
-              컷 {selectedCut.cut_number}
+              {unitLabel} {selectedCut.cut_number}
             </Button>
           </>
         )}

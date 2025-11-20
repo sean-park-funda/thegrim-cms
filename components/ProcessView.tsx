@@ -38,7 +38,7 @@ import Image from 'next/image';
 import { canManageProcesses } from '@/lib/utils/permissions';
 
 export function ProcessView() {
-  const { processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
+  const { selectedWebtoon, processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [processesLoading, setProcessesLoading] = useState(true);
@@ -561,7 +561,7 @@ export function ProcessView() {
                         {file.cut?.episode?.webtoon && (
                           <div className="text-xs text-muted-foreground space-y-1 mt-2">
                             <p className="truncate">{file.cut.episode.webtoon.title}</p>
-                            <p>{file.cut.episode.episode_number}화 - 컷 {file.cut.cut_number}</p>
+                            <p>{file.cut.episode.episode_number}화 - {(file.cut.episode.webtoon.unit_type || 'cut') === 'cut' ? '컷' : '페이지'} {file.cut.cut_number}</p>
                           </div>
                         )}
                         <div className="flex gap-1.5 sm:gap-2 mt-2" onClick={(e) => e.stopPropagation()}>

@@ -19,6 +19,7 @@ export interface Webtoon {
   description?: string;
   thumbnail_url?: string;
   status: string;
+  unit_type?: 'cut' | 'page';
   created_at: string;
   updated_at: string;
 }

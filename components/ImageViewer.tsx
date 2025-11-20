@@ -261,8 +261,13 @@ export function ImageViewer({
     }
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    // 이미지뷰어의 상태만 변경 (부모 Dialog에 영향 없음)
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent 
         className="!max-w-[100vw] !w-[100vw] !h-[100vh] !max-h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 !p-0 !border-0 !bg-black/95"
         style={{ touchAction: 'none' }}
@@ -274,7 +279,10 @@ export function ImageViewer({
             variant="ghost"
             size="icon"
             className="absolute top-4 right-4 z-50 text-white hover:bg-white/20"
-            onClick={() => onOpenChange(false)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenChange(false);
+            }}
           >
             <X className="h-6 w-6" />
           </Button>

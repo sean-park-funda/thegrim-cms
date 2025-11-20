@@ -2,8 +2,7 @@
 
 import { Process } from '@/lib/supabase';
 import { File as FileType } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Upload, Plus, FileIcon } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
@@ -89,13 +88,6 @@ export function ProcessFileSection({
 
   return (
     <Card>
-      <CardHeader className="p-3 sm:p-6">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: process.color }} />
-          <CardTitle className="text-sm sm:text-base">{process.name}</CardTitle>
-          <Badge variant="outline" className="text-xs">{files.length}개</Badge>
-        </div>
-      </CardHeader>
       <CardContent className="p-3 sm:p-6">
         <ProcessDropzone>
           {(open) => (

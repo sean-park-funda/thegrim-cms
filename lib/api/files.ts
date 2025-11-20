@@ -220,24 +220,39 @@ export async function deleteFile(id: string): Promise<void> {
     .eq('id', id)
     .single();
 
-  if (fetchError) throw fetchError;
+  if (fetchError) {
+    console.error('파일 조회 실패:', fetchError);
+    throw new Error('파일을 찾을 수 없습니다.');
+  }
 
-  // Storage에서 파일 삭제
+  if (!file) {
+    throw new Error('파일을 찾을 수 없습니다.');
+  }
+
+  // Storage에서 파일 삭제 (storage_path가 있는 경우에만)
   if (file.storage_path) {
     const { error: storageError } = await supabase.storage
       .from('webtoon-files')
       .remove([file.storage_path]);
 
-    if (storageError) console.error('Storage deletion error:', storageError);
+    if (storageError) {
+      console.error('Storage 삭제 실패:', storageError);
+      // Storage 삭제 실패 시에도 DB 삭제는 진행 (이미 삭제된 파일이거나 없는 파일일 수 있음)
+      // 하지만 사용자에게 알림은 제공
+      // throw new Error('파일 삭제 중 오류가 발생했습니다. Storage에서 파일을 삭제할 수 없습니다.');
+    }
   }
 
   // DB에서 파일 정보 삭제
-  const { error } = await supabase
+  const { error: dbError } = await supabase
     .from('files')
     .delete()
     .eq('id', id);
 
-  if (error) throw error;
+  if (dbError) {
+    console.error('DB 삭제 실패:', dbError);
+    throw new Error('파일 삭제에 실패했습니다.');
+  }
 }
 
 // 파일명을 URL-safe하게 변환 (Supabase Storage 경로용)

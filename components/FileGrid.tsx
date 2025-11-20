@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store/useStore';
 import { uploadFile, deleteFile, updateFile, analyzeImage, getFilesByCut } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FileIcon } from 'lucide-react';
 import { File as FileType } from '@/lib/supabase';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
@@ -18,7 +19,7 @@ import { ImageRegenerationDialog } from '@/components/ImageRegenerationDialog';
 import { ProcessFileSection } from '@/components/ProcessFileSection';
 
 export function FileGrid() {
-  const { selectedCut, processes, setProcesses, profile } = useStore();
+  const { selectedWebtoon, selectedCut, processes, setProcesses, profile } = useStore();
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, Record<string, number>>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -54,9 +55,11 @@ export function FileGrid() {
     regeneratingImage,
     regeneratedImages,
     selectedImageIds,
+    savingImages,
     handleRegenerate,
     handleSaveImages,
     handleImageSelect,
+    handleRegenerateSingle,
     setRegeneratedImages,
     setSelectedImageIds,
   } = useImageRegeneration({
@@ -294,12 +297,15 @@ export function FileGrid() {
       setDeleting(true);
       await deleteFile(fileToDelete.id);
       await loadFiles();
+      alert('파일이 삭제되었습니다.');
+      // 성공 시에만 다이얼로그 닫기 및 상태 초기화
       setDeleteDialogOpen(false);
       setFileToDelete(null);
-      alert('파일이 삭제되었습니다.');
     } catch (error) {
       console.error('파일 삭제 실패:', error);
-      alert('파일 삭제에 실패했습니다.');
+      const errorMessage = error instanceof Error ? error.message : '파일 삭제에 실패했습니다.';
+      alert(errorMessage);
+      // 실패 시에는 다이얼로그를 열어둠 (사용자가 다시 시도할 수 있도록)
     } finally {
       setDeleting(false);
     }
@@ -318,6 +324,11 @@ export function FileGrid() {
   };
 
   const handleDetailDialogClose = (open: boolean) => {
+    // ImageViewer가 열려있을 때는 FileDetailDialog를 닫지 않음
+    if (!open && imageViewerOpen) {
+      return;
+    }
+    
     setDetailDialogOpen(open);
     if (!open) {
       // Blob URL 정리
@@ -345,15 +356,13 @@ export function FileGrid() {
     setSelectedImageIds(new Set());
   };
 
-  const handleRegenerateSingle = (prompt: string) => {
-    handleRegenerate(prompt, 1);
-  };
+  // handleRegenerateSingle은 useImageRegeneration 훅에서 제공됨
 
   if (!selectedCut) {
     return (
       <div className="p-4 text-center text-muted-foreground">
         <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-        <p>컷을 선택해주세요</p>
+        <p>{(selectedWebtoon?.unit_type || 'cut') === 'cut' ? '컷' : '페이지'}을(를) 선택해주세요</p>
       </div>
     );
   }
@@ -365,53 +374,94 @@ export function FileGrid() {
   const canUpload = profile && canUploadFile(profile.role);
   const canDelete = profile && canDeleteFile(profile.role);
 
+  // 공정을 order_index 순으로 정렬
+  const sortedProcesses = [...processes].sort((a, b) => a.order_index - b.order_index);
+  const defaultProcessId = sortedProcesses.length > 0 ? sortedProcesses[0].id : '';
+
   return (
     <>
-      <ScrollArea className="h-full">
-        <div className="p-3 sm:p-4">
+      <div className="h-full flex flex-col">
+        <div className="p-3 sm:p-4 pb-0 flex-shrink-0">
           <div className="mb-3 sm:mb-4">
             <h2 className="text-base sm:text-lg font-semibold">공정별 파일</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground">컷 {selectedCut.cut_number}의 제작 파일들</p>
-          </div>
-
-          <div className="space-y-4 sm:space-y-6">
-            {processes.map((process) => {
-              const processFiles = getFilesByProcess(process.id);
-              const processUploadingFiles = uploadingFiles[process.id] || [];
-              const processProgress = uploadProgress[process.id] || {};
-
-              return (
-                <ProcessFileSection
-                  key={process.id}
-                  process={process}
-                  files={processFiles}
-                  thumbnailUrls={thumbnailUrls}
-                  uploadingFiles={processUploadingFiles}
-                  uploadProgress={processProgress}
-                  onUpload={(files) => handleFileUpload(files, process.id)}
-                  onFileClick={handleFileClick}
-                  onDownload={handleDownload}
-                  onAnalyze={canUpload ? handleAnalyzeClick : undefined}
-                  onEdit={canUpload ? handleEditClick : undefined}
-                  onDelete={handleDeleteClick}
-                  analyzingFiles={analyzingFiles}
-                  pendingAnalysisFiles={pendingAnalysisFiles}
-                  imageErrors={imageErrors}
-                  onImageError={handleImageError}
-                  canUpload={!!canUpload}
-                  canDelete={!!canDelete}
-                />
-              );
-            })}
+            <p className="text-xs sm:text-sm text-muted-foreground">{(selectedWebtoon?.unit_type || 'cut') === 'cut' ? '컷' : '페이지'} {selectedCut.cut_number}의 제작 파일들</p>
           </div>
         </div>
-      </ScrollArea>
+
+        <Tabs defaultValue={defaultProcessId} className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="px-3 sm:px-4 pb-3 flex-shrink-0">
+            <TabsList className="w-full overflow-x-auto">
+              {sortedProcesses.map((process) => {
+                const processFiles = getFilesByProcess(process.id);
+                return (
+                  <TabsTrigger
+                    key={process.id}
+                    value={process.id}
+                    className="flex items-center gap-1.5"
+                  >
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: process.color }} />
+                    <span>{process.name}</span>
+                    {processFiles.length > 0 && (
+                      <span className="text-xs opacity-70">({processFiles.length})</span>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </div>
+
+          {sortedProcesses.map((process) => {
+            const processFiles = getFilesByProcess(process.id);
+            const processUploadingFiles = uploadingFiles[process.id] || [];
+            const processProgress = uploadProgress[process.id] || {};
+
+            return (
+              <TabsContent
+                key={process.id}
+                value={process.id}
+                className="flex-1 overflow-hidden mt-0 min-h-0"
+              >
+                <ScrollArea className="h-full">
+                  <div className="p-3 sm:p-4">
+                    <ProcessFileSection
+                      process={process}
+                      files={processFiles}
+                      thumbnailUrls={thumbnailUrls}
+                      uploadingFiles={processUploadingFiles}
+                      uploadProgress={processProgress}
+                      onUpload={(files) => handleFileUpload(files, process.id)}
+                      onFileClick={handleFileClick}
+                      onDownload={handleDownload}
+                      onAnalyze={canUpload ? handleAnalyzeClick : undefined}
+                      onEdit={canUpload ? handleEditClick : undefined}
+                      onDelete={handleDeleteClick}
+                      analyzingFiles={analyzingFiles}
+                      pendingAnalysisFiles={pendingAnalysisFiles}
+                      imageErrors={imageErrors}
+                      onImageError={handleImageError}
+                      canUpload={!!canUpload}
+                      canDelete={!!canDelete}
+                    />
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      </div>
 
       {/* 파일 삭제 확인 Dialog */}
       <FileDeleteDialog
         file={fileToDelete}
         open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            // 다이얼로그가 닫힐 때 상태 초기화
+            setFileToDelete(null);
+            setDeleting(false);
+          }
+        }}
         onConfirm={handleDeleteConfirm}
         deleting={deleting}
       />
@@ -462,6 +512,7 @@ export function FileGrid() {
         regeneratedImages={regeneratedImages}
         selectedImageIds={selectedImageIds}
         regeneratingImage={regeneratingImage}
+        savingImages={savingImages}
         analyzingFiles={analyzingFiles}
         canUpload={!!canUpload}
         canDelete={!!canDelete}

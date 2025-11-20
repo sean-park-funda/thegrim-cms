@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getEpisodes, createEpisode, updateEpisode, deleteEpisode } from '@/lib/api/episodes';
+import { updateWebtoon } from '@/lib/api/webtoons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
 export function EpisodeList() {
-  const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile } = useStore();
+  const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile, setSelectedWebtoon } = useStore();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -23,6 +24,7 @@ export function EpisodeList() {
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
   const [formData, setFormData] = useState({ episode_number: 1, title: '', description: '', status: 'pending' as 'pending' | 'in_progress' | 'completed' });
   const [saving, setSaving] = useState(false);
+  const [updatingUnitType, setUpdatingUnitType] = useState(false);
 
   useEffect(() => {
     if (selectedWebtoon) {
@@ -140,6 +142,34 @@ export function EpisodeList() {
     }
   };
 
+  const handleUnitTypeChange = async (newUnitType: 'cut' | 'page') => {
+    if (!selectedWebtoon || !profile || !canEditContent(profile.role)) return;
+    if (selectedWebtoon.unit_type === newUnitType) return;
+
+    const newUnitLabel = newUnitType === 'cut' ? '컷' : '페이지';
+    const currentUnitLabel = unitTypeLabel;
+    
+    if (!confirm(`관리 단위를 "${currentUnitLabel}"에서 "${newUnitLabel}"로 변경하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      setUpdatingUnitType(true);
+      const updatedWebtoon = await updateWebtoon(selectedWebtoon.id, { unit_type: newUnitType });
+      setSelectedWebtoon(updatedWebtoon);
+    } catch (error: any) {
+      console.error('관리 단위 변경 실패:', error);
+      const errorMessage = error?.message || error?.error?.message || '알 수 없는 오류';
+      if (errorMessage.includes('column') || errorMessage.includes('unit_type')) {
+        alert('데이터베이스에 unit_type 컬럼이 없습니다. 먼저 데이터베이스 마이그레이션을 실행해주세요.');
+      } else {
+        alert(`관리 단위 변경에 실패했습니다: ${errorMessage}`);
+      }
+    } finally {
+      setUpdatingUnitType(false);
+    }
+  };
+
   if (!selectedWebtoon) {
     return (
       <div className="p-4 text-center text-muted-foreground">
@@ -153,10 +183,46 @@ export function EpisodeList() {
     return <div className="p-4 text-center text-muted-foreground">로딩 중...</div>;
   }
 
+  const unitType = selectedWebtoon.unit_type || 'cut';
+  const unitTypeLabel = unitType === 'cut' ? '컷' : '페이지';
+
   return (
     <>
       <div className="p-3 sm:p-4">
-        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedWebtoon.title}</h2>
+        <div className="flex items-center gap-2 mb-2 sm:mb-3">
+          <h2 className="text-base sm:text-lg font-semibold truncate flex-1">{selectedWebtoon.title}</h2>
+          {profile && canEditContent(profile.role) && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">관리단위:</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    disabled={updatingUnitType}
+                  >
+                    {unitTypeLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => handleUnitTypeChange('cut')}
+                    className={unitType === 'cut' ? 'bg-accent' : ''}
+                  >
+                    컷
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleUnitTypeChange('page')}
+                    className={unitType === 'page' ? 'bg-accent' : ''}
+                  >
+                    페이지
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
         {profile && canCreateContent(profile.role) && (
           <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
             <Plus className="h-4 w-4 mr-2" />

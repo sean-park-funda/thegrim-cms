@@ -14,7 +14,7 @@ import { Cut } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
 export function CutList() {
-  const { selectedEpisode, selectedCut, setSelectedCut, profile } = useStore();
+  const { selectedWebtoon, selectedEpisode, selectedCut, setSelectedCut, profile } = useStore();
   const [cuts, setCuts] = useState<Cut[]>([]);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -22,6 +22,9 @@ export function CutList() {
   const [editingCut, setEditingCut] = useState<Cut | null>(null);
   const [formData, setFormData] = useState({ cut_number: 1, title: '', description: '' });
   const [saving, setSaving] = useState(false);
+
+  const unitType = selectedWebtoon?.unit_type || 'cut';
+  const unitLabel = unitType === 'cut' ? '컷' : '페이지';
 
   useEffect(() => {
     if (selectedEpisode) {
@@ -39,8 +42,8 @@ export function CutList() {
       const data = await getCuts(selectedEpisode.id);
       setCuts(data);
     } catch (error) {
-      console.error('컷 목록 로드 실패:', error);
-      alert('컷 목록을 불러오는데 실패했습니다.');
+      console.error(`${unitLabel} 목록 로드 실패:`, error);
+      alert(`${unitLabel} 목록을 불러오는데 실패했습니다.`);
     } finally {
       setLoading(false);
     }
@@ -67,7 +70,7 @@ export function CutList() {
 
   const handleDelete = async (cut: Cut, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`컷 ${cut.cut_number}${cut.title ? ` - ${cut.title}` : ''}을(를) 삭제하시겠습니까?`)) {
+    if (!confirm(`${unitLabel} ${cut.cut_number}${cut.title ? ` - ${cut.title}` : ''}을(를) 삭제하시겠습니까?`)) {
       return;
     }
 
@@ -77,10 +80,10 @@ export function CutList() {
         setSelectedCut(null);
       }
       await loadCuts();
-      alert('컷이 삭제되었습니다.');
+      alert(`${unitLabel}이(가) 삭제되었습니다.`);
     } catch (error) {
-      console.error('컷 삭제 실패:', error);
-      alert('컷 삭제에 실패했습니다.');
+      console.error(`${unitLabel} 삭제 실패:`, error);
+      alert(`${unitLabel} 삭제에 실패했습니다.`);
     }
   };
 
@@ -91,13 +94,13 @@ export function CutList() {
       setSaving(true);
       if (editingCut) {
         await updateCut(editingCut.id, formData);
-        alert('컷이 수정되었습니다.');
+        alert(`${unitLabel}이(가) 수정되었습니다.`);
       } else {
         await createCut({
           episode_id: selectedEpisode.id,
           ...formData
         });
-        alert('컷이 생성되었습니다.');
+        alert(`${unitLabel}이(가) 생성되었습니다.`);
       }
       await loadCuts();
       setCreateDialogOpen(false);
@@ -105,8 +108,8 @@ export function CutList() {
       setEditingCut(null);
       setFormData({ cut_number: 1, title: '', description: '' });
     } catch (error) {
-      console.error('컷 저장 실패:', error);
-      alert(editingCut ? '컷 수정에 실패했습니다.' : '컷 생성에 실패했습니다.');
+      console.error(`${unitLabel} 저장 실패:`, error);
+      alert(editingCut ? `${unitLabel} 수정에 실패했습니다.` : `${unitLabel} 생성에 실패했습니다.`);
     } finally {
       setSaving(false);
     }
@@ -128,11 +131,11 @@ export function CutList() {
   return (
     <>
       <div className="p-3 sm:p-4">
-        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedEpisode ? `${selectedEpisode.episode_number}화 - ${selectedEpisode.title}` : '컷 목록'}</h2>
+        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedEpisode ? `${selectedEpisode.episode_number}화 - ${selectedEpisode.title}` : `${unitLabel} 목록`}</h2>
         {profile && canCreateContent(profile.role) && (
           <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
             <Plus className="h-4 w-4 mr-2" />
-            새 컷
+            새 {unitLabel}
           </Button>
         )}
 
@@ -140,7 +143,7 @@ export function CutList() {
           <Card>
             <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
               <Image className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm sm:text-base">등록된 컷이 없습니다.</p>
+              <p className="text-sm sm:text-base">등록된 {unitLabel}이 없습니다.</p>
             </CardContent>
           </Card>
         ) : (
@@ -152,7 +155,7 @@ export function CutList() {
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                         <span>
-                          컷 {cut.cut_number}
+                          {unitLabel} {cut.cut_number}
                           {cut.title && ` - ${cut.title}`}
                         </span>
                         {cut.files_count !== undefined && (
@@ -199,21 +202,21 @@ export function CutList() {
         )}
       </div>
 
-      {/* 컷 생성 Dialog */}
+      {/* 생성 Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="z-[100]">
           <DialogHeader>
-            <DialogTitle>새 컷 추가</DialogTitle>
-            <DialogDescription>새로운 컷을 추가합니다.</DialogDescription>
+            <DialogTitle>새 {unitLabel} 추가</DialogTitle>
+            <DialogDescription>새로운 {unitLabel}을(를) 추가합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">컷 번호 *</label>
+              <label className="text-sm font-medium">{unitLabel} 번호 *</label>
               <Input
                 type="number"
                 value={formData.cut_number}
                 onChange={(e) => setFormData({ ...formData, cut_number: parseInt(e.target.value) || 1 })}
-                placeholder="컷 번호"
+                placeholder={`${unitLabel} 번호`}
                 min="1"
               />
             </div>
@@ -222,7 +225,7 @@ export function CutList() {
               <Input
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="컷 제목을 입력하세요 (선택사항)"
+                placeholder={`${unitLabel} 제목을 입력하세요 (선택사항)`}
               />
             </div>
             <div className="space-y-2">
@@ -230,7 +233,7 @@ export function CutList() {
               <Input
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="컷 설명을 입력하세요 (선택사항)"
+                placeholder={`${unitLabel} 설명을 입력하세요 (선택사항)`}
               />
             </div>
           </div>
@@ -245,21 +248,21 @@ export function CutList() {
         </DialogContent>
       </Dialog>
 
-      {/* 컷 수정 Dialog */}
+      {/* 수정 Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>컷 수정</DialogTitle>
-            <DialogDescription>컷 정보를 수정합니다.</DialogDescription>
+            <DialogTitle>{unitLabel} 수정</DialogTitle>
+            <DialogDescription>{unitLabel} 정보를 수정합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">컷 번호 *</label>
+              <label className="text-sm font-medium">{unitLabel} 번호 *</label>
               <Input
                 type="number"
                 value={formData.cut_number}
                 onChange={(e) => setFormData({ ...formData, cut_number: parseInt(e.target.value) || 1 })}
-                placeholder="컷 번호"
+                placeholder={`${unitLabel} 번호`}
                 min="1"
               />
             </div>
@@ -268,7 +271,7 @@ export function CutList() {
               <Input
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="컷 제목을 입력하세요 (선택사항)"
+                placeholder={`${unitLabel} 제목을 입력하세요 (선택사항)`}
               />
             </div>
             <div className="space-y-2">
@@ -276,7 +279,7 @@ export function CutList() {
               <Input
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="컷 설명을 입력하세요 (선택사항)"
+                placeholder={`${unitLabel} 설명을 입력하세요 (선택사항)`}
               />
             </div>
           </div>

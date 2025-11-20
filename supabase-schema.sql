@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS webtoons (
   description TEXT,
   thumbnail_url TEXT,
   status VARCHAR(50) DEFAULT 'active',
+  unit_type VARCHAR(10) DEFAULT 'cut' CHECK (unit_type IN ('cut', 'page')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

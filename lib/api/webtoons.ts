@@ -30,12 +30,13 @@ export async function getWebtoonWithEpisodes(id: string): Promise<WebtoonWithEpi
 }
 
 // 웹툰 생성
-export async function createWebtoon(webtoon: Omit<Webtoon, 'id' | 'created_at' | 'updated_at' | 'status'> & { status?: string }): Promise<Webtoon> {
+export async function createWebtoon(webtoon: Omit<Webtoon, 'id' | 'created_at' | 'updated_at' | 'status'> & { status?: string; unit_type?: 'cut' | 'page' }): Promise<Webtoon> {
   const { data, error } = await supabase
     .from('webtoons')
     .insert({
       ...webtoon,
-      status: webtoon.status || 'active' // 기본값 설정
+      status: webtoon.status || 'active', // 기본값 설정
+      unit_type: webtoon.unit_type || 'cut' // 기본값 설정
     })
     .select()
     .single();

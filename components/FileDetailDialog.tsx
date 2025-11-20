@@ -13,11 +13,12 @@ import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 
 interface RegeneratedImage {
   id: string;
-  url: string;
+  url: string | null; // null이면 placeholder (생성 중)
   prompt: string;
   selected: boolean;
-  base64Data: string;
-  mimeType: string;
+  base64Data: string | null; // null이면 placeholder
+  mimeType: string | null; // null이면 placeholder
+  apiProvider: 'gemini' | 'seedream' | 'auto';
 }
 
 interface FileDetailDialogProps {
@@ -29,7 +30,7 @@ interface FileDetailDialogProps {
   onAnalyze?: (file: FileType, e: React.MouseEvent) => void;
   onDelete: (file: FileType, e: React.MouseEvent) => void;
   onRegenerateClick: () => void;
-  onRegenerateSingle: (prompt: string) => void;
+  onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: () => void;
   onSelectAll: () => void;
@@ -39,6 +40,7 @@ interface FileDetailDialogProps {
   regeneratedImages: RegeneratedImage[];
   selectedImageIds: Set<string>;
   regeneratingImage: string | null;
+  savingImages: boolean;
   analyzingFiles: Set<string>;
   canUpload: boolean;
   canDelete: boolean;
@@ -63,6 +65,7 @@ export function FileDetailDialog({
   regeneratedImages,
   selectedImageIds,
   regeneratingImage,
+  savingImages,
   analyzingFiles,
   canUpload,
   canDelete,
@@ -263,88 +266,114 @@ export function FileDetailDialog({
                           e.stopPropagation();
                           onSaveImages();
                         }}
-                        disabled={selectedImageIds.size === 0}
+                        disabled={selectedImageIds.size === 0 || savingImages}
                       >
-                        <Upload className="h-3 w-3 mr-1" />
-                        선택한 이미지 등록 ({selectedImageIds.size})
+                        <Upload className={cn("h-3 w-3 mr-1", savingImages && "animate-pulse")} />
+                        {savingImages ? '등록 중...' : `선택한 이미지 등록 (${selectedImageIds.size})`}
                       </Button>
                     </>
                   )}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {regeneratedImages.map((img) => (
-                  <div key={img.id} className="relative space-y-2">
-                    <div 
-                      className="relative w-full aspect-square bg-muted rounded-md overflow-hidden group cursor-pointer"
-                      onClick={() => onImageViewerOpen(img.url, `재생성된 이미지 - ${file.file_name || '이미지'}`)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedImageIds.has(img.id)}
-                        onChange={(e) => {
-                          onImageSelect(img.id, e.target.checked);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
-                      />
-                      <Button
-                        size="icon"
-                        variant="secondary"
+                {regeneratedImages.map((img) => {
+                  const isPlaceholder = img.url === null || img.base64Data === null;
+                  
+                  return (
+                    <div key={img.id} className="relative space-y-2">
+                      <div 
                         className={cn(
-                          "absolute top-2 right-2 z-10 h-8 w-8",
-                          regeneratingImage === file.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                          "relative w-full aspect-square bg-muted rounded-md overflow-hidden",
+                          isPlaceholder 
+                            ? "overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
+                            : "group cursor-pointer"
                         )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRegenerateSingle(img.prompt);
-                        }}
-                        disabled={regeneratingImage === file.id}
-                      >
-                        <RefreshCw className={cn(
-                          "h-4 w-4",
-                          regeneratingImage === file.id && 'animate-spin'
-                        )} />
-                      </Button>
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
-                          <Search className="h-5 w-5 text-white" />
-                        </div>
-                      </div>
-                      <Image
-                        src={img.url}
-                        alt="재생성된 이미지"
-                        fill
-                        className="object-contain"
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        unoptimized={true}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
                         onClick={() => {
-                          try {
-                            const a = document.createElement('a');
-                            a.href = img.url;
-                            a.download = `regenerated-${file.file_name || 'image'}`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                          } catch (error) {
-                            console.error('재생성된 이미지 다운로드 실패:', error);
-                            alert('이미지 다운로드에 실패했습니다.');
+                          if (!isPlaceholder && img.url) {
+                            onImageViewerOpen(img.url, `재생성된 이미지 - ${file.file_name || '이미지'}`);
                           }
                         }}
                       >
-                        <Download className="h-3 w-3 mr-1" />
-                        다운로드
-                      </Button>
+                        {!isPlaceholder && (
+                          <>
+                            <input
+                              type="checkbox"
+                              checked={selectedImageIds.has(img.id)}
+                              onChange={(e) => {
+                                onImageSelect(img.id, e.target.checked);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
+                            />
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              className={cn(
+                                "absolute top-2 right-2 z-10 h-8 w-8",
+                                regeneratingImage === img.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                              )}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRegenerateSingle(img.prompt, img.apiProvider, img.id);
+                              }}
+                              disabled={regeneratingImage === img.id}
+                            >
+                              <RefreshCw className={cn(
+                                "h-4 w-4",
+                                regeneratingImage === img.id && 'animate-spin'
+                              )} />
+                            </Button>
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
+                                <Search className="h-5 w-5 text-white" />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {isPlaceholder ? (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Wand2 className="h-8 w-8 text-primary/50 animate-pulse" />
+                          </div>
+                        ) : img.url ? (
+                          <Image
+                            src={img.url}
+                            alt="재생성된 이미지"
+                            fill
+                            className="object-contain"
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                            unoptimized={true}
+                          />
+                        ) : null}
+                      </div>
+                      {!isPlaceholder && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => {
+                              if (!img.url) return;
+                              try {
+                                const a = document.createElement('a');
+                                a.href = img.url;
+                                a.download = `regenerated-${file.file_name || 'image'}`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              } catch (error) {
+                                console.error('재생성된 이미지 다운로드 실패:', error);
+                                alert('이미지 다운로드에 실패했습니다.');
+                              }
+                            }}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            다운로드
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
