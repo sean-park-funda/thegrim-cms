@@ -268,10 +268,12 @@ export function useImageRegeneration({
       return;
     }
 
-    const selectedImages = regeneratedImages.filter(img => selectedImageIds.has(img.id));
+    const selectedImages = regeneratedImages.filter(
+      img => selectedImageIds.has(img.id) && img.base64Data !== null && img.mimeType !== null
+    );
     
     if (selectedImages.length === 0) {
-      alert('선택된 이미지를 찾을 수 없습니다. 다시 선택해주세요.');
+      alert('선택된 이미지를 찾을 수 없거나 아직 생성 중인 이미지입니다. 완성된 이미지를 선택해주세요.');
       return;
     }
 
@@ -308,6 +310,11 @@ export function useImageRegeneration({
         const img = selectedImages[i];
         
         try {
+          // base64 데이터와 mimeType이 null이 아닌지 확인 (필터링으로 이미 체크했지만 타입 안전성을 위해)
+          if (!img.base64Data || !img.mimeType) {
+            throw new Error('이미지 데이터가 없습니다.');
+          }
+          
           // base64 데이터를 Blob으로 변환
           const byteCharacters = atob(img.base64Data);
           const byteNumbers = new Array(byteCharacters.length);
