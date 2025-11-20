@@ -36,7 +36,9 @@ export function useImageRegeneration({
   useEffect(() => {
     return () => {
       regeneratedImages.forEach((img) => {
-        URL.revokeObjectURL(img.url);
+        if (img.url) {
+          URL.revokeObjectURL(img.url);
+        }
       });
     };
   }, [regeneratedImages]);
