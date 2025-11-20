@@ -396,12 +396,12 @@ export function useImageRegeneration({
       if (targetImageId) {
         // 재생성할 이미지를 찾아서 base64 데이터 사용
         const targetImage = regeneratedImages.find(img => img.id === targetImageId);
-        if (targetImage) {
+        if (targetImage && targetImage.base64Data && targetImage.mimeType) {
           imageBase64 = targetImage.base64Data;
           imageMimeType = targetImage.mimeType;
           console.log('[이미지 재생성] 재생성된 이미지를 입력으로 사용:', targetImageId);
         } else {
-          console.warn('[이미지 재생성] 재생성할 이미지를 찾을 수 없음, 원본 이미지 사용:', targetImageId);
+          console.warn('[이미지 재생성] 재생성할 이미지를 찾을 수 없거나 아직 생성 중입니다, 원본 이미지 사용:', targetImageId);
         }
       }
 
