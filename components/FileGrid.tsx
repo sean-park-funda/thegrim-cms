@@ -333,7 +333,9 @@ export function FileGrid() {
     if (!open) {
       // Blob URL 정리
       regeneratedImages.forEach((img) => {
-        URL.revokeObjectURL(img.url);
+        if (img.url) {
+          URL.revokeObjectURL(img.url);
+        }
       });
       setRegeneratedImages([]);
       setSelectedImageIds(new Set());
