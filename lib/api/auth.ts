@@ -194,6 +194,25 @@ export async function signUp(email: string, password: string, token?: string, na
       console.warn('이메일 확인 자동 처리 실패 (무시 가능):', confirmError);
     }
 
+    // 초대 토큰이 없는 경우, 첫 사용자인지 확인 (회원가입 후)
+    if (!token) {
+      const { data: isFirst, error: checkError } = await supabase.rpc('is_first_user_excluding', {
+        user_id: data.user.id
+      });
+      
+      if (checkError) {
+        console.error('첫 사용자 확인 오류:', checkError);
+        // 오류 발생 시 기본적으로 viewer로 설정 (안전)
+        role = 'viewer';
+      } else if (isFirst === true) {
+        // 첫 사용자는 자동으로 관리자
+        role = 'admin';
+      } else {
+        // 이미 다른 사용자가 있는 경우
+        throw new Error('초대 토큰이 필요합니다.');
+      }
+    }
+
     // 프로필이 자동 생성될 때까지 대기 (트리거가 처리함, 최대 10초, 0.5초마다 확인)
     // 세션 없이도 프로필 생성 확인 가능 (트리거는 SECURITY DEFINER로 실행)
     let profile: UserProfile | null = null;
@@ -222,49 +241,33 @@ export async function signUp(email: string, password: string, token?: string, na
       retries--;
     }
 
-    if (!profile) {
-      // 프로필이 자동 생성되지 않은 경우, 트리거가 실패했을 수 있음
-      // 하지만 회원가입은 성공했으므로 로그인 페이지로 보냄
-      console.warn('프로필이 아직 생성되지 않았습니다. 로그인 후 프로필이 생성될 수 있습니다.');
-    }
-
-    // 초대 토큰이 없는 경우, 첫 사용자인지 확인 (회원가입 후)
-    if (!token) {
-      const { data: isFirst, error: checkError } = await supabase.rpc('is_first_user_excluding', {
-        user_id: data.user.id
-      });
-      
-      if (checkError) {
-        console.error('첫 사용자 확인 오류:', checkError);
-        // 오류 발생 시 기본적으로 viewer로 설정 (안전)
-        role = 'viewer';
-      } else if (isFirst === true) {
-        // 첫 사용자는 자동으로 관리자
-        role = 'admin';
-      } else {
-        // 이미 다른 사용자가 있는 경우
-        throw new Error('초대 토큰이 필요합니다.');
-      }
-    }
-
-    // 초대 토큰 사용 처리
-    if (invitationId) {
-      await markInvitationAsUsed(invitationId, data.user.id);
-    }
-
     // 프로필 역할 업데이트 (RPC 함수로 세션 없이 처리)
-    // 프로필이 생성될 때까지 기다린 후 역할 업데이트
+    // handle_new_user() 트리거가 초대 정보를 확인하여 역할을 설정하지만,
+    // 안전을 위해 명시적으로 역할 업데이트 시도
     if (profile) {
       try {
-        const { error: roleError } = await supabase.rpc('update_user_role_on_signup', {
-          user_id: data.user.id,
-          new_role: role,
-        });
-        if (roleError) {
-          console.warn('역할 업데이트 실패:', roleError);
-          // RPC 실패 시 직접 업데이트 시도 (하지만 RLS 때문에 실패할 수 있음)
+        // 현재 프로필의 역할이 초대된 역할과 다르면 업데이트
+        if (profile.role !== role) {
+          const { error: roleError } = await supabase.rpc('update_user_role_on_signup', {
+            user_id: data.user.id,
+            new_role: role,
+          });
+          if (roleError) {
+            console.warn('역할 업데이트 실패:', roleError);
+          } else {
+            console.log('역할 업데이트 완료:', role);
+            // 업데이트된 프로필 다시 가져오기
+            const { data: updatedProfile } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', data.user.id)
+              .maybeSingle();
+            if (updatedProfile) {
+              profile = updatedProfile;
+            }
+          }
         } else {
-          console.log('역할 업데이트 완료:', role);
+          console.log('프로필 역할이 이미 올바르게 설정됨:', role);
         }
       } catch (roleError: any) {
         console.warn('역할 설정 실패:', roleError);
@@ -273,6 +276,13 @@ export async function signUp(email: string, password: string, token?: string, na
       // 프로필이 아직 생성되지 않은 경우, 역할 정보를 저장해두고 나중에 처리
       console.warn('프로필이 아직 생성되지 않았습니다. 역할은 로그인 후 설정됩니다.');
       // 역할 정보는 invitationId에 저장되어 있으므로 로그인 시 처리 가능
+    }
+
+    // 초대 토큰 사용 처리 (프로필 생성 및 역할 업데이트 후)
+    // 주의: handle_new_user() 트리거가 초대 정보를 확인하므로,
+    // 초대 토큰을 사용 처리하기 전에 프로필이 생성되어야 함
+    if (invitationId) {
+      await markInvitationAsUsed(invitationId, data.user.id);
     }
 
     // 회원가입 성공, 세션은 만들지 않고 사용자 정보만 반환

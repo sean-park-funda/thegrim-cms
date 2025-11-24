@@ -28,6 +28,21 @@ function isRetryableError(error: unknown): boolean {
       const code = error.cause.code as string;
       return RETRYABLE_ERROR_CODES.includes(code);
     }
+    // ApiError인 경우 status 확인 (500 에러는 재시도 가능)
+    if ('status' in error && typeof error.status === 'number') {
+      const status = error.status as number;
+      // 500, 502, 503, 504는 재시도 가능한 서버 오류
+      if ([500, 502, 503, 504].includes(status)) {
+        return true;
+      }
+    }
+    // errorMessage에 "INTERNAL" 또는 "500"이 포함된 경우
+    if ('errorMessage' in error && typeof error.errorMessage === 'string') {
+      const errorMessage = error.errorMessage as string;
+      if (errorMessage.includes('"code":500') || errorMessage.includes('"status":"INTERNAL"')) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -542,11 +557,57 @@ export async function POST(request: NextRequest) {
         },
       ];
 
-      const response = await ai.models.generateContentStream({
-        model,
-        config,
-        contents,
-      });
+      // 재시도 로직
+      const maxRetries = 3;
+      let lastError: unknown = null;
+      let response: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            const delay = getRetryDelay(attempt - 1);
+            console.log(`[이미지 재생성] Gemini API 재시도 ${attempt}/${maxRetries} (${delay}ms 대기 후)...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+
+          console.log('[이미지 재생성] Gemini API 호출:', {
+            model,
+            promptLength: stylePrompt.length,
+            attempt: attempt + 1,
+            maxRetries: maxRetries + 1,
+            aspectRatio: aspectRatio || '미지정',
+          });
+
+          response = await ai.models.generateContentStream({
+            model,
+            config,
+            contents,
+          });
+
+          // 성공적으로 응답을 받았으면 재시도 루프 종료
+          break;
+        } catch (error: unknown) {
+          lastError = error;
+          const isRetryable = isRetryableError(error);
+
+          console.error(`[이미지 재생성] Gemini API 호출 실패 (시도 ${attempt + 1}/${maxRetries + 1}):`, {
+            error: error instanceof Error ? error.message : String(error),
+            isRetryable,
+            willRetry: isRetryable && attempt < maxRetries,
+            errorType: error instanceof Error ? error.constructor.name : typeof error,
+          });
+
+          // 재시도 불가능한 에러이거나 최대 재시도 횟수에 도달한 경우
+          if (!isRetryable || attempt >= maxRetries) {
+            throw error;
+          }
+          // 재시도 가능한 에러인 경우 루프 계속
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
+      }
 
       // 스트림에서 모든 chunk 수집
       for await (const chunk of response) {
