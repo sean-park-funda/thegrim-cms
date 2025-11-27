@@ -19,7 +19,7 @@ import { ImageRegenerationDialog } from '@/components/ImageRegenerationDialog';
 import { ProcessFileSection } from '@/components/ProcessFileSection';
 
 export function FileGrid() {
-  const { selectedWebtoon, selectedCut, processes, setProcesses, profile } = useStore();
+  const { selectedWebtoon, selectedCut, processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, Record<string, number>>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -89,7 +89,7 @@ export function FileGrid() {
     const pollInterval = setInterval(async () => {
       try {
         const currentFiles = await getFilesByCut(selectedCut.id);
-        
+
         // 메타데이터가 생성된 파일들 확인
         const updatedFiles: string[] = [];
         const stillPending: string[] = [];
@@ -101,7 +101,7 @@ export function FileGrid() {
               scene_summary?: string;
               tags?: string[];
             } | undefined;
-            
+
             if (metadata && metadata.scene_summary && metadata.tags) {
               // 메타데이터가 생성됨
               updatedFiles.push(fileId);
@@ -240,17 +240,17 @@ export function FileGrid() {
       setAnalyzingFiles(prev => new Set(prev).add(file.id));
       // 메타데이터 생성 대기 목록에 추가
       setPendingAnalysisFiles(prev => new Set(prev).add(file.id));
-      
+
       await analyzeImage(file.id);
       await loadFiles();
-      
+
       // 분석 완료 후 대기 목록에서 제거
       setPendingAnalysisFiles(prev => {
         const newSet = new Set(prev);
         newSet.delete(file.id);
         return newSet;
       });
-      
+
       alert('이미지 분석이 완료되었습니다.');
     } catch (error: unknown) {
       console.error('이미지 분석 실패:', error);
@@ -328,7 +328,7 @@ export function FileGrid() {
     if (!open && imageViewerOpen) {
       return;
     }
-    
+
     setDetailDialogOpen(open);
     if (!open) {
       // Blob URL 정리
@@ -378,7 +378,22 @@ export function FileGrid() {
 
   // 공정을 order_index 순으로 정렬
   const sortedProcesses = [...processes].sort((a, b) => a.order_index - b.order_index);
-  const defaultProcessId = sortedProcesses.length > 0 ? sortedProcesses[0].id : '';
+
+  // 선택된 공정이 없으면 첫 번째 공정으로 설정
+  // useEffect(() => {
+  //   if (!selectedProcess && sortedProcesses.length > 0) {
+  //     setSelectedProcess(sortedProcesses[0]);
+  //   }
+  // }, [selectedProcess, sortedProcesses, setSelectedProcess]);
+
+  const activeProcessId = selectedProcess?.id || (sortedProcesses.length > 0 ? sortedProcesses[0].id : '');
+
+  const handleTabChange = (value: string) => {
+    const process = processes.find(p => p.id === value);
+    if (process) {
+      setSelectedProcess(process);
+    }
+  };
 
   return (
     <>
@@ -390,7 +405,7 @@ export function FileGrid() {
           </div>
         </div>
 
-        <Tabs defaultValue={defaultProcessId} className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <Tabs value={activeProcessId} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="px-3 sm:px-4 pb-3 flex-shrink-0">
             <TabsList className="w-full overflow-x-auto">
               {sortedProcesses.map((process) => {

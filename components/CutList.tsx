@@ -87,26 +87,41 @@ export function CutList() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      handleSave();
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedEpisode) return;
 
     try {
       setSaving(true);
+      let newCut: Cut | null = null;
+
       if (editingCut) {
         await updateCut(editingCut.id, formData);
         alert(`${unitLabel}이(가) 수정되었습니다.`);
       } else {
-        await createCut({
+        newCut = await createCut({
           episode_id: selectedEpisode.id,
           ...formData
         });
-        alert(`${unitLabel}이(가) 생성되었습니다.`);
+        // 생성 시 얼러트 제거
       }
+
       await loadCuts();
       setCreateDialogOpen(false);
       setEditDialogOpen(false);
       setEditingCut(null);
       setFormData({ cut_number: 1, title: '', description: '' });
+
+      // 새로 생성된 컷이 있으면 선택
+      if (newCut) {
+        setSelectedCut(newCut);
+      }
     } catch (error) {
       console.error(`${unitLabel} 저장 실패:`, error);
       alert(editingCut ? `${unitLabel} 수정에 실패했습니다.` : `${unitLabel} 생성에 실패했습니다.`);
@@ -218,6 +233,7 @@ export function CutList() {
                 onChange={(e) => setFormData({ ...formData, cut_number: parseInt(e.target.value) || 1 })}
                 placeholder={`${unitLabel} 번호`}
                 min="1"
+                onKeyDown={handleKeyDown}
               />
             </div>
             <div className="space-y-2">
@@ -226,6 +242,7 @@ export function CutList() {
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder={`${unitLabel} 제목을 입력하세요 (선택사항)`}
+                onKeyDown={handleKeyDown}
               />
             </div>
             <div className="space-y-2">
@@ -234,6 +251,7 @@ export function CutList() {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder={`${unitLabel} 설명을 입력하세요 (선택사항)`}
+                onKeyDown={handleKeyDown}
               />
             </div>
           </div>
