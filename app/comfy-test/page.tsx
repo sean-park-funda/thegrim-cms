@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
 
 interface GenerateResponse {
   image_url: string;
@@ -14,10 +14,19 @@ interface GenerateResponse {
   workflow_name: string;
 }
 
+interface WorkflowInfo {
+  name: string;
+  size: number;
+  modified: string;
+}
+
 export default function ComfyTestPage() {
   const router = useRouter();
   const { user, profile } = useStore();
 
+  const [workflows, setWorkflows] = useState<WorkflowInfo[]>([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('');
+  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [seed, setSeed] = useState<string>('-1');
@@ -27,6 +36,32 @@ export default function ComfyTestPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // 워크플로우 리스트 로드
+  const loadWorkflows = async () => {
+    setLoadingWorkflows(true);
+    setError(null);
+    try {
+      const response = await fetch('https://api.rewardpang.com/thegrim-cms/comfyui/workflows');
+      if (!response.ok) {
+        throw new Error('워크플로우 리스트를 불러올 수 없습니다');
+      }
+      const data = await response.json();
+      setWorkflows(data.workflows || []);
+      if (data.workflows && data.workflows.length > 0 && !selectedWorkflow) {
+        setSelectedWorkflow(data.workflows[0].name);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '워크플로우 리스트 로드 실패');
+    } finally {
+      setLoadingWorkflows(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 워크플로우 리스트 로드
+  useEffect(() => {
+    loadWorkflows();
+  }, []);
+
   // 로그인 확인
   if (!user || !profile) {
     router.push('/login');
@@ -34,6 +69,10 @@ export default function ComfyTestPage() {
   }
 
   const generateImage = async () => {
+    if (!selectedWorkflow) {
+      setError('워크플로우를 선택해주세요');
+      return;
+    }
     if (!prompt.trim()) {
       setError('프롬프트를 입력해주세요');
       return;
@@ -52,7 +91,7 @@ export default function ComfyTestPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            workflow_name: 'text2img_basic.json',
+            workflow_name: selectedWorkflow,
             prompt: prompt.trim(),
             negative_prompt: negativePrompt.trim() || '',
             seed: useRandomSeed ? -1 : parseInt(seed) || -1,
@@ -125,6 +164,48 @@ export default function ComfyTestPage() {
               <CardTitle className="text-base">이미지 생성</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* 워크플로우 선택 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">
+                    워크플로우 <span className="text-destructive">*</span>
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadWorkflows}
+                    disabled={loadingWorkflows}
+                    className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${loadingWorkflows ? 'animate-spin' : ''}`} />
+                    새로고침
+                  </Button>
+                </div>
+                {loadingWorkflows ? (
+                  <div className="flex items-center gap-2 p-3 border border-border rounded-md bg-muted/50">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">워크플로우 로딩 중...</span>
+                  </div>
+                ) : workflows.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground border border-border rounded-md bg-muted/50">
+                    사용 가능한 워크플로우가 없습니다
+                  </div>
+                ) : (
+                  <select
+                    value={selectedWorkflow}
+                    onChange={(e) => setSelectedWorkflow(e.target.value)}
+                    className="w-full h-10 px-3 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={loading}
+                  >
+                    {workflows.map((workflow) => (
+                      <option key={workflow.name} value={workflow.name}>
+                        {workflow.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               {/* 프롬프트 */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">
@@ -193,7 +274,7 @@ export default function ComfyTestPage() {
               {/* 생성 버튼 */}
               <Button
                 onClick={generateImage}
-                disabled={loading || !prompt.trim()}
+                disabled={loading || !prompt.trim() || !selectedWorkflow || loadingWorkflows}
                 className="w-full h-10"
               >
                 {loading ? (
