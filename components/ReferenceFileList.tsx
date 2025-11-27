@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { ReferenceFileWithProcess } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileIcon, Image as ImageIcon } from 'lucide-react';
+import { Download, Trash2, FileIcon, Search } from 'lucide-react';
 import { deleteReferenceFile } from '@/lib/api/referenceFiles';
 import { canDeleteContent } from '@/lib/utils/permissions';
 import { useStore } from '@/lib/store/useStore';
+import { ImageViewer } from './ImageViewer';
 
 interface ReferenceFileListProps {
     files: ReferenceFileWithProcess[];
@@ -17,6 +18,15 @@ interface ReferenceFileListProps {
 export function ReferenceFileList({ files, onFileDeleted }: ReferenceFileListProps) {
     const { profile } = useStore();
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [viewerOpen, setViewerOpen] = useState(false);
+    const [viewerImage, setViewerImage] = useState<{ url: string; name: string } | null>(null);
+
+    const handleImageClick = (file: ReferenceFileWithProcess) => {
+        if (file.file_type === 'image') {
+            setViewerImage({ url: file.file_path, name: file.file_name });
+            setViewerOpen(true);
+        }
+    };
 
     // 공정별로 파일 그룹화
     const filesByProcess = files.reduce((acc, file) => {
@@ -60,73 +70,95 @@ export function ReferenceFileList({ files, onFileDeleted }: ReferenceFileListPro
     }
 
     return (
-        <div className="space-y-6">
-            {Object.entries(filesByProcess).map(([processName, processFiles]) => (
-                <div key={processName}>
-                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground">
-                        {processName} ({processFiles.length})
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {processFiles.map((file) => (
-                            <Card key={file.id} className="overflow-hidden">
-                                <CardContent className="p-3">
-                                    {/* 파일 미리보기 */}
-                                    <div className="aspect-video bg-muted rounded-md mb-2 flex items-center justify-center overflow-hidden">
-                                        {file.file_type === 'image' ? (
-                                            <img
-                                                src={file.file_path}
-                                                alt={file.file_name}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <FileIcon className="h-12 w-12 text-muted-foreground" />
-                                        )}
-                                    </div>
-
-                                    {/* 파일 정보 */}
-                                    <div className="space-y-1 mb-3">
-                                        <p className="text-sm font-medium line-clamp-1" title={file.file_name}>
-                                            {file.file_name}
-                                        </p>
-                                        {file.description && (
-                                            <p className="text-xs text-muted-foreground line-clamp-2">
-                                                {file.description}
-                                            </p>
-                                        )}
-                                        <p className="text-xs text-muted-foreground">
-                                            {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : ''}
-                                        </p>
-                                    </div>
-
-                                    {/* 액션 버튼 */}
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1"
-                                            onClick={() => handleDownload(file)}
+        <>
+            <div className="space-y-6">
+                {Object.entries(filesByProcess).map(([processName, processFiles]) => (
+                    <div key={processName}>
+                        <h3 className="text-sm font-semibold mb-3 text-muted-foreground">
+                            {processName} ({processFiles.length})
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {processFiles.map((file) => (
+                                <Card key={file.id} className="overflow-hidden">
+                                    <CardContent className="p-3">
+                                        {/* 파일 미리보기 */}
+                                        <div
+                                            className={`aspect-video bg-muted rounded-md mb-2 flex items-center justify-center overflow-hidden relative ${file.file_type === 'image' ? 'cursor-pointer group' : ''}`}
+                                            onClick={() => handleImageClick(file)}
                                         >
-                                            <Download className="h-4 w-4 mr-1" />
-                                            다운로드
-                                        </Button>
-                                        {profile && canDeleteContent(profile.role) && (
+                                            {file.file_type === 'image' ? (
+                                                <>
+                                                    <img
+                                                        src={file.file_path}
+                                                        alt={file.file_name}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
+                                                            <Search className="h-5 w-5 text-white" />
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <FileIcon className="h-12 w-12 text-muted-foreground" />
+                                            )}
+                                        </div>
+
+                                        {/* 파일 정보 */}
+                                        <div className="space-y-1 mb-3">
+                                            <p className="text-sm font-medium line-clamp-1" title={file.file_name}>
+                                                {file.file_name}
+                                            </p>
+                                            {file.description && (
+                                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                                    {file.description}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-muted-foreground">
+                                                {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : ''}
+                                            </p>
+                                        </div>
+
+                                        {/* 액션 버튼 */}
+                                        <div className="flex gap-2 justify-end">
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() => handleDelete(file.id, file.file_name)}
-                                                disabled={deletingId === file.id}
-                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => handleDownload(file)}
+                                                title="다운로드"
                                             >
-                                                <Trash2 className="h-4 w-4" />
+                                                <Download className="h-4 w-4" />
                                             </Button>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                            {profile && canDeleteContent(profile.role) && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleDelete(file.id, file.file_name)}
+                                                    disabled={deletingId === file.id}
+                                                    className="text-destructive hover:text-destructive"
+                                                    title="삭제"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            ))}
-        </div>
+                ))}
+            </div>
+
+            {/* 이미지 전체화면 뷰어 */}
+            {viewerImage && (
+                <ImageViewer
+                    imageUrl={viewerImage.url}
+                    imageName={viewerImage.name}
+                    open={viewerOpen}
+                    onOpenChange={setViewerOpen}
+                />
+            )}
+        </>
     );
 }

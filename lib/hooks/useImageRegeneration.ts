@@ -14,6 +14,12 @@ interface RegeneratedImage {
   index?: number; // 생성 인덱스 (placeholder 매칭용)
 }
 
+interface ReferenceImageInfo {
+  url: string;
+  base64?: string;
+  mimeType?: string;
+}
+
 interface UseImageRegenerationOptions {
   fileToView: FileType | null;
   selectedCutId: string | null;
@@ -43,7 +49,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean) => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo) => {
     if (!fileToView || fileToView.file_type !== 'image') return;
 
     try {
@@ -133,6 +139,16 @@ export function useImageRegeneration({
             requestBody.imageMimeType = imageMimeType;
           } else {
             requestBody.imageUrl = imageUrl;
+          }
+
+          // 레퍼런스 이미지 추가 (톤먹 넣기 등)
+          if (referenceImage) {
+            if (referenceImage.base64) {
+              requestBody.referenceImageBase64 = referenceImage.base64;
+              requestBody.referenceImageMimeType = referenceImage.mimeType || 'image/png';
+            } else {
+              requestBody.referenceImageUrl = referenceImage.url;
+            }
           }
 
           const response = await fetch('/api/regenerate-image', {
@@ -262,11 +278,14 @@ export function useImageRegeneration({
     }
   };
 
-  const handleSaveImages = async () => {
+  const handleSaveImages = async (processId?: string) => {
     if (selectedImageIds.size === 0 || !fileToView || !selectedCutId) {
       alert('선택된 이미지가 없습니다.');
       return;
     }
+
+    // 공정 ID가 지정되지 않으면 원본 파일의 공정 사용
+    const targetProcessId = processId || fileToView.process_id;
 
     const selectedImages = regeneratedImages.filter(
       img => selectedImageIds.has(img.id) && img.base64Data !== null && img.mimeType !== null
@@ -333,8 +352,8 @@ export function useImageRegeneration({
           // Blob을 File 객체로 변환
           const file = new File([blob], newFileName, { type: img.mimeType });
 
-          // 원본 파일과 같은 공정에 업로드
-          await uploadFile(file, selectedCutId, fileToView.process_id, `AI 재생성: ${fileToView.file_name}`);
+          // 선택된 공정에 업로드
+          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`);
           successCount++;
         } catch (error) {
           failCount++;

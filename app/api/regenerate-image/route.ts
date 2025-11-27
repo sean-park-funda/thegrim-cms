@@ -124,6 +124,136 @@ function getClosestAspectRatio(width: number, height: number, provider: 'gemini'
   return closestRatio;
 }
 
+// Seedream API 이미지 제한
+const SEEDREAM_MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const SEEDREAM_MAX_PIXELS = 36000000; // 36,000,000 픽셀 (약 6000x6000)
+
+/**
+ * 이미지가 최대 크기 또는 픽셀 수를 초과하는 경우 리사이즈합니다.
+ * @param imageBuffer 원본 이미지 버퍼
+ * @param maxSize 최대 파일 크기 (바이트)
+ * @param maxPixels 최대 픽셀 수
+ * @returns 리사이즈된 이미지의 base64 데이터와 mimeType
+ */
+async function resizeImageIfNeeded(
+  imageBuffer: Buffer,
+  maxSize: number = SEEDREAM_MAX_IMAGE_SIZE,
+  maxPixels: number = SEEDREAM_MAX_PIXELS
+): Promise<{ base64: string; mimeType: string; resized: boolean }> {
+  const currentSize = imageBuffer.length;
+
+  // 이미지 메타데이터 가져오기
+  const metadata = await sharp(imageBuffer).metadata();
+  const originalWidth = metadata.width || 1920;
+  const originalHeight = metadata.height || 1080;
+  const currentPixels = originalWidth * originalHeight;
+
+  // 파일 크기와 픽셀 수 모두 제한 이내인 경우
+  if (currentSize <= maxSize && currentPixels <= maxPixels) {
+    return {
+      base64: imageBuffer.toString('base64'),
+      mimeType: metadata.format === 'jpeg' ? 'image/jpeg' : 'image/png',
+      resized: false,
+    };
+  }
+
+  const needsPixelResize = currentPixels > maxPixels;
+  const needsSizeResize = currentSize > maxSize;
+
+  console.log(`[이미지 재생성] 이미지 리사이즈 필요:`, {
+    currentSize: `${(currentSize / 1024 / 1024).toFixed(2)}MB`,
+    maxSize: `${(maxSize / 1024 / 1024).toFixed(2)}MB`,
+    needsSizeResize,
+    currentPixels: `${(currentPixels / 1000000).toFixed(2)}M`,
+    maxPixels: `${(maxPixels / 1000000).toFixed(2)}M`,
+    needsPixelResize,
+    dimensions: `${originalWidth}x${originalHeight}`,
+  });
+
+  // 픽셀 수 제한을 위한 스케일 계산
+  let targetWidth = originalWidth;
+  let targetHeight = originalHeight;
+
+  if (needsPixelResize) {
+    // 픽셀 수를 maxPixels 이하로 줄이기 위한 스케일 계산
+    const pixelScale = Math.sqrt(maxPixels / currentPixels) * 0.95; // 5% 여유
+    targetWidth = Math.round(originalWidth * pixelScale);
+    targetHeight = Math.round(originalHeight * pixelScale);
+    console.log(`[이미지 재생성] 픽셀 수 제한으로 리사이즈: ${originalWidth}x${originalHeight} -> ${targetWidth}x${targetHeight}`);
+  }
+
+  let resizedBuffer: Buffer;
+  let quality = 85;
+
+  // 먼저 픽셀 수 제한에 맞게 리사이즈
+  resizedBuffer = await sharp(imageBuffer)
+    .resize(targetWidth, targetHeight, { fit: 'inside' })
+    .jpeg({ quality })
+    .toBuffer();
+
+  // 파일 크기도 확인
+  if (resizedBuffer.length <= maxSize) {
+    const finalMeta = await sharp(resizedBuffer).metadata();
+    console.log(`[이미지 재생성] 리사이즈 성공: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB (${finalMeta.width}x${finalMeta.height})`);
+    return {
+      base64: resizedBuffer.toString('base64'),
+      mimeType: 'image/jpeg',
+      resized: true,
+    };
+  }
+
+  // 파일 크기 초과 시 품질을 낮추며 재시도
+  for (quality = 80; quality >= 50; quality -= 10) {
+    resizedBuffer = await sharp(imageBuffer)
+      .resize(targetWidth, targetHeight, { fit: 'inside' })
+      .jpeg({ quality })
+      .toBuffer();
+
+    if (resizedBuffer.length <= maxSize) {
+      const finalMeta = await sharp(resizedBuffer).metadata();
+      console.log(`[이미지 재생성] 품질 ${quality}%로 리사이즈 성공: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB (${finalMeta.width}x${finalMeta.height})`);
+      return {
+        base64: resizedBuffer.toString('base64'),
+        mimeType: 'image/jpeg',
+        resized: true,
+      };
+    }
+  }
+
+  // 그래도 초과하면 크기를 더 줄임
+  for (let scale = 0.8; scale >= 0.4; scale -= 0.1) {
+    const newWidth = Math.round(targetWidth * scale);
+    const newHeight = Math.round(targetHeight * scale);
+
+    resizedBuffer = await sharp(imageBuffer)
+      .resize(newWidth, newHeight, { fit: 'inside' })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+
+    if (resizedBuffer.length <= maxSize) {
+      console.log(`[이미지 재생성] ${Math.round(scale * 100)}% 추가 축소 성공: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB (${newWidth}x${newHeight})`);
+      return {
+        base64: resizedBuffer.toString('base64'),
+        mimeType: 'image/jpeg',
+        resized: true,
+      };
+    }
+  }
+
+  // 최소 크기로 강제 리사이즈
+  resizedBuffer = await sharp(imageBuffer)
+    .resize(2048, 2048, { fit: 'inside' })
+    .jpeg({ quality: 60 })
+    .toBuffer();
+
+  console.log(`[이미지 재생성] 최소 크기로 리사이즈: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+  return {
+    base64: resizedBuffer.toString('base64'),
+    mimeType: 'image/jpeg',
+    resized: true,
+  };
+}
+
 /**
  * Seedream API용 size 파라미터를 계산합니다.
  * ByteDance ARK API는 aspect_ratio 파라미터가 없고, size 파라미터에 직접 픽셀 크기를 지정합니다.
@@ -192,6 +322,10 @@ interface RegenerateImageRequest {
   stylePrompt: string;
   index?: number; // 이미지 생성 순서 (0부터 시작)
   apiProvider?: 'gemini' | 'seedream' | 'auto'; // API 제공자 선택
+  // 레퍼런스 이미지 (톤먹 넣기 등)
+  referenceImageUrl?: string; // 레퍼런스 이미지 URL
+  referenceImageBase64?: string; // 레퍼런스 이미지 base64 데이터
+  referenceImageMimeType?: string; // 레퍼런스 이미지 MIME 타입
 }
 
 export async function POST(request: NextRequest) {
@@ -200,7 +334,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: RegenerateImageRequest = await request.json();
-    const { imageUrl, imageBase64: requestImageBase64, imageMimeType: requestMimeType, stylePrompt, index = 0, apiProvider = 'auto' } = body;
+    const { 
+      imageUrl, 
+      imageBase64: requestImageBase64, 
+      imageMimeType: requestMimeType, 
+      stylePrompt, 
+      index = 0, 
+      apiProvider = 'auto',
+      referenceImageUrl,
+      referenceImageBase64,
+      referenceImageMimeType,
+    } = body;
+    
+    const hasReferenceImage = !!(referenceImageBase64 || referenceImageUrl);
 
     // API 제공자 결정
     let useSeedream: boolean;
@@ -219,7 +365,10 @@ export async function POST(request: NextRequest) {
       imageUrl: imageUrl || '없음',
       stylePrompt: stylePrompt.substring(0, 50) + '...',
       index,
-      provider: useSeedream ? 'Seedream' : 'Gemini'
+      provider: useSeedream ? 'Seedream' : 'Gemini',
+      hasReferenceImage,
+      hasReferenceBase64: !!referenceImageBase64,
+      referenceImageUrl: referenceImageUrl || '없음',
     });
 
     if (!requestImageBase64 && !imageUrl) {
@@ -337,6 +486,43 @@ export async function POST(request: NextRequest) {
       seedreamSize: seedreamSize || '미지정'
     });
 
+    // 레퍼런스 이미지 처리 (톤먹 넣기 등에서 사용)
+    let refImageBase64: string | undefined;
+    let refMimeType: string | undefined;
+    
+    if (hasReferenceImage) {
+      if (referenceImageBase64) {
+        console.log('[이미지 재생성] 레퍼런스 이미지 base64 데이터 사용');
+        refImageBase64 = referenceImageBase64;
+        refMimeType = referenceImageMimeType || 'image/png';
+      } else if (referenceImageUrl) {
+        console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 시작...');
+        const refImageResponse = await fetch(referenceImageUrl);
+        
+        if (!refImageResponse.ok) {
+          console.error('[이미지 재생성] 레퍼런스 이미지 다운로드 실패:', {
+            status: refImageResponse.status,
+            statusText: refImageResponse.statusText,
+            url: referenceImageUrl
+          });
+          return NextResponse.json(
+            { error: '레퍼런스 이미지를 가져올 수 없습니다.' },
+            { status: 400 }
+          );
+        }
+        
+        const refArrayBuffer = await refImageResponse.arrayBuffer();
+        const refBuffer = Buffer.from(refArrayBuffer);
+        refImageBase64 = refBuffer.toString('base64');
+        refMimeType = refImageResponse.headers.get('content-type') || 'image/jpeg';
+        
+        console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 완료:', {
+          size: refBuffer.length,
+          mimeType: refMimeType,
+        });
+      }
+    }
+
     let generatedImageData: string | null = null;
     let generatedImageMimeType: string | null = null;
 
@@ -353,10 +539,33 @@ export async function POST(request: NextRequest) {
       console.log('[이미지 재생성] Seedream API 호출 시작...');
       const seedreamRequestStart = Date.now();
 
-      // Seedream API에 전달할 이미지 (base64인 경우 data URL로 변환)
-      const seedreamImageInput = requestImageBase64 
-        ? `data:${mimeType};base64,${requestImageBase64}`
-        : imageUrl!;
+      // 이미지 크기가 10MB를 초과하면 리사이즈
+      let seedreamImageBase64 = imageBase64;
+      let seedreamMimeType = mimeType;
+
+      const resizeResult = await resizeImageIfNeeded(imageBuffer);
+      if (resizeResult.resized) {
+        seedreamImageBase64 = resizeResult.base64;
+        seedreamMimeType = resizeResult.mimeType;
+        console.log('[이미지 재생성] 원본 이미지가 리사이즈됨');
+      }
+
+      // Seedream API에 전달할 이미지 (base64 data URL로 변환)
+      const seedreamImageInput = `data:${seedreamMimeType};base64,${seedreamImageBase64}`;
+      
+      // 레퍼런스 이미지가 있는 경우 함께 전달
+      const seedreamImages = [seedreamImageInput];
+      if (hasReferenceImage && refImageBase64 && refMimeType) {
+        // 레퍼런스 이미지도 크기 확인 및 리사이즈
+        const refBuffer = Buffer.from(refImageBase64, 'base64');
+        const refResizeResult = await resizeImageIfNeeded(refBuffer);
+        const finalRefBase64 = refResizeResult.resized ? refResizeResult.base64 : refImageBase64;
+        const finalRefMimeType = refResizeResult.resized ? refResizeResult.mimeType : refMimeType;
+
+        const refDataUrl = `data:${finalRefMimeType};base64,${finalRefBase64}`;
+        seedreamImages.push(refDataUrl);
+        console.log('[이미지 재생성] Seedream API에 레퍼런스 이미지 포함', refResizeResult.resized ? '(리사이즈됨)' : '');
+      }
 
       // Seedream API 요청 본문 구성
       // ByteDance ARK API 문서에 따르면:
@@ -367,7 +576,7 @@ export async function POST(request: NextRequest) {
       const seedreamRequestBody: Record<string, unknown> = {
         model: 'seedream-4-0-250828',
         prompt: stylePrompt,
-        image: [seedreamImageInput], // 이미지 편집을 위한 이미지 (URL 또는 data URL)
+        image: seedreamImages, // 이미지 편집을 위한 이미지 (URL 또는 data URL), 레퍼런스 포함 가능
         sequential_image_generation: 'disabled',
         response_format: 'url',
         size: seedreamSize || '2K', // 원본 비율을 유지하는 크기 또는 기본값
@@ -538,22 +747,46 @@ export async function POST(request: NextRequest) {
         maxOutputTokens: 32768,
       };
 
-      const model = 'gemini-2.5-flash-image';
+      const model = 'gemini-3-pro-image-preview';
 
+      // 레퍼런스 이미지가 있는 경우 두 이미지를 함께 전달
+      const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+      
+      if (hasReferenceImage && refImageBase64 && refMimeType) {
+        // 톤먹 넣기: 원본(이미지1) + 레퍼런스(이미지2) + 프롬프트
+        contentParts.push({
+          text: stylePrompt, // "1번 이미지의 스케치를 2번 이미지의 명암과 톤 스타일을 참고해서 완성해줘"
+        });
+        contentParts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: imageBase64,
+          },
+        });
+        contentParts.push({
+          inlineData: {
+            mimeType: refMimeType,
+            data: refImageBase64,
+          },
+        });
+        console.log('[이미지 재생성] 레퍼런스 이미지 포함하여 Gemini API 호출');
+      } else {
+        // 일반 재생성: 프롬프트 + 원본 이미지
+        contentParts.push({
+          text: stylePrompt,
+        });
+        contentParts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: imageBase64,
+          },
+        });
+      }
+      
       const contents = [
         {
           role: 'user' as const,
-          parts: [
-            {
-              text: stylePrompt,
-            },
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: imageBase64,
-              },
-            },
-          ],
+          parts: contentParts,
         },
       ];
 

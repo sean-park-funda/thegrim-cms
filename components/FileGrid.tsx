@@ -507,6 +507,7 @@ export function FileGrid() {
         generationCount={generationCount}
         onGenerationCountChange={setGenerationCount}
         fileToViewId={fileToView?.id || null}
+        webtoonId={selectedWebtoon?.id}
       />
 
       {/* 파일 상세 정보 Dialog */}
@@ -533,6 +534,7 @@ export function FileGrid() {
         analyzingFiles={analyzingFiles}
         canUpload={!!canUpload}
         canDelete={!!canDelete}
+        processes={processes}
       />
 
       {/* 이미지 전체화면 뷰어 */}

@@ -1,10 +1,12 @@
 'use client';
 
-import { File as FileType } from '@/lib/supabase';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useState } from 'react';
+import { File as FileType, Process } from '@/lib/supabase';
+import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
@@ -32,7 +34,7 @@ interface FileDetailDialogProps {
   onRegenerateClick: () => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
-  onSaveImages: () => void;
+  onSaveImages: (processId?: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   imageErrors: Set<string>;
@@ -44,6 +46,7 @@ interface FileDetailDialogProps {
   analyzingFiles: Set<string>;
   canUpload: boolean;
   canDelete: boolean;
+  processes: Process[]; // 공정 목록
 }
 
 export function FileDetailDialog({
@@ -69,7 +72,26 @@ export function FileDetailDialog({
   analyzingFiles,
   canUpload,
   canDelete,
+  processes,
 }: FileDetailDialogProps) {
+  const [processSelectOpen, setProcessSelectOpen] = useState(false);
+  const [selectedProcessId, setSelectedProcessId] = useState<string>('');
+
+  // 다이얼로그가 열릴 때 원본 파일의 공정으로 초기화
+  const handleOpenProcessSelect = () => {
+    if (file) {
+      setSelectedProcessId(file.process_id);
+    }
+    setProcessSelectOpen(true);
+  };
+
+  const handleSaveWithProcess = () => {
+    if (selectedProcessId) {
+      onSaveImages(selectedProcessId);
+      setProcessSelectOpen(false);
+    }
+  };
+
   if (!file) return null;
 
   const metadata = file.metadata as {
@@ -88,6 +110,7 @@ export function FileDetailDialog({
       : `https://${file.file_path}`;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
         <DialogTitle asChild>
@@ -264,7 +287,7 @@ export function FileDetailDialog({
                         variant="default"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSaveImages();
+                          handleOpenProcessSelect();
                         }}
                         disabled={selectedImageIds.size === 0 || savingImages}
                       >
@@ -441,6 +464,42 @@ export function FileDetailDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* 공정 선택 다이얼로그 */}
+    <Dialog open={processSelectOpen} onOpenChange={setProcessSelectOpen}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>등록할 공정 선택</DialogTitle>
+          <DialogDescription>
+            재생성된 이미지를 등록할 공정을 선택하세요.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <Select value={selectedProcessId} onValueChange={setSelectedProcessId}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="공정을 선택하세요" />
+            </SelectTrigger>
+            <SelectContent>
+              {processes.map((process) => (
+                <SelectItem key={process.id} value={process.id}>
+                  {process.name}
+                  {process.id === file?.process_id && ' (원본 공정)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setProcessSelectOpen(false)} disabled={savingImages}>
+            취소
+          </Button>
+          <Button onClick={handleSaveWithProcess} disabled={!selectedProcessId || savingImages}>
+            {savingImages ? '등록 중...' : '등록'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

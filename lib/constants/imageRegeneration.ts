@@ -50,6 +50,16 @@ export const styleOptions = [
     defaultCount: 1, // 기본 생성 개수
     allowMultiple: false, // 여러 장 생성 불가
     apiProvider: 'seedream' as ApiProvider, // Seedream만 사용
+    requiresReference: false, // 레퍼런스 이미지 불필요
+  },
+  { 
+    id: 'tone-reference', 
+    name: '톤먹 넣기', 
+    prompt: '1번 이미지의 스케치를 2번 이미지의 명암과 톤 스타일을 참고해서 완성해줘',
+    defaultCount: 2, // 기본 생성 개수
+    allowMultiple: true, // 여러 장 생성 가능
+    apiProvider: 'gemini' as ApiProvider, // Gemini만 사용 (레퍼런스 이미지 처리에 적합)
+    requiresReference: true, // 레퍼런스 이미지 필요
   },
 ];
 
