@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings, X } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -152,11 +152,22 @@ export function Navigation() {
 
           {/* 오른쪽 액션 - Linear 스타일: 미니멀한 버튼 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {user && profile && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/comfy-test')}
+                className="h-8 w-8 p-0 text-background/70 hover:text-background hover:bg-background/10"
+                title="ComfyUI 테스트"
+              >
+                <Wand2 className="h-4 w-4" />
+              </Button>
+            )}
             {user && profile && profile.role === 'admin' && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => router.push('/admin')} 
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/admin')}
                 className="h-8 w-8 p-0 text-background/70 hover:text-background hover:bg-background/10"
               >
                 <Settings className="h-4 w-4" />
