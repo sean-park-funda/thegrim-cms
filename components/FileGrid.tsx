@@ -545,6 +545,15 @@ export function FileGrid() {
           setRegeneratedImages([]);
           setSelectedImageIds(new Set());
         }}
+        onSaveComplete={(processId) => {
+          // 저장 완료 시 다이얼로그 닫고 해당 공정 선택
+          handleDetailDialogClose(false);
+          // 해당 공정 선택
+          const targetProcess = processes.find(p => p.id === processId);
+          if (targetProcess) {
+            setSelectedProcess(targetProcess);
+          }
+        }}
       />
 
       {/* 이미지 전체화면 뷰어 */}

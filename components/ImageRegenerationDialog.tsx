@@ -159,26 +159,16 @@ export function ImageRegenerationDialog({
     setSelectedReferenceFile(file);
   };
 
-  // 레퍼런스 선택 확인 -> 장수 선택 다이얼로그로 이동
-  const handleReferenceConfirm = () => {
+  // 레퍼런스 선택 + 장수 선택 통합 확인
+  const handleReferenceDirectConfirm = () => {
     if (!selectedReferenceFile || !pendingReferenceStyle) return;
+    const referenceImage: ReferenceImageInfo = {
+      url: selectedReferenceFile.file_path,
+    };
+    onRegenerate(pendingReferenceStyle.prompt, generationCount, false, referenceImage);
     setReferenceSelectionOpen(false);
-    setSelectedStyle(pendingReferenceStyle);
-    setCountSelectionOpen(true);
-  };
-
-  // 장수 선택 확인 (레퍼런스 포함)
-  const handleCountConfirmWithReference = () => {
-    if (selectedStyle && selectedReferenceFile) {
-      const referenceImage: ReferenceImageInfo = {
-        url: selectedReferenceFile.file_path,
-      };
-      onRegenerate(selectedStyle.prompt, generationCount, false, referenceImage);
-      setCountSelectionOpen(false);
-      setSelectedStyle(null);
-      setSelectedReferenceFile(null);
-      setPendingReferenceStyle(null);
-    }
+    setSelectedReferenceFile(null);
+    setPendingReferenceStyle(null);
   };
 
   // 레퍼런스 선택 취소
@@ -220,33 +210,18 @@ export function ImageRegenerationDialog({
         </DialogContent>
       </Dialog>
 
-      {/* 장 수 선택 Dialog */}
+      {/* 장 수 선택 Dialog (레퍼런스 없는 스타일용) */}
       <Dialog open={countSelectionOpen} onOpenChange={setCountSelectionOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>생성 개수 선택</DialogTitle>
             <DialogDescription>
-              {selectedReferenceFile
-                ? `레퍼런스: ${selectedReferenceFile.file_name}`
-                : '한번에 몇 장을 그릴지 선택하세요.'}
+              한번에 몇 장을 그릴지 선택하세요.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* 선택된 레퍼런스 미리보기 */}
-            {selectedReferenceFile && (
-              <div className="mb-4">
-                <label className="text-sm font-medium mb-2 block">선택된 레퍼런스</label>
-                <div className="w-32 h-32 bg-muted rounded-md overflow-hidden">
-                  <img
-                    src={selectedReferenceFile.file_path}
-                    alt={selectedReferenceFile.file_name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-            )}
             <div className="space-y-2">
-              <label className="text-sm font-medium">한번에 몇 장을 그릴지</label>
+              <label className="text-sm font-medium">생성 장수</label>
               <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -262,35 +237,26 @@ export function ImageRegenerationDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setCountSelectionOpen(false);
-              if (selectedReferenceFile) {
-                setSelectedReferenceFile(null);
-                setPendingReferenceStyle(null);
-              }
-            }} disabled={regeneratingImage !== null}>
+            <Button variant="outline" onClick={() => setCountSelectionOpen(false)} disabled={regeneratingImage !== null}>
               취소
             </Button>
-            <Button
-              onClick={selectedReferenceFile ? handleCountConfirmWithReference : handleCountConfirm}
-              disabled={regeneratingImage !== null}
-            >
+            <Button onClick={handleCountConfirm} disabled={regeneratingImage !== null}>
               확인
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* 레퍼런스 파일 선택 Dialog (톤먹 넣기) */}
+      {/* 레퍼런스 파일 선택 + 장수 선택 통합 Dialog (톤먹 넣기) */}
       <Dialog open={referenceSelectionOpen} onOpenChange={(open) => {
         if (!open) handleReferenceCancel();
         else setReferenceSelectionOpen(open);
       }}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>레퍼런스 이미지 선택</DialogTitle>
+            <DialogTitle>톤먹 넣기</DialogTitle>
             <DialogDescription>
-              톤과 명암 스타일을 참고할 레퍼런스 이미지를 선택하세요.
+              레퍼런스 이미지를 선택하고 생성할 장수를 설정하세요.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -305,46 +271,57 @@ export function ImageRegenerationDialog({
                 <p className="text-sm mt-1">웹툰의 레퍼런스 파일을 먼저 등록해주세요.</p>
               </div>
             ) : (
-              <ScrollArea className="h-[400px] pr-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {referenceFiles.map((file) => (
-                    <Card
-                      key={file.id}
-                      className={`cursor-pointer transition-all overflow-hidden ${
-                        selectedReferenceFile?.id === file.id
-                          ? 'ring-2 ring-primary'
-                          : 'hover:ring-1 hover:ring-primary/50'
-                      }`}
-                      onClick={() => handleReferenceSelect(file)}
-                    >
-                      <CardContent className="p-2">
-                        <div className="aspect-square bg-muted rounded-md overflow-hidden relative">
+              <div className="space-y-3">
+                {/* 레퍼런스 이미지 그리드 */}
+                <ScrollArea className="h-[280px]">
+                  <div className="grid grid-cols-3 gap-2 pr-3">
+                    {referenceFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className={`cursor-pointer transition-all overflow-hidden rounded-md ${
+                          selectedReferenceFile?.id === file.id
+                            ? 'ring-2 ring-primary'
+                            : 'hover:ring-1 hover:ring-primary/50'
+                        }`}
+                        onClick={() => handleReferenceSelect(file)}
+                      >
+                        <div className="aspect-square bg-muted overflow-hidden relative">
                           <img
-                            src={file.file_path}
+                            src={file.thumbnail_path
+                              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${file.thumbnail_path}`
+                              : file.file_path}
                             alt={file.file_name}
                             className="w-full h-full object-cover"
                           />
                           {selectedReferenceFile?.id === file.id && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                              <div className="bg-primary rounded-full p-1">
-                                <Check className="h-4 w-4 text-primary-foreground" />
+                            <div className="absolute top-1 right-1">
+                              <div className="bg-primary rounded-full p-0.5">
+                                <Check className="h-3 w-3 text-primary-foreground" />
                               </div>
                             </div>
                           )}
                         </div>
-                        <p className="text-xs mt-1 line-clamp-1 text-center" title={file.file_name}>
-                          {file.file_name}
-                        </p>
-                        {file.process?.name && (
-                          <p className="text-xs text-muted-foreground text-center">
-                            {file.process.name}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                {/* 장수 선택 */}
+                <div className="flex items-center gap-3 pt-1">
+                  <label className="text-sm font-medium whitespace-nowrap">생성 장수</label>
+                  <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 10 }, (_, i) => (i + 1) * 2).map((count) => (
+                        <SelectItem key={count} value={count.toString()}>
+                          {count}장
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </ScrollArea>
+              </div>
             )}
           </div>
           <DialogFooter>
@@ -352,10 +329,10 @@ export function ImageRegenerationDialog({
               취소
             </Button>
             <Button
-              onClick={handleReferenceConfirm}
+              onClick={handleReferenceDirectConfirm}
               disabled={!selectedReferenceFile || regeneratingImage !== null}
             >
-              다음
+              생성하기
             </Button>
           </DialogFooter>
         </DialogContent>

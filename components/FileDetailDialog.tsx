@@ -48,6 +48,7 @@ interface FileDetailDialogProps {
   canDelete: boolean;
   processes: Process[]; // 공정 목록
   onSourceFileClick?: (file: FileType) => void; // 원본 파일 클릭 시 콜백
+  onSaveComplete?: (processId: string) => void; // 저장 완료 시 콜백 (공정 선택 + 다이얼로그 닫기)
 }
 
 export function FileDetailDialog({
@@ -75,22 +76,37 @@ export function FileDetailDialog({
   canDelete,
   processes,
   onSourceFileClick,
+  onSaveComplete,
 }: FileDetailDialogProps) {
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
 
-  // 다이얼로그가 열릴 때 원본 파일의 공정으로 초기화
+  // 다음 공정 찾기 (order_index 기준)
+  const getNextProcessId = (currentProcessId: string): string => {
+    const sortedProcesses = [...processes].sort((a, b) => a.order_index - b.order_index);
+    const currentIndex = sortedProcesses.findIndex(p => p.id === currentProcessId);
+    if (currentIndex >= 0 && currentIndex < sortedProcesses.length - 1) {
+      return sortedProcesses[currentIndex + 1].id;
+    }
+    return currentProcessId; // 다음 공정이 없으면 현재 공정 유지
+  };
+
+  // 다이얼로그가 열릴 때 다음 공정으로 초기화
   const handleOpenProcessSelect = () => {
     if (file) {
-      setSelectedProcessId(file.process_id);
+      setSelectedProcessId(getNextProcessId(file.process_id));
     }
     setProcessSelectOpen(true);
   };
 
-  const handleSaveWithProcess = () => {
+  const handleSaveWithProcess = async () => {
     if (selectedProcessId) {
       onSaveImages(selectedProcessId);
       setProcessSelectOpen(false);
+      // 저장 완료 후 다이얼로그 닫고 해당 공정 선택
+      if (onSaveComplete) {
+        onSaveComplete(selectedProcessId);
+      }
     }
   };
 
