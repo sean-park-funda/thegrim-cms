@@ -1,0 +1,132 @@
+'use client';
+
+import { useState } from 'react';
+import { ReferenceFileWithProcess } from '@/lib/supabase';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Download, Trash2, FileIcon, Image as ImageIcon } from 'lucide-react';
+import { deleteReferenceFile } from '@/lib/api/referenceFiles';
+import { canDeleteContent } from '@/lib/utils/permissions';
+import { useStore } from '@/lib/store/useStore';
+
+interface ReferenceFileListProps {
+    files: ReferenceFileWithProcess[];
+    onFileDeleted?: () => void;
+}
+
+export function ReferenceFileList({ files, onFileDeleted }: ReferenceFileListProps) {
+    const { profile } = useStore();
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // 공정별로 파일 그룹화
+    const filesByProcess = files.reduce((acc, file) => {
+        const processName = file.process?.name || '미지정';
+        if (!acc[processName]) {
+            acc[processName] = [];
+        }
+        acc[processName].push(file);
+        return acc;
+    }, {} as Record<string, ReferenceFileWithProcess[]>);
+
+    const handleDelete = async (fileId: string, fileName: string) => {
+        if (!confirm(`"${fileName}" 파일을 삭제하시겠습니까?`)) {
+            return;
+        }
+
+        try {
+            setDeletingId(fileId);
+            await deleteReferenceFile(fileId);
+            alert('레퍼런스 파일이 삭제되었습니다.');
+            onFileDeleted?.();
+        } catch (error) {
+            console.error('레퍼런스 파일 삭제 실패:', error);
+            alert('레퍼런스 파일 삭제에 실패했습니다.');
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const handleDownload = (file: ReferenceFileWithProcess) => {
+        window.open(file.file_path, '_blank');
+    };
+
+    if (files.length === 0) {
+        return (
+            <div className="text-center py-8 text-muted-foreground">
+                <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>등록된 레퍼런스 파일이 없습니다.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {Object.entries(filesByProcess).map(([processName, processFiles]) => (
+                <div key={processName}>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground">
+                        {processName} ({processFiles.length})
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {processFiles.map((file) => (
+                            <Card key={file.id} className="overflow-hidden">
+                                <CardContent className="p-3">
+                                    {/* 파일 미리보기 */}
+                                    <div className="aspect-video bg-muted rounded-md mb-2 flex items-center justify-center overflow-hidden">
+                                        {file.file_type === 'image' ? (
+                                            <img
+                                                src={file.file_path}
+                                                alt={file.file_name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <FileIcon className="h-12 w-12 text-muted-foreground" />
+                                        )}
+                                    </div>
+
+                                    {/* 파일 정보 */}
+                                    <div className="space-y-1 mb-3">
+                                        <p className="text-sm font-medium line-clamp-1" title={file.file_name}>
+                                            {file.file_name}
+                                        </p>
+                                        {file.description && (
+                                            <p className="text-xs text-muted-foreground line-clamp-2">
+                                                {file.description}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground">
+                                            {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : ''}
+                                        </p>
+                                    </div>
+
+                                    {/* 액션 버튼 */}
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="flex-1"
+                                            onClick={() => handleDownload(file)}
+                                        >
+                                            <Download className="h-4 w-4 mr-1" />
+                                            다운로드
+                                        </Button>
+                                        {profile && canDeleteContent(profile.role) && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleDelete(file.id, file.file_name)}
+                                                disabled={deletingId === file.id}
+                                                className="text-destructive hover:text-destructive"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}

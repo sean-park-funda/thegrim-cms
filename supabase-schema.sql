@@ -68,6 +68,24 @@ CREATE TABLE IF NOT EXISTS files (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 6. 레퍼런스 파일 테이블 (웹툰별)
+CREATE TABLE IF NOT EXISTS reference_files (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  webtoon_id UUID NOT NULL REFERENCES webtoons(id) ON DELETE CASCADE,
+  process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+  file_name VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  thumbnail_path TEXT,
+  file_size BIGINT,
+  file_type VARCHAR(100),
+  mime_type VARCHAR(100),
+  description TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ========================================
 -- 인덱스 생성
 -- ========================================
@@ -78,6 +96,8 @@ CREATE INDEX IF NOT EXISTS idx_cuts_episode_id ON cuts(episode_id);
 CREATE INDEX IF NOT EXISTS idx_files_cut_id ON files(cut_id);
 CREATE INDEX IF NOT EXISTS idx_files_process_id ON files(process_id);
 CREATE INDEX IF NOT EXISTS idx_processes_order ON processes(order_index);
+CREATE INDEX IF NOT EXISTS idx_reference_files_webtoon_id ON reference_files(webtoon_id);
+CREATE INDEX IF NOT EXISTS idx_reference_files_process_id ON reference_files(process_id);
 
 -- Full-text search를 위한 인덱스
 CREATE INDEX IF NOT EXISTS idx_files_description ON files USING GIN (to_tsvector('korean', COALESCE(description, '')));
@@ -126,6 +146,9 @@ CREATE TRIGGER update_processes_updated_at BEFORE UPDATE ON processes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_files_updated_at BEFORE UPDATE ON files
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_reference_files_updated_at BEFORE UPDATE ON reference_files
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ========================================

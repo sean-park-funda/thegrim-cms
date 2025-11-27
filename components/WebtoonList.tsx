@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2 } from 'lucide-react';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage } from 'lucide-react';
 import { Webtoon } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
+import { ReferenceFileDialog } from './ReferenceFileDialog';
 
 // 모듈 레벨 변수로 전역 로딩 상태 관리 (여러 컴포넌트 인스턴스 간 공유)
 let isLoadingGlobally = false;
@@ -24,6 +25,8 @@ export function WebtoonList() {
   const [editingWebtoon, setEditingWebtoon] = useState<Webtoon | null>(null);
   const [formData, setFormData] = useState({ title: '', description: '' });
   const [saving, setSaving] = useState(false);
+  const [referenceFileDialogOpen, setReferenceFileDialogOpen] = useState(false);
+  const [selectedWebtoonForReference, setSelectedWebtoonForReference] = useState<Webtoon | null>(null);
 
   // Dialog 상태 디버깅
   useEffect(() => {
@@ -75,6 +78,12 @@ export function WebtoonList() {
       description: webtoon.description || ''
     });
     setEditDialogOpen(true);
+  };
+
+  const handleManageReferences = (webtoon: Webtoon, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedWebtoonForReference(webtoon);
+    setReferenceFileDialogOpen(true);
   };
 
   const handleDelete = async (webtoon: Webtoon, e: React.MouseEvent) => {
@@ -174,6 +183,10 @@ export function WebtoonList() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => handleManageReferences(webtoon, e)}>
+                              <FileImage className="h-4 w-4 mr-2" />
+                              레퍼런스 파일 관리
+                            </DropdownMenuItem>
                             {canEditContent(profile.role) && (
                               <DropdownMenuItem onClick={(e) => handleEdit(webtoon, e)}>
                                 <Edit className="h-4 w-4 mr-2" />
@@ -274,6 +287,15 @@ export function WebtoonList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 레퍼런스 파일 관리 Dialog */}
+      {selectedWebtoonForReference && (
+        <ReferenceFileDialog
+          open={referenceFileDialogOpen}
+          onOpenChange={setReferenceFileDialogOpen}
+          webtoon={selectedWebtoonForReference}
+        />
+      )}
     </>
   );
 }

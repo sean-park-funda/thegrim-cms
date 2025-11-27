@@ -37,7 +37,10 @@ thegrim-CMS/
 │   ├── FileDetailDialog.tsx     # 파일 상세 정보 다이얼로그
 │   ├── ImageViewer.tsx          # 이미지 전체화면 뷰어
 │   ├── ImageRegenerationDialog.tsx  # 이미지 재생성 스타일 선택 다이얼로그
-│   └── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
+│   ├── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
+│   ├── ReferenceFileDialog.tsx  # 레퍼런스 파일 관리 다이얼로그
+│   ├── ReferenceFileUpload.tsx  # 레퍼런스 파일 업로드 다이얼로그
+│   └── ReferenceFileList.tsx    # 레퍼런스 파일 목록 표시
 │
 ├── lib/                          # 유틸리티 및 라이브러리
 │   ├── api/                     # API 함수들
@@ -46,6 +49,7 @@ thegrim-CMS/
 │   │   ├── cuts.ts              # 컷 관련 API
 │   │   ├── processes.ts         # 공정 관련 API
 │   │   ├── files.ts             # 파일 관련 API
+│   │   ├── referenceFiles.ts    # 레퍼런스 파일 관련 API
 │   │   ├── auth.ts              # 인증 관련 API
 │   │   └── admin.ts             # 관리자 유틸리티
 │   │
@@ -134,12 +138,15 @@ thegrim-CMS/
 - 새 회차 추가 버튼 (향후 구현)
 
 **CutList.tsx**
-- 선택한 회차의 컷 목록
+- 선택한 회차의 컷/페이지 목록
 - 컷 선택 기능
-- 새 컷 추가 버튼 (향후 구현)
+- 새 컷 추가 버튼 (상단 고정)
+- 컴팩트한 레이아웃으로 최적화 (작은 폰트, 최소 여백)
+- 스크롤 가능한 목록 영역
 
 **FileGrid.tsx**
 - 선택한 컷의 파일을 공정별로 그룹화하여 표시
+- 공정 탭 선택 상태 유지 (전역 상태 관리)
 - 이미지 미리보기
 - 파일 다운로드/삭제/수정 기능
 - AI 이미지 분석 및 재생성 기능
@@ -171,6 +178,22 @@ thegrim-CMS/
 **ProcessFileSection.tsx**
 - 공정별 파일 섹션 컴포넌트
 - 드래그 앤 드롭 업로드 지원
+
+**ReferenceFileDialog.tsx**
+- 레퍼런스 파일 관리 메인 다이얼로그
+- 공정별 탭으로 레퍼런스 파일 필터링
+- 파일 업로드 및 목록 표시 통합
+
+**ReferenceFileUpload.tsx**
+- 레퍼런스 파일 업로드 다이얼로그
+- 드래그 앤 드롭 파일 선택 지원
+- 공정 선택 및 설명 입력
+
+**ReferenceFileList.tsx**
+- 레퍼런스 파일 목록 표시
+- 공정별 그룹화
+- 파일 미리보기, 다운로드, 삭제 기능
+
 
 **SearchResults.tsx**
 - 검색 결과 표시
@@ -220,6 +243,15 @@ thegrim-CMS/
 - \`analyzeImage(fileId)\`: 이미지 메타데이터 자동 생성
 - \`generateThumbnail(fileId)\`: 썸네일 생성
 - \`getThumbnailUrl(file)\`: 썸네일 URL 가져오기 (없으면 생성)
+
+**referenceFiles.ts**
+- \`getReferenceFilesByWebtoon(webtoonId)\`: 웹툰의 레퍼런스 파일 목록
+- \`getReferenceFilesByProcess(webtoonId, processId)\`: 특정 공정의 레퍼런스 파일 목록
+- \`uploadReferenceFile(file, webtoonId, processId, description)\`: 레퍼런스 파일 업로드
+- \`deleteReferenceFile(id)\`: 레퍼런스 파일 삭제 (Storage + DB)
+- \`updateReferenceFile(id, updates)\`: 레퍼런스 파일 정보 수정
+- \`getReferenceFileThumbnailUrl(file)\`: 레퍼런스 파일 썸네일 URL 가져오기
+
 
 ### 상태 관리 (\`lib/store/\`)
 

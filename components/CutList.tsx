@@ -13,6 +13,8 @@ import { Plus, Image, MoreVertical, Edit, Trash2, File } from 'lucide-react';
 import { Cut } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 export function CutList() {
   const { selectedWebtoon, selectedEpisode, selectedCut, setSelectedCut, profile } = useStore();
   const [cuts, setCuts] = useState<Cut[]>([]);
@@ -145,76 +147,83 @@ export function CutList() {
 
   return (
     <>
-      <div className="p-3 sm:p-4">
-        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 truncate">{selectedEpisode ? `${selectedEpisode.episode_number}화 - ${selectedEpisode.title}` : `${unitLabel} 목록`}</h2>
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* 상단 고정: 생성 버튼 */}
         {profile && canCreateContent(profile.role) && (
-          <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
-            <Plus className="h-4 w-4 mr-2" />
-            새 {unitLabel}
-          </Button>
-        )}
-
-        {cuts.length === 0 ? (
-          <Card>
-            <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
-              <Image className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm sm:text-base">등록된 {unitLabel}이 없습니다.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-2 sm:gap-3">
-            {cuts.map((cut) => (
-              <Card key={cut.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation hover:bg-accent/50 ${selectedCut?.id === cut.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedCut(cut)}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                        <span>
-                          {unitLabel} {cut.cut_number}
-                          {cut.title && ` - ${cut.title}`}
-                        </span>
-                        {cut.files_count !== undefined && (
-                          <Badge variant="outline" className="text-xs whitespace-nowrap flex items-center gap-1">
-                            <File className="h-3 w-3" />
-                            {cut.files_count}
-                          </Badge>
-                        )}
-                      </CardTitle>
-                    </div>
-                    {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {canEditContent(profile.role) && (
-                            <DropdownMenuItem onClick={(e) => handleEdit(cut, e)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              수정
-                            </DropdownMenuItem>
-                          )}
-                          {canDeleteContent(profile.role) && (
-                            <DropdownMenuItem onClick={(e) => handleDelete(cut, e)} className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              삭제
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                </CardHeader>
-                {cut.description && (
-                  <CardContent className="pt-0 pb-4">
-                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{cut.description}</p>
-                  </CardContent>
-                )}
-              </Card>
-            ))}
+          <div className="p-3 sm:p-4 pb-2 flex-shrink-0 border-b bg-background z-10">
+            <Button size="sm" onClick={handleCreate} className="w-full h-9 sm:h-8 touch-manipulation">
+              <Plus className="h-4 w-4 mr-2" />
+              새 {unitLabel}
+            </Button>
           </div>
         )}
+
+        {/* 중간 스크롤: 컷/페이지 목록 */}
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-2 py-2">
+            {cuts.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
+                  <Image className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm sm:text-base">등록된 {unitLabel}이 없습니다.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-1 sm:gap-1.5">
+                {cuts.map((cut) => (
+                  <Card key={cut.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation hover:bg-accent/50 ${selectedCut?.id === cut.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedCut(cut)}>
+                    <CardHeader className="pb-1 pt-2 px-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-xs sm:text-sm flex items-center gap-1">
+                            <span>
+                              {unitLabel} {cut.cut_number}
+                              {cut.title && ` - ${cut.title}`}
+                            </span>
+                            {cut.files_count !== undefined && (
+                              <Badge variant="outline" className="text-[10px] whitespace-nowrap flex items-center gap-0.5">
+                                <File className="h-2.5 w-2.5" />
+                                {cut.files_count}
+                              </Badge>
+                            )}
+                          </CardTitle>
+                        </div>
+                        {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-6 sm:w-6 p-0 touch-manipulation">
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canEditContent(profile.role) && (
+                                <DropdownMenuItem onClick={(e) => handleEdit(cut, e)}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  수정
+                                </DropdownMenuItem>
+                              )}
+                              {canDeleteContent(profile.role) && (
+                                <DropdownMenuItem onClick={(e) => handleDelete(cut, e)} className="text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  삭제
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    </CardHeader>
+                    {cut.description && (
+                      <CardContent className="pt-0 pb-1.5 px-3">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-2">{cut.description}</p>
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
       {/* 생성 Dialog */}
