@@ -372,13 +372,11 @@ export function useImageRegeneration({
       // 선택된 이미지 ID 초기화
       setSelectedImageIds(new Set());
 
-      // 결과 메시지 표시
-      if (successCount > 0 && failCount === 0) {
-        alert(`${successCount}개의 재생성된 이미지가 파일로 등록되었습니다.`);
-      } else if (successCount > 0 && failCount > 0) {
-        alert(`${successCount}개의 이미지가 등록되었습니다. ${failCount}개의 이미지 등록에 실패했습니다.\n\n실패한 이미지:\n${errors.join('\n')}`);
-      } else {
+      // 실패한 경우에만 메시지 표시
+      if (failCount > 0 && successCount === 0) {
         alert(`모든 이미지 등록에 실패했습니다.\n\n오류:\n${errors.join('\n')}`);
+      } else if (failCount > 0) {
+        alert(`${failCount}개의 이미지 등록에 실패했습니다.\n\n실패한 이미지:\n${errors.join('\n')}`);
       }
     } catch (error) {
       console.error('재생성된 이미지 저장 중 오류:', error);
