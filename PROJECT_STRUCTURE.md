@@ -5,6 +5,13 @@
 \`\`\`
 thegrim-CMS/
 ├── app/                          # Next.js App Router
+│   ├── api/                     # API 라우트
+│   │   ├── analyze-image/       # 이미지 분석 API
+│   │   ├── generate-thumbnail/  # 썸네일 생성 API
+│   │   └── regenerate-image/    # 이미지 재생성 API (Gemini/Seedream)
+│   ├── admin/                   # 관리자 페이지
+│   ├── login/                   # 로그인 페이지
+│   ├── signup/                  # 회원가입 페이지
 │   ├── favicon.ico              # 파비콘
 │   ├── globals.css              # 전역 스타일
 │   ├── layout.tsx               # 루트 레이아웃
@@ -167,6 +174,7 @@ thegrim-CMS/
 - 파일 상세 정보 다이얼로그
 - 파일 미리보기, 기본 정보, 메타데이터 표시
 - 재생성된 이미지 관리
+- 재생성된 이미지 등록 시 공정 선택 기능
 
 **ImageViewer.tsx**
 - 이미지 전체화면 뷰어
@@ -174,6 +182,8 @@ thegrim-CMS/
 
 **ImageRegenerationDialog.tsx**
 - 이미지 재생성 스타일 선택 다이얼로그
+- 톤먹 넣기: 레퍼런스 이미지 선택 및 생성 장수 선택 기능
+- 스타일별 다양한 워크플로우 지원 (바로 실행, 장수 선택, 레퍼런스 선택)
 
 **ProcessFileSection.tsx**
 - 공정별 파일 섹션 컴포넌트
@@ -193,6 +203,7 @@ thegrim-CMS/
 - 레퍼런스 파일 목록 표시
 - 공정별 그룹화
 - 파일 미리보기, 다운로드, 삭제 기능
+- 이미지 클릭 시 전체화면 뷰어로 확대 보기
 
 
 **SearchResults.tsx**
@@ -278,7 +289,8 @@ thegrim-CMS/
 **useImageRegeneration.ts**
 - 이미지 재생성 관련 상태 및 로직
 - 재생성 API 호출, 재생성된 이미지 관리
-- 선택된 이미지 관리, 재생성된 이미지 저장
+- 레퍼런스 이미지 지원 (톤먹 넣기 기능)
+- 선택된 이미지 관리, 재생성된 이미지 저장 (공정 선택 가능)
 
 **useImageViewer.ts**
 - 이미지 뷰어 관련 상태 및 로직
@@ -290,7 +302,8 @@ thegrim-CMS/
 
 **imageRegeneration.ts**
 - 이미지 재생성 관련 상수
-- 스타일 옵션, 베르세르크 키워드
+- 스타일 옵션 (괴수디테일, 채색 빼기, 배경 지우기, 극적 명암, 만화풍 명암, 선화만 남기기, 톤먹 넣기)
+- 톤먹 넣기: 레퍼런스 이미지 기반 톤/명암 적용 (Gemini API 전용)
 - 프롬프트 변형 생성 함수
 
 ### Supabase 연동 (\`lib/supabase.ts\`)
