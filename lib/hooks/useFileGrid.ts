@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { File as FileType } from '@/lib/supabase';
+import { FileWithRelations } from '@/lib/supabase';
 import { getFilesByCut, getThumbnailUrl } from '@/lib/api/files';
 
 interface UseFileGridOptions {
@@ -7,7 +7,7 @@ interface UseFileGridOptions {
 }
 
 export function useFileGrid({ selectedCutId }: UseFileGridOptions) {
-  const [files, setFiles] = useState<FileType[]>([]);
+  const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());

@@ -1,14 +1,40 @@
 import { supabase, File, FileWithRelations } from '../supabase';
 
 // 파일 목록 조회 (컷 기준)
-export async function getFilesByCut(cutId: string): Promise<File[]> {
+export async function getFilesByCut(cutId: string): Promise<FileWithRelations[]> {
   const { data, error } = await supabase
     .from('files')
-    .select('*')
+    .select(`
+      *,
+      process:processes (*),
+      created_by_user:user_profiles (id, email, name, role)
+    `)
     .eq('cut_id', cutId)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+  
+  // source_file 정보가 필요한 파일들에 대해 별도 조회
+  if (data) {
+    const filesWithSourceFile = data.filter(f => f.source_file_id);
+    if (filesWithSourceFile.length > 0) {
+      const sourceFileIds = filesWithSourceFile.map(f => f.source_file_id!);
+      const { data: sourceFiles } = await supabase
+        .from('files')
+        .select('*')
+        .in('id', sourceFileIds);
+      
+      if (sourceFiles) {
+        const sourceFileMap = new Map(sourceFiles.map(sf => [sf.id, sf]));
+        data.forEach(file => {
+          if (file.source_file_id) {
+            (file as FileWithRelations).source_file = sourceFileMap.get(file.source_file_id);
+          }
+        });
+      }
+    }
+  }
+  
   return data || [];
 }
 
@@ -25,12 +51,35 @@ export async function getFilesByProcess(processId: string): Promise<FileWithRela
           webtoon:webtoons (*)
         )
       ),
-      process:processes (*)
+      process:processes (*),
+      created_by_user:user_profiles (id, email, name, role)
     `)
     .eq('process_id', processId)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+  
+  // source_file 정보가 필요한 파일들에 대해 별도 조회
+  if (data) {
+    const filesWithSourceFile = data.filter(f => f.source_file_id);
+    if (filesWithSourceFile.length > 0) {
+      const sourceFileIds = filesWithSourceFile.map(f => f.source_file_id!);
+      const { data: sourceFiles } = await supabase
+        .from('files')
+        .select('*')
+        .in('id', sourceFileIds);
+      
+      if (sourceFiles) {
+        const sourceFileMap = new Map(sourceFiles.map(sf => [sf.id, sf]));
+        data.forEach(file => {
+          if (file.source_file_id) {
+            (file as FileWithRelations).source_file = sourceFileMap.get(file.source_file_id);
+          }
+        });
+      }
+    }
+  }
+  
   return data || [];
 }
 
@@ -158,10 +207,32 @@ export async function searchFiles(query: string): Promise<FileWithRelations[]> {
             webtoon:webtoons (*)
           )
         ),
-        process:processes (*)
+        process:processes (*),
+        created_by_user:user_profiles (id, email, name, role)
       `)
       .in('id', fileIds)
       .order('created_at', { ascending: false });
+    
+    // source_file 정보가 필요한 파일들에 대해 별도 조회
+    if (data) {
+      const filesWithSourceFile = data.filter(f => f.source_file_id);
+      if (filesWithSourceFile.length > 0) {
+        const sourceFileIds = filesWithSourceFile.map(f => f.source_file_id!);
+        const { data: sourceFiles } = await supabase
+          .from('files')
+          .select('*')
+          .in('id', sourceFileIds);
+        
+        if (sourceFiles) {
+          const sourceFileMap = new Map(sourceFiles.map(sf => [sf.id, sf]));
+          data.forEach(file => {
+            if (file.source_file_id) {
+              (file as FileWithRelations).source_file = sourceFileMap.get(file.source_file_id);
+            }
+          });
+        }
+      }
+    }
 
     if (error) {
       console.error('검색 쿼리 오류:', {
@@ -458,7 +529,9 @@ export async function uploadFile(
   file: globalThis.File,
   cutId: string,
   processId: string,
-  description?: string
+  description?: string,
+  createdBy?: string,
+  sourceFileId?: string
 ): Promise<File> {
   const timestamp = Date.now();
   const sanitizedFileName = sanitizeFileName(file.name);
@@ -488,7 +561,9 @@ export async function uploadFile(
     file_type: file.type.split('/')[0],
     mime_type: file.type,
     description: description || '',
-    metadata: {}
+    metadata: {},
+    created_by: createdBy,
+    source_file_id: sourceFileId
   });
 
   // 이미지 파일인 경우 자동 분석 및 썸네일 생성 (비동기 처리)

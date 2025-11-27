@@ -7,7 +7,7 @@ import { getProcesses } from '@/lib/api/processes';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FileIcon } from 'lucide-react';
-import { File as FileType } from '@/lib/supabase';
+import { File as FileType, FileWithRelations } from '@/lib/supabase';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 import { useFileGrid } from '@/lib/hooks/useFileGrid';
 import { useImageRegeneration } from '@/lib/hooks/useImageRegeneration';
@@ -31,7 +31,7 @@ export function FileGrid() {
   const [editing, setEditing] = useState(false);
   const [analyzingFiles, setAnalyzingFiles] = useState<Set<string>>(new Set());
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [fileToView, setFileToView] = useState<FileType | null>(null);
+  const [fileToView, setFileToView] = useState<FileWithRelations | null>(null);
   const [styleSelectionOpen, setStyleSelectionOpen] = useState(false);
   const [generationCount, setGenerationCount] = useState<number>(2);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -67,6 +67,7 @@ export function FileGrid() {
     selectedCutId: selectedCut?.id || null,
     generationCount,
     onFilesReload: loadFiles,
+    currentUserId: profile?.id,
   });
 
   const loadProcesses = useCallback(async () => {
@@ -151,7 +152,7 @@ export function FileGrid() {
             [processId]: { ...prev[processId], [file.name]: 0 }
           }));
 
-          const uploadedFile = await uploadFile(file, selectedCut.id, processId, '');
+          const uploadedFile = await uploadFile(file, selectedCut.id, processId, '', profile?.id);
 
           setUploadProgress(prev => ({
             ...prev,
@@ -535,6 +536,15 @@ export function FileGrid() {
         canUpload={!!canUpload}
         canDelete={!!canDelete}
         processes={processes}
+        onSourceFileClick={(sourceFile) => {
+          // 원본 파일 클릭 시 해당 파일의 상세 Dialog 열기
+          setFileToView(sourceFile);
+          // 이미지 크기 정보 초기화
+          setImageDimensions(null);
+          // 재생성 이미지 초기화
+          setRegeneratedImages([]);
+          setSelectedImageIds(new Set());
+        }}
       />
 
       {/* 이미지 전체화면 뷰어 */}

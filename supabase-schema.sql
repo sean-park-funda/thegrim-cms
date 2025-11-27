@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS files (
   mime_type VARCHAR(100),
   description TEXT,
   metadata JSONB DEFAULT '{}',
+  created_by UUID REFERENCES user_profiles(id),
+  source_file_id UUID REFERENCES files(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -95,6 +97,8 @@ CREATE INDEX IF NOT EXISTS idx_episodes_webtoon_id ON episodes(webtoon_id);
 CREATE INDEX IF NOT EXISTS idx_cuts_episode_id ON cuts(episode_id);
 CREATE INDEX IF NOT EXISTS idx_files_cut_id ON files(cut_id);
 CREATE INDEX IF NOT EXISTS idx_files_process_id ON files(process_id);
+CREATE INDEX IF NOT EXISTS idx_files_created_by ON files(created_by);
+CREATE INDEX IF NOT EXISTS idx_files_source_file_id ON files(source_file_id);
 CREATE INDEX IF NOT EXISTS idx_processes_order ON processes(order_index);
 CREATE INDEX IF NOT EXISTS idx_reference_files_webtoon_id ON reference_files(webtoon_id);
 CREATE INDEX IF NOT EXISTS idx_reference_files_process_id ON reference_files(process_id);

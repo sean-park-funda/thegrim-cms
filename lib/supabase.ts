@@ -70,6 +70,17 @@ export interface File {
   mime_type?: string;
   description?: string;
   metadata?: Record<string, any>;
+  created_by?: string;
+  source_file_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: 'admin' | 'manager' | 'staff' | 'viewer';
+  name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +105,8 @@ export interface FileWithRelations extends File {
     };
   };
   process?: Process;
+  created_by_user?: UserProfile;
+  source_file?: File;
 }
 
 export interface ReferenceFile {

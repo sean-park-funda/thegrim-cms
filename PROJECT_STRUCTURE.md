@@ -115,6 +115,22 @@ thegrim-CMS/
 - Tailwind CSS 설정
 - 전역 스타일 및 CSS 변수
 
+### API 라우트 (\`app/api/\`)
+
+**regenerate-image/route.ts**
+- AI 이미지 재생성 API
+- Gemini API 및 Seedream API 지원
+- 레퍼런스 이미지 지원 (톤먹 넣기 기능)
+- 자동 이미지 리사이즈 (10MB/36M픽셀 제한 대응)
+- 비율 유지 출력 지원
+
+**analyze-image/route.ts**
+- 이미지 메타데이터 자동 분석 API
+- 장면 요약, 태그, 등장인물 수 추출
+
+**generate-thumbnail/route.ts**
+- 썸네일 자동 생성 API
+
 ### 컴포넌트 (\`components/\`)
 
 #### 레이아웃 컴포넌트
@@ -173,6 +189,9 @@ thegrim-CMS/
 **FileDetailDialog.tsx**
 - 파일 상세 정보 다이얼로그
 - 파일 미리보기, 기본 정보, 메타데이터 표시
+- 생성자 정보 표시 (이름 + 이메일)
+- 원본 파일 정보 표시 (AI 재생성 파일인 경우 썸네일과 함께 표시)
+- 원본 파일 클릭 시 해당 파일 상세 다이얼로그로 이동
 - 재생성된 이미지 관리
 - 재생성된 이미지 등록 시 공정 선택 기능
 
@@ -244,13 +263,13 @@ thegrim-CMS/
 - \`reorderProcesses(ids)\`: 공정 순서 변경
 
 **files.ts**
-- \`getFilesByCut(cutId)\`: 컷별 파일 목록
-- \`getFilesByProcess(processId)\`: 공정별 파일 목록
-- \`searchFiles(query)\`: 파일 검색
+- \`getFilesByCut(cutId)\`: 컷별 파일 목록 (생성자, 원본 파일 정보 포함)
+- \`getFilesByProcess(processId)\`: 공정별 파일 목록 (생성자, 원본 파일 정보 포함)
+- \`searchFiles(query)\`: 파일 검색 (생성자, 원본 파일 정보 포함)
 - \`createFile(data)\`: 파일 메타데이터 생성
 - \`updateFile(id, data)\`: 파일 정보 수정
 - \`deleteFile(id)\`: 파일 삭제 (Storage + DB)
-- \`uploadFile(file, cutId, processId, description)\`: 파일 업로드
+- \`uploadFile(file, cutId, processId, description, createdBy, sourceFileId)\`: 파일 업로드 (생성자 및 원본 파일 추적)
 - \`analyzeImage(fileId)\`: 이미지 메타데이터 자동 생성
 - \`generateThumbnail(fileId)\`: 썸네일 생성
 - \`getThumbnailUrl(file)\`: 썸네일 URL 가져오기 (없으면 생성)
@@ -291,6 +310,7 @@ thegrim-CMS/
 - 재생성 API 호출, 재생성된 이미지 관리
 - 레퍼런스 이미지 지원 (톤먹 넣기 기능)
 - 선택된 이미지 관리, 재생성된 이미지 저장 (공정 선택 가능)
+- 재생성된 이미지 저장 시 생성자(currentUserId) 및 원본 파일(sourceFileId) 자동 기록
 
 **useImageViewer.ts**
 - 이미지 뷰어 관련 상태 및 로직
@@ -314,8 +334,10 @@ thegrim-CMS/
   - \`Episode\`
   - \`Cut\`
   - \`Process\`
-  - \`File\`
-  - 관계형 타입 (WithRelations)
+  - \`File\` (created_by, source_file_id 포함)
+  - \`UserProfile\` (id, email, name, role)
+  - \`ReferenceFile\`
+  - 관계형 타입 (FileWithRelations: created_by_user, source_file 포함)
 
 ## 📊 데이터 흐름
 

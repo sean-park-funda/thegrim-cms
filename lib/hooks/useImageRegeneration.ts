@@ -25,6 +25,7 @@ interface UseImageRegenerationOptions {
   selectedCutId: string | null;
   generationCount: number;
   onFilesReload: () => Promise<void>;
+  currentUserId?: string;
 }
 
 export function useImageRegeneration({
@@ -32,6 +33,7 @@ export function useImageRegeneration({
   selectedCutId,
   generationCount,
   onFilesReload,
+  currentUserId,
 }: UseImageRegenerationOptions) {
   const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
   const [regeneratedImages, setRegeneratedImages] = useState<RegeneratedImage[]>([]);
@@ -352,8 +354,8 @@ export function useImageRegeneration({
           // Blob을 File 객체로 변환
           const file = new File([blob], newFileName, { type: img.mimeType });
 
-          // 선택된 공정에 업로드
-          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`);
+          // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함)
+          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id);
           successCount++;
         } catch (error) {
           failCount++;

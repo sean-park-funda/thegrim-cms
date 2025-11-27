@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { File as FileType, Process } from '@/lib/supabase';
+import { File as FileType, Process, FileWithRelations, UserProfile } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw } from 'lucide-react';
+import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -24,7 +24,7 @@ interface RegeneratedImage {
 }
 
 interface FileDetailDialogProps {
-  file: FileType | null;
+  file: FileWithRelations | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImageViewerOpen: (imageUrl: string, imageName: string) => void;
@@ -47,6 +47,7 @@ interface FileDetailDialogProps {
   canUpload: boolean;
   canDelete: boolean;
   processes: Process[]; // 공정 목록
+  onSourceFileClick?: (file: FileType) => void; // 원본 파일 클릭 시 콜백
 }
 
 export function FileDetailDialog({
@@ -73,6 +74,7 @@ export function FileDetailDialog({
   canUpload,
   canDelete,
   processes,
+  onSourceFileClick,
 }: FileDetailDialogProps) {
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
@@ -196,6 +198,58 @@ export function FileDetailDialog({
                     {format(new Date(file.created_at), 'yyyy년 MM월 dd일 HH:mm')}
                   </span>
                 </div>
+                <div className="flex items-start justify-between">
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    생성자
+                  </span>
+                  <span className="text-sm font-medium text-right flex-1 ml-4">
+                    {file.created_by_user 
+                      ? `${file.created_by_user.name || '이름 없음'} (${file.created_by_user.email})`
+                      : '알 수 없음'}
+                  </span>
+                </div>
+                {file.source_file && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                      <Link2 className="h-3 w-3" />
+                      원본 파일
+                    </p>
+                    <div 
+                      className="flex items-center gap-3 p-2 bg-muted rounded-md cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => onSourceFileClick?.(file.source_file!)}
+                    >
+                      {file.source_file.file_type === 'image' ? (
+                        <div className="relative w-12 h-12 bg-background rounded overflow-hidden flex-shrink-0">
+                          <Image
+                            src={(() => {
+                              // 썸네일이 있으면 썸네일 사용, 없으면 원본 사용
+                              const thumbnailPath = file.source_file!.thumbnail_path;
+                              if (thumbnailPath) {
+                                return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${thumbnailPath}`;
+                              }
+                              const filePath = file.source_file!.file_path;
+                              return filePath?.startsWith('http') ? filePath : `https://${filePath}`;
+                            })()}
+                            alt={file.source_file.file_name}
+                            fill
+                            className="object-cover"
+                            sizes="48px"
+                            unoptimized={true}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 bg-background rounded flex items-center justify-center flex-shrink-0">
+                          <FileIcon className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.source_file.file_name}</p>
+                        <p className="text-xs text-muted-foreground">클릭하여 원본 파일 보기</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {file.description && (
                   <div className="pt-2 border-t">
                     <p className="text-xs text-muted-foreground mb-1">설명</p>
