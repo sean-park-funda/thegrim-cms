@@ -665,7 +665,6 @@ export function FileDetailDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => {
             setProcessSelectOpen(false);
-            setSavingImageId(null);
           }} disabled={savingImages}>
             취소
           </Button>
