@@ -109,14 +109,12 @@ export function useImageRegeneration({
         }
       }
 
-      // base64 데이터가 없으면 원본 이미지 URL 사용
-      if (!imageBase64) {
-        imageUrl = fileToView.file_path?.startsWith('http')
+      // 원본 이미지 URL은 항상 설정 (base64 크기 초과 시 fallback용)
+      imageUrl = fileToView.file_path?.startsWith('http')
+        ? fileToView.file_path
+        : fileToView.file_path?.startsWith('/')
           ? fileToView.file_path
-          : fileToView.file_path?.startsWith('/')
-            ? fileToView.file_path
-            : `https://${fileToView.file_path}`;
-      }
+          : `https://${fileToView.file_path}`;
 
       // 원본 이미지와 레퍼런스 이미지를 한 번만 다운로드 및 리사이징
       // SEEDREAM API를 사용하는 경우에만 리사이징 수행
@@ -212,22 +210,41 @@ export function useImageRegeneration({
             apiProvider: actualProvider, // 실제 사용할 provider 전달
           };
 
+          // Vercel 함수 페이로드 크기 제한 (4.5MB)을 고려하여
+          // base64 데이터가 너무 크면 URL 사용
+          // base64는 원본 크기의 약 1.33배이므로, 3MB 이상이면 URL 사용
+          const MAX_BASE64_SIZE = 3 * 1024 * 1024; // 3MB
+
           // 다운로드 및 리사이징된 이미지 사용
           if (finalImageBase64) {
-            requestBody.imageBase64 = finalImageBase64;
-            requestBody.imageMimeType = finalImageMimeType || 'image/jpeg';
+            const base64Size = finalImageBase64.length;
+            if (base64Size > MAX_BASE64_SIZE && imageUrl) {
+              // base64가 너무 크면 URL 사용
+              console.log(`[이미지 재생성] base64 크기 초과 (${(base64Size / 1024 / 1024).toFixed(2)}MB), URL 사용`);
+              requestBody.imageUrl = imageUrl;
+            } else {
+              requestBody.imageBase64 = finalImageBase64;
+              requestBody.imageMimeType = finalImageMimeType || 'image/jpeg';
+            }
           } else if (imageUrl) {
-            // base64가 없는 경우에만 URL 사용 (이상한 경우)
+            // base64가 없는 경우 URL 사용
             requestBody.imageUrl = imageUrl;
           }
 
           // 레퍼런스 이미지 추가 (톤먹 넣기 등)
           if (referenceImage) {
             if (finalReferenceBase64) {
-              requestBody.referenceImageBase64 = finalReferenceBase64;
-              requestBody.referenceImageMimeType = finalReferenceMimeType || 'image/jpeg';
+              const refBase64Size = finalReferenceBase64.length;
+              if (refBase64Size > MAX_BASE64_SIZE && referenceImage.url) {
+                // base64가 너무 크면 URL 사용
+                console.log(`[이미지 재생성] 레퍼런스 이미지 base64 크기 초과 (${(refBase64Size / 1024 / 1024).toFixed(2)}MB), URL 사용`);
+                requestBody.referenceImageUrl = referenceImage.url;
+              } else {
+                requestBody.referenceImageBase64 = finalReferenceBase64;
+                requestBody.referenceImageMimeType = finalReferenceMimeType || 'image/jpeg';
+              }
             } else if (referenceImage.url) {
-              // base64가 없는 경우에만 URL 사용 (이상한 경우)
+              // base64가 없는 경우 URL 사용
               requestBody.referenceImageUrl = referenceImage.url;
             }
           }
