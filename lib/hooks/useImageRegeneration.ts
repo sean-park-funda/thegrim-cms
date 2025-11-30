@@ -80,6 +80,9 @@ export function useImageRegeneration({
         prompt: stylePrompt, // placeholder에서는 원본 프롬프트 사용
         originalPrompt: stylePrompt, // 원본 프롬프트 저장
         selected: false,
+        fileId: null,
+        filePath: null,
+        fileUrl: null,
         base64Data: null,
         mimeType: null,
         apiProvider: apiProvider === 'auto' ? (index % 2 === 0 ? 'seedream' : 'gemini') : apiProvider,
@@ -701,6 +704,9 @@ export function useImageRegeneration({
         prompt: prompt, // 실제 사용된 프롬프트
         originalPrompt: prompt, // 원본 프롬프트 저장
         selected: false,
+        fileId: null,
+        filePath: null,
+        fileUrl: null,
         base64Data: imageData,
         mimeType: mimeType || 'image/png',
         apiProvider: apiProvider,
