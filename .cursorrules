@@ -110,24 +110,48 @@ await mcp_supabase_apply_migration({
 1. **주요 개발 완료 시점에 문서 업데이트**
    - 기능 개발 완료 후 즉시 관련 문서 업데이트
    - 코드 변경만 하고 문서 업데이트를 미루지 말 것
+   - 문서 업데이트는 기능 구현의 일부로 간주
 
-2. **업데이트 대상 문서**
-   - `README.md`: 프로젝트 개요, 설치 방법, 주요 기능
-   - `DEVELOPMENT_PLAN.md`: 개발 계획 및 진행 상황
-   - `PROJECT_STRUCTURE.md`: 프로젝트 구조 및 파일 설명
-   - `DESIGN_GUIDE.md`: 디자인 가이드라인 및 컴포넌트 사용법
-   - `SETUP_GUIDE.md`: 환경 설정 및 초기 설정 방법
-   - `ADMIN_SETUP.md`: 관리자 설정 방법
-   - `ROLES_GUIDE.md`: 역할 및 권한 가이드
-   - 기타 관련 문서 파일
+2. **업데이트 대상 문서 및 업데이트 내용**
 
-3. **업데이트 내용**
-   - 새로 추가된 기능 설명
-   - 변경된 API 엔드포인트
-   - 새로운 컴포넌트 사용법
-   - 변경된 데이터베이스 스키마
-   - 환경 변수 변경사항
+   **README.md**
+   - 새로 추가된 주요 기능 설명
+   - 변경된 기술 스택
+   - 새로운 환경 변수
    - 의존성 추가/변경
+
+   **PROJECT_STRUCTURE.md**
+   - 새로 추가된 디렉토리/파일 설명
+   - 변경된 파일 역할
+   - 새로운 API 엔드포인트
+   - 변경된 데이터 흐름
+   - 새로운 컴포넌트 설명
+
+   **ARCHITECTURE.md**
+   - 새로운 시스템의 상세 설계 추가
+   - 기존 시스템 설계 변경사항
+   - 아키텍처 결정 및 이유
+   - 기술 스택 변경사항
+   - 파일 구조 변경사항
+
+   **DEVELOPMENT_PLAN.md**
+   - 완료된 기능을 "✅ 완료된 기능" 섹션에 추가
+   - 진행 중인 작업 상태 업데이트
+   - 새로운 이슈 추가
+   - 다음 개발 계획 업데이트
+
+   **SETUP_GUIDE.md**
+   - 환경 설정 변경사항
+   - 새로운 설정 단계 추가
+
+   **supabase-schema.sql**
+   - 데이터베이스 스키마 변경사항 반영
+
+3. **업데이트 우선순위**
+   - 기능 구현 완료 직후: PROJECT_STRUCTURE.md, DEVELOPMENT_PLAN.md
+   - 주요 시스템 설계 변경 시: ARCHITECTURE.md
+   - 프로젝트 개요 변경 시: README.md
+   - 설정 변경 시: SETUP_GUIDE.md
 
 ### 예시:
 
@@ -135,8 +159,9 @@ await mcp_supabase_apply_migration({
 // ✅ 올바른 방법: 기능 개발 후 문서 업데이트
 1. 파일 검색 기능 개발 완료
 2. PROJECT_STRUCTURE.md에 새로운 API 엔드포인트 추가
-3. README.md에 검색 기능 설명 추가
-4. DEVELOPMENT_PLAN.md에 완료 상태 업데이트
+3. ARCHITECTURE.md에 검색 시스템 상세 설계 추가 (필요시)
+4. README.md에 검색 기능 설명 추가
+5. DEVELOPMENT_PLAN.md에 완료 상태 업데이트
 
 // ❌ 잘못된 방법: 코드만 수정하고 문서 업데이트 생략
 1. 파일 검색 기능 개발 완료
@@ -151,11 +176,24 @@ await mcp_supabase_apply_migration({
 - 컴포넌트 구조 변경
 - 설정 파일 변경
 - 의존성 추가/변경
+- 아키텍처 변경
+
+### 문서 업데이트 체크리스트:
+
+기능 개발 완료 후 다음을 확인하세요:
+
+- [ ] PROJECT_STRUCTURE.md에 새 파일/디렉토리 설명 추가
+- [ ] PROJECT_STRUCTURE.md에 변경된 파일 역할 업데이트
+- [ ] ARCHITECTURE.md에 새로운 시스템 설계 추가 (주요 시스템인 경우)
+- [ ] DEVELOPMENT_PLAN.md에 완료 상태 업데이트
+- [ ] README.md에 주요 기능 설명 추가/업데이트
+- [ ] 관련 설정 문서 업데이트 (환경 변수, 의존성 등)
 
 ### 참고:
 - 문서는 코드와 함께 유지보수되어야 합니다.
 - 문서가 최신 상태를 유지해야 새로운 팀원이나 향후 유지보수 시 혼란을 방지할 수 있습니다.
 - 문서 업데이트는 커밋 메시지에도 포함하는 것을 권장합니다.
+- ARCHITECTURE.md는 주요 시스템의 상세 설계를 포함하므로, 새로운 주요 시스템을 추가하거나 기존 시스템을 크게 변경할 때 반드시 업데이트해야 합니다.
 
 ---
 
@@ -172,14 +210,12 @@ await mcp_supabase_apply_migration({
    - 기존 구조와 규칙을 이해한 후 개발 진행
    - 문서를 읽지 않고 바로 코드 수정하지 말 것
 
-2. **참고 대상 문서**
-   - `README.md`: 프로젝트 개요, 설치 방법, 주요 기능
-   - `DEVELOPMENT_PLAN.md`: 개발 계획 및 진행 상황
-   - `PROJECT_STRUCTURE.md`: 프로젝트 구조 및 파일 설명
-   - `DESIGN_GUIDE.md`: 디자인 가이드라인 및 컴포넌트 사용법
+2. **참고 대상 문서 (우선순위 순)**
+   - `README.md`: 프로젝트 개요, 설치 방법, 주요 기능, 기술 스택
+   - `PROJECT_STRUCTURE.md`: 프로젝트 구조, 디렉토리 구조, 주요 파일 설명, 데이터 흐름
+   - `ARCHITECTURE.md`: 주요 시스템 상세 설계 (인증, 이미지 메타데이터, 컴포넌트 아키텍처, AI 이미지 재생성)
+   - `DEVELOPMENT_PLAN.md`: 개발 진행 상황, 다음 개발 계획, 현재 이슈
    - `SETUP_GUIDE.md`: 환경 설정 및 초기 설정 방법
-   - `ADMIN_SETUP.md`: 관리자 설정 방법
-   - `ROLES_GUIDE.md`: 역할 및 권한 가이드
    - `supabase-schema.sql`: 데이터베이스 스키마 구조
    - 기타 관련 문서 파일
 
@@ -191,6 +227,7 @@ await mcp_supabase_apply_migration({
    - 컴포넌트 사용 패턴
    - 코딩 컨벤션 및 스타일 가이드
    - 권한 및 역할 체계
+   - 관련 시스템의 상세 설계 (ARCHITECTURE.md 참고)
 
 ### 예시:
 
@@ -198,9 +235,10 @@ await mcp_supabase_apply_migration({
 // ✅ 올바른 방법: 개발 전 문서 파악
 1. 파일 검색 기능 개발 요청 받음
 2. PROJECT_STRUCTURE.md에서 API 구조 확인
-3. supabase-schema.sql에서 데이터베이스 스키마 확인
-4. DESIGN_GUIDE.md에서 컴포넌트 사용법 확인
-5. 기존 구조 파악 후 개발 시작
+3. ARCHITECTURE.md에서 관련 시스템 설계 확인
+4. supabase-schema.sql에서 데이터베이스 스키마 확인
+5. DEVELOPMENT_PLAN.md에서 현재 진행 상황 확인
+6. 기존 구조 파악 후 개발 시작
 
 // ❌ 잘못된 방법: 문서 확인 없이 바로 개발
 1. 파일 검색 기능 개발 요청 받음
@@ -221,4 +259,5 @@ await mcp_supabase_apply_migration({
 - 문서를 먼저 파악하면 기존 구조와 일관성 있는 코드를 작성할 수 있습니다.
 - 문서 확인을 통해 중복 개발이나 잘못된 방향으로의 개발을 방지할 수 있습니다.
 - 문서가 없거나 부족한 경우, 코드베이스를 탐색하여 구조를 파악한 후 개발을 진행합니다.
+- ARCHITECTURE.md는 주요 시스템의 상세 설계를 포함하므로 관련 기능 개발 시 반드시 참고해야 합니다.
 

@@ -1,5 +1,9 @@
 # 프로젝트 구조
 
+> **역할**: 프로젝트의 정적 구조 및 아키텍처 참조 문서  
+> **대상**: 새로운 팀원, 코드 리뷰어, 유지보수 담당자  
+> **목적**: 프로젝트의 디렉토리 구조, 주요 파일 역할, 데이터 흐름을 빠르게 파악하기 위한 문서
+
 ## 📁 디렉토리 구조
 
 \`\`\`
@@ -153,12 +157,12 @@ thegrim-CMS/
 **WebtoonList.tsx**
 - 웹툰 목록 표시
 - 웹툰 선택 기능
-- 새 웹툰 추가 버튼 (향후 구현)
+- 새 웹툰 추가 버튼
 
 **EpisodeList.tsx**
 - 선택한 웹툰의 회차 목록
 - 회차 선택 기능
-- 새 회차 추가 버튼 (향후 구현)
+- 새 회차 추가 버튼
 
 **CutList.tsx**
 - 선택한 회차의 컷/페이지 목록
@@ -390,56 +394,24 @@ thegrim-CMS/
 - **CSS Variables**: 다크모드 및 테마 지원 준비
 - **Lucide Icons**: 일관된 아이콘 시스템
 
-## 🔐 보안 고려사항
+## 🛠️ 기술 스택
 
-현재 구현은 **개발 단계**용입니다:
+- **프레임워크**: Next.js 16 (App Router)
+- **언어**: TypeScript
+- **스타일링**: Tailwind CSS
+- **UI 컴포넌트**: shadcn/ui
+- **상태 관리**: Zustand
+- **데이터베이스**: Supabase (PostgreSQL)
+- **스토리지**: Supabase Storage
+- **인증**: Supabase Auth
+- **AI**: Google Gemini API (2.5 Pro, 2.5 Flash Image)
+- **아이콘**: Lucide Icons
 
-- ❌ 인증 없음
-- ❌ Row Level Security (RLS) 비활성화
-- ❌ 파일 접근 제한 없음
+## 📖 관련 문서
 
-**프로덕션 배포 전 필수 작업**:
-
-1. ✅ Supabase Auth 통합
-2. ✅ RLS 정책 활성화
-3. ✅ 역할 기반 권한 관리 (관리자/작가/스태프)
-4. ✅ 파일 업로드 검증 (파일 타입, 크기)
-5. ✅ API Rate Limiting
-
-## 🚀 확장 가능성
-
-### 향후 추가 가능한 기능
-
-**파일 관리**
-- 드래그 앤 드롭 업로드
-- 파일 버전 관리
-- 일괄 업로드/다운로드
-- 썸네일 자동 생성
-
-**협업 기능**
-- 실시간 코멘트
-- 피드백 시스템
-- 승인 워크플로우
-- 알림 시스템
-
-**프로젝트 관리**
-- 진행률 트래킹
-- 마감일 관리
-- 팀원 배정
-- 대시보드/통계
-
-**고급 검색**
-- 파일 타입별 필터
-- 날짜 범위 필터
-- 태그 시스템
-- AI 기반 이미지 검색
-
-## 📚 참고 자료
-
-- [Next.js 문서](https://nextjs.org/docs)
-- [Supabase 문서](https://supabase.com/docs)
-- [shadcn/ui 문서](https://ui.shadcn.com)
-- [Zustand 문서](https://zustand-demo.pmnd.rs)
-- [Tailwind CSS 문서](https://tailwindcss.com/docs)
+- [README.md](./README.md) - 프로젝트 개요 및 빠른 시작 가이드
+- [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) - 개발 진행 상황 및 계획
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - 주요 시스템 상세 설계
+- [SETUP_GUIDE.md](./SETUP_GUIDE.md) - 환경 설정 가이드
 
 

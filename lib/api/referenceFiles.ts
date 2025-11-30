@@ -150,6 +150,8 @@ export async function uploadReferenceFile(
         .from('webtoon-files')
         .getPublicUrl(storagePath);
 
+    const fileType = file.type.split('/')[0];
+
     // DB에 파일 정보 저장
     const createdFile = await createReferenceFile({
         webtoon_id: webtoonId,
@@ -158,13 +160,43 @@ export async function uploadReferenceFile(
         file_path: publicUrlData.publicUrl,
         storage_path: storagePath,
         file_size: file.size,
-        file_type: file.type.split('/')[0],
+        file_type: fileType,
         mime_type: file.type,
         description: description || '',
         metadata: {}
     });
 
+    // 이미지 파일인 경우 썸네일 생성 (비동기, 실패해도 업로드는 성공으로 처리)
+    if (fileType === 'image') {
+        generateReferenceThumbnail(createdFile.id).catch((error) => {
+            console.error('레퍼런스 파일 썸네일 생성 실패:', error);
+            // 썸네일 생성 실패는 무시 (나중에 수동 생성 가능)
+        });
+    }
+
     return createdFile;
+}
+
+// 레퍼런스 파일 썸네일 생성
+export async function generateReferenceThumbnail(fileId: string): Promise<string> {
+    const response = await fetch('/api/generate-reference-thumbnail', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            fileId,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || '썸네일 생성에 실패했습니다.';
+        throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return data.thumbnailUrl;
 }
 
 // 썸네일 URL 가져오기
