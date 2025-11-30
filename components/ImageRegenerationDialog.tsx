@@ -13,7 +13,7 @@ import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt 
 import { ReferenceFileUpload } from './ReferenceFileUpload';
 import { getProcesses } from '@/lib/api/processes';
 import { getImageRegenerationSettings } from '@/lib/api/settings';
-import { getPromptsByStyle, getDefaultPrompt, savePrompt } from '@/lib/api/imagePrompts';
+import { getPromptsByStyle, getDefaultPrompt, savePrompt, setPromptAsDefault } from '@/lib/api/imagePrompts';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -262,7 +262,7 @@ export function ImageRegenerationDialog({
     }
   };
 
-  const handleCountConfirm = () => {
+  const handleCountConfirm = async () => {
     if (selectedStyle) {
       // 설정에서 레퍼런스 사용 여부 확인
       const useReference = styleSettings[selectedStyle.id] ?? false;
@@ -272,6 +272,16 @@ export function ImageRegenerationDialog({
         setCountSelectionOpen(false);
         setReferenceSelectionOpen(true);
       } else {
+        // 프롬프트가 선택되어 있으면 기본으로 설정
+        if (selectedPromptId && currentUserId) {
+          try {
+            await setPromptAsDefault(selectedPromptId, selectedStyle.id);
+          } catch (error) {
+            console.error('프롬프트 기본 설정 실패:', error);
+            // 에러가 발생해도 계속 진행
+          }
+        }
+        
         onRegenerate(editedPrompt.trim() || selectedStyle.prompt, generationCount);
         setCountSelectionOpen(false);
         setSelectedStyle(null);
@@ -290,8 +300,18 @@ export function ImageRegenerationDialog({
   };
 
   // 레퍼런스 선택 + 장수 선택 통합 확인
-  const handleReferenceDirectConfirm = () => {
+  const handleReferenceDirectConfirm = async () => {
     if (!selectedReferenceFile || !pendingReferenceStyle) return;
+
+    // 프롬프트가 선택되어 있으면 기본으로 설정
+    if (selectedPromptId && currentUserId) {
+      try {
+        await setPromptAsDefault(selectedPromptId, pendingReferenceStyle.id);
+      } catch (error) {
+        console.error('프롬프트 기본 설정 실패:', error);
+        // 에러가 발생해도 계속 진행
+      }
+    }
 
     const referenceImage: ReferenceImageInfo = {
       url: selectedReferenceFile.file_path,
@@ -310,8 +330,18 @@ export function ImageRegenerationDialog({
   };
 
   // 장수 선택 후 최종 확인 (레퍼런스 포함)
-  const handleCountConfirmWithReference = () => {
+  const handleCountConfirmWithReference = async () => {
     if (selectedStyle && selectedReferenceFile) {
+      // 프롬프트가 선택되어 있으면 기본으로 설정
+      if (selectedPromptId && currentUserId) {
+        try {
+          await setPromptAsDefault(selectedPromptId, selectedStyle.id);
+        } catch (error) {
+          console.error('프롬프트 기본 설정 실패:', error);
+          // 에러가 발생해도 계속 진행
+        }
+      }
+
       const referenceImage: ReferenceImageInfo = {
         url: selectedReferenceFile.file_path,
       };
@@ -437,7 +467,7 @@ export function ImageRegenerationDialog({
                     <SelectItem value="custom">직접 입력</SelectItem>
                     {prompts.map((prompt) => (
                       <SelectItem key={prompt.id} value={prompt.id}>
-                        {prompt.prompt_name} {prompt.is_default ? '(기본)' : prompt.is_shared ? '(공유)' : '(개인)'}
+                        {prompt.prompt_name} {prompt.is_default ? '(기본)' : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>

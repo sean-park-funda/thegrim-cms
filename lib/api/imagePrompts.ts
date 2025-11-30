@@ -214,3 +214,46 @@ export async function updatePrompt(
   return data;
 }
 
+/**
+ * 프롬프트를 기본으로 설정
+ * @param promptId 프롬프트 ID
+ * @param styleId 스타일 ID
+ * @returns 업데이트된 프롬프트
+ */
+export async function setPromptAsDefault(promptId: string, styleId: string): Promise<AiRegenerationPrompt> {
+  // 먼저 프롬프트가 존재하는지 확인
+  const { data: prompt, error: fetchError } = await supabase
+    .from('ai_regeneration_prompts')
+    .select('*')
+    .eq('id', promptId)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (!prompt) throw new Error('프롬프트를 찾을 수 없습니다.');
+
+  // 이미 기본 프롬프트인 경우 그대로 반환
+  if (prompt.is_default) {
+    return prompt;
+  }
+
+  // 기존 기본 프롬프트 해제
+  const { error: updateError } = await supabase
+    .from('ai_regeneration_prompts')
+    .update({ is_default: false })
+    .eq('style_id', styleId)
+    .eq('is_default', true);
+
+  if (updateError) throw updateError;
+
+  // 선택한 프롬프트를 기본으로 설정
+  const { data: updatedPrompt, error: setDefaultError } = await supabase
+    .from('ai_regeneration_prompts')
+    .update({ is_default: true })
+    .eq('id', promptId)
+    .select()
+    .single();
+
+  if (setDefaultError) throw setDefaultError;
+  return updatedPrompt;
+}
+

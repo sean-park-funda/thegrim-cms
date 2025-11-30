@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { File as FileType } from '@/lib/supabase';
 import { uploadFile } from '@/lib/api/files';
 import { generateVariedPrompt, styleOptions, ApiProvider } from '@/lib/constants/imageRegeneration';
+import { resizeImageIfNeeded } from '@/lib/utils/imageResize';
 
 interface RegeneratedImage {
   id: string;
@@ -117,6 +118,79 @@ export function useImageRegeneration({
             : `https://${fileToView.file_path}`;
       }
 
+      // 원본 이미지와 레퍼런스 이미지를 한 번만 다운로드 및 리사이징
+      // SEEDREAM API를 사용하는 경우에만 리사이징 수행
+      let finalImageBase64 = imageBase64;
+      let finalImageMimeType = imageMimeType;
+      let finalReferenceBase64: string | undefined = referenceImage?.base64;
+      let finalReferenceMimeType: string | undefined = referenceImage?.mimeType;
+
+      // 원본 이미지 다운로드 및 리사이징 (필요한 경우)
+      if (imageUrl && !imageBase64) {
+        try {
+          console.log('[이미지 재생성] 원본 이미지 다운로드 시작...');
+          
+          // SEEDREAM API를 사용하는 요청이 있는지 확인
+          const hasSeedreamRequest = apiProvider === 'seedream' || 
+            (apiProvider === 'auto' && regenerateCount > 0);
+          
+          if (hasSeedreamRequest) {
+            // SEEDREAM API를 사용하는 경우 리사이징 수행
+            const resizeResult = await resizeImageIfNeeded(imageUrl);
+            finalImageBase64 = resizeResult.base64;
+            finalImageMimeType = resizeResult.mimeType;
+            console.log('[이미지 재생성] 원본 이미지 리사이징 완료', resizeResult.resized ? '(리사이즈됨)' : '');
+          } else {
+            // Gemini만 사용하는 경우 다운로드만 수행
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+              throw new Error(`이미지 다운로드 실패: ${response.status}`);
+            }
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            finalImageBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            finalImageMimeType = blob.type || 'image/jpeg';
+            console.log('[이미지 재생성] 원본 이미지 다운로드 완료');
+          }
+        } catch (error) {
+          console.error('[이미지 재생성] 원본 이미지 처리 실패:', error);
+          throw new Error(`원본 이미지를 처리할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      // 레퍼런스 이미지 다운로드 및 리사이징 (필요한 경우)
+      if (referenceImage?.url && !referenceImage.base64) {
+        try {
+          console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 시작...');
+          
+          // SEEDREAM API를 사용하는 요청이 있는지 확인
+          const hasSeedreamRequest = apiProvider === 'seedream' || 
+            (apiProvider === 'auto' && regenerateCount > 0);
+          
+          if (hasSeedreamRequest) {
+            // SEEDREAM API를 사용하는 경우 리사이징 수행
+            const resizeResult = await resizeImageIfNeeded(referenceImage.url);
+            finalReferenceBase64 = resizeResult.base64;
+            finalReferenceMimeType = resizeResult.mimeType;
+            console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 완료', resizeResult.resized ? '(리사이즈됨)' : '');
+          } else {
+            // Gemini만 사용하는 경우 다운로드만 수행
+            const response = await fetch(referenceImage.url);
+            if (!response.ok) {
+              throw new Error(`레퍼런스 이미지 다운로드 실패: ${response.status}`);
+            }
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            finalReferenceBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            finalReferenceMimeType = blob.type || 'image/jpeg';
+            console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 완료');
+          }
+        } catch (error) {
+          console.error('[이미지 재생성] 레퍼런스 이미지 처리 실패:', error);
+          throw new Error(`레퍼런스 이미지를 처리할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
       // 단일 이미지 생성 함수
       const generateSingleImage = async (index: number): Promise<RegeneratedImage | null> => {
         try {
@@ -138,19 +212,22 @@ export function useImageRegeneration({
             apiProvider: actualProvider, // 실제 사용할 provider 전달
           };
 
-          if (imageBase64) {
-            requestBody.imageBase64 = imageBase64;
-            requestBody.imageMimeType = imageMimeType;
-          } else {
+          // 다운로드 및 리사이징된 이미지 사용
+          if (finalImageBase64) {
+            requestBody.imageBase64 = finalImageBase64;
+            requestBody.imageMimeType = finalImageMimeType || 'image/jpeg';
+          } else if (imageUrl) {
+            // base64가 없는 경우에만 URL 사용 (이상한 경우)
             requestBody.imageUrl = imageUrl;
           }
 
           // 레퍼런스 이미지 추가 (톤먹 넣기 등)
           if (referenceImage) {
-            if (referenceImage.base64) {
-              requestBody.referenceImageBase64 = referenceImage.base64;
-              requestBody.referenceImageMimeType = referenceImage.mimeType || 'image/png';
-            } else {
+            if (finalReferenceBase64) {
+              requestBody.referenceImageBase64 = finalReferenceBase64;
+              requestBody.referenceImageMimeType = finalReferenceMimeType || 'image/jpeg';
+            } else if (referenceImage.url) {
+              // base64가 없는 경우에만 URL 사용 (이상한 경우)
               requestBody.referenceImageUrl = referenceImage.url;
             }
           }
@@ -201,68 +278,78 @@ export function useImageRegeneration({
         }
       };
 
-      // 배치 처리: 최대 4개씩 동시 처리
+      // 배치 처리: 최대 4개씩 동시 처리 (완료되는 즉시 UI 업데이트)
       const BATCH_SIZE = 4;
       let successCount = 0;
       let failCount = 0;
 
+      // 각 이미지 완료 시 즉시 UI 업데이트하는 헬퍼 함수
+      const updateImageOnComplete = (image: RegeneratedImage | null, index: number, isSuccess: boolean) => {
+        if (isSuccess && image) {
+          // 성공한 이미지: 해당 인덱스의 placeholder를 실제 이미지로 교체
+          setRegeneratedImages(prev => {
+            const newImages = [...prev];
+            // 인덱스로 정확한 placeholder 찾기
+            const placeholderIndex = newImages.findIndex(
+              img => img.url === null && img.base64Data === null && img.index === index
+            );
+            if (placeholderIndex !== -1) {
+              // placeholder를 실제 이미지로 교체
+              newImages[placeholderIndex] = image;
+            } else {
+              // 인덱스로 찾지 못한 경우 첫 번째 placeholder 찾기
+              const fallbackIndex = newImages.findIndex(img => img.url === null && img.base64Data === null);
+              if (fallbackIndex !== -1) {
+                newImages[fallbackIndex] = image;
+              } else {
+                // placeholder를 찾지 못한 경우 (이상한 경우) 맨 뒤에 추가
+                newImages.push(image);
+              }
+            }
+            return newImages;
+          });
+          successCount++;
+        } else if (!isSuccess) {
+          // 실패한 이미지: placeholder 제거
+          console.error(`이미지 ${index + 1} 생성 실패`);
+          setRegeneratedImages(prev => {
+            const newImages = [...prev];
+            const placeholderIndex = newImages.findIndex(
+              img => img.url === null && img.base64Data === null && img.index === index
+            );
+            if (placeholderIndex !== -1) {
+              newImages.splice(placeholderIndex, 1);
+            }
+            return newImages;
+          });
+          failCount++;
+        }
+      };
+
       for (let batchStart = 0; batchStart < regenerateCount; batchStart += BATCH_SIZE) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, regenerateCount);
-        const batchPromises: Promise<RegeneratedImage | null>[] = [];
+        const batchPromises: Promise<void>[] = [];
         
-        // 배치 내 모든 이미지 생성 작업 시작
+        // 배치 내 모든 이미지 생성 작업 시작 및 개별 완료 핸들러 연결
         for (let i = batchStart; i < batchEnd; i++) {
-          batchPromises.push(generateSingleImage(i));
+          const actualIndex = i;
+          const promise = generateSingleImage(actualIndex)
+            .then((image) => {
+              // 성공 시 즉시 UI 업데이트
+              updateImageOnComplete(image, actualIndex, true);
+            })
+            .catch((error) => {
+              // 실패 시 즉시 UI 업데이트
+              console.error(`이미지 ${actualIndex + 1} 생성 실패:`, error);
+              updateImageOnComplete(null, actualIndex, false);
+            });
+          
+          batchPromises.push(promise);
         }
         
-        // 배치 내 모든 작업 완료 대기 (일부 실패해도 계속 진행)
-        const results = await Promise.allSettled(batchPromises);
-        
-        // 각 결과 처리 및 실시간 UI 업데이트
-        results.forEach((result, idx) => {
-          const actualIndex = batchStart + idx;
-          if (result.status === 'fulfilled' && result.value) {
-            // 성공한 이미지: 해당 인덱스의 placeholder를 실제 이미지로 교체
-            setRegeneratedImages(prev => {
-              const newImages = [...prev];
-              // 인덱스로 정확한 placeholder 찾기
-              const placeholderIndex = newImages.findIndex(
-                img => img.url === null && img.base64Data === null && img.index === actualIndex
-              );
-              if (placeholderIndex !== -1) {
-                // placeholder를 실제 이미지로 교체
-                newImages[placeholderIndex] = result.value!;
-              } else {
-                // 인덱스로 찾지 못한 경우 첫 번째 placeholder 찾기
-                const fallbackIndex = newImages.findIndex(img => img.url === null && img.base64Data === null);
-                if (fallbackIndex !== -1) {
-                  newImages[fallbackIndex] = result.value!;
-                } else {
-                  // placeholder를 찾지 못한 경우 (이상한 경우) 맨 뒤에 추가
-                  newImages.push(result.value!);
-                }
-              }
-              return newImages;
-            });
-            successCount++;
-          } else {
-            failCount++;
-            if (result.status === 'rejected') {
-              console.error(`이미지 ${actualIndex + 1} 생성 실패:`, result.reason);
-              // 실패한 placeholder 제거 (인덱스로 찾기)
-              setRegeneratedImages(prev => {
-                const newImages = [...prev];
-                const placeholderIndex = newImages.findIndex(
-                  img => img.url === null && img.base64Data === null && img.index === actualIndex
-                );
-                if (placeholderIndex !== -1) {
-                  newImages.splice(placeholderIndex, 1);
-                }
-                return newImages;
-              });
-            }
-          }
-        });
+        // 배치 내 모든 작업이 시작되도록 대기 (완료 대기하지 않음)
+        // 각 작업은 완료되는 즉시 위의 .then()/.catch() 핸들러에서 UI 업데이트됨
+        await Promise.allSettled(batchPromises);
       }
 
       // 최종 결과 로그

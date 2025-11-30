@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
+import crypto from 'crypto';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
@@ -13,6 +14,14 @@ const SEEDREAM_API_TIMEOUT = 60000; // 60초
 
 // 재시도 가능한 네트워크 에러 코드 목록
 const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
+
+// 레퍼런스 이미지 리사이징 결과 캐시 (메모리 캐시)
+// 키: 레퍼런스 이미지 URL 또는 base64 해시
+// 값: { base64: string, mimeType: string, resized: boolean }
+const referenceImageResizeCache = new Map<string, { base64: string; mimeType: string; resized: boolean }>();
+
+// 캐시 최대 크기 (메모리 관리용, 최대 100개까지 캐시)
+const MAX_CACHE_SIZE = 100;
 
 /**
  * 네트워크 에러가 재시도 가능한지 확인합니다.
@@ -556,9 +565,34 @@ export async function POST(request: NextRequest) {
       // 레퍼런스 이미지가 있는 경우 함께 전달
       const seedreamImages = [seedreamImageInput];
       if (hasReferenceImage && refImageBase64 && refMimeType) {
-        // 레퍼런스 이미지도 크기 확인 및 리사이즈
-        const refBuffer = Buffer.from(refImageBase64, 'base64');
-        const refResizeResult = await resizeImageIfNeeded(refBuffer);
+        // 레퍼런스 이미지 캐시 키 생성 (URL 또는 base64 해시)
+        const cacheKey = referenceImageUrl 
+          ? `url:${referenceImageUrl}`
+          : `base64:${crypto.createHash('sha256').update(refImageBase64).digest('hex')}`;
+        
+        // 캐시 확인
+        let refResizeResult: { base64: string; mimeType: string; resized: boolean };
+        if (referenceImageResizeCache.has(cacheKey)) {
+          // 캐시에서 재사용
+          refResizeResult = referenceImageResizeCache.get(cacheKey)!;
+          console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 결과 캐시에서 재사용');
+        } else {
+          // 캐시에 없으면 리사이징 수행
+          const refBuffer = Buffer.from(refImageBase64, 'base64');
+          refResizeResult = await resizeImageIfNeeded(refBuffer);
+          
+          // 캐시 크기 제한 확인 후 저장
+          if (referenceImageResizeCache.size >= MAX_CACHE_SIZE) {
+            // 가장 오래된 항목 제거 (FIFO 방식)
+            const firstKey = referenceImageResizeCache.keys().next().value;
+            if (firstKey) {
+              referenceImageResizeCache.delete(firstKey);
+            }
+          }
+          referenceImageResizeCache.set(cacheKey, refResizeResult);
+          console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 완료 및 캐시 저장', refResizeResult.resized ? '(리사이즈됨)' : '');
+        }
+        
         const finalRefBase64 = refResizeResult.resized ? refResizeResult.base64 : refImageBase64;
         const finalRefMimeType = refResizeResult.resized ? refResizeResult.mimeType : refMimeType;
 
