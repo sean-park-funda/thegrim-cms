@@ -11,8 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Shield } from 'lucide-react';
+import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Shield, Settings } from 'lucide-react';
 import { Navigation } from '@/components/Navigation';
+import { getImageRegenerationSettings, updateImageRegenerationSetting, ImageRegenerationSetting } from '@/lib/api/settings';
+import { styleOptions } from '@/lib/constants/imageRegeneration';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -28,6 +31,9 @@ export default function AdminPage() {
   const [success, setSuccess] = useState('');
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [updatingRoles, setUpdatingRoles] = useState<Set<string>>(new Set());
+  const [regenerationSettings, setRegenerationSettings] = useState<ImageRegenerationSetting[]>([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [updatingSettings, setUpdatingSettings] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isLoading && (!user || profile?.role !== 'admin')) {
@@ -39,6 +45,7 @@ export default function AdminPage() {
     if (profile?.role === 'admin') {
       loadInvitations();
       loadUsers();
+      loadRegenerationSettings();
     }
   }, [profile]);
 
@@ -137,6 +144,44 @@ export default function AdminPage() {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
+  const loadRegenerationSettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+      const settings = await getImageRegenerationSettings();
+      setRegenerationSettings(settings);
+    } catch (err: any) {
+      console.error('설정 로드 오류:', err);
+      setError('설정을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  const handleUpdateSetting = async (styleId: string, useReference: boolean) => {
+    try {
+      setUpdatingSettings(prev => new Set(prev).add(styleId));
+      await updateImageRegenerationSetting(styleId, useReference);
+      await loadRegenerationSettings();
+      setSuccess('설정이 업데이트되었습니다.');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      console.error('설정 업데이트 오류:', err);
+      setError(err.message || '설정 업데이트에 실패했습니다.');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setUpdatingSettings(prev => {
+        const next = new Set(prev);
+        next.delete(styleId);
+        return next;
+      });
+    }
+  };
+
+  const getSettingForStyle = (styleId: string): boolean => {
+    const setting = regenerationSettings.find(s => s.style_id === styleId);
+    return setting?.use_reference ?? false;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -181,7 +226,7 @@ export default function AdminPage() {
       )}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="users">
             <Users className="h-4 w-4 mr-2" />
             사용자 관리
@@ -189,6 +234,10 @@ export default function AdminPage() {
           <TabsTrigger value="invitations">
             <Mail className="h-4 w-4 mr-2" />
             초대 관리
+          </TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="h-4 w-4 mr-2" />
+            이미지 재생성 설정
           </TabsTrigger>
         </TabsList>
 
@@ -352,6 +401,67 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                이미지 재생성 설정
+              </CardTitle>
+              <CardDescription>
+                각 이미지 재생성 스타일별로 레퍼런스 이미지 사용 여부를 설정할 수 있습니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingSettings ? (
+                <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
+              ) : (
+                <div className="space-y-4">
+                  {styleOptions.map((style) => {
+                    const useReference = getSettingForStyle(style.id);
+                    const isUpdating = updatingSettings.has(style.id);
+                    const isRequired = style.requiresReference === true;
+
+                    return (
+                      <div key={style.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="font-medium">{style.name}</div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {isRequired ? '(레퍼런스 이미지 필수)' : '(선택사항)'}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`setting-${style.id}`}
+                            checked={useReference || isRequired}
+                            onCheckedChange={(checked) => {
+                              if (!isRequired) {
+                                handleUpdateSetting(style.id, checked === true);
+                              }
+                            }}
+                            disabled={isRequired || isUpdating}
+                          />
+                          <label
+                            htmlFor={`setting-${style.id}`}
+                            className={`text-sm font-medium ${
+                              isRequired ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'
+                            }`}
+                          >
+                            레퍼런스 사용
+                          </label>
+                          {isUpdating && (
+                            <span className="text-xs text-muted-foreground">업데이트 중...</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
         </div>

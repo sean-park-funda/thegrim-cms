@@ -6,10 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Check, FileIcon } from 'lucide-react';
+import { Loader2, Check, FileIcon, Plus } from 'lucide-react';
 import { styleOptions } from '@/lib/constants/imageRegeneration';
 import { getReferenceFilesByWebtoon } from '@/lib/api/referenceFiles';
-import { ReferenceFileWithProcess } from '@/lib/supabase';
+import { ReferenceFileWithProcess, Process, ReferenceFile } from '@/lib/supabase';
+import { ReferenceFileUpload } from './ReferenceFileUpload';
+import { getProcesses } from '@/lib/api/processes';
+import { getImageRegenerationSettings } from '@/lib/api/settings';
 
 interface RegeneratedImage {
   id: string;
@@ -66,6 +69,39 @@ export function ImageRegenerationDialog({
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [selectedReferenceFile, setSelectedReferenceFile] = useState<ReferenceFileWithProcess | null>(null);
   const [pendingReferenceStyle, setPendingReferenceStyle] = useState<typeof styleOptions[0] | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [processes, setProcesses] = useState<Process[]>([]);
+  const [styleSettings, setStyleSettings] = useState<Record<string, boolean>>({});
+
+  // 공정 목록 로드
+  useEffect(() => {
+    const loadProcesses = async () => {
+      try {
+        const processesData = await getProcesses();
+        setProcesses(processesData);
+      } catch (error) {
+        console.error('공정 목록 로드 실패:', error);
+      }
+    };
+    loadProcesses();
+  }, []);
+
+  // 이미지 재생성 설정 로드
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await getImageRegenerationSettings();
+        const settingsMap: Record<string, boolean> = {};
+        settings.forEach(setting => {
+          settingsMap[setting.style_id] = setting.use_reference;
+        });
+        setStyleSettings(settingsMap);
+      } catch (error) {
+        console.error('설정 로드 실패:', error);
+      }
+    };
+    loadSettings();
+  }, []);
 
   // 레퍼런스 파일 로드
   useEffect(() => {
@@ -89,8 +125,21 @@ export function ImageRegenerationDialog({
   }, [referenceSelectionOpen, webtoonId]);
 
   const handleStyleClick = (style: typeof styleOptions[0]) => {
-    if (style.id === 'tone-reference') {
-      // 톤먹 넣기: 레퍼런스 파일 선택 다이얼로그 표시
+    // 설정에서 레퍼런스 사용 여부 확인
+    const useReference = styleSettings[style.id] ?? style.requiresReference ?? false;
+
+    // 레퍼런스 사용이 설정되어 있고 웹툰이 선택되어 있으면 레퍼런스 선택 다이얼로그 표시
+    if (useReference && webtoonId) {
+      setPendingReferenceStyle(style);
+      setSelectedReferenceFile(null);
+      setReferenceSelectionOpen(true);
+      onStyleSelectionChange(false);
+      return;
+    }
+
+    // 레퍼런스 사용하지 않거나 웹툰이 없으면 기존 로직대로 진행
+    if (style.id === 'tone-reference' || style.requiresReference) {
+      // 톤먹 넣기 등 레퍼런스 필수: 레퍼런스 파일 선택 다이얼로그 표시 (필수)
       if (!webtoonId) {
         alert('웹툰을 선택해주세요.');
         return;
@@ -134,11 +183,19 @@ export function ImageRegenerationDialog({
   };
 
   const handleMangaShadingCancel = () => {
-    // 바로 명암 넣기: 장 수 선택 다이얼로그 표시
+    // 바로 명암 넣기: 설정에서 레퍼런스 사용 여부 확인
     if (pendingMangaShadingStyle) {
-      setSelectedStyle(pendingMangaShadingStyle);
-      setMangaShadingConfirmOpen(false);
-      setCountSelectionOpen(true);
+      const useReference = styleSettings[pendingMangaShadingStyle.id] ?? false;
+      if (useReference && webtoonId) {
+        setPendingReferenceStyle(pendingMangaShadingStyle);
+        setSelectedReferenceFile(null);
+        setMangaShadingConfirmOpen(false);
+        setReferenceSelectionOpen(true);
+      } else {
+        setSelectedStyle(pendingMangaShadingStyle);
+        setMangaShadingConfirmOpen(false);
+        setCountSelectionOpen(true);
+      }
     } else {
       setMangaShadingConfirmOpen(false);
       setPendingMangaShadingStyle(null);
@@ -147,10 +204,19 @@ export function ImageRegenerationDialog({
 
   const handleCountConfirm = () => {
     if (selectedStyle) {
-      onRegenerate(selectedStyle.prompt, generationCount);
-      setCountSelectionOpen(false);
-      setSelectedStyle(null);
-      onStyleSelectionChange(false);
+      // 설정에서 레퍼런스 사용 여부 확인
+      const useReference = styleSettings[selectedStyle.id] ?? false;
+      if (useReference && webtoonId) {
+        setPendingReferenceStyle(selectedStyle);
+        setSelectedReferenceFile(null);
+        setCountSelectionOpen(false);
+        setReferenceSelectionOpen(true);
+      } else {
+        onRegenerate(selectedStyle.prompt, generationCount);
+        setCountSelectionOpen(false);
+        setSelectedStyle(null);
+        onStyleSelectionChange(false);
+      }
     }
   };
 
@@ -165,10 +231,28 @@ export function ImageRegenerationDialog({
     const referenceImage: ReferenceImageInfo = {
       url: selectedReferenceFile.file_path,
     };
+    
+    // 레퍼런스 선택 다이얼로그에서 이미 장수를 선택할 수 있으므로 바로 생성
+    // (레퍼런스 선택 다이얼로그에 장수 선택이 포함되어 있음)
     onRegenerate(pendingReferenceStyle.prompt, generationCount, false, referenceImage);
     setReferenceSelectionOpen(false);
     setSelectedReferenceFile(null);
     setPendingReferenceStyle(null);
+  };
+
+  // 장수 선택 후 최종 확인 (레퍼런스 포함)
+  const handleCountConfirmWithReference = () => {
+    if (selectedStyle && selectedReferenceFile) {
+      const referenceImage: ReferenceImageInfo = {
+        url: selectedReferenceFile.file_path,
+      };
+      onRegenerate(selectedStyle.prompt, generationCount, false, referenceImage);
+      setCountSelectionOpen(false);
+      setSelectedStyle(null);
+      setSelectedReferenceFile(null);
+      setPendingReferenceStyle(null);
+      onStyleSelectionChange(false);
+    }
   };
 
   // 레퍼런스 선택 취소
@@ -176,6 +260,31 @@ export function ImageRegenerationDialog({
     setReferenceSelectionOpen(false);
     setSelectedReferenceFile(null);
     setPendingReferenceStyle(null);
+  };
+
+  // 레퍼런스 업로드 완료 핸들러
+  const handleReferenceUploadComplete = async (uploadedFile?: ReferenceFile) => {
+    // 레퍼런스 파일 목록 새로고침
+    if (webtoonId) {
+      try {
+        const files = await getReferenceFilesByWebtoon(webtoonId);
+        const imageFiles = files.filter(f => f.file_type === 'image');
+        setReferenceFiles(imageFiles);
+        // 업로드된 파일이 있으면 해당 파일을 찾아서 선택, 없으면 가장 최근 파일 선택
+        if (uploadedFile && uploadedFile.file_type === 'image') {
+          const foundFile = imageFiles.find(f => f.id === uploadedFile.id);
+          if (foundFile) {
+            setSelectedReferenceFile(foundFile);
+          } else if (imageFiles.length > 0) {
+            setSelectedReferenceFile(imageFiles[0]);
+          }
+        } else if (imageFiles.length > 0) {
+          setSelectedReferenceFile(imageFiles[0]);
+        }
+      } catch (error) {
+        console.error('레퍼런스 파일 로드 실패:', error);
+      }
+    }
   };
 
   return (
@@ -210,7 +319,7 @@ export function ImageRegenerationDialog({
         </DialogContent>
       </Dialog>
 
-      {/* 장 수 선택 Dialog (레퍼런스 없는 스타일용) */}
+      {/* 장 수 선택 Dialog (레퍼런스 없는 스타일용 또는 레퍼런스 선택 후) */}
       <Dialog open={countSelectionOpen} onOpenChange={setCountSelectionOpen}>
         <DialogContent>
           <DialogHeader>
@@ -220,6 +329,12 @@ export function ImageRegenerationDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {selectedReferenceFile && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm font-medium mb-1">선택된 레퍼런스 이미지</p>
+                <p className="text-xs text-muted-foreground truncate">{selectedReferenceFile.file_name}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium">생성 장수</label>
               <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
@@ -240,21 +355,26 @@ export function ImageRegenerationDialog({
             <Button variant="outline" onClick={() => setCountSelectionOpen(false)} disabled={regeneratingImage !== null}>
               취소
             </Button>
-            <Button onClick={handleCountConfirm} disabled={regeneratingImage !== null}>
+            <Button 
+              onClick={selectedReferenceFile ? handleCountConfirmWithReference : handleCountConfirm} 
+              disabled={regeneratingImage !== null}
+            >
               확인
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* 레퍼런스 파일 선택 + 장수 선택 통합 Dialog (톤먹 넣기) */}
+      {/* 레퍼런스 파일 선택 Dialog (모든 스타일에서 사용) */}
       <Dialog open={referenceSelectionOpen} onOpenChange={(open) => {
         if (!open) handleReferenceCancel();
         else setReferenceSelectionOpen(open);
       }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>톤먹 넣기</DialogTitle>
+            <DialogTitle>
+              {pendingReferenceStyle?.id === 'tone-reference' ? '톤먹 넣기' : '레퍼런스 이미지 선택'}
+            </DialogTitle>
             <DialogDescription>
               레퍼런스 이미지를 선택하고 생성할 장수를 설정하세요.
             </DialogDescription>
@@ -268,10 +388,30 @@ export function ImageRegenerationDialog({
               <div className="text-center py-8 text-muted-foreground">
                 <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>등록된 레퍼런스 이미지가 없습니다.</p>
-                <p className="text-sm mt-1">웹툰의 레퍼런스 파일을 먼저 등록해주세요.</p>
+                <p className="text-sm mt-1">새로 업로드하여 사용하세요.</p>
+                <Button
+                  className="mt-4"
+                  onClick={() => setUploadDialogOpen(true)}
+                  disabled={regeneratingImage !== null}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  새로 업로드
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
+                {/* 새로 업로드 버튼 */}
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUploadDialogOpen(true)}
+                    disabled={regeneratingImage !== null}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    새로 업로드
+                  </Button>
+                </div>
                 {/* 레퍼런스 이미지 그리드 */}
                 <ScrollArea className="h-[280px]">
                   <div className="grid grid-cols-3 gap-2 pr-3">
@@ -337,6 +477,17 @@ export function ImageRegenerationDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 레퍼런스 파일 업로드 Dialog */}
+      {webtoonId && (
+        <ReferenceFileUpload
+          open={uploadDialogOpen}
+          onOpenChange={setUploadDialogOpen}
+          webtoonId={webtoonId}
+          processes={processes}
+          onUploadComplete={handleReferenceUploadComplete}
+        />
+      )}
 
       {/* 만화풍 명암 컨펌 Dialog */}
       <Dialog open={mangaShadingConfirmOpen} onOpenChange={setMangaShadingConfirmOpen}>

@@ -7,14 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, X } from 'lucide-react';
 import { uploadReferenceFile } from '@/lib/api/referenceFiles';
-import { Process } from '@/lib/supabase';
+import { Process, ReferenceFile } from '@/lib/supabase';
 
 interface ReferenceFileUploadProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     webtoonId: string;
     processes: Process[];
-    onUploadComplete?: () => void;
+    onUploadComplete?: (uploadedFile?: ReferenceFile) => void;
 }
 
 export function ReferenceFileUpload({
@@ -69,7 +69,7 @@ export function ReferenceFileUpload({
 
         try {
             setUploading(true);
-            await uploadReferenceFile(selectedFile, webtoonId, selectedProcessId, description);
+            const uploadedFile = await uploadReferenceFile(selectedFile, webtoonId, selectedProcessId, description);
             alert('레퍼런스 파일이 업로드되었습니다.');
 
             // 초기화
@@ -77,7 +77,7 @@ export function ReferenceFileUpload({
             setSelectedProcessId('');
             setDescription('');
             onOpenChange(false);
-            onUploadComplete?.();
+            onUploadComplete?.(uploadedFile);
         } catch (error) {
             console.error('레퍼런스 파일 업로드 실패:', error);
             alert('레퍼런스 파일 업로드에 실패했습니다.');
