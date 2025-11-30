@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2, FileImage } from 'lucide-react';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Webtoon } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 import { ReferenceFileDialog } from './ReferenceFileDialog';
@@ -18,6 +19,7 @@ let isLoadingGlobally = false;
 let hasLoadedGlobally = false;
 
 export function WebtoonList() {
+  const router = useRouter();
   const { webtoons, setWebtoons, selectedWebtoon, setSelectedWebtoon, profile } = useStore();
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -212,6 +214,20 @@ export function WebtoonList() {
                 )}
               </Card>
             ))}
+            {/* 생성 히스토리 버튼 */}
+            <Card 
+              className="cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-secondary/50 bg-secondary/30 border-secondary"
+              onClick={() => router.push('/regenerated-images')}
+            >
+              <CardHeader className="pb-2 flex-shrink-0 flex-1 flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center justify-center gap-2 py-4">
+                  <Sparkles className="h-8 w-8 sm:h-10 sm:w-10 text-secondary-foreground/70" />
+                  <CardTitle className="text-sm sm:text-base text-center text-secondary-foreground">
+                    생성 히스토리
+                  </CardTitle>
+                </div>
+              </CardHeader>
+            </Card>
           </div>
         )}
       </div>

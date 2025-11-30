@@ -5,6 +5,8 @@ interface GetRegenerateImageHistoryRequest {
   sourceFileId?: string; // 원본 파일 ID (선택적)
   userId?: string; // 사용자 ID (선택적)
   limit?: number; // 최대 개수 (기본값: 50)
+  offset?: number; // 오프셋 (기본값: 0)
+  before?: string; // 특정 시간 이전의 이미지 조회 (ISO 8601 형식) - 하위 호환성 유지
 }
 
 export async function GET(request: NextRequest) {
@@ -16,12 +18,36 @@ export async function GET(request: NextRequest) {
     const sourceFileId = searchParams.get('sourceFileId') || undefined;
     const userId = searchParams.get('userId') || undefined;
     const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const before = searchParams.get('before') || undefined;
     
     console.log('[이미지 재생성 히스토리] 임시 파일 목록 조회 시작:', {
       sourceFileId,
       userId,
       limit,
+      offset,
+      before,
     });
+
+    // 전체 개수 조회 (필터링 조건 동일하게 적용)
+    let countQuery = supabase
+      .from('files')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_temp', true);
+
+    if (sourceFileId) {
+      countQuery = countQuery.eq('source_file_id', sourceFileId);
+    }
+
+    if (userId) {
+      countQuery = countQuery.eq('created_by', userId);
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+
+    if (countError) {
+      console.error('[이미지 재생성 히스토리] 전체 개수 조회 실패:', countError);
+    }
 
     // DB에서 is_temp = true인 파일만 조회
     let query = supabase
@@ -29,7 +55,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('is_temp', true)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     // 필터링 옵션
     if (sourceFileId) {
@@ -38,6 +64,11 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       query = query.eq('created_by', userId);
+    }
+
+    // before 파라미터가 있으면 해당 시간 이전의 이미지만 조회 (하위 호환성)
+    if (before) {
+      query = query.lt('created_at', before);
     }
 
     const { data: files, error: dbError } = await query;
@@ -71,11 +102,17 @@ export async function GET(request: NextRequest) {
     const totalTime = Date.now() - startTime;
     console.log('[이미지 재생성 히스토리] 히스토리 조회 완료:', {
       totalItems: historyItems.length,
+      totalCount: totalCount || 0,
+      offset,
+      limit,
       totalTime: `${totalTime}ms`,
     });
 
     return NextResponse.json({
       history: historyItems,
+      total: totalCount || 0,
+      offset,
+      limit,
     });
   } catch (error: unknown) {
     const totalTime = Date.now() - startTime;

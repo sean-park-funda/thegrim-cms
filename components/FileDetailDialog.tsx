@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2, History } from 'lucide-react';
+import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,6 @@ import { savePrompt } from '@/lib/api/imagePrompts';
 import { styleOptions } from '@/lib/constants/imageRegeneration';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface RegeneratedImage {
   id: string;
@@ -93,40 +92,6 @@ export function FileDetailDialog({
   const [promptName, setPromptName] = useState('');
   const [isShared, setIsShared] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
-  
-  // 히스토리 관련 상태
-  const [historyTab, setHistoryTab] = useState<'current' | 'history'>('current');
-  const [historyItems, setHistoryItems] = useState<Array<{
-    fileId: string;
-    filePath: string;
-    fileUrl: string;
-    createdAt: string;
-    mimeType: string;
-    prompt?: string;
-    sourceFileId?: string;
-  }>>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // 히스토리 로드
-  useEffect(() => {
-    const loadHistory = async () => {
-      if (historyTab === 'history' && !loadingHistory) {
-        setLoadingHistory(true);
-        try {
-          const response = await fetch('/api/regenerate-image-history?limit=50');
-          if (response.ok) {
-            const data = await response.json();
-            setHistoryItems(data.history || []);
-          }
-        } catch (error) {
-          console.error('히스토리 로드 실패:', error);
-        } finally {
-          setLoadingHistory(false);
-        }
-      }
-    };
-    loadHistory();
-  }, [historyTab, loadingHistory]);
 
   // 다음 공정 찾기 (order_index 기준)
   const getNextProcessId = (currentProcessId: string): string => {
@@ -452,24 +417,10 @@ export function FileDetailDialog({
           </div>
 
           {/* 재생성된 이미지 표시 */}
-          {(regeneratedImages.length > 0 || historyTab === 'history') && (
+          {regeneratedImages.length > 0 && (
             <div className="w-full space-y-4">
-              <Tabs value={historyTab} onValueChange={(value) => setHistoryTab(value as 'current' | 'history')}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="current">
-                    생성된 이미지 ({regeneratedImages.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="history">
-                    <History className="h-4 w-4 mr-2" />
-                    히스토리
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="current" className="mt-4">
-                  {regeneratedImages.length > 0 && (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold">재생성된 이미지 ({regeneratedImages.length}장)</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold">재생성된 이미지 ({regeneratedImages.length}장)</h3>
                 <div className="flex gap-2">
                   {canUpload && (
                     <>
@@ -629,67 +580,6 @@ export function FileDetailDialog({
                   );
                 })}
               </div>
-                    </>
-                  )}
-                </TabsContent>
-                
-                <TabsContent value="history" className="mt-4">
-                  {loadingHistory ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : historyItems.length === 0 ? (
-                    <div className="flex items-center justify-center py-12 text-muted-foreground">
-                      <p>히스토리가 없습니다.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold">임시 파일 히스토리 ({historyItems.length}장)</h3>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {historyItems.map((item) => (
-                          <div key={item.fileId} className="relative space-y-2">
-                            <div 
-                              className="relative w-full aspect-square bg-muted rounded-md overflow-hidden group cursor-pointer"
-                              onClick={() => {
-                                if (item.fileUrl) {
-                                  onImageViewerOpen(item.fileUrl, `임시 파일 - ${item.fileId}`);
-                                }
-                              }}
-                            >
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
-                                  <Search className="h-5 w-5 text-white" />
-                                </div>
-                              </div>
-                              {item.fileUrl && (
-                                <Image
-                                  src={item.fileUrl}
-                                  alt="임시 파일"
-                                  fill
-                                  className="object-contain"
-                                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                                  unoptimized={true}
-                                  onError={(e) => {
-                                    console.error('[히스토리 이미지 로드 실패]', {
-                                      fileId: item.fileId,
-                                      fileUrl: item.fileUrl,
-                                    });
-                                  }}
-                                />
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {format(new Date(item.createdAt), 'yyyy-MM-dd HH:mm')}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </TabsContent>
-              </Tabs>
             </div>
           )}
 
