@@ -6,7 +6,8 @@ import { generateVariedPrompt, styleOptions, ApiProvider } from '@/lib/constants
 interface RegeneratedImage {
   id: string;
   url: string | null; // null이면 placeholder (생성 중)
-  prompt: string;
+  prompt: string; // 실제 사용된 프롬프트 (변형된 프롬프트 포함)
+  originalPrompt: string; // 원본 프롬프트 (사용자가 선택하거나 입력한 프롬프트)
   selected: boolean;
   base64Data: string | null; // null이면 placeholder
   mimeType: string | null; // null이면 placeholder
@@ -75,7 +76,8 @@ export function useImageRegeneration({
       const placeholderImages: RegeneratedImage[] = Array.from({ length: regenerateCount }, (_, index) => ({
         id: `placeholder-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`,
         url: null,
-        prompt: stylePrompt,
+        prompt: stylePrompt, // placeholder에서는 원본 프롬프트 사용
+        originalPrompt: stylePrompt, // 원본 프롬프트 저장
         selected: false,
         base64Data: null,
         mimeType: null,
@@ -185,7 +187,8 @@ export function useImageRegeneration({
           return {
             id: imageId,
             url: imageUrl_new,
-            prompt: variedPrompt,
+            prompt: variedPrompt, // 실제 사용된 프롬프트 (변형된 프롬프트)
+            originalPrompt: stylePrompt, // 원본 프롬프트 저장
             selected: false,
             base64Data: imageData,
             mimeType: mimeType || 'image/png',
@@ -354,8 +357,8 @@ export function useImageRegeneration({
           // Blob을 File 객체로 변환
           const file = new File([blob], newFileName, { type: img.mimeType });
 
-          // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함)
-          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id);
+          // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 전달)
+          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt);
           successCount++;
         } catch (error) {
           failCount++;
@@ -478,7 +481,8 @@ export function useImageRegeneration({
       const newImage: RegeneratedImage = {
         id: imageId,
         url: imageUrl_new,
-        prompt: prompt,
+        prompt: prompt, // 실제 사용된 프롬프트
+        originalPrompt: prompt, // 원본 프롬프트 저장
         selected: false,
         base64Data: imageData,
         mimeType: mimeType || 'image/png',

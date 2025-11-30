@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS files (
   mime_type VARCHAR(100),
   description TEXT,
   metadata JSONB DEFAULT '{}',
+  prompt TEXT,
   created_by UUID REFERENCES user_profiles(id),
   source_file_id UUID REFERENCES files(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -2,6 +2,7 @@
 export type ApiProvider = 'gemini' | 'seedream' | 'auto';
 
 // 이미지 재생성 스타일 옵션
+// 주의: 프롬프트는 DB에서 관리되며, 이 prompt 필드는 DB에 기본 프롬프트가 없을 때 fallback으로 사용됩니다.
 export const styleOptions = [
   { 
     id: 'berserk', 

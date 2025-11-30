@@ -70,6 +70,7 @@ export interface File {
   mime_type?: string;
   description?: string;
   metadata?: Record<string, any>;
+  prompt?: string | null;
   created_by?: string;
   source_file_id?: string;
   created_at: string;
@@ -128,6 +129,18 @@ export interface ReferenceFile {
 
 export interface ReferenceFileWithProcess extends ReferenceFile {
   process?: Process;
+}
+
+export interface AiRegenerationPrompt {
+  id: string;
+  style_id: string;
+  prompt_text: string;
+  prompt_name: string;
+  created_by?: string | null;
+  is_shared: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 

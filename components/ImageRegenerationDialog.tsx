@@ -6,18 +6,22 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Check, FileIcon, Plus } from 'lucide-react';
+import { Loader2, Check, Plus } from 'lucide-react';
 import { styleOptions } from '@/lib/constants/imageRegeneration';
 import { getReferenceFilesByWebtoon } from '@/lib/api/referenceFiles';
-import { ReferenceFileWithProcess, Process, ReferenceFile } from '@/lib/supabase';
+import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
 import { getProcesses } from '@/lib/api/processes';
 import { getImageRegenerationSettings } from '@/lib/api/settings';
+import { getPromptsByStyle, getDefaultPrompt, savePrompt } from '@/lib/api/imagePrompts';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface RegeneratedImage {
   id: string;
   url: string | null; // null이면 placeholder (생성 중)
-  prompt: string;
+  prompt: string; // 실제 사용된 프롬프트 (변형된 프롬프트 포함)
+  originalPrompt?: string; // 원본 프롬프트 (사용자가 선택하거나 입력한 프롬프트)
   selected: boolean;
   base64Data: string | null; // null이면 placeholder
   mimeType: string | null; // null이면 placeholder
@@ -42,6 +46,7 @@ interface ImageRegenerationDialogProps {
   onGenerationCountChange: (count: number) => void;
   fileToViewId: string | null;
   webtoonId?: string; // 레퍼런스 파일 조회용
+  currentUserId?: string; // 현재 사용자 ID
 }
 
 export function ImageRegenerationDialog({
@@ -57,11 +62,19 @@ export function ImageRegenerationDialog({
   onGenerationCountChange,
   fileToViewId,
   webtoonId,
+  currentUserId,
 }: ImageRegenerationDialogProps) {
   const [countSelectionOpen, setCountSelectionOpen] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<typeof styleOptions[0] | null>(null);
   const [mangaShadingConfirmOpen, setMangaShadingConfirmOpen] = useState(false);
   const [pendingMangaShadingStyle, setPendingMangaShadingStyle] = useState<typeof styleOptions[0] | null>(null);
+
+  // 프롬프트 관련 상태
+  const [prompts, setPrompts] = useState<AiRegenerationPrompt[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState<string>('');
+  const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [promptEditOpen, setPromptEditOpen] = useState(false);
 
   // 레퍼런스 파일 선택 관련 상태
   const [referenceSelectionOpen, setReferenceSelectionOpen] = useState(false);
@@ -123,6 +136,53 @@ export function ImageRegenerationDialog({
     };
     loadReferenceFiles();
   }, [referenceSelectionOpen, webtoonId]);
+
+  // 프롬프트 로드 (스타일 선택 시)
+  useEffect(() => {
+    const loadPrompts = async () => {
+      const style = selectedStyle || pendingReferenceStyle;
+      if (!style || !currentUserId) return;
+
+      setLoadingPrompts(true);
+      try {
+        const loadedPrompts = await getPromptsByStyle(style.id, currentUserId);
+        setPrompts(loadedPrompts);
+        
+        // 기본 프롬프트 선택
+        const defaultPrompt = loadedPrompts.find(p => p.is_default);
+        if (defaultPrompt) {
+          setSelectedPromptId(defaultPrompt.id);
+          setEditedPrompt(defaultPrompt.prompt_text);
+        } else {
+          // 기본 프롬프트가 없으면 스타일 옵션의 기본 프롬프트 사용
+          setSelectedPromptId(null);
+          setEditedPrompt(style.prompt);
+        }
+      } catch (error) {
+        console.error('프롬프트 로드 실패:', error);
+        // 에러 발생 시 스타일 옵션의 기본 프롬프트 사용
+        if (style) {
+          setEditedPrompt(style.prompt);
+        }
+      } finally {
+        setLoadingPrompts(false);
+      }
+    };
+
+    if (countSelectionOpen || referenceSelectionOpen) {
+      loadPrompts();
+    }
+  }, [selectedStyle, pendingReferenceStyle, countSelectionOpen, referenceSelectionOpen, currentUserId]);
+
+  // 선택된 프롬프트 변경 시 편집 프롬프트 업데이트
+  useEffect(() => {
+    if (selectedPromptId) {
+      const prompt = prompts.find(p => p.id === selectedPromptId);
+      if (prompt) {
+        setEditedPrompt(prompt.prompt_text);
+      }
+    }
+  }, [selectedPromptId, prompts]);
 
   const handleStyleClick = (style: typeof styleOptions[0]) => {
     // 설정에서 레퍼런스 사용 여부 확인
@@ -212,10 +272,14 @@ export function ImageRegenerationDialog({
         setCountSelectionOpen(false);
         setReferenceSelectionOpen(true);
       } else {
-        onRegenerate(selectedStyle.prompt, generationCount);
+        onRegenerate(editedPrompt.trim() || selectedStyle.prompt, generationCount);
         setCountSelectionOpen(false);
         setSelectedStyle(null);
         onStyleSelectionChange(false);
+        // 상태 초기화
+        setSelectedPromptId(null);
+        setEditedPrompt('');
+        setPromptEditOpen(false);
       }
     }
   };
@@ -228,16 +292,21 @@ export function ImageRegenerationDialog({
   // 레퍼런스 선택 + 장수 선택 통합 확인
   const handleReferenceDirectConfirm = () => {
     if (!selectedReferenceFile || !pendingReferenceStyle) return;
+
     const referenceImage: ReferenceImageInfo = {
       url: selectedReferenceFile.file_path,
     };
     
     // 레퍼런스 선택 다이얼로그에서 이미 장수를 선택할 수 있으므로 바로 생성
     // (레퍼런스 선택 다이얼로그에 장수 선택이 포함되어 있음)
-    onRegenerate(pendingReferenceStyle.prompt, generationCount, false, referenceImage);
+    onRegenerate(editedPrompt.trim() || pendingReferenceStyle.prompt, generationCount, false, referenceImage);
     setReferenceSelectionOpen(false);
     setSelectedReferenceFile(null);
     setPendingReferenceStyle(null);
+    // 상태 초기화
+    setSelectedPromptId(null);
+    setEditedPrompt('');
+    setPromptEditOpen(false);
   };
 
   // 장수 선택 후 최종 확인 (레퍼런스 포함)
@@ -246,12 +315,16 @@ export function ImageRegenerationDialog({
       const referenceImage: ReferenceImageInfo = {
         url: selectedReferenceFile.file_path,
       };
-      onRegenerate(selectedStyle.prompt, generationCount, false, referenceImage);
+      onRegenerate(editedPrompt.trim() || selectedStyle.prompt, generationCount, false, referenceImage);
       setCountSelectionOpen(false);
       setSelectedStyle(null);
       setSelectedReferenceFile(null);
       setPendingReferenceStyle(null);
       onStyleSelectionChange(false);
+      // 상태 초기화
+      setSelectedPromptId(null);
+      setEditedPrompt('');
+      setPromptEditOpen(false);
     }
   };
 
@@ -321,11 +394,11 @@ export function ImageRegenerationDialog({
 
       {/* 장 수 선택 Dialog (레퍼런스 없는 스타일용 또는 레퍼런스 선택 후) */}
       <Dialog open={countSelectionOpen} onOpenChange={setCountSelectionOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>생성 개수 선택</DialogTitle>
+            <DialogTitle>생성 설정</DialogTitle>
             <DialogDescription>
-              한번에 몇 장을 그릴지 선택하세요.
+              프롬프트를 선택하거나 편집하고 생성할 장수를 설정하세요.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -335,6 +408,119 @@ export function ImageRegenerationDialog({
                 <p className="text-xs text-muted-foreground truncate">{selectedReferenceFile.file_name}</p>
               </div>
             )}
+            
+            {/* 프롬프트 선택 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">프롬프트 선택</label>
+              {loadingPrompts ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <Select 
+                  value={selectedPromptId || 'custom'} 
+                  onValueChange={(value) => {
+                    if (value === 'custom') {
+                      setSelectedPromptId(null);
+                      if (selectedStyle) {
+                        setEditedPrompt(selectedStyle.prompt);
+                      }
+                    } else {
+                      setSelectedPromptId(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">직접 입력</SelectItem>
+                    {prompts.map((prompt) => (
+                      <SelectItem key={prompt.id} value={prompt.id}>
+                        {prompt.prompt_name} {prompt.is_default ? '(기본)' : prompt.is_shared ? '(공유)' : '(개인)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* 프롬프트 편집 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">프롬프트 내용</label>
+              <textarea
+                value={editedPrompt}
+                onChange={(e) => setEditedPrompt(e.target.value)}
+                className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="프롬프트를 입력하세요..."
+              />
+            </div>
+
+            {/* 프롬프트 수정 버튼 */}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPromptEditOpen(!promptEditOpen)}
+                className="w-full"
+              >
+                {promptEditOpen ? '프롬프트 숨기기' : '프롬프트 수정'}
+              </Button>
+            </div>
+
+            {/* 프롬프트 선택 및 편집 (조건부 표시) */}
+            {promptEditOpen && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">프롬프트 선택</label>
+                  {loadingPrompts ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <Select 
+                      value={selectedPromptId || 'custom'} 
+                      onValueChange={(value) => {
+                        if (value === 'custom') {
+                          setSelectedPromptId(null);
+                          if (selectedStyle) {
+                            setEditedPrompt(selectedStyle.prompt);
+                          }
+                        } else {
+                          setSelectedPromptId(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="custom">직접 입력</SelectItem>
+                        {prompts.map((prompt) => (
+                          <SelectItem key={prompt.id} value={prompt.id}>
+                            {prompt.prompt_name} {prompt.is_default ? '(기본)' : prompt.is_shared ? '(공유)' : '(개인)'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {/* 프롬프트 편집 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">프롬프트 내용</label>
+                  <textarea
+                    value={editedPrompt}
+                    onChange={(e) => setEditedPrompt(e.target.value)}
+                    className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="프롬프트를 입력하세요..."
+                  />
+                </div>
+              </>
+            )}
+
+            {/* 생성 장수 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">생성 장수</label>
               <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
@@ -359,7 +545,7 @@ export function ImageRegenerationDialog({
               onClick={selectedReferenceFile ? handleCountConfirmWithReference : handleCountConfirm} 
               disabled={regeneratingImage !== null}
             >
-              확인
+              생성하기
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -370,51 +556,32 @@ export function ImageRegenerationDialog({
         if (!open) handleReferenceCancel();
         else setReferenceSelectionOpen(open);
       }}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>
-              {pendingReferenceStyle?.id === 'tone-reference' ? '톤먹 넣기' : '레퍼런스 이미지 선택'}
-            </DialogTitle>
-            <DialogDescription>
-              레퍼런스 이미지를 선택하고 생성할 장수를 설정하세요.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {pendingReferenceStyle?.id === 'tone-reference' ? '톤먹 넣기' : '레퍼런스 이미지 선택'}
+          </DialogTitle>
+        </DialogHeader>
+          <div className="py-4 space-y-4">
             {loadingReferences ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : referenceFiles.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>등록된 레퍼런스 이미지가 없습니다.</p>
-                <p className="text-sm mt-1">새로 업로드하여 사용하세요.</p>
-                <Button
-                  className="mt-4"
-                  onClick={() => setUploadDialogOpen(true)}
-                  disabled={regeneratingImage !== null}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  새로 업로드
-                </Button>
-              </div>
             ) : (
               <div className="space-y-3">
-                {/* 새로 업로드 버튼 */}
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setUploadDialogOpen(true)}
-                    disabled={regeneratingImage !== null}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    새로 업로드
-                  </Button>
-                </div>
-                {/* 레퍼런스 이미지 그리드 */}
-                <ScrollArea className="h-[280px]">
-                  <div className="grid grid-cols-3 gap-2 pr-3">
+                {/* 레퍼런스 이미지 그리드와 장수 선택 그룹 */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">참조 이미지</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* 업로드 버튼 슬롯 */}
+                    <button
+                      type="button"
+                      onClick={() => setUploadDialogOpen(true)}
+                      disabled={regeneratingImage !== null}
+                      className="aspect-square bg-muted border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-muted/80 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="h-8 w-8 text-muted-foreground" />
+                    </button>
                     {referenceFiles.map((file) => (
                       <div
                         key={file.id}
@@ -444,24 +611,88 @@ export function ImageRegenerationDialog({
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
-                {/* 장수 선택 */}
-                <div className="flex items-center gap-3 pt-1">
-                  <label className="text-sm font-medium whitespace-nowrap">생성 장수</label>
-                  <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 10 }, (_, i) => (i + 1) * 2).map((count) => (
-                        <SelectItem key={count} value={count.toString()}>
-                          {count}장
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* 장수 선택 */}
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium whitespace-nowrap">생성 장수</label>
+                    <Select value={generationCount.toString()} onValueChange={(value) => onGenerationCountChange(parseInt(value))}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 10 }, (_, i) => (i + 1) * 2).map((count) => (
+                          <SelectItem key={count} value={count.toString()}>
+                            {count}장
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
+            )}
+
+            {/* 프롬프트 수정 버튼 */}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPromptEditOpen(!promptEditOpen)}
+                className="w-full"
+              >
+                {promptEditOpen ? '프롬프트 숨기기' : '프롬프트 수정'}
+              </Button>
+            </div>
+
+            {/* 프롬프트 선택 및 편집 (조건부 표시) */}
+            {promptEditOpen && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">프롬프트 선택</label>
+                  {loadingPrompts ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <Select 
+                      value={selectedPromptId || 'custom'} 
+                      onValueChange={(value) => {
+                        if (value === 'custom') {
+                          setSelectedPromptId(null);
+                          if (pendingReferenceStyle) {
+                            setEditedPrompt(pendingReferenceStyle.prompt);
+                          }
+                        } else {
+                          setSelectedPromptId(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="custom">직접 입력</SelectItem>
+                        {prompts.map((prompt) => (
+                          <SelectItem key={prompt.id} value={prompt.id}>
+                            {prompt.prompt_name} {prompt.is_default ? '(기본)' : prompt.is_shared ? '(공유)' : '(개인)'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {/* 프롬프트 편집 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">프롬프트 내용</label>
+                  <textarea
+                    value={editedPrompt}
+                    onChange={(e) => setEditedPrompt(e.target.value)}
+                    className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="프롬프트를 입력하세요..."
+                  />
+                </div>
+              </>
             )}
           </div>
           <DialogFooter>

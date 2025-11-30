@@ -531,7 +531,8 @@ export async function uploadFile(
   processId: string,
   description?: string,
   createdBy?: string,
-  sourceFileId?: string
+  sourceFileId?: string,
+  prompt?: string | null
 ): Promise<File> {
   const timestamp = Date.now();
   const sanitizedFileName = sanitizeFileName(file.name);
@@ -562,6 +563,7 @@ export async function uploadFile(
     mime_type: file.type,
     description: description || '',
     metadata: {},
+    prompt: prompt || null,
     created_by: createdBy,
     source_file_id: sourceFileId
   });
