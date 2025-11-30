@@ -19,13 +19,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 interface RegeneratedImage {
   id: string;
-  url: string | null; // null이면 placeholder (생성 중)
+  url: string | null; // null이면 placeholder (생성 중), 파일 URL 또는 Blob URL
   prompt: string; // 실제 사용된 프롬프트 (변형된 프롬프트 포함)
   originalPrompt?: string; // 원본 프롬프트 (사용자가 선택하거나 입력한 프롬프트)
   selected: boolean;
-  base64Data: string | null; // null이면 placeholder
+  fileId: string | null; // 파일 ID (DB에 저장된, is_temp = true)
+  filePath: string | null; // 파일 경로 (Storage 경로)
+  fileUrl: string | null; // 파일 URL (미리보기용)
+  base64Data: string | null; // null이면 placeholder, 하위 호환성을 위해 유지 (임시 파일 저장 실패 시에만 사용)
   mimeType: string | null; // null이면 placeholder
   apiProvider: 'gemini' | 'seedream' | 'auto';
+  index?: number; // 생성 인덱스 (placeholder 매칭용)
 }
 
 interface FileDetailDialogProps {
@@ -552,6 +556,7 @@ export function FileDetailDialog({
                             unoptimized={true}
                             onError={(e) => {
                               console.error('[이미지 로드 실패]', {
+                                id: img.id,
                                 url: img.url,
                                 fileId: img.fileId,
                                 filePath: img.filePath,
