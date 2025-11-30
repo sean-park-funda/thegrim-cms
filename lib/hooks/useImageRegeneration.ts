@@ -336,7 +336,12 @@ export function useImageRegeneration({
           const promise = generateSingleImage(actualIndex)
             .then((image) => {
               // 성공 시 즉시 UI 업데이트
-              updateImageOnComplete(image, actualIndex, true);
+              // image가 null인 경우도 실패로 처리
+              if (image) {
+                updateImageOnComplete(image, actualIndex, true);
+              } else {
+                updateImageOnComplete(null, actualIndex, false);
+              }
             })
             .catch((error) => {
               // 실패 시 즉시 UI 업데이트
