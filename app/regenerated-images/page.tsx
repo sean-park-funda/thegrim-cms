@@ -135,7 +135,9 @@ function RegeneratedImagesContent() {
             // 캐시에 저장
             setImageCache(prev => new Map(prev).set(currentPage, loadedImage!));
             // 브라우저 이미지 프리로드
-            preloadImage(loadedImage.fileUrl);
+            if (loadedImage) {
+              preloadImage(loadedImage.fileUrl);
+            }
           } else {
             setCurrentImage(null);
           }
