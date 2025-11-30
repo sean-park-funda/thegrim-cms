@@ -28,9 +28,7 @@ interface RegeneratedImage {
 }
 
 interface ReferenceImageInfo {
-  url: string;
-  base64?: string;
-  mimeType?: string;
+  id: string; // 레퍼런스 파일 ID
 }
 
 interface ImageRegenerationDialogProps {
@@ -314,7 +312,7 @@ export function ImageRegenerationDialog({
     }
 
     const referenceImage: ReferenceImageInfo = {
-      url: selectedReferenceFile.file_path,
+      id: selectedReferenceFile.id,
     };
     
     // 레퍼런스 선택 다이얼로그에서 이미 장수를 선택할 수 있으므로 바로 생성
@@ -343,7 +341,7 @@ export function ImageRegenerationDialog({
       }
 
       const referenceImage: ReferenceImageInfo = {
-        url: selectedReferenceFile.file_path,
+        id: selectedReferenceFile.id,
       };
       onRegenerate(editedPrompt.trim() || selectedStyle.prompt, generationCount, false, referenceImage);
       setCountSelectionOpen(false);

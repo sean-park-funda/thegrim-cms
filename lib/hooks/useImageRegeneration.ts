@@ -2,24 +2,24 @@ import { useState, useEffect } from 'react';
 import { File as FileType } from '@/lib/supabase';
 import { uploadFile } from '@/lib/api/files';
 import { generateVariedPrompt, styleOptions, ApiProvider } from '@/lib/constants/imageRegeneration';
-import { resizeImageIfNeeded } from '@/lib/utils/imageResize';
 
 interface RegeneratedImage {
   id: string;
-  url: string | null; // null이면 placeholder (생성 중)
+  url: string | null; // null이면 placeholder (생성 중), 파일 URL 또는 Blob URL
   prompt: string; // 실제 사용된 프롬프트 (변형된 프롬프트 포함)
   originalPrompt: string; // 원본 프롬프트 (사용자가 선택하거나 입력한 프롬프트)
   selected: boolean;
-  base64Data: string | null; // null이면 placeholder
+  fileId: string | null; // 파일 ID (DB에 저장된, is_temp = true)
+  filePath: string | null; // 파일 경로 (Storage 경로)
+  fileUrl: string | null; // 파일 URL (미리보기용)
+  base64Data: string | null; // null이면 placeholder, 하위 호환성을 위해 유지 (임시 파일 저장 실패 시에만 사용)
   mimeType: string | null; // null이면 placeholder
   apiProvider: ApiProvider; // 이미지 생성에 사용된 API 제공자
   index?: number; // 생성 인덱스 (placeholder 매칭용)
 }
 
 interface ReferenceImageInfo {
-  url: string;
-  base64?: string;
-  mimeType?: string;
+  id: string; // 레퍼런스 파일 ID
 }
 
 interface UseImageRegenerationOptions {
@@ -92,295 +92,377 @@ export function useImageRegeneration({
       });
 
       // 입력 이미지 결정: useLatestImageAsInput이 true면 최신 재생성 이미지 사용
-      let imageUrl: string | undefined = undefined;
-      let imageBase64: string | undefined = undefined;
-      let imageMimeType: string | undefined = undefined;
+      // 이 경우 base64 데이터가 있으므로 단일 이미지 API 사용 (배치 API는 파일 ID만 받음)
+      let useLatestImageAsInputFileId: string | undefined = undefined;
+      let useLatestImageAsInputBase64: string | undefined = undefined;
+      let useLatestImageAsInputMimeType: string | undefined = undefined;
 
       if (useLatestImageAsInput) {
         // 최신 재생성 이미지 찾기 (완료된 이미지 중)
         const completedImages = regeneratedImages.filter(img => img.url !== null && img.base64Data !== null);
         const latestImage = completedImages[completedImages.length - 1];
         if (latestImage && latestImage.base64Data) {
-          imageBase64 = latestImage.base64Data;
-          imageMimeType = latestImage.mimeType || 'image/png';
-          console.log('[이미지 재생성] 최신 재생성 이미지를 입력으로 사용');
+          useLatestImageAsInputBase64 = latestImage.base64Data;
+          useLatestImageAsInputMimeType = latestImage.mimeType || 'image/png';
+          console.log('[이미지 재생성] 최신 재생성 이미지를 입력으로 사용 (base64)');
         } else {
           console.warn('[이미지 재생성] 최신 재생성 이미지를 찾을 수 없음, 원본 이미지 사용');
         }
       }
 
-      // 원본 이미지 URL은 항상 설정 (base64 크기 초과 시 fallback용)
-      imageUrl = fileToView.file_path?.startsWith('http')
-        ? fileToView.file_path
-        : fileToView.file_path?.startsWith('/')
-          ? fileToView.file_path
-          : `https://${fileToView.file_path}`;
+      // 배치 API 사용 (파일 ID 기반)
+      const fileId = fileToView.id;
+      const referenceFileId = referenceImage?.id;
 
-      // 원본 이미지와 레퍼런스 이미지를 한 번만 다운로드 및 리사이징
-      // SEEDREAM API를 사용하는 경우에만 리사이징 수행
-      let finalImageBase64 = imageBase64;
-      let finalImageMimeType = imageMimeType;
-      let finalReferenceBase64: string | undefined = referenceImage?.base64;
-      let finalReferenceMimeType: string | undefined = referenceImage?.mimeType;
+      // 생성할 이미지들을 provider별로 그룹화
+      const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream' }> = [];
+      
+      for (let i = 0; i < regenerateCount; i++) {
+        const variedPrompt = regenerateCount > 1 
+          ? generateVariedPrompt(stylePrompt, styleId)
+          : stylePrompt;
 
-      // 원본 이미지 다운로드 및 리사이징 (필요한 경우)
-      if (imageUrl && !imageBase64) {
-        try {
-          console.log('[이미지 재생성] 원본 이미지 다운로드 시작...');
-          
-          // SEEDREAM API를 사용하는 요청이 있는지 확인
-          const hasSeedreamRequest = apiProvider === 'seedream' || 
-            (apiProvider === 'auto' && regenerateCount > 0);
-          
-          if (hasSeedreamRequest) {
-            // SEEDREAM API를 사용하는 경우 리사이징 수행
-            const resizeResult = await resizeImageIfNeeded(imageUrl);
-            finalImageBase64 = resizeResult.base64;
-            finalImageMimeType = resizeResult.mimeType;
-            console.log('[이미지 재생성] 원본 이미지 리사이징 완료', resizeResult.resized ? '(리사이즈됨)' : '');
-          } else {
-            // Gemini만 사용하는 경우 다운로드만 수행
-            const response = await fetch(imageUrl);
-            if (!response.ok) {
-              throw new Error(`이미지 다운로드 실패: ${response.status}`);
-            }
-            const blob = await response.blob();
-            const arrayBuffer = await blob.arrayBuffer();
-            finalImageBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            finalImageMimeType = blob.type || 'image/jpeg';
-            console.log('[이미지 재생성] 원본 이미지 다운로드 완료');
-          }
-        } catch (error) {
-          console.error('[이미지 재생성] 원본 이미지 처리 실패:', error);
-          throw new Error(`원본 이미지를 처리할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`);
+        let actualProvider: ApiProvider = apiProvider;
+        if (apiProvider === 'auto') {
+          // auto: 홀수 인덱스는 Gemini, 짝수 인덱스는 Seedream
+          actualProvider = i % 2 === 0 ? 'seedream' : 'gemini';
         }
+
+        batchRequests.push({
+          stylePrompt: variedPrompt,
+          index: i,
+          apiProvider: actualProvider === 'auto' ? (i % 2 === 0 ? 'seedream' : 'gemini') : actualProvider,
+        });
       }
 
-      // 레퍼런스 이미지 다운로드 및 리사이징 (필요한 경우)
-      if (referenceImage?.url && !referenceImage.base64) {
-        try {
-          console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 시작...');
-          
-          // SEEDREAM API를 사용하는 요청이 있는지 확인
-          const hasSeedreamRequest = apiProvider === 'seedream' || 
-            (apiProvider === 'auto' && regenerateCount > 0);
-          
-          if (hasSeedreamRequest) {
-            // SEEDREAM API를 사용하는 경우 리사이징 수행
-            const resizeResult = await resizeImageIfNeeded(referenceImage.url);
-            finalReferenceBase64 = resizeResult.base64;
-            finalReferenceMimeType = resizeResult.mimeType;
-            console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 완료', resizeResult.resized ? '(리사이즈됨)' : '');
-          } else {
-            // Gemini만 사용하는 경우 다운로드만 수행
-            const response = await fetch(referenceImage.url);
-            if (!response.ok) {
-              throw new Error(`레퍼런스 이미지 다운로드 실패: ${response.status}`);
+      // base64 데이터가 있는 경우 (useLatestImageAsInput)는 단일 이미지 API 사용
+      if (useLatestImageAsInputBase64) {
+        // 단일 이미지 API 사용 (기존 로직 유지)
+        const generateSingleImage = async (index: number): Promise<RegeneratedImage | null> => {
+          try {
+            const variedPrompt = regenerateCount > 1 
+              ? generateVariedPrompt(stylePrompt, styleId)
+              : stylePrompt;
+
+            let actualProvider: ApiProvider = apiProvider;
+            if (apiProvider === 'auto') {
+              actualProvider = index % 2 === 0 ? 'seedream' : 'gemini';
             }
-            const blob = await response.blob();
-            const arrayBuffer = await blob.arrayBuffer();
-            finalReferenceBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            finalReferenceMimeType = blob.type || 'image/jpeg';
-            console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 완료');
-          }
-        } catch (error) {
-          console.error('[이미지 재생성] 레퍼런스 이미지 처리 실패:', error);
-          throw new Error(`레퍼런스 이미지를 처리할 수 없습니다: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
 
-      // 단일 이미지 생성 함수
-      const generateSingleImage = async (index: number): Promise<RegeneratedImage | null> => {
-        try {
-          // 변형된 프롬프트 생성 (여러 장 생성 시 각각 다른 변형 적용)
-          const variedPrompt = regenerateCount > 1 
-            ? generateVariedPrompt(stylePrompt, styleId)
-            : stylePrompt;
+            const requestBody: Record<string, unknown> = {
+              stylePrompt: variedPrompt,
+              index: index,
+              apiProvider: actualProvider,
+              imageBase64: useLatestImageAsInputBase64,
+              imageMimeType: useLatestImageAsInputMimeType,
+            };
 
-          // auto인 경우 실제 사용할 provider 결정
-          let actualProvider: ApiProvider = apiProvider;
-          if (apiProvider === 'auto') {
-            // auto: 홀수 인덱스는 Gemini, 짝수 인덱스는 Seedream
-            actualProvider = index % 2 === 0 ? 'seedream' : 'gemini';
-          }
-
-          const requestBody: Record<string, unknown> = {
-            stylePrompt: variedPrompt,
-            index: index,
-            apiProvider: actualProvider, // 실제 사용할 provider 전달
-          };
-
-          // Vercel 함수 페이로드 크기 제한 (4.5MB)을 고려하여
-          // base64 데이터가 너무 크면 URL 사용
-          // base64는 원본 크기의 약 1.33배이므로, 3MB 이상이면 URL 사용
-          const MAX_BASE64_SIZE = 3 * 1024 * 1024; // 3MB
-
-          // 다운로드 및 리사이징된 이미지 사용
-          if (finalImageBase64) {
-            const base64Size = finalImageBase64.length;
-            if (base64Size > MAX_BASE64_SIZE && imageUrl) {
-              // base64가 너무 크면 URL 사용
-              console.log(`[이미지 재생성] base64 크기 초과 (${(base64Size / 1024 / 1024).toFixed(2)}MB), URL 사용`);
-              requestBody.imageUrl = imageUrl;
-            } else {
-              requestBody.imageBase64 = finalImageBase64;
-              requestBody.imageMimeType = finalImageMimeType || 'image/jpeg';
+            if (referenceFileId) {
+              requestBody.referenceFileId = referenceFileId;
             }
-          } else if (imageUrl) {
-            // base64가 없는 경우 URL 사용
-            requestBody.imageUrl = imageUrl;
-          }
 
-          // 레퍼런스 이미지 추가 (톤먹 넣기 등)
-          if (referenceImage) {
-            if (finalReferenceBase64) {
-              const refBase64Size = finalReferenceBase64.length;
-              if (refBase64Size > MAX_BASE64_SIZE && referenceImage.url) {
-                // base64가 너무 크면 URL 사용
-                console.log(`[이미지 재생성] 레퍼런스 이미지 base64 크기 초과 (${(refBase64Size / 1024 / 1024).toFixed(2)}MB), URL 사용`);
-                requestBody.referenceImageUrl = referenceImage.url;
-              } else {
-                requestBody.referenceImageBase64 = finalReferenceBase64;
-                requestBody.referenceImageMimeType = finalReferenceMimeType || 'image/jpeg';
-              }
-            } else if (referenceImage.url) {
-              // base64가 없는 경우 URL 사용
-              requestBody.referenceImageUrl = referenceImage.url;
-            }
-          }
-
-          const response = await fetch('/api/regenerate-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `이미지 재생성에 실패했습니다. (${index + 1}/${regenerateCount})`);
-          }
-
-          const data = await response.json();
-          const { imageData, mimeType } = data;
-
-          // base64 데이터를 Blob URL로 변환
-          const byteCharacters = atob(imageData);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let j = 0; j < byteCharacters.length; j++) {
-            byteNumbers[j] = byteCharacters.charCodeAt(j);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
-          const imageUrl_new = URL.createObjectURL(blob);
-
-          // 고유한 ID 생성 (타임스탬프 + 인덱스 + 랜덤)
-          const imageId = `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`;
-          
-          return {
-            id: imageId,
-            url: imageUrl_new,
-            prompt: variedPrompt, // 실제 사용된 프롬프트 (변형된 프롬프트)
-            originalPrompt: stylePrompt, // 원본 프롬프트 저장
-            selected: false,
-            base64Data: imageData,
-            mimeType: mimeType || 'image/png',
-            apiProvider: actualProvider, // 실제 사용된 provider 저장
-            index: index, // 인덱스 저장
-          };
-        } catch (error) {
-          console.error(`이미지 ${index + 1} 생성 실패:`, error);
-          return null;
-        }
-      };
-
-      // 배치 처리: 최대 4개씩 동시 처리 (완료되는 즉시 UI 업데이트)
-      const BATCH_SIZE = 4;
-      let successCount = 0;
-      let failCount = 0;
-
-      // 각 이미지 완료 시 즉시 UI 업데이트하는 헬퍼 함수
-      const updateImageOnComplete = (image: RegeneratedImage | null, index: number, isSuccess: boolean) => {
-        if (isSuccess && image) {
-          // 성공한 이미지: 해당 인덱스의 placeholder를 실제 이미지로 교체
-          setRegeneratedImages(prev => {
-            const newImages = [...prev];
-            // 인덱스로 정확한 placeholder 찾기
-            const placeholderIndex = newImages.findIndex(
-              img => img.url === null && img.base64Data === null && img.index === index
-            );
-            if (placeholderIndex !== -1) {
-              // placeholder를 실제 이미지로 교체
-              newImages[placeholderIndex] = image;
-            } else {
-              // 인덱스로 찾지 못한 경우 첫 번째 placeholder 찾기
-              const fallbackIndex = newImages.findIndex(img => img.url === null && img.base64Data === null);
-              if (fallbackIndex !== -1) {
-                newImages[fallbackIndex] = image;
-              } else {
-                // placeholder를 찾지 못한 경우 (이상한 경우) 맨 뒤에 추가
-                newImages.push(image);
-              }
-            }
-            return newImages;
-          });
-          successCount++;
-        } else if (!isSuccess) {
-          // 실패한 이미지: placeholder 제거
-          console.error(`이미지 ${index + 1} 생성 실패`);
-          setRegeneratedImages(prev => {
-            const newImages = [...prev];
-            const placeholderIndex = newImages.findIndex(
-              img => img.url === null && img.base64Data === null && img.index === index
-            );
-            if (placeholderIndex !== -1) {
-              newImages.splice(placeholderIndex, 1);
-            }
-            return newImages;
-          });
-          failCount++;
-        }
-      };
-
-      for (let batchStart = 0; batchStart < regenerateCount; batchStart += BATCH_SIZE) {
-        const batchEnd = Math.min(batchStart + BATCH_SIZE, regenerateCount);
-        const batchPromises: Promise<void>[] = [];
-        
-        // 배치 내 모든 이미지 생성 작업 시작 및 개별 완료 핸들러 연결
-        for (let i = batchStart; i < batchEnd; i++) {
-          const actualIndex = i;
-          const promise = generateSingleImage(actualIndex)
-            .then((image) => {
-              // 성공 시 즉시 UI 업데이트
-              // image가 null인 경우도 실패로 처리
-              if (image) {
-                updateImageOnComplete(image, actualIndex, true);
-              } else {
-                updateImageOnComplete(null, actualIndex, false);
-              }
-            })
-            .catch((error) => {
-              // 실패 시 즉시 UI 업데이트
-              console.error(`이미지 ${actualIndex + 1} 생성 실패:`, error);
-              updateImageOnComplete(null, actualIndex, false);
+            const response = await fetch('/api/regenerate-image', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
             });
-          
-          batchPromises.push(promise);
-        }
-        
-        // 배치 내 모든 작업이 시작되도록 대기 (완료 대기하지 않음)
-        // 각 작업은 완료되는 즉시 위의 .then()/.catch() 핸들러에서 UI 업데이트됨
-        await Promise.allSettled(batchPromises);
-      }
 
-      // 최종 결과 로그
-      if (failCount > 0) {
-        console.log(`이미지 재생성 완료: ${successCount}개 성공, ${failCount}개 실패`);
-        if (successCount === 0) {
-          alert('모든 이미지 재생성에 실패했습니다.');
-        } else {
-          alert(`${successCount}개의 이미지가 생성되었습니다. ${failCount}개의 이미지 생성에 실패했습니다.`);
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || `이미지 재생성에 실패했습니다. (${index + 1}/${regenerateCount})`);
+            }
+
+            const data = await response.json();
+            const { imageData, mimeType } = data;
+
+            const byteCharacters = atob(imageData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let j = 0; j < byteCharacters.length; j++) {
+              byteNumbers[j] = byteCharacters.charCodeAt(j);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType || 'image/png' });
+            const imageUrl_new = URL.createObjectURL(blob);
+
+            const imageId = `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`;
+            
+            return {
+              id: imageId,
+              url: imageUrl_new,
+              prompt: variedPrompt,
+              originalPrompt: stylePrompt,
+              selected: false,
+              base64Data: imageData,
+              mimeType: mimeType || 'image/png',
+              apiProvider: actualProvider,
+              index: index,
+            };
+          } catch (error) {
+            console.error(`이미지 ${index + 1} 생성 실패:`, error);
+            return null;
+          }
+        };
+
+        // 배치 처리: 최대 4개씩 동시 처리
+        const BATCH_SIZE = 4;
+        let successCount = 0;
+        let failCount = 0;
+
+        const updateImageOnComplete = (image: RegeneratedImage | null, index: number, isSuccess: boolean) => {
+          if (isSuccess && image) {
+            setRegeneratedImages(prev => {
+              const newImages = [...prev];
+              // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+              const placeholderIndex = newImages.findIndex(
+                img => img.url === null && img.index === index
+              );
+              if (placeholderIndex !== -1) {
+                newImages[placeholderIndex] = image;
+              } else {
+                const fallbackIndex = newImages.findIndex(img => img.url === null);
+                if (fallbackIndex !== -1) {
+                  newImages[fallbackIndex] = image;
+                } else {
+                  newImages.push(image);
+                }
+              }
+              return newImages;
+            });
+            successCount++;
+          } else if (!isSuccess) {
+            console.error(`이미지 ${index + 1} 생성 실패`);
+            setRegeneratedImages(prev => {
+              const newImages = [...prev];
+              // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+              const placeholderIndex = newImages.findIndex(
+                img => img.url === null && img.index === index
+              );
+              if (placeholderIndex !== -1) {
+                newImages.splice(placeholderIndex, 1);
+              }
+              return newImages;
+            });
+            failCount++;
+          }
+        };
+
+        for (let batchStart = 0; batchStart < regenerateCount; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, regenerateCount);
+          const batchPromises: Promise<void>[] = [];
+          
+          for (let i = batchStart; i < batchEnd; i++) {
+            const actualIndex = i;
+            const promise = generateSingleImage(actualIndex)
+              .then((image) => {
+                if (image) {
+                  updateImageOnComplete(image, actualIndex, true);
+                } else {
+                  updateImageOnComplete(null, actualIndex, false);
+                }
+              })
+              .catch((error) => {
+                console.error(`이미지 ${actualIndex + 1} 생성 실패:`, error);
+                updateImageOnComplete(null, actualIndex, false);
+              });
+            
+            batchPromises.push(promise);
+          }
+          
+          await Promise.allSettled(batchPromises);
+        }
+
+        if (failCount > 0) {
+          console.log(`이미지 재생성 완료: ${successCount}개 성공, ${failCount}개 실패`);
+          if (successCount === 0) {
+            alert('모든 이미지 재생성에 실패했습니다.');
+          } else {
+            alert(`${successCount}개의 이미지가 생성되었습니다. ${failCount}개의 이미지 생성에 실패했습니다.`);
+          }
+        }
+      } else {
+        // 배치 API 사용 (파일 ID 기반) - 4개씩 배치로 나누어 순차 요청
+        const BATCH_SIZE = 4;
+        let totalSuccessCount = 0;
+        let totalFailCount = 0;
+
+        console.log('[이미지 재생성] 배치 API 호출 시작 (4개씩 배치 처리)...', {
+          fileId,
+          referenceFileId: referenceFileId || '없음',
+          totalRequestCount: batchRequests.length,
+          batchCount: Math.ceil(batchRequests.length / BATCH_SIZE),
+        });
+
+        // 전체 요청을 4개씩 배치로 나누어 순차 처리
+        for (let i = 0; i < batchRequests.length; i += BATCH_SIZE) {
+          const batch = batchRequests.slice(i, i + BATCH_SIZE);
+          const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+          const totalBatches = Math.ceil(batchRequests.length / BATCH_SIZE);
+
+          console.log(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 처리 시작 (${batch.length}개 요청)...`);
+
+          const batchRequestBody = {
+            fileId,
+            referenceFileId,
+            requests: batch,
+          };
+
+          try {
+            const batchResponse = await fetch('/api/regenerate-image-batch', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(batchRequestBody),
+            });
+
+            if (!batchResponse.ok) {
+              const errorData = await batchResponse.json().catch(() => ({}));
+              throw new Error(errorData.error || '배치 이미지 재생성에 실패했습니다.');
+            }
+
+            const batchData = await batchResponse.json();
+            const { images } = batchData;
+
+            // 배치 응답을 개별 이미지로 변환하고 즉시 UI 업데이트
+            images.forEach((result: { 
+              index: number; 
+              fileId?: string;
+              filePath?: string;
+              fileUrl?: string;
+              imageData?: string; 
+              mimeType: string; 
+              apiProvider: 'gemini' | 'seedream';
+              stylePrompt?: string;
+            }) => {
+              try {
+                const imageId = `${Date.now()}-${result.index}-${Math.random().toString(36).substring(2, 9)}`;
+                const request = batch.find(r => r.index === result.index);
+                
+                let imageUrl_new: string | null = null;
+                let base64Data: string | null = null;
+
+                // 파일이 있으면 파일 URL 사용, 없으면 base64 데이터 사용 (하위 호환성)
+                if (result.fileId && result.fileUrl) {
+                  imageUrl_new = result.fileUrl;
+                  console.log(`[이미지 재생성] 파일 사용 (인덱스 ${result.index}):`, {
+                    fileId: result.fileId,
+                    filePath: result.filePath,
+                    fileUrl: result.fileUrl,
+                  });
+                } else if (result.imageData) {
+                  // 하위 호환성: base64 데이터가 있으면 Blob URL 생성
+                  const byteCharacters = atob(result.imageData);
+                  const byteNumbers = new Array(byteCharacters.length);
+                  for (let j = 0; j < byteCharacters.length; j++) {
+                    byteNumbers[j] = byteCharacters.charCodeAt(j);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  const blob = new Blob([byteArray], { type: result.mimeType || 'image/png' });
+                  imageUrl_new = URL.createObjectURL(blob);
+                  base64Data = result.imageData;
+                  console.log(`[이미지 재생성] base64 데이터 사용 (인덱스 ${result.index}, fallback)`);
+                }
+
+                const image: RegeneratedImage = {
+                  id: imageId,
+                  url: imageUrl_new,
+                  prompt: result.stylePrompt || request?.stylePrompt || stylePrompt,
+                  originalPrompt: stylePrompt,
+                  selected: false,
+                  fileId: result.fileId || null,
+                  filePath: result.filePath || null,
+                  fileUrl: result.fileUrl || null,
+                  base64Data: base64Data,
+                  mimeType: result.mimeType || 'image/png',
+                  apiProvider: result.apiProvider,
+                  index: result.index,
+                };
+
+                setRegeneratedImages(prev => {
+                  const newImages = [...prev];
+                  // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+                  const placeholderIndex = newImages.findIndex(
+                    img => img.url === null && img.index === result.index
+                  );
+                  if (placeholderIndex !== -1) {
+                    newImages[placeholderIndex] = image;
+                  } else {
+                    // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+                    const fallbackIndex = newImages.findIndex(img => img.url === null);
+                    if (fallbackIndex !== -1) {
+                      newImages[fallbackIndex] = image;
+                    } else {
+                      newImages.push(image);
+                    }
+                  }
+                  return newImages;
+                });
+                totalSuccessCount++;
+              } catch (error) {
+                console.error(`이미지 ${result.index + 1} 처리 실패:`, error);
+                setRegeneratedImages(prev => {
+                  const newImages = [...prev];
+                  // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+                  const placeholderIndex = newImages.findIndex(
+                    img => img.url === null && img.index === result.index
+                  );
+                  if (placeholderIndex !== -1) {
+                    newImages.splice(placeholderIndex, 1);
+                  }
+                  return newImages;
+                });
+                totalFailCount++;
+              }
+            });
+
+            // 실패한 요청 처리 (배치 응답에 없는 인덱스)
+            const successIndices = new Set(images.map((img: { index: number }) => img.index));
+            batch.forEach(req => {
+              if (!successIndices.has(req.index)) {
+                totalFailCount++;
+                setRegeneratedImages(prev => {
+                  const newImages = [...prev];
+                  // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+                  const placeholderIndex = newImages.findIndex(
+                    img => img.url === null && img.index === req.index
+                  );
+                  if (placeholderIndex !== -1) {
+                    newImages.splice(placeholderIndex, 1);
+                  }
+                  return newImages;
+                });
+              }
+            });
+
+            console.log(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 완료: ${images.length}개 성공`);
+          } catch (error) {
+            console.error(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 실패:`, error);
+            // 실패한 배치의 모든 요청을 실패로 처리
+            batch.forEach(req => {
+              totalFailCount++;
+              setRegeneratedImages(prev => {
+                const newImages = [...prev];
+                const placeholderIndex = newImages.findIndex(
+                  img => img.url === null && img.base64Data === null && img.index === req.index
+                );
+                if (placeholderIndex !== -1) {
+                  newImages.splice(placeholderIndex, 1);
+                }
+                return newImages;
+              });
+            });
+          }
+        }
+
+        if (totalFailCount > 0) {
+          console.log(`이미지 재생성 완료: ${totalSuccessCount}개 성공, ${totalFailCount}개 실패`);
+          if (totalSuccessCount === 0) {
+            alert('모든 이미지 재생성에 실패했습니다.');
+          } else {
+            alert(`${totalSuccessCount}개의 이미지가 생성되었습니다. ${totalFailCount}개의 이미지 생성에 실패했습니다.`);
+          }
         }
       }
     } catch (error: unknown) {
@@ -402,7 +484,7 @@ export function useImageRegeneration({
     const targetProcessId = processId || fileToView.process_id;
 
     const selectedImages = regeneratedImages.filter(
-      img => selectedImageIds.has(img.id) && img.base64Data !== null && img.mimeType !== null
+      img => selectedImageIds.has(img.id) && (img.fileId !== null || img.base64Data !== null) && img.mimeType !== null
     );
     
     if (selectedImages.length === 0) {
@@ -438,24 +520,14 @@ export function useImageRegeneration({
     const errors: string[] = [];
 
     try {
-      // 선택된 이미지들을 순차적으로 업로드
+      // 선택된 이미지들을 순차적으로 저장
       for (let i = 0; i < selectedImages.length; i++) {
         const img = selectedImages[i];
         
         try {
-          // base64 데이터와 mimeType이 null이 아닌지 확인 (필터링으로 이미 체크했지만 타입 안전성을 위해)
-          if (!img.base64Data || !img.mimeType) {
-            throw new Error('이미지 데이터가 없습니다.');
+          if (!img.mimeType) {
+            throw new Error('이미지 MIME 타입이 없습니다.');
           }
-          
-          // base64 데이터를 Blob으로 변환
-          const byteCharacters = atob(img.base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let j = 0; j < byteCharacters.length; j++) {
-            byteNumbers[j] = byteCharacters.charCodeAt(j);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: img.mimeType });
 
           // 고유한 파일명 생성 (타임스탬프 + 인덱스 + 랜덤)
           const timestamp = Date.now();
@@ -463,17 +535,56 @@ export function useImageRegeneration({
           const extension = getExtensionFromMimeType(img.mimeType) || originalExtension || '.png';
           const newFileName = `regenerated-${baseFileName}-${timestamp}-${i}-${randomStr}${extension}`;
 
-          // Blob을 File 객체로 변환
-          const file = new File([blob], newFileName, { type: img.mimeType });
+          // 파일이 있으면 DB에서 is_temp = false로 업데이트
+          if (img.fileId) {
+            console.log(`[이미지 저장] 임시 파일을 영구 파일로 전환 (인덱스 ${i}):`, img.fileId);
+            
+            const saveResponse = await fetch('/api/regenerate-image-save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileId: img.fileId,
+                processId: targetProcessId,
+                fileName: newFileName,
+                description: `AI 재생성: ${fileToView.file_name}`,
+              }),
+            });
 
-          // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 전달)
-          await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt);
-          successCount++;
+            if (!saveResponse.ok) {
+              const errorData = await saveResponse.json().catch(() => ({}));
+              throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
+            }
+
+            successCount++;
+          } else if (img.base64Data) {
+            // 하위 호환성: base64 데이터가 있으면 기존 방식으로 업로드
+            console.log(`[이미지 저장] base64 데이터로 업로드 (인덱스 ${i}, fallback)`);
+            
+            // base64 데이터를 Blob으로 변환
+            const byteCharacters = atob(img.base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let j = 0; j < byteCharacters.length; j++) {
+              byteNumbers[j] = byteCharacters.charCodeAt(j);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: img.mimeType });
+
+            // Blob을 File 객체로 변환
+            const file = new File([blob], newFileName, { type: img.mimeType });
+
+            // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 전달)
+            await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt);
+            successCount++;
+          } else {
+            throw new Error('이미지 데이터가 없습니다.');
+          }
         } catch (error) {
           failCount++;
           const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
           errors.push(`이미지 ${i + 1}: ${errorMessage}`);
-          console.error(`이미지 ${i + 1} 업로드 실패:`, error);
+          console.error(`이미지 ${i + 1} 저장 실패:`, error);
           // 개별 파일 실패해도 계속 진행
         }
       }
@@ -519,10 +630,10 @@ export function useImageRegeneration({
       setRegeneratingImage(targetImageId || null);
 
       // 재생성할 이미지가 지정된 경우 해당 이미지의 base64 데이터 사용
-      // 지정되지 않은 경우 원본 이미지 URL 사용
-      let imageUrl: string | undefined = undefined;
+      // 지정되지 않은 경우 원본 이미지 파일 ID 사용
       let imageBase64: string | undefined = undefined;
       let imageMimeType: string | undefined = undefined;
+      let fileId: string | undefined = undefined;
 
       if (targetImageId) {
         // 재생성할 이미지를 찾아서 base64 데이터 사용
@@ -530,32 +641,29 @@ export function useImageRegeneration({
         if (targetImage && targetImage.base64Data && targetImage.mimeType) {
           imageBase64 = targetImage.base64Data;
           imageMimeType = targetImage.mimeType;
-          console.log('[이미지 재생성] 재생성된 이미지를 입력으로 사용:', targetImageId);
+          console.log('[이미지 재생성] 재생성된 이미지를 입력으로 사용 (base64):', targetImageId);
         } else {
           console.warn('[이미지 재생성] 재생성할 이미지를 찾을 수 없거나 아직 생성 중입니다, 원본 이미지 사용:', targetImageId);
+          fileId = fileToView.id;
         }
-      }
-
-      // base64 데이터가 없으면 원본 이미지 URL 사용
-      if (!imageBase64) {
-        imageUrl = fileToView.file_path?.startsWith('http')
-          ? fileToView.file_path
-          : fileToView.file_path?.startsWith('/')
-            ? fileToView.file_path
-            : `https://${fileToView.file_path}`;
+      } else {
+        // 원본 이미지 파일 ID 사용
+        fileId = fileToView.id;
       }
 
       const requestBody: Record<string, unknown> = {
         stylePrompt: prompt,
         index: 0,
-        apiProvider: apiProvider, // 원래 사용한 provider 사용
+        apiProvider: apiProvider,
       };
 
       if (imageBase64) {
+        // base64 데이터가 있는 경우 (메모리에만 있는 경우)
         requestBody.imageBase64 = imageBase64;
         requestBody.imageMimeType = imageMimeType;
-      } else {
-        requestBody.imageUrl = imageUrl;
+      } else if (fileId) {
+        // 파일 ID 사용
+        requestBody.fileId = fileId;
       }
 
       const response = await fetch('/api/regenerate-image', {

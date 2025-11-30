@@ -10,6 +10,7 @@ export async function getFilesByCut(cutId: string): Promise<FileWithRelations[]>
       created_by_user:user_profiles (id, email, name, role)
     `)
     .eq('cut_id', cutId)
+    .eq('is_temp', false) // 임시 파일 제외
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -55,6 +56,7 @@ export async function getFilesByProcess(processId: string): Promise<FileWithRela
       created_by_user:user_profiles (id, email, name, role)
     `)
     .eq('process_id', processId)
+    .eq('is_temp', false) // 임시 파일 제외
     .order('created_at', { ascending: false });
 
   if (error) throw error;

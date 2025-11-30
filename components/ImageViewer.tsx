@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, RefreshCw, X } from 'lucide-react';
@@ -32,6 +32,18 @@ export function ImageViewer({
     setImagePosition,
     setIsDragging,
   } = useImageViewer({ enabled: open });
+
+  // 이전 imageUrl을 추적하여 실제로 변경되었을 때만 리셋
+  const prevImageUrlRef = useRef<string | null>(null);
+
+  // imageUrl이 변경될 때 뷰를 리셋 (여러 이미지를 순차적으로 볼 때 이전 이미지의 줌/위치 상태가 적용되지 않도록)
+  useEffect(() => {
+    if (imageUrl && open && prevImageUrlRef.current !== imageUrl) {
+      prevImageUrlRef.current = imageUrl;
+      resetView();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageUrl, open]);
 
   // 핀치 줌을 위한 ref
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);

@@ -122,11 +122,28 @@ thegrim-CMS/
 ### API 라우트 (\`app/api/\`)
 
 **regenerate-image/route.ts**
-- AI 이미지 재생성 API
+- 단일 이미지 재생성 API
 - Gemini API 및 Seedream API 지원
 - 레퍼런스 이미지 지원 (톤먹 넣기 기능)
 - 자동 이미지 리사이즈 (10MB/36M픽셀 제한 대응)
 - 비율 유지 출력 지원
+
+**regenerate-image-batch/route.ts**
+- 배치 이미지 재생성 API
+- 여러 이미지를 한 번에 생성
+- Gemini와 Seedream 병렬 처리 (각각 최대 2개씩 동시 호출)
+- 임시 파일 저장 (is_temp = true)
+- 영구 파일과 같은 경로에 저장: `{cutId}/{processId}/{fileName}-{uuid}.{ext}`
+
+**regenerate-image-save/route.ts**
+- 임시 파일을 영구 파일로 전환 API
+- DB에서 `is_temp = false`로 업데이트만 수행 (파일 이동 불필요)
+- 파일명, 설명, 공정 ID 변경 가능
+
+**regenerate-image-history/route.ts**
+- 임시 파일 히스토리 조회 API
+- DB에서 `is_temp = true`인 파일만 조회
+- 최신순으로 정렬하여 반환
 
 **analyze-image/route.ts**
 - 이미지 메타데이터 자동 분석 API
@@ -197,7 +214,10 @@ thegrim-CMS/
 - 원본 파일 정보 표시 (AI 재생성 파일인 경우 썸네일과 함께 표시)
 - 원본 파일 클릭 시 해당 파일 상세 다이얼로그로 이동
 - 재생성된 이미지 관리
-- 재생성된 이미지 등록 시 공정 선택 기능
+  - 재생성된 이미지 선택 및 일괄 저장 기능
+  - 재생성된 이미지 저장 시 공정 선택 기능
+  - 히스토리 탭: 임시 파일 히스토리 조회 및 표시
+- 점진적 로딩: 배치별로 완료된 이미지 즉시 표시
 
 **ImageViewer.tsx**
 - 이미지 전체화면 뷰어
@@ -267,9 +287,9 @@ thegrim-CMS/
 - \`reorderProcesses(ids)\`: 공정 순서 변경
 
 **files.ts**
-- \`getFilesByCut(cutId)\`: 컷별 파일 목록 (생성자, 원본 파일 정보 포함)
-- \`getFilesByProcess(processId)\`: 공정별 파일 목록 (생성자, 원본 파일 정보 포함)
-- \`searchFiles(query)\`: 파일 검색 (생성자, 원본 파일 정보 포함)
+- \`getFilesByCut(cutId)\`: 컷별 파일 목록 (생성자, 원본 파일 정보 포함, is_temp = false만 조회)
+- \`getFilesByProcess(processId)\`: 공정별 파일 목록 (생성자, 원본 파일 정보 포함, is_temp = false만 조회)
+- \`searchFiles(query)\`: 파일 검색 (생성자, 원본 파일 정보 포함, is_temp = false만 조회)
 - \`createFile(data)\`: 파일 메타데이터 생성
 - \`updateFile(id, data)\`: 파일 정보 수정
 - \`deleteFile(id)\`: 파일 삭제 (Storage + DB)
@@ -311,10 +331,13 @@ thegrim-CMS/
 
 **useImageRegeneration.ts**
 - 이미지 재생성 관련 상태 및 로직
-- 재생성 API 호출, 재생성된 이미지 관리
+- 배치 재생성 API 호출 (4개씩 배치로 나누어 요청)
+- 재생성된 이미지 관리 (임시 파일 정보 포함)
 - 레퍼런스 이미지 지원 (톤먹 넣기 기능)
 - 선택된 이미지 관리, 재생성된 이미지 저장 (공정 선택 가능)
 - 재생성된 이미지 저장 시 생성자(currentUserId) 및 원본 파일(sourceFileId) 자동 기록
+- 점진적 UI 업데이트: 각 배치 완료 시 즉시 이미지 표시
+- 임시 파일 저장 및 정식 저장 처리
 
 **useImageViewer.ts**
 - 이미지 뷰어 관련 상태 및 로직
@@ -338,7 +361,7 @@ thegrim-CMS/
   - \`Episode\`
   - \`Cut\`
   - \`Process\`
-  - \`File\` (created_by, source_file_id 포함)
+  - \`File\` (created_by, source_file_id, is_temp 포함)
   - \`UserProfile\` (id, email, name, role)
   - \`ReferenceFile\`
   - 관계형 타입 (FileWithRelations: created_by_user, source_file 포함)

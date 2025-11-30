@@ -73,6 +73,7 @@ export interface File {
   prompt?: string | null;
   created_by?: string;
   source_file_id?: string;
+  is_temp?: boolean;
   created_at: string;
   updated_at: string;
 }

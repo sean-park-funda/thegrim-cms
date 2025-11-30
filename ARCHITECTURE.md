@@ -271,60 +271,92 @@ FileGrid (메인 컴포넌트)
 ## 🎨 AI 이미지 재생성 시스템 (✅ 구현 완료)
 
 ### 개요
-Gemini 2.5 Flash Image 모델을 활용하여 기존 이미지를 다양한 스타일로 재생성하는 기능입니다.
+Gemini 2.5 Flash Image 모델과 Seedream API를 활용하여 기존 이미지를 다양한 스타일로 재생성하는 기능입니다. 레퍼런스 이미지를 통한 톤먹 넣기 기능도 지원합니다.
 
 ### 구현된 기능
 
 #### 1. 이미지 재생성 API
-- **파일**: `app/api/regenerate-image/route.ts`
+- **파일**: `app/api/regenerate-image/route.ts`, `app/api/regenerate-image-batch/route.ts`
 - **기능**:
   - Gemini 2.5 Flash Image 모델을 통한 이미지 재생성
+  - Seedream API를 통한 이미지 재생성
   - 원본 이미지와 스타일 프롬프트를 입력받아 새로운 이미지 생성
-  - base64 형식의 이미지 데이터 반환
-- **API 엔드포인트**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`
+  - 레퍼런스 이미지 지원 (톤먹 넣기)
+  - 배치 처리 지원 (여러 이미지 동시 생성)
+  - 병렬 처리 (Gemini와 Seedream 동시 실행)
+- **API 엔드포인트**: 
+  - Gemini: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`
+  - Seedream: `https://api.seedream.ai/v1/images/generations`
 - **설정**:
-  - `temperature: 1.0`
-  - `topP: 0.95`
-  - `topK: 40`
-  - `maxOutputTokens: 32768`
-  - `imageSize: '1K'`
-  - `responseModalities: ['IMAGE', 'TEXT']`
+  - Gemini: `temperature: 1.0`, `topP: 0.95`, `topK: 40`, `maxOutputTokens: 32768`, `imageSize: '1K'`, `responseModalities: ['IMAGE', 'TEXT']`
+  - Seedream: `size` 파라미터 지원 (예: "2048x1152")
 
 #### 2. 스타일 옵션
-- **파일**: `components/FileGrid.tsx`
+- **파일**: `lib/constants/imageRegeneration.ts`, `components/ImageRegenerationDialog.tsx`
 - **스타일 목록**:
-  - 베르세르크풍: "이 그림을 베르세르크 만화 풍으로 조밀한 선들로 다시 그려줘"
-  - 일본 만화풍: "이 그림을 일본 만화 스타일로 다시 그려줘"
-  - 디지털 아트풍: "이 그림을 디지털 아트 스타일로 다시 그려줘"
-  - 수채화풍: "이 그림을 수채화 스타일로 다시 그려줘"
-  - 유화풍: "이 그림을 유화 스타일로 다시 그려줘"
-  - 스케치풍: "이 그림을 연필 스케치 스타일로 다시 그려줘"
+  - 괴수디테일: "이 그림을 괴수 디테일 스타일로 다시 그려줘"
+  - 채색 빼기: "이 그림에서 채색을 제거하고 선화만 남겨줘"
+  - 배경 지우기: "이 그림에서 배경을 제거하고 주인공만 남겨줘"
+  - 극적 명암: "이 그림을 극적인 명암 대비로 다시 그려줘"
+  - 만화풍 명암: "이 그림을 만화풍 명암으로 다시 그려줘"
+  - 선화만 남기기: "이 그림을 선화만 남기고 다시 그려줘"
+  - 톤먹 넣기: 레퍼런스 이미지 기반 톤/명암 적용 (Gemini API 전용)
 
-#### 3. UI 컴포넌트
-- **파일**: `components/FileGrid.tsx`
+#### 3. 배치 처리 및 병렬 처리
+- **서버 측**:
+  - Gemini와 Seedream 그룹을 `Promise.all()`로 동시 실행
+  - 각 그룹 내부에서 최대 2개씩 동시 호출 (총 4개 동시 처리)
+  - 이미지 다운로드 및 리사이징 병렬 처리
+- **클라이언트 측**:
+  - 전체 요청을 4개씩 배치로 나누어 순차 요청
+  - 각 배치 완료 시 즉시 UI 업데이트 (점진적 로딩)
+  - 사용자가 진행 상황을 실시간으로 확인 가능
+
+#### 4. 임시 파일 저장 시스템
+- **저장 방식**:
+  - 영구 파일과 같은 경로에 저장: `{cutId}/{processId}/{fileName}-{uuid}.{ext}`
+  - DB에 `is_temp = true`로 저장하여 임시 파일임을 표시
+  - 파일 이동 없이 DB 업데이트만으로 정식 저장 처리
+- **정식 저장**:
+  - `/api/regenerate-image-save` 엔드포인트
+  - DB에서 `is_temp = false`로 업데이트만 수행 (파일 이동 불필요)
+  - 파일명, 설명, 공정 ID 변경 가능
+- **히스토리 조회**:
+  - `/api/regenerate-image-history` 엔드포인트
+  - DB에서 `is_temp = true`인 파일만 조회
+  - 최신순으로 정렬하여 표시
+
+#### 5. UI 컴포넌트
+- **파일**: `components/FileDetailDialog.tsx`, `components/ImageRegenerationDialog.tsx`
 - **기능**:
   - 파일 상세 Dialog에 "AI 다시그리기" 버튼 추가
   - 버튼 클릭 시 스타일 선택 Dialog 표시
+  - 레퍼런스 이미지 선택 기능 (톤먹 넣기)
+  - 생성 장수 선택 기능
   - 재생성된 이미지 표시 영역 (원본 이미지 아래)
-  - 재생성된 이미지 우상단에 리프레시 아이콘 버튼 (다시그리기)
-  - 재생성된 이미지 다운로드 기능
-  - 재생성된 이미지를 파일로 등록 기능
+  - 재생성된 이미지 선택 및 일괄 저장 기능
+  - 재생성된 이미지 저장 시 공정 선택 기능
+  - 히스토리 탭: 임시 파일 히스토리 조회 및 표시
   - 재생성 중 로딩 상태 표시 (샤이닝 효과 및 아이콘 회전)
+  - 점진적 로딩: 배치별로 완료된 이미지 즉시 표시
 
-#### 4. 상태 관리
-- `styleSelectionOpen`: 스타일 선택 Dialog 열림 상태
-- `regeneratingImage`: 재생성 중인 파일 ID
-- `regeneratedImageUrl`: 생성된 이미지 Blob URL
-- `lastUsedPrompt`: 마지막으로 사용한 프롬프트 (다시그리기용)
+#### 6. 상태 관리
+- **파일**: `lib/hooks/useImageRegeneration.ts`
+- **주요 상태**:
+  - `regeneratedImages`: 재생성된 이미지 목록 (임시 파일 정보 포함)
+  - `selectedImageIds`: 선택된 이미지 ID 집합
+  - `savingImages`: 저장 중 상태
+  - 배치별 진행 상황 추적
 
-#### 5. 주요 기능
+#### 7. 주요 기능
 - **이미지 재생성**: 원본 이미지와 선택한 스타일로 새로운 이미지 생성
-- **다시그리기**: 동일한 프롬프트로 재생성 (리프레시 아이콘 클릭)
-- **파일 등록**: 재생성된 이미지를 원본 파일과 같은 공정에 파일로 등록
-  - 파일명: `regenerated-원본파일명.확장자`
-  - 설명: `AI 재생성: 원본파일명`
-  - 등록 후 파일 디테일 Dialog 자동 닫기
-- **다운로드**: 재생성된 이미지를 로컬에 다운로드
+- **레퍼런스 이미지 지원**: 톤먹 넣기 기능 (Gemini API 전용)
+- **배치 생성**: 여러 이미지를 한 번에 생성 (4개씩 배치 처리)
+- **병렬 처리**: Gemini와 Seedream 동시 실행으로 성능 최적화
+- **임시 파일 저장**: 생성된 이미지를 임시 파일로 저장 (is_temp = true)
+- **정식 저장**: 선택한 이미지를 영구 파일로 전환 (is_temp = false로 업데이트)
+- **히스토리 조회**: 임시 파일 히스토리를 최신순으로 조회
+- **점진적 로딩**: 배치별로 완료된 이미지를 즉시 표시하여 사용자 경험 개선
 
 #### 6. 시각적 효과
 - **샤이닝 애니메이션**: 재생성 중 버튼에 그라데이션 이동 효과 (`app/globals.css`에 `shimmer` 애니메이션 정의)
@@ -364,15 +396,39 @@ GEMINI_API_KEY=your-gemini-api-key
 ```
 app/
 └── api/
-    └── regenerate-image/
-        └── route.ts          # 이미지 재생성 API 엔드포인트
+    ├── regenerate-image/
+    │   └── route.ts          # 단일 이미지 재생성 API 엔드포인트
+    ├── regenerate-image-batch/
+    │   └── route.ts          # 배치 이미지 재생성 API 엔드포인트
+    ├── regenerate-image-save/
+    │   └── route.ts          # 임시 파일을 영구 파일로 전환 API
+    └── regenerate-image-history/
+        └── route.ts          # 임시 파일 히스토리 조회 API
 
 components/
-└── FileGrid.tsx              # 파일 그리드 (재생성 UI 포함)
+├── FileDetailDialog.tsx      # 파일 상세 정보 (재생성 UI 포함)
+└── ImageRegenerationDialog.tsx  # 재생성 스타일 선택 다이얼로그
+
+lib/
+├── hooks/
+│   └── useImageRegeneration.ts  # 재생성 로직 훅
+└── constants/
+    └── imageRegeneration.ts  # 재생성 관련 상수 및 프롬프트
 
 app/
 └── globals.css              # shimmer 애니메이션 정의
 ```
 
-**완료일**: 2025-01-08
+### 데이터베이스 스키마 변경
+- `files` 테이블에 `is_temp BOOLEAN DEFAULT false` 컬럼 추가
+- 임시 파일은 `is_temp = true`로 저장
+- 정식 저장 시 `is_temp = false`로 업데이트만 수행
+
+### 성능 최적화
+- **병렬 처리**: Gemini와 Seedream 동시 실행으로 총 처리 시간 단축
+- **배치 분할**: 클라이언트에서 4개씩 배치로 나누어 요청하여 점진적 로딩
+- **동시 호출 제한**: 각 API 제공자별 최대 2개씩 동시 호출로 안정성 확보
+- **파일 이동 제거**: 정식 저장 시 파일 이동 없이 DB 업데이트만 수행하여 성능 향상
+
+**완료일**: 2025-01-08 (초기 구현), 2025-01-XX (배치 처리 및 임시 파일 시스템 개선)
 
