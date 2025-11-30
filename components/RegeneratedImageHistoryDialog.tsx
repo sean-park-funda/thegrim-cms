@@ -124,10 +124,13 @@ export function RegeneratedImageHistoryDialog({ open, onOpenChange }: Regenerate
       {viewerImageUrl && (
         <ImageViewer
           imageUrl={viewerImageUrl}
-          imageTitle={viewerImageTitle}
-          onClose={() => {
-            setViewerImageUrl(null);
-            setViewerImageTitle('');
+          imageName={viewerImageTitle}
+          open={!!viewerImageUrl}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewerImageUrl(null);
+              setViewerImageTitle('');
+            }
           }}
         />
       )}
