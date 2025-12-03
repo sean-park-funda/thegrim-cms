@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
 export function Navigation() {
   const router = useRouter();
   const { viewMode, setViewMode, searchQuery, setSearchQuery, setActiveSearchQuery, user, profile, setSelectedWebtoon } = useStore();
@@ -266,6 +265,7 @@ export function Navigation() {
           </div>
         </DialogContent>
       </Dialog>
+
     </nav>
   );
 }

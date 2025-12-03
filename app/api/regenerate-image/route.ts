@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
+import crypto from 'crypto';
+import { supabase } from '@/lib/supabase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
@@ -13,6 +15,14 @@ const SEEDREAM_API_TIMEOUT = 60000; // 60초
 
 // 재시도 가능한 네트워크 에러 코드 목록
 const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
+
+// 레퍼런스 이미지 리사이징 결과 캐시 (메모리 캐시)
+// 키: 레퍼런스 이미지 URL 또는 base64 해시
+// 값: { base64: string, mimeType: string, resized: boolean }
+const referenceImageResizeCache = new Map<string, { base64: string; mimeType: string; resized: boolean }>();
+
+// 캐시 최대 크기 (메모리 관리용, 최대 100개까지 캐시)
+const MAX_CACHE_SIZE = 100;
 
 /**
  * 네트워크 에러가 재시도 가능한지 확인합니다.
@@ -316,13 +326,17 @@ function calculateSeedreamSize(width: number, height: number): string {
 }
 
 interface RegenerateImageRequest {
+  // 파일 ID 기반 (우선 사용)
+  fileId?: string; // 원본 이미지 파일 ID
+  referenceFileId?: string; // 레퍼런스 이미지 파일 ID
+  // 하위 호환성: URL/base64 기반
   imageUrl?: string; // 이미지 URL (imageBase64가 없을 때 사용)
   imageBase64?: string; // base64 인코딩된 이미지 데이터 (우선 사용)
   imageMimeType?: string; // base64 이미지의 MIME 타입
   stylePrompt: string;
   index?: number; // 이미지 생성 순서 (0부터 시작)
   apiProvider?: 'gemini' | 'seedream' | 'auto'; // API 제공자 선택
-  // 레퍼런스 이미지 (톤먹 넣기 등)
+  // 레퍼런스 이미지 (톤먹 넣기 등) - 하위 호환성
   referenceImageUrl?: string; // 레퍼런스 이미지 URL
   referenceImageBase64?: string; // 레퍼런스 이미지 base64 데이터
   referenceImageMimeType?: string; // 레퍼런스 이미지 MIME 타입
@@ -335,6 +349,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: RegenerateImageRequest = await request.json();
     const { 
+      fileId,
+      referenceFileId,
       imageUrl, 
       imageBase64: requestImageBase64, 
       imageMimeType: requestMimeType, 
@@ -346,7 +362,7 @@ export async function POST(request: NextRequest) {
       referenceImageMimeType,
     } = body;
     
-    const hasReferenceImage = !!(referenceImageBase64 || referenceImageUrl);
+    const hasReferenceImage = !!(referenceImageBase64 || referenceImageUrl || referenceFileId);
 
     // API 제공자 결정
     let useSeedream: boolean;
@@ -371,10 +387,10 @@ export async function POST(request: NextRequest) {
       referenceImageUrl: referenceImageUrl || '없음',
     });
 
-    if (!requestImageBase64 && !imageUrl) {
-      console.error('[이미지 재생성] 이미지 URL 또는 base64 데이터가 없음');
+    if (!fileId && !requestImageBase64 && !imageUrl) {
+      console.error('[이미지 재생성] 파일 ID, 이미지 URL 또는 base64 데이터가 없음');
       return NextResponse.json(
-        { error: '이미지 URL 또는 base64 데이터가 필요합니다.' },
+        { error: '파일 ID, 이미지 URL 또는 base64 데이터가 필요합니다.' },
         { status: 400 }
       );
     }
@@ -392,24 +408,60 @@ export async function POST(request: NextRequest) {
     let imageSize: number;
     let imageBuffer: Buffer;
 
-    // base64 데이터가 있으면 우선 사용, 없으면 URL에서 다운로드
-    if (requestImageBase64) {
+    // 파일 ID가 있으면 파일 정보 조회 후 다운로드
+    if (fileId) {
+      console.log('[이미지 재생성] 파일 ID로 파일 정보 조회 시작...');
+      const { data: file, error: fileError } = await supabase
+        .from('files')
+        .select('*')
+        .eq('id', fileId)
+        .single();
+
+      if (fileError || !file) {
+        console.error('[이미지 재생성] 파일 조회 실패:', fileError);
+        return NextResponse.json(
+          { error: '파일을 찾을 수 없습니다.' },
+          { status: 404 }
+        );
+      }
+
+      if (file.file_type !== 'image') {
+        return NextResponse.json(
+          { error: '이미지 파일만 재생성할 수 있습니다.' },
+          { status: 400 }
+        );
+      }
+
+      console.log('[이미지 재생성] 이미지 다운로드 시작...');
+      const imageResponse = await fetch(file.file_path);
+
+      if (!imageResponse.ok) {
+        console.error('[이미지 재생성] 이미지 다운로드 실패:', {
+          status: imageResponse.status,
+          statusText: imageResponse.statusText,
+        });
+        return NextResponse.json(
+          { error: '이미지를 가져올 수 없습니다.' },
+          { status: 400 }
+        );
+      }
+
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      imageSize = imageBuffer.length;
+      imageBase64 = imageBuffer.toString('base64');
+      mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    } else if (requestImageBase64) {
+      // base64 데이터가 있으면 우선 사용
       console.log('[이미지 재생성] base64 데이터 사용');
       imageBase64 = requestImageBase64;
       mimeType = requestMimeType || 'image/png';
-      // base64를 Buffer로 변환 (메타데이터 추출용)
       imageBuffer = Buffer.from(requestImageBase64, 'base64');
       imageSize = imageBuffer.length;
     } else {
       // 이미지 URL에서 이미지 데이터 가져오기
       console.log('[이미지 재생성] 이미지 다운로드 시작...');
       const imageResponse = await fetch(imageUrl!);
-
-      console.log('[이미지 재생성] 이미지 다운로드 응답:', {
-        status: imageResponse.status,
-        statusText: imageResponse.statusText,
-        url: imageUrl
-      });
 
       if (!imageResponse.ok) {
         const errorText = await imageResponse.text().catch(() => '응답 본문을 읽을 수 없음');
@@ -491,7 +543,46 @@ export async function POST(request: NextRequest) {
     let refMimeType: string | undefined;
     
     if (hasReferenceImage) {
-      if (referenceImageBase64) {
+      if (referenceFileId) {
+        // 레퍼런스 파일 ID로 파일 정보 조회
+        console.log('[이미지 재생성] 레퍼런스 파일 ID로 파일 정보 조회 시작...');
+        const { data: refFile, error: refFileError } = await supabase
+          .from('reference_files')
+          .select('file_path')
+          .eq('id', referenceFileId)
+          .single();
+
+        if (refFileError || !refFile) {
+          console.error('[이미지 재생성] 레퍼런스 파일 조회 실패:', refFileError);
+          return NextResponse.json(
+            { error: '레퍼런스 파일을 찾을 수 없습니다.' },
+            { status: 404 }
+          );
+        }
+
+        console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 시작...');
+        const refImageResponse = await fetch(refFile.file_path);
+        
+        if (!refImageResponse.ok) {
+          console.error('[이미지 재생성] 레퍼런스 이미지 다운로드 실패:', {
+            status: refImageResponse.status,
+            statusText: refImageResponse.statusText,
+          });
+          return NextResponse.json(
+            { error: '레퍼런스 이미지를 가져올 수 없습니다.' },
+            { status: 400 }
+          );
+        }
+        
+        const refArrayBuffer = await refImageResponse.arrayBuffer();
+        const refBuffer = Buffer.from(refArrayBuffer);
+        refImageBase64 = refBuffer.toString('base64');
+        refMimeType = refImageResponse.headers.get('content-type') || 'image/jpeg';
+        console.log('[이미지 재생성] 레퍼런스 이미지 다운로드 완료:', {
+          size: refBuffer.length,
+          mimeType: refMimeType,
+        });
+      } else if (referenceImageBase64) {
         console.log('[이미지 재생성] 레퍼런스 이미지 base64 데이터 사용');
         refImageBase64 = referenceImageBase64;
         refMimeType = referenceImageMimeType || 'image/png';
@@ -556,9 +647,34 @@ export async function POST(request: NextRequest) {
       // 레퍼런스 이미지가 있는 경우 함께 전달
       const seedreamImages = [seedreamImageInput];
       if (hasReferenceImage && refImageBase64 && refMimeType) {
-        // 레퍼런스 이미지도 크기 확인 및 리사이즈
-        const refBuffer = Buffer.from(refImageBase64, 'base64');
-        const refResizeResult = await resizeImageIfNeeded(refBuffer);
+        // 레퍼런스 이미지 캐시 키 생성 (URL 또는 base64 해시)
+        const cacheKey = referenceImageUrl 
+          ? `url:${referenceImageUrl}`
+          : `base64:${crypto.createHash('sha256').update(refImageBase64).digest('hex')}`;
+        
+        // 캐시 확인
+        let refResizeResult: { base64: string; mimeType: string; resized: boolean };
+        if (referenceImageResizeCache.has(cacheKey)) {
+          // 캐시에서 재사용
+          refResizeResult = referenceImageResizeCache.get(cacheKey)!;
+          console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 결과 캐시에서 재사용');
+        } else {
+          // 캐시에 없으면 리사이징 수행
+          const refBuffer = Buffer.from(refImageBase64, 'base64');
+          refResizeResult = await resizeImageIfNeeded(refBuffer);
+          
+          // 캐시 크기 제한 확인 후 저장
+          if (referenceImageResizeCache.size >= MAX_CACHE_SIZE) {
+            // 가장 오래된 항목 제거 (FIFO 방식)
+            const firstKey = referenceImageResizeCache.keys().next().value;
+            if (firstKey) {
+              referenceImageResizeCache.delete(firstKey);
+            }
+          }
+          referenceImageResizeCache.set(cacheKey, refResizeResult);
+          console.log('[이미지 재생성] 레퍼런스 이미지 리사이징 완료 및 캐시 저장', refResizeResult.resized ? '(리사이즈됨)' : '');
+        }
+        
         const finalRefBase64 = refResizeResult.resized ? refResizeResult.base64 : refImageBase64;
         const finalRefMimeType = refResizeResult.resized ? refResizeResult.mimeType : refMimeType;
 

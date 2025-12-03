@@ -1,26 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { File as FileType, Process, FileWithRelations, UserProfile } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2 } from 'lucide-react';
+import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
+import { savePrompt } from '@/lib/api/imagePrompts';
+import { styleOptions } from '@/lib/constants/imageRegeneration';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface RegeneratedImage {
   id: string;
-  url: string | null; // null이면 placeholder (생성 중)
-  prompt: string;
+  url: string | null; // null이면 placeholder (생성 중), 파일 URL 또는 Blob URL
+  prompt: string; // 실제 사용된 프롬프트 (변형된 프롬프트 포함)
+  originalPrompt?: string; // 원본 프롬프트 (사용자가 선택하거나 입력한 프롬프트)
   selected: boolean;
-  base64Data: string | null; // null이면 placeholder
+  fileId: string | null; // 파일 ID (DB에 저장된, is_temp = true)
+  filePath: string | null; // 파일 경로 (Storage 경로)
+  fileUrl: string | null; // 파일 URL (미리보기용)
+  base64Data: string | null; // null이면 placeholder, 하위 호환성을 위해 유지 (임시 파일 저장 실패 시에만 사용)
   mimeType: string | null; // null이면 placeholder
   apiProvider: 'gemini' | 'seedream' | 'auto';
+  index?: number; // 생성 인덱스 (placeholder 매칭용)
 }
 
 interface FileDetailDialogProps {
@@ -49,6 +58,7 @@ interface FileDetailDialogProps {
   processes: Process[]; // 공정 목록
   onSourceFileClick?: (file: FileType) => void; // 원본 파일 클릭 시 콜백
   onSaveComplete?: (processId: string) => void; // 저장 완료 시 콜백 (공정 선택 + 다이얼로그 닫기)
+  currentUserId?: string; // 현재 사용자 ID
 }
 
 export function FileDetailDialog({
@@ -77,9 +87,15 @@ export function FileDetailDialog({
   processes,
   onSourceFileClick,
   onSaveComplete,
+  currentUserId,
 }: FileDetailDialogProps) {
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
+  const [savePromptDialogOpen, setSavePromptDialogOpen] = useState(false);
+  const [promptToSave, setPromptToSave] = useState<{ prompt: string; styleId: string } | null>(null);
+  const [promptName, setPromptName] = useState('');
+  const [isShared, setIsShared] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
 
   // 다음 공정 찾기 (order_index 기준)
   const getNextProcessId = (currentProcessId: string): string => {
@@ -97,6 +113,71 @@ export function FileDetailDialog({
       setSelectedProcessId(getNextProcessId(file.process_id));
     }
     setProcessSelectOpen(true);
+  };
+
+  // 프롬프트가 수정되었는지 확인
+  const isPromptModified = (img: RegeneratedImage): boolean => {
+    // originalPrompt가 없으면 이전 버전 호환성을 위해 기본 프롬프트와 비교
+    if (!img.originalPrompt) {
+      const style = styleOptions.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
+      if (!style) {
+        return true;
+      }
+      return img.prompt.trim() !== style.prompt.trim();
+    }
+    // originalPrompt와 prompt를 비교하여 수정 여부 확인
+    // prompt는 변형된 프롬프트일 수 있으므로, originalPrompt와 비교
+    // 하지만 실제로는 originalPrompt가 사용자가 선택한 프롬프트이므로,
+    // originalPrompt와 prompt가 다르면 변형된 것이고, 이는 수정된 것으로 간주하지 않음
+    // 대신, originalPrompt가 기본 프롬프트와 다른지 확인해야 함
+    
+    // originalPrompt에서 사용된 스타일 찾기
+    const style = styleOptions.find(s => img.originalPrompt!.includes(s.prompt) || s.prompt === img.originalPrompt);
+    if (!style) {
+      // 스타일을 찾지 못한 경우 수정된 것으로 간주
+      return true;
+    }
+    // originalPrompt가 기본 프롬프트와 정확히 일치하는지 확인
+    return img.originalPrompt.trim() !== style.prompt.trim();
+  };
+
+  // 프롬프트 저장 다이얼로그 열기
+  const handleOpenSavePrompt = (img: RegeneratedImage) => {
+    // 프롬프트에서 사용된 스타일 찾기
+    const style = styleOptions.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
+    if (style) {
+      setPromptToSave({ prompt: img.prompt, styleId: style.id });
+      setPromptName('');
+      setIsShared(false);
+      setSavePromptDialogOpen(true);
+    } else {
+      // 스타일을 찾지 못한 경우 사용자에게 스타일 선택 요청
+      alert('이 프롬프트의 스타일을 확인할 수 없습니다. 스타일을 선택해주세요.');
+    }
+  };
+
+  // 프롬프트 저장
+  const handleSavePrompt = async () => {
+    if (!promptToSave || !currentUserId || !promptName.trim()) {
+      alert('프롬프트 이름을 입력해주세요.');
+      return;
+    }
+
+    setSavingPrompt(true);
+    try {
+      // "이 프롬프트 저장"으로 저장할 때는 기본 프롬프트로 설정
+      await savePrompt(promptToSave.styleId, promptToSave.prompt, promptName.trim(), isShared, currentUserId, true);
+      alert('프롬프트가 기본 프롬프트로 저장되었습니다.');
+      setSavePromptDialogOpen(false);
+      setPromptToSave(null);
+      setPromptName('');
+      setIsShared(false);
+    } catch (error) {
+      console.error('프롬프트 저장 실패:', error);
+      alert('프롬프트 저장에 실패했습니다.');
+    } finally {
+      setSavingPrompt(false);
+    }
   };
 
   const handleSaveWithProcess = async () => {
@@ -272,6 +353,17 @@ export function FileDetailDialog({
                     <p className="text-sm">{file.description}</p>
                   </div>
                 )}
+                {file.prompt && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                      <Wand2 className="h-3 w-3" />
+                      생성 프롬프트
+                    </p>
+                    <div className="p-3 bg-muted rounded-md">
+                      <p className="text-sm whitespace-pre-wrap break-words">{file.prompt}</p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -331,7 +423,7 @@ export function FileDetailDialog({
           {/* 재생성된 이미지 표시 */}
           {regeneratedImages.length > 0 && (
             <div className="w-full space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold">재생성된 이미지 ({regeneratedImages.length}장)</h3>
                 <div className="flex gap-2">
                   {canUpload && (
@@ -370,7 +462,8 @@ export function FileDetailDialog({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {regeneratedImages.map((img) => {
-                  const isPlaceholder = img.url === null || img.base64Data === null;
+                  // 임시 파일을 사용하는 경우 base64Data가 null일 수 있으므로 url만 확인
+                  const isPlaceholder = img.url === null;
                   
                   return (
                     <div key={img.id} className="relative space-y-2">
@@ -398,24 +491,50 @@ export function FileDetailDialog({
                               onClick={(e) => e.stopPropagation()}
                               className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
                             />
-                            <Button
-                              size="icon"
-                              variant="secondary"
-                              className={cn(
-                                "absolute top-2 right-2 z-10 h-8 w-8",
-                                regeneratingImage === img.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
-                              )}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRegenerateSingle(img.prompt, img.apiProvider, img.id);
-                              }}
-                              disabled={regeneratingImage === img.id}
-                            >
-                              <RefreshCw className={cn(
-                                "h-4 w-4",
-                                regeneratingImage === img.id && 'animate-spin'
-                              )} />
-                            </Button>
+                            <div className="absolute top-2 right-2 z-10 flex gap-1">
+                              <Button
+                                size="icon"
+                                variant="secondary"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!img.url) return;
+                                  try {
+                                    const a = document.createElement('a');
+                                    a.href = img.url;
+                                    a.download = `regenerated-${file.file_name || 'image'}`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                  } catch (error) {
+                                    console.error('재생성된 이미지 다운로드 실패:', error);
+                                    alert('이미지 다운로드에 실패했습니다.');
+                                  }
+                                }}
+                                title="다운로드"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="secondary"
+                                className={cn(
+                                  "h-8 w-8",
+                                  regeneratingImage === img.id && 'overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                                )}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRegenerateSingle(img.prompt, img.apiProvider, img.id);
+                                }}
+                                disabled={regeneratingImage === img.id}
+                                title="다시 생성"
+                              >
+                                <RefreshCw className={cn(
+                                  "h-4 w-4",
+                                  regeneratingImage === img.id && 'animate-spin'
+                                )} />
+                              </Button>
+                            </div>
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
                                 <Search className="h-5 w-5 text-white" />
@@ -435,32 +554,30 @@ export function FileDetailDialog({
                             className="object-contain"
                             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                             unoptimized={true}
+                            onError={(e) => {
+                              console.error('[이미지 로드 실패]', {
+                                id: img.id,
+                                url: img.url,
+                                fileId: img.fileId,
+                                filePath: img.filePath,
+                                fileUrl: img.fileUrl,
+                              });
+                            }}
                           />
                         ) : null}
                       </div>
-                      {!isPlaceholder && (
-                        <div className="flex gap-2">
+                      {!isPlaceholder && currentUserId && img.prompt && isPromptModified(img) && (
+                        <div className="flex justify-end">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="flex-1"
-                            onClick={() => {
-                              if (!img.url) return;
-                              try {
-                                const a = document.createElement('a');
-                                a.href = img.url;
-                                a.download = `regenerated-${file.file_name || 'image'}`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              } catch (error) {
-                                console.error('재생성된 이미지 다운로드 실패:', error);
-                                alert('이미지 다운로드에 실패했습니다.');
-                              }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSavePrompt(img);
                             }}
                           >
-                            <Download className="h-3 w-3 mr-1" />
-                            다운로드
+                            <Save className="h-3 w-3 mr-1" />
+                            이 프롬프트 저장
                           </Button>
                         </div>
                       )}
@@ -560,11 +677,67 @@ export function FileDetailDialog({
           </Select>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setProcessSelectOpen(false)} disabled={savingImages}>
+          <Button variant="outline" onClick={() => {
+            setProcessSelectOpen(false);
+          }} disabled={savingImages}>
             취소
           </Button>
           <Button onClick={handleSaveWithProcess} disabled={!selectedProcessId || savingImages}>
             {savingImages ? '등록 중...' : '등록'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* 프롬프트 저장 다이얼로그 */}
+    <Dialog open={savePromptDialogOpen} onOpenChange={setSavePromptDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>프롬프트 저장</DialogTitle>
+          <DialogDescription>
+            이 프롬프트를 저장하여 나중에 재사용할 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label htmlFor="save-prompt-name" className="text-sm font-medium">프롬프트 이름</label>
+            <Input
+              id="save-prompt-name"
+              value={promptName}
+              onChange={(e) => setPromptName(e.target.value)}
+              placeholder="프롬프트 이름을 입력하세요"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">프롬프트 내용</label>
+            <div className="p-3 bg-muted rounded-md">
+              <p className="text-sm whitespace-pre-wrap break-words">{promptToSave?.prompt}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="save-prompt-shared"
+              checked={isShared}
+              onCheckedChange={(checked) => setIsShared(checked === true)}
+            />
+            <label htmlFor="save-prompt-shared" className="text-sm cursor-pointer">
+              다른 사용자와 공유
+            </label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setSavePromptDialogOpen(false)} disabled={savingPrompt}>
+            취소
+          </Button>
+          <Button onClick={handleSavePrompt} disabled={!promptName.trim() || savingPrompt}>
+            {savingPrompt ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                저장 중...
+              </>
+            ) : (
+              '저장'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
