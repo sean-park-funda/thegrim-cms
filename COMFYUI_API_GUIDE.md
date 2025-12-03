@@ -137,6 +137,57 @@ https://api.rewardpang.com/thegrim-cms/comfyui/images/20251127_221609_24b42e35.p
 
 **응답**: PNG 이미지 파일 (Content-Type: `image/png`)
 
+### POST /thegrim-cms/comfyui/test
+
+워크플로우를 프롬프트 수정 없이 그대로 실행하는 테스트 엔드포인트입니다. 워크플로우에 이미 포함된 프롬프트나 기본값을 사용하여 이미지를 생성합니다.
+
+#### 요청
+
+**URL**: `https://api.rewardpang.com/thegrim-cms/comfyui/test`
+
+**Method**: `POST`
+
+**Headers**:
+```
+Content-Type: application/json
+```
+
+**Body**:
+```json
+{
+  "workflow_name": "text2img_basic.json"
+}
+```
+
+**파라미터**:
+
+| 파라미터 | 타입 | 필수 | 기본값 | 설명 |
+|---------|------|------|--------|------|
+| `workflow_name` | string | 예 | - | 워크플로우 JSON 파일명 |
+
+#### 응답
+
+**성공 (200 OK)**:
+```json
+{
+  "image_url": "https://api.rewardpang.com/thegrim-cms/comfyui/images/20251127_221609_24b42e35.png",
+  "prompt_id": "2304eeac-0df0-47c8-9d54-f4b125d39069",
+  "workflow_name": "text2img_basic.json"
+}
+```
+
+**에러 응답**:
+
+- `400 Bad Request`: 잘못된 요청
+- `404 Not Found`: 워크플로우 파일을 찾을 수 없음
+- `500 Internal Server Error`: 서버 오류
+- `504 Gateway Timeout`: 작업 타임아웃 (기본 300초)
+
+**사용 사례**:
+- 워크플로우에 이미 프롬프트가 포함되어 있는 경우
+- 워크플로우의 기본 설정으로 이미지를 생성하고 싶은 경우
+- 프롬프트 주입 없이 워크플로우를 테스트하고 싶은 경우
+
 ---
 
 ## Next.js 통합 예시
@@ -397,6 +448,31 @@ export async function generateImage(
 
 export function getImageUrl(filename: string): string {
   return `${API_BASE_URL}/comfyui/images/${filename}`
+}
+
+export interface TestWorkflowRequest {
+  workflow_name: string
+}
+
+export async function testWorkflow(
+  request: TestWorkflowRequest
+): Promise<GenerateImageResponse> {
+  const response = await fetch(`${API_BASE_URL}/comfyui/test`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      workflow_name: request.workflow_name,
+    }),
+  })
+
+  if (!response.ok) {
+    const error: ApiError = await response.json()
+    throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+  }
+
+  return response.json()
 }
 ```
 
@@ -829,6 +905,100 @@ return (
     )}
   </div>
 )
+```
+
+### 예시 6: 워크플로우 테스트 (프롬프트 주입 없이)
+
+```typescript
+import { testWorkflow } from '@/lib/comfyui-api'
+
+// 워크플로우를 프롬프트 수정 없이 그대로 실행
+const result = await testWorkflow({
+  workflow_name: 'text2img_basic.json'
+})
+
+console.log('테스트 이미지 URL:', result.image_url)
+// 워크플로우에 포함된 기본 프롬프트로 이미지 생성됨
+```
+
+**프론트엔드에서 워크플로우 테스트 버튼 추가 예시**:
+
+```typescript
+'use client'
+
+import { testWorkflow, getWorkflows } from '@/lib/comfyui-api'
+import { useState, useEffect } from 'react'
+
+export default function WorkflowTester() {
+  const [workflows, setWorkflows] = useState<WorkflowInfo[]>([])
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadWorkflows()
+  }, [])
+
+  const loadWorkflows = async () => {
+    const data = await getWorkflows()
+    setWorkflows(data.workflows)
+    if (data.workflows.length > 0) {
+      setSelectedWorkflow(data.workflows[0].name)
+    }
+  }
+
+  const handleTest = async () => {
+    if (!selectedWorkflow) return
+
+    setLoading(true)
+    try {
+      const result = await testWorkflow({
+        workflow_name: selectedWorkflow
+      })
+      setImageUrl(result.image_url)
+    } catch (error) {
+      console.error('테스트 실패:', error)
+      alert(error instanceof Error ? error.message : '테스트 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      <h2 className="text-xl font-bold">워크플로우 테스트</h2>
+      
+      <div>
+        <label className="block mb-2">워크플로우 선택</label>
+        <select
+          value={selectedWorkflow}
+          onChange={(e) => setSelectedWorkflow(e.target.value)}
+          className="w-full p-2 border rounded"
+        >
+          {workflows.map((workflow) => (
+            <option key={workflow.name} value={workflow.name}>
+              {workflow.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <button
+        onClick={handleTest}
+        disabled={loading || !selectedWorkflow}
+        className="px-4 py-2 bg-green-500 text-white rounded disabled:bg-gray-400"
+      >
+        {loading ? '테스트 중...' : '워크플로우 테스트'}
+      </button>
+
+      {imageUrl && (
+        <div>
+          <img src={imageUrl} alt="Test Result" className="max-w-full" />
+        </div>
+      )}
+    </div>
+  )
+}
 ```
 
 ---
