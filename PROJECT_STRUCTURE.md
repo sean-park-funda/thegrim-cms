@@ -48,6 +48,8 @@ thegrim-CMS/
 │   ├── FileDetailDialog.tsx     # 파일 상세 정보 다이얼로그
 │   ├── ImageViewer.tsx          # 이미지 전체화면 뷰어
 │   ├── ImageRegenerationDialog.tsx  # 이미지 재생성 스타일 선택 다이얼로그
+│   ├── StyleManagementDialog.tsx    # 스타일 관리 다이얼로그 (생성/수정/삭제)
+│   ├── StyleEditDialog.tsx          # 스타일 편집 폼 다이얼로그
 │   ├── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
 │   ├── ReferenceFileDialog.tsx  # 레퍼런스 파일 관리 다이얼로그
 │   ├── ReferenceFileUpload.tsx  # 레퍼런스 파일 업로드 다이얼로그
@@ -61,6 +63,7 @@ thegrim-CMS/
 │   │   ├── processes.ts         # 공정 관련 API
 │   │   ├── files.ts             # 파일 관련 API
 │   │   ├── referenceFiles.ts    # 레퍼런스 파일 관련 API
+│   │   ├── aiStyles.ts          # AI 재생성 스타일 관련 API
 │   │   ├── auth.ts              # 인증 관련 API
 │   │   └── admin.ts             # 관리자 유틸리티
 │   │

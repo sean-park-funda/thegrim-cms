@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { File as FileType } from '@/lib/supabase';
+import { File as FileType, ApiProvider } from '@/lib/supabase';
 import { uploadFile } from '@/lib/api/files';
-import { generateVariedPrompt, styleOptions, ApiProvider } from '@/lib/constants/imageRegeneration';
+import { generateVariedPrompt } from '@/lib/constants/imageRegeneration';
 
 interface RegeneratedImage {
   id: string;
@@ -58,13 +58,14 @@ export function useImageRegeneration({
 
     try {
       setRegeneratingImage(fileToView.id);
-      
-      // 스타일 옵션 찾기
-      const styleOption = styleOptions.find(opt => opt.prompt === stylePrompt);
-      const defaultCount = styleOption?.defaultCount || generationCount;
-      const regenerateCount = count ?? defaultCount;
-      const styleId = styleOption?.id || '';
-      const apiProvider: ApiProvider = styleOption?.apiProvider || 'auto';
+
+      // 기본값 사용 (스타일 정보는 호출 측에서 처리됨)
+      const regenerateCount = count ?? generationCount;
+      // 프롬프트에서 스타일 키 추론 (프롬프트 변형용)
+      const styleId = stylePrompt.toLowerCase().includes('berserk') ? 'berserk'
+        : stylePrompt.toLowerCase().includes('shading') || stylePrompt.toLowerCase().includes('chiaroscuro') ? 'shading'
+        : '';
+      const apiProvider: ApiProvider = 'auto';
       
       // count가 지정되지 않았으면 (새로 생성하는 경우) 기존 이미지 초기화
       // 단, useLatestImageAsInput이 true면 기존 이미지 유지 (선화 결과를 사용하기 위해)

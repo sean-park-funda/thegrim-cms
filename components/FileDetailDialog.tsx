@@ -13,7 +13,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 import { savePrompt } from '@/lib/api/imagePrompts';
-import { styleOptions } from '@/lib/constants/imageRegeneration';
+import { getStyles } from '@/lib/api/aiStyles';
+import { AiRegenerationStyle } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -96,6 +97,16 @@ export function FileDetailDialog({
   const [promptName, setPromptName] = useState('');
   const [isShared, setIsShared] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
+
+  // 스타일 목록 로드
+  useEffect(() => {
+    if (open) {
+      getStyles()
+        .then(setStyles)
+        .catch(console.error);
+    }
+  }, [open]);
 
   // 다음 공정 찾기 (order_index 기준)
   const getNextProcessId = (currentProcessId: string): string => {
@@ -119,7 +130,7 @@ export function FileDetailDialog({
   const isPromptModified = (img: RegeneratedImage): boolean => {
     // originalPrompt가 없으면 이전 버전 호환성을 위해 기본 프롬프트와 비교
     if (!img.originalPrompt) {
-      const style = styleOptions.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
+      const style = styles.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
       if (!style) {
         return true;
       }
@@ -130,9 +141,9 @@ export function FileDetailDialog({
     // 하지만 실제로는 originalPrompt가 사용자가 선택한 프롬프트이므로,
     // originalPrompt와 prompt가 다르면 변형된 것이고, 이는 수정된 것으로 간주하지 않음
     // 대신, originalPrompt가 기본 프롬프트와 다른지 확인해야 함
-    
+
     // originalPrompt에서 사용된 스타일 찾기
-    const style = styleOptions.find(s => img.originalPrompt!.includes(s.prompt) || s.prompt === img.originalPrompt);
+    const style = styles.find(s => img.originalPrompt!.includes(s.prompt) || s.prompt === img.originalPrompt);
     if (!style) {
       // 스타일을 찾지 못한 경우 수정된 것으로 간주
       return true;
@@ -144,9 +155,9 @@ export function FileDetailDialog({
   // 프롬프트 저장 다이얼로그 열기
   const handleOpenSavePrompt = (img: RegeneratedImage) => {
     // 프롬프트에서 사용된 스타일 찾기
-    const style = styleOptions.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
+    const style = styles.find(s => img.prompt.includes(s.prompt) || s.prompt === img.prompt);
     if (style) {
-      setPromptToSave({ prompt: img.prompt, styleId: style.id });
+      setPromptToSave({ prompt: img.prompt, styleId: style.style_key });
       setPromptName('');
       setIsShared(false);
       setSavePromptDialogOpen(true);

@@ -144,4 +144,38 @@ export interface AiRegenerationPrompt {
   updated_at: string;
 }
 
+// API 제공자 타입
+export type ApiProvider = 'gemini' | 'seedream' | 'auto';
+
+// AI 재생성 스타일 타입
+export interface AiRegenerationStyle {
+  id: string;
+  name: string;
+  style_key: string;
+  prompt: string;
+  default_count: number;
+  allow_multiple: boolean;
+  api_provider: ApiProvider;
+  requires_reference: boolean;
+  group_name: string | null;
+  order_index: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// 스타일 생성/수정용 입력 타입
+export interface AiRegenerationStyleInput {
+  name: string;
+  style_key: string;
+  prompt: string;
+  default_count?: number;
+  allow_multiple?: boolean;
+  api_provider?: ApiProvider;
+  requires_reference?: boolean;
+  group_name?: string | null;
+  order_index?: number;
+  is_active?: boolean;
+}
+
 
