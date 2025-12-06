@@ -128,7 +128,7 @@ export function FileDetailDialog({
   const [processFiles, setProcessFiles] = useState<FileWithRelations[]>([]);
   const [loadingProcessFiles, setLoadingProcessFiles] = useState(false);
   const [applyingModification, setApplyingModification] = useState(false);
-  const [modifiedImageData, setModifiedImageData] = useState<Array<{ imageData: string; mimeType: string; fileId: string; fileUrl: string }>>([]);
+  const [modifiedImageData, setModifiedImageData] = useState<{ imageData: string; mimeType: string; fileId: string; fileUrl: string } | null>(null);
   const [savingModifiedImage, setSavingModifiedImage] = useState(false);
 
   // 스타일 목록 로드
@@ -340,7 +340,7 @@ export function FileDetailDialog({
     }
   };
 
-  // 분석 결과를 이미지 수정에 적용 (4장씩 병렬 생성)
+  // 분석 결과를 이미지 수정에 적용
   const handleApplyModification = async () => {
     if (!analysisResult || !originalFileId || !file) {
       alert('원본 이미지를 선택해주세요.');
@@ -364,93 +364,60 @@ export function FileDetailDialog({
           ? file.file_path
           : `https://${file.file_path}`;
 
-      // 4장씩 병렬로 생성
-      const GENERATION_COUNT = 4;
-      const generateSingleImage = async (index: number): Promise<{ imageData: string; mimeType: string; fileId: string; fileUrl: string } | null> => {
-        try {
-          // 분석 결과 프롬프트로 원본 이미지를 fileId로, 현재 파일을 레퍼런스로 사용해서 이미지 수정
-          const response = await fetch('/api/regenerate-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileId: originalFileId, // 원본 이미지 ID
-              referenceImageUrl: referenceImageUrl, // 현재 파일을 레퍼런스로 사용 (URL로 전달)
-              stylePrompt: analysisResult.prompt,
-              apiProvider: 'gemini', // gemini-3-pro-image-preview 사용
-            }),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
-            throw new Error(errorData.error || `이미지 ${index + 1} 생성에 실패했습니다.`);
-          }
-
-          const result = await response.json();
-          
-          // 생성된 이미지를 임시 파일로 저장
-          const saveResponse = await fetch('/api/save-temp-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              imageData: result.imageData,
-              mimeType: result.mimeType || 'image/png',
-              cutId: originalFile.cut_id,
-              processId: originalFile.process_id,
-              fileName: `modified-${index + 1}-${originalFile.file_name}`,
-              description: `수정사항 분석 기반 이미지 수정 (${index + 1}/4): ${originalFile.file_name}`,
-              prompt: analysisResult.prompt,
-              sourceFileId: originalFileId,
-              createdBy: currentUserId,
-            }),
-          });
-
-          if (!saveResponse.ok) {
-            const errorData = await saveResponse.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
-            throw new Error(errorData.error || `이미지 ${index + 1} 저장에 실패했습니다.`);
-          }
-
-          const saveResult = await saveResponse.json();
-          
-          return {
-            imageData: result.imageData,
-            mimeType: result.mimeType || 'image/png',
-            fileId: saveResult.file.id,
-            fileUrl: saveResult.fileUrl,
-          };
-        } catch (error) {
-          console.error(`이미지 ${index + 1} 생성 실패:`, error);
-          return null;
-        }
-      };
-
-      // 4장을 병렬로 생성
-      const imagePromises = Array.from({ length: GENERATION_COUNT }, (_, i) => generateSingleImage(i));
-      const results = await Promise.allSettled(imagePromises);
-
-      // 성공한 이미지들만 필터링
-      const successfulImages: Array<{ imageData: string; mimeType: string; fileId: string; fileUrl: string }> = [];
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-          successfulImages.push(result.value);
-        } else {
-          console.error(`이미지 ${index + 1} 생성 실패:`, result.status === 'rejected' ? result.reason : '알 수 없는 오류');
-        }
+      // 분석 결과 프롬프트로 원본 이미지를 fileId로, 현재 파일을 레퍼런스로 사용해서 이미지 수정
+      const response = await fetch('/api/regenerate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileId: originalFileId, // 원본 이미지 ID
+          referenceImageUrl: referenceImageUrl, // 현재 파일을 레퍼런스로 사용 (URL로 전달)
+          stylePrompt: analysisResult.prompt,
+          apiProvider: 'gemini', // gemini-3-pro-image-preview 사용
+        }),
       });
 
-      if (successfulImages.length === 0) {
-        throw new Error('모든 이미지 생성에 실패했습니다.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+        throw new Error(errorData.error || '이미지 수정 적용에 실패했습니다.');
       }
 
+      const result = await response.json();
+      
+      // 생성된 이미지를 임시 파일로 저장
+      const saveResponse = await fetch('/api/save-temp-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: result.imageData,
+          mimeType: result.mimeType || 'image/png',
+          cutId: originalFile.cut_id,
+          processId: originalFile.process_id,
+          fileName: `modified-${originalFile.file_name}`,
+          description: `수정사항 분석 기반 이미지 수정: ${originalFile.file_name}`,
+          prompt: analysisResult.prompt,
+          sourceFileId: originalFileId,
+          createdBy: currentUserId,
+        }),
+      });
+
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+        throw new Error(errorData.error || '임시 파일 저장에 실패했습니다.');
+      }
+
+      const saveResult = await saveResponse.json();
+      
       // 다이얼로그에 결과 표시
-      setModifiedImageData(successfulImages);
-
-      if (successfulImages.length < GENERATION_COUNT) {
-        alert(`${successfulImages.length}개의 이미지가 생성되었습니다. ${GENERATION_COUNT - successfulImages.length}개의 이미지 생성에 실패했습니다.`);
-      }
+      setModifiedImageData({
+        imageData: result.imageData,
+        mimeType: result.mimeType || 'image/png',
+        fileId: saveResult.file.id,
+        fileUrl: saveResult.fileUrl,
+      });
     } catch (error) {
       console.error('이미지 수정 적용 실패:', error);
       alert(error instanceof Error ? error.message : '이미지 수정 적용에 실패했습니다.');
@@ -459,8 +426,14 @@ export function FileDetailDialog({
     }
   };
 
-  // 개별 이미지 저장 (is_temp = false로 변경)
-  const handleSaveSingleImage = async (fileId: string, index: number) => {
+  // 수정된 이미지 저장 (is_temp = false로 변경)
+  const handleSaveModifiedImage = async () => {
+    if (!modifiedImageData) {
+      return;
+    }
+
+    setSavingModifiedImage(true);
+
     try {
       const response = await fetch('/api/regenerate-image-save', {
         method: 'POST',
@@ -468,7 +441,7 @@ export function FileDetailDialog({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fileId: fileId,
+          fileId: modifiedImageData.fileId,
         }),
       });
 
@@ -477,49 +450,15 @@ export function FileDetailDialog({
         throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
       }
 
-      alert(`이미지 ${index + 1}이 저장되었습니다.`);
-    } catch (error) {
-      console.error('이미지 저장 실패:', error);
-      alert(error instanceof Error ? error.message : '이미지 저장에 실패했습니다.');
-    }
-  };
-
-  // 수정된 이미지 저장 (is_temp = false로 변경) - 여러 이미지 처리
-  const handleSaveModifiedImage = async () => {
-    if (!modifiedImageData || modifiedImageData.length === 0) {
-      return;
-    }
-
-    setSavingModifiedImage(true);
-
-    try {
-      // 모든 이미지를 병렬로 저장
-      const savePromises = modifiedImageData.map((image) =>
-        fetch('/api/regenerate-image-save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileId: image.fileId,
-          }),
-        })
-      );
-
-      const results = await Promise.allSettled(savePromises);
-      const successful = results.filter((r) => r.status === 'fulfilled' && r.value.ok).length;
-      const failed = results.length - successful;
-
-      if (successful === 0) {
-        throw new Error('모든 이미지 저장에 실패했습니다.');
-      }
-
-      if (failed > 0) {
-        alert(`${successful}개의 이미지가 저장되었습니다. ${failed}개의 이미지 저장에 실패했습니다.`);
-      } else {
-        alert(`${successful}개의 이미지가 저장되었습니다.`);
-      }
-      // 다이얼로그는 열어두고 모든 상태를 유지하여 재시도 가능하게 함
+      alert('이미지가 저장되었습니다.');
+      setModificationAnalysisDialogOpen(false);
+      setAnalysisResult(null);
+      setOriginalFileId('');
+      setModificationHint('');
+      setModifiedImageData(null);
+      
+      // 파일 목록 새로고침을 위해 다이얼로그 닫기
+      onOpenChange(false);
     } catch (error) {
       console.error('이미지 저장 실패:', error);
       alert(error instanceof Error ? error.message : '이미지 저장에 실패했습니다.');
@@ -1287,7 +1226,7 @@ export function FileDetailDialog({
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       이미지 수정 중...
                     </>
-                  ) : modifiedImageData.length > 0 ? (
+                  ) : modifiedImageData ? (
                     '다시 생성'
                   ) : (
                     '이미지 수정 적용'
@@ -1298,55 +1237,35 @@ export function FileDetailDialog({
           )}
 
           {/* 수정된 이미지 미리보기 */}
-          {modifiedImageData && modifiedImageData.length > 0 && (
+          {modifiedImageData && (
             <div className="space-y-4 border-t pt-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">수정된 이미지 ({modifiedImageData.length}장)</label>
-                <div className="grid grid-cols-2 gap-4">
-                  {modifiedImageData.map((image, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="relative w-full h-[300px] bg-muted rounded-md overflow-hidden">
-                        <Image
-                          src={`data:${image.mimeType};base64,${image.imageData}`}
-                          alt={`수정된 이미지 ${index + 1}`}
-                          fill
-                          className="object-contain"
-                          sizes="(max-width: 768px) 50vw, 45vw"
-                          unoptimized={true}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const link = document.createElement('a');
-                            link.href = `data:${image.mimeType};base64,${image.imageData}`;
-                            link.download = `modified-image-${index + 1}-${Date.now()}.${image.mimeType === 'image/png' ? 'png' : 'jpg'}`;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                          }}
-                          className="flex-1"
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          다운로드
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleSaveSingleImage(image.fileId, index + 1)}
-                          className="flex-1"
-                        >
-                          <Save className="h-3 w-3 mr-1" />
-                          저장하기
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                <label className="text-sm font-medium">수정된 이미지</label>
+                <div className="relative w-full h-[400px] bg-muted rounded-md overflow-hidden">
+                  <Image
+                    src={`data:${modifiedImageData.mimeType};base64,${modifiedImageData.imageData}`}
+                    alt="수정된 이미지"
+                    fill
+                    className="object-contain"
+                    sizes="(max-width: 768px) 100vw, 90vw"
+                    unoptimized={true}
+                  />
                 </div>
               </div>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = `data:${modifiedImageData.mimeType};base64,${modifiedImageData.imageData}`;
+                    link.download = `modified-image-${Date.now()}.${modifiedImageData.mimeType === 'image/png' ? 'png' : 'jpg'}`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  다운로드
+                </Button>
                 <Button
                   variant="outline"
                   onClick={handleApplyModification}
@@ -1374,7 +1293,7 @@ export function FileDetailDialog({
                   ) : (
                     <>
                       <Save className="h-4 w-4 mr-2" />
-                      모두 저장하기
+                      저장하기
                     </>
                   )}
                 </Button>
@@ -1388,7 +1307,7 @@ export function FileDetailDialog({
             setAnalysisResult(null);
             setOriginalFileId('');
             setModificationHint('');
-            setModifiedImageData([]);
+            setModifiedImageData(null);
           }}>
             닫기
           </Button>

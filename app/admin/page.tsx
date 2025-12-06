@@ -140,6 +140,7 @@ export default function AdminPage() {
   };
 
   const copyInvitationLink = (token: string) => {
+    if (typeof window === 'undefined') return;
     const link = `${window.location.origin}/signup?token=${token}`;
     navigator.clipboard.writeText(link);
     setCopiedToken(token);

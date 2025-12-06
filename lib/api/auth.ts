@@ -2,11 +2,6 @@ import { supabase } from '../supabase';
 
 // Supabase 환경 변수 가져오기
 const getSupabaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    return window.location.origin.includes('localhost') 
-      ? process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-      : process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  }
   return process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 };
 
@@ -524,7 +519,16 @@ export async function createInvitation(
 
     // 이메일 자동 전송 (비동기, 실패해도 초대는 성공으로 처리)
     try {
-      const invitationLink = `${window.location.origin}/signup?token=${data.token}`;
+      // 서버 사이드와 클라이언트 사이드 모두 지원
+      let origin = '';
+      if (typeof window !== 'undefined') {
+        origin = window.location.origin;
+      } else {
+        // 서버 사이드: 환경 변수 사용
+        origin = process.env.NEXT_PUBLIC_APP_URL || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+      }
+      const invitationLink = `${origin}/signup?token=${data.token}`;
       
       // 초대한 사람의 이름 가져오기
       let inviterName: string | undefined;
