@@ -521,6 +521,7 @@ export function FileGrid() {
         onAnalyze={canUpload ? handleAnalyzeClick : undefined}
         onDelete={handleDeleteClick}
         onRegenerateClick={() => setStyleSelectionOpen(true)}
+        onRegenerate={handleRegenerate}
         onRegenerateSingle={handleRegenerateSingle}
         onImageSelect={handleImageSelect}
         onSaveImages={handleSaveImages}
@@ -545,9 +546,12 @@ export function FileGrid() {
           setRegeneratedImages([]);
           setSelectedImageIds(new Set());
         }}
-        onSaveComplete={(processId) => {
+        onSaveComplete={(processId, skipCloseDialog) => {
           // 저장 완료 시 다이얼로그 닫고 해당 공정 선택
-          handleDetailDialogClose(false);
+          // 단, skipCloseDialog가 true면 다이얼로그를 닫지 않음 (수정사항 분석 다이얼로그 내부에서 저장한 경우)
+          if (!skipCloseDialog) {
+            handleDetailDialogClose(false);
+          }
           // 해당 공정 선택
           const targetProcess = processes.find(p => p.id === processId);
           if (targetProcess) {

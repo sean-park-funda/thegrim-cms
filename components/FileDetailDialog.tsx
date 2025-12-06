@@ -45,6 +45,7 @@ interface FileDetailDialogProps {
   onAnalyze?: (file: FileType, e: React.MouseEvent) => void;
   onDelete: (file: FileType, e: React.MouseEvent) => void;
   onRegenerateClick: () => void;
+  onRegenerate?: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: { id: string }) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -61,7 +62,7 @@ interface FileDetailDialogProps {
   canDelete: boolean;
   processes: Process[]; // 공정 목록
   onSourceFileClick?: (file: FileType) => void; // 원본 파일 클릭 시 콜백
-  onSaveComplete?: (processId: string) => void; // 저장 완료 시 콜백 (공정 선택 + 다이얼로그 닫기)
+  onSaveComplete?: (processId: string, skipCloseDialog?: boolean) => void; // 저장 완료 시 콜백 (공정 선택 + 다이얼로그 닫기)
   currentUserId?: string; // 현재 사용자 ID
   webtoonId?: string; // 웹툰 ID (레퍼런스 파일 조회용)
 }
@@ -75,6 +76,7 @@ export function FileDetailDialog({
   onAnalyze,
   onDelete,
   onRegenerateClick,
+  onRegenerate,
   onRegenerateSingle,
   onImageSelect,
   onSaveImages,
@@ -95,6 +97,15 @@ export function FileDetailDialog({
   currentUserId,
   webtoonId,
 }: FileDetailDialogProps) {
+  // API Provider에 따른 모델명 반환
+  const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
+    if (apiProvider === 'gemini') {
+      return 'gemini-3-pro-image-preview';
+    } else if (apiProvider === 'seedream') {
+      return 'seedream-4-0-250828';
+    }
+    return 'auto';
+  };
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
   const [savePromptDialogOpen, setSavePromptDialogOpen] = useState(false);
@@ -128,8 +139,7 @@ export function FileDetailDialog({
   const [processFiles, setProcessFiles] = useState<FileWithRelations[]>([]);
   const [loadingProcessFiles, setLoadingProcessFiles] = useState(false);
   const [applyingModification, setApplyingModification] = useState(false);
-  const [modifiedImageData, setModifiedImageData] = useState<{ imageData: string; mimeType: string; fileId: string; fileUrl: string } | null>(null);
-  const [savingModifiedImage, setSavingModifiedImage] = useState(false);
+  const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false);
 
   // 스타일 목록 로드
   useEffect(() => {
@@ -342,8 +352,12 @@ export function FileDetailDialog({
 
   // 분석 결과를 이미지 수정에 적용
   const handleApplyModification = async () => {
-    if (!analysisResult || !originalFileId || !file) {
-      alert('원본 이미지를 선택해주세요.');
+    if (!analysisResult || !originalFileId || !file || !onRegenerate) {
+      if (!onRegenerate) {
+        alert('이미지 재생성 기능을 사용할 수 없습니다.');
+      } else {
+        alert('원본 이미지를 선택해주세요.');
+      }
       return;
     }
 
@@ -357,67 +371,26 @@ export function FileDetailDialog({
     setApplyingModification(true);
 
     try {
-      // 현재 파일의 이미지 URL 가져오기 (레퍼런스로 사용)
-      const referenceImageUrl = file.file_path?.startsWith('http')
-        ? file.file_path
-        : file.file_path?.startsWith('/')
-          ? file.file_path
-          : `https://${file.file_path}`;
-
-      // 분석 결과 프롬프트로 원본 이미지를 fileId로, 현재 파일을 레퍼런스로 사용해서 이미지 수정
-      const response = await fetch('/api/regenerate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileId: originalFileId, // 원본 이미지 ID
-          referenceImageUrl: referenceImageUrl, // 현재 파일을 레퍼런스로 사용 (URL로 전달)
-          stylePrompt: analysisResult.prompt,
-          apiProvider: 'gemini', // gemini-3-pro-image-preview 사용
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
-        throw new Error(errorData.error || '이미지 수정 적용에 실패했습니다.');
+      // 원본 파일로 전환 (onSourceFileClick을 통해 fileToView 변경)
+      // onRegenerate는 fileToView를 사용하므로 원본 파일로 전환해야 함
+      if (onSourceFileClick && originalFile.id !== file.id) {
+        onSourceFileClick(originalFile);
+        // 파일 변경 후 약간의 지연을 주어 상태 업데이트 보장
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      const result = await response.json();
-      
-      // 생성된 이미지를 임시 파일로 저장
-      const saveResponse = await fetch('/api/save-temp-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageData: result.imageData,
-          mimeType: result.mimeType || 'image/png',
-          cutId: originalFile.cut_id,
-          processId: originalFile.process_id,
-          fileName: `modified-${originalFile.file_name}`,
-          description: `수정사항 분석 기반 이미지 수정: ${originalFile.file_name}`,
-          prompt: analysisResult.prompt,
-          sourceFileId: originalFileId,
-          createdBy: currentUserId,
-        }),
-      });
+      // onRegenerate 콜백을 사용하여 배치 API로 4장 생성
+      // 현재 파일(수정사항이 표시된 파일)을 레퍼런스로 사용 (file.id를 referenceImage로 전달)
+      // 원본 파일이 fileToView로 설정되어 있어야 하므로, 원본 파일과 현재 파일이 같으면
+      // onSourceFileClick을 호출하지 않았으므로 이미 fileToView가 원본 파일임
+      onRegenerate(
+        analysisResult.prompt, // 분석된 프롬프트
+        4, // 4장 생성
+        false, // useLatestImageAsInput
+        { id: file.id } // 현재 파일(수정사항이 표시된 파일)을 레퍼런스로 사용
+      );
 
-      if (!saveResponse.ok) {
-        const errorData = await saveResponse.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
-        throw new Error(errorData.error || '임시 파일 저장에 실패했습니다.');
-      }
-
-      const saveResult = await saveResponse.json();
-      
-      // 다이얼로그에 결과 표시
-      setModifiedImageData({
-        imageData: result.imageData,
-        mimeType: result.mimeType || 'image/png',
-        fileId: saveResult.file.id,
-        fileUrl: saveResult.fileUrl,
-      });
+      // 수정사항 분석 다이얼로그는 닫지 않고 열어둠 (결과를 다이얼로그 내부에서 확인하기 위해)
     } catch (error) {
       console.error('이미지 수정 적용 실패:', error);
       alert(error instanceof Error ? error.message : '이미지 수정 적용에 실패했습니다.');
@@ -426,54 +399,15 @@ export function FileDetailDialog({
     }
   };
 
-  // 수정된 이미지 저장 (is_temp = false로 변경)
-  const handleSaveModifiedImage = async () => {
-    if (!modifiedImageData) {
-      return;
-    }
 
-    setSavingModifiedImage(true);
-
-    try {
-      const response = await fetch('/api/regenerate-image-save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileId: modifiedImageData.fileId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
-        throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
-      }
-
-      alert('이미지가 저장되었습니다.');
-      setModificationAnalysisDialogOpen(false);
-      setAnalysisResult(null);
-      setOriginalFileId('');
-      setModificationHint('');
-      setModifiedImageData(null);
-      
-      // 파일 목록 새로고침을 위해 다이얼로그 닫기
-      onOpenChange(false);
-    } catch (error) {
-      console.error('이미지 저장 실패:', error);
-      alert(error instanceof Error ? error.message : '이미지 저장에 실패했습니다.');
-    } finally {
-      setSavingModifiedImage(false);
-    }
-  };
-
-  const handleSaveWithProcess = async () => {
+  const handleSaveWithProcess = async (closeDialog: boolean = true) => {
     if (selectedProcessId) {
       onSaveImages(selectedProcessId);
       setProcessSelectOpen(false);
       // 저장 완료 후 다이얼로그 닫고 해당 공정 선택
+      // 수정사항 분석 다이얼로그 내부에서는 skipCloseDialog를 true로 전달하여 다이얼로그를 닫지 않음
       if (onSaveComplete) {
-        onSaveComplete(selectedProcessId);
+        onSaveComplete(selectedProcessId, !closeDialog);
       }
     }
   };
@@ -853,19 +787,24 @@ export function FileDetailDialog({
                           />
                         ) : null}
                       </div>
-                      {!isPlaceholder && currentUserId && img.prompt && isPromptModified(img) && (
-                        <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenSavePrompt(img);
-                            }}
-                          >
-                            <Save className="h-3 w-3 mr-1" />
-                            이 프롬프트 저장
-                          </Button>
+                      {!isPlaceholder && (
+                        <div className="flex items-center justify-between">
+                          <Badge variant="secondary" className="text-xs">
+                            {getModelName(img.apiProvider)}
+                          </Badge>
+                          {currentUserId && img.prompt && isPromptModified(img) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenSavePrompt(img);
+                              }}
+                            >
+                              <Save className="h-3 w-3 mr-1" />
+                              이 프롬프트 저장
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -984,7 +923,7 @@ export function FileDetailDialog({
           }} disabled={savingImages}>
             취소
           </Button>
-          <Button onClick={handleSaveWithProcess} disabled={!selectedProcessId || savingImages}>
+          <Button onClick={() => handleSaveWithProcess(!modificationAnalysisDialogOpen)} disabled={!selectedProcessId || savingImages}>
             {savingImages ? '등록 중...' : '등록'}
           </Button>
         </DialogFooter>
@@ -1136,24 +1075,6 @@ export function FileDetailDialog({
             )}
           </div>
 
-          {/* 분석 프롬프트 입력 */}
-          <div className="space-y-2">
-            <label htmlFor="analysis-prompt" className="text-sm font-medium">
-              분석 프롬프트
-            </label>
-            <Textarea
-              id="analysis-prompt"
-              value={analysisPrompt}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnalysisPrompt(e.target.value)}
-              placeholder="분석에 사용할 프롬프트를 입력하세요..."
-              disabled={analyzingModifications}
-              className="min-h-[200px] font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              분석에 사용할 프롬프트를 수정할 수 있습니다. 힌트는 프롬프트 끝에 자동으로 추가됩니다.
-            </p>
-          </div>
-
           {/* 힌트 입력 */}
           <div className="space-y-2">
             <label htmlFor="modification-hint" className="text-sm font-medium">
@@ -1171,23 +1092,52 @@ export function FileDetailDialog({
             </p>
           </div>
 
+          {/* 분석 프롬프트 보기/편집 */}
+          {showAnalysisPrompt && (
+            <div className="space-y-2">
+              <label htmlFor="analysis-prompt" className="text-sm font-medium">
+                분석 프롬프트
+              </label>
+              <Textarea
+                id="analysis-prompt"
+                value={analysisPrompt}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnalysisPrompt(e.target.value)}
+                placeholder="분석에 사용할 프롬프트를 입력하세요..."
+                disabled={analyzingModifications}
+                className="min-h-[200px] font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                분석에 사용할 프롬프트를 수정할 수 있습니다. 힌트는 프롬프트 끝에 자동으로 추가됩니다.
+              </p>
+            </div>
+          )}
+
           {/* 분석 시작 버튼 */}
-          <Button
-            onClick={handleAnalyzeWithHint}
-            disabled={analyzingModifications || !originalFileId}
-            className="w-full"
-          >
-            {analyzingModifications ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                분석 중...
-              </>
-            ) : analysisResult ? (
-              '다시 분석'
-            ) : (
-              '분석 시작'
-            )}
-          </Button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowAnalysisPrompt(!showAnalysisPrompt)}
+              className="text-xs text-muted-foreground hover:text-foreground underline cursor-pointer"
+            >
+              {showAnalysisPrompt ? '분석 프롬프트 숨기기' : '분석 프롬프트 보기'}
+            </button>
+            <Button
+              onClick={handleAnalyzeWithHint}
+              disabled={analyzingModifications || !originalFileId}
+              className="w-full"
+            >
+              {analyzingModifications ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  분석 중...
+                </>
+              ) : analysisResult ? (
+                '다시 분석'
+              ) : (
+                '분석 시작'
+              )}
+            </Button>
+          </div>
 
           {/* 분석 결과 */}
           {analysisResult && (
@@ -1226,8 +1176,6 @@ export function FileDetailDialog({
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       이미지 수정 중...
                     </>
-                  ) : modifiedImageData ? (
-                    '다시 생성'
                   ) : (
                     '이미지 수정 적용'
                   )}
@@ -1236,70 +1184,142 @@ export function FileDetailDialog({
             </div>
           )}
 
-          {/* 수정된 이미지 미리보기 */}
-          {modifiedImageData && (
+          {/* 생성된 이미지 표시 (수정사항 분석 다이얼로그 내부) */}
+          {regeneratedImages.length > 0 && (
             <div className="space-y-4 border-t pt-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">수정된 이미지</label>
-                <div className="relative w-full h-[400px] bg-muted rounded-md overflow-hidden">
-                  <Image
-                    src={`data:${modifiedImageData.mimeType};base64,${modifiedImageData.imageData}`}
-                    alt="수정된 이미지"
-                    fill
-                    className="object-contain"
-                    sizes="(max-width: 768px) 100vw, 90vw"
-                    unoptimized={true}
-                  />
-                </div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">생성된 이미지 ({regeneratedImages.length}장)</h3>
+                {canUpload && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (selectedImageIds.size === regeneratedImages.length) {
+                          onDeselectAll();
+                        } else {
+                          onSelectAll();
+                        }
+                      }}
+                      title={selectedImageIds.size === regeneratedImages.length ? '전체 선택 해제' : '전체 선택'}
+                    >
+                      <CheckSquare2 className="h-3 w-3 mr-1" />
+                      {selectedImageIds.size === regeneratedImages.length ? '전체 해제' : '전체 선택'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenProcessSelect();
+                      }}
+                      disabled={selectedImageIds.size === 0 || savingImages}
+                    >
+                      <Upload className={cn("h-3 w-3 mr-1", savingImages && "animate-pulse")} />
+                      {savingImages ? '등록 중...' : `선택한 이미지 등록 (${selectedImageIds.size})`}
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const link = document.createElement('a');
-                    link.href = `data:${modifiedImageData.mimeType};base64,${modifiedImageData.imageData}`;
-                    link.download = `modified-image-${Date.now()}.${modifiedImageData.mimeType === 'image/png' ? 'png' : 'jpg'}`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}
-                >
-                  다운로드
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleApplyModification}
-                  disabled={applyingModification || !originalFileId}
-                >
-                  {applyingModification ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      재생성 중...
-                    </>
-                  ) : (
-                    '다시 생성'
-                  )}
-                </Button>
-                <Button
-                  onClick={handleSaveModifiedImage}
-                  disabled={savingModifiedImage}
-                  className="flex-1"
-                >
-                  {savingModifiedImage ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      저장 중...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      저장하기
-                    </>
-                  )}
-                </Button>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {regeneratedImages.map((img) => {
+                  const isPlaceholder = img.url === null;
+                  
+                  return (
+                    <div key={img.id} className="relative space-y-2">
+                      <div 
+                        className={cn(
+                          "relative w-full aspect-square bg-muted rounded-md overflow-hidden",
+                          isPlaceholder 
+                            ? "overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
+                            : "group cursor-pointer"
+                        )}
+                        onClick={() => {
+                          if (!isPlaceholder && img.url) {
+                            onImageViewerOpen(img.url, `재생성된 이미지 - ${file?.file_name || '이미지'}`);
+                          }
+                        }}
+                      >
+                        {!isPlaceholder && (
+                          <>
+                            <input
+                              type="checkbox"
+                              checked={selectedImageIds.has(img.id)}
+                              onChange={(e) => {
+                                onImageSelect(img.id, e.target.checked);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
+                            />
+                            <div className="absolute top-2 right-2 z-10 flex gap-1">
+                              <Button
+                                size="icon"
+                                variant="secondary"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!img.url) return;
+                                  try {
+                                    const a = document.createElement('a');
+                                    a.href = img.url;
+                                    a.download = `regenerated-${file?.file_name || 'image'}`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                  } catch (error) {
+                                    console.error('재생성된 이미지 다운로드 실패:', error);
+                                    alert('이미지 다운로드에 실패했습니다.');
+                                  }
+                                }}
+                                title="다운로드"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full p-2">
+                                <Search className="h-5 w-5 text-white" />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {isPlaceholder ? (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Wand2 className="h-8 w-8 text-primary/50 animate-pulse" />
+                          </div>
+                        ) : img.url ? (
+                          <Image
+                            src={img.url}
+                            alt="재생성된 이미지"
+                            fill
+                            className="object-contain"
+                            sizes="(max-width: 768px) 50vw, 25vw"
+                            unoptimized={true}
+                            onError={(e) => {
+                              console.error('[이미지 로드 실패]', {
+                                id: img.id,
+                                url: img.url,
+                                fileId: img.fileId,
+                                filePath: img.filePath,
+                                fileUrl: img.fileUrl,
+                              });
+                            }}
+                          />
+                        ) : null}
+                      </div>
+                      {!isPlaceholder && (
+                        <Badge variant="secondary" className="text-xs w-full justify-center">
+                          {getModelName(img.apiProvider)}
+                        </Badge>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
+
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => {
@@ -1307,7 +1327,6 @@ export function FileDetailDialog({
             setAnalysisResult(null);
             setOriginalFileId('');
             setModificationHint('');
-            setModifiedImageData(null);
           }}>
             닫기
           </Button>

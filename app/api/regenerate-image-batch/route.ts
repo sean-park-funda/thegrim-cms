@@ -330,8 +330,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 레퍼런스 파일 정보 조회 (있는 경우)
+    // reference_files 테이블과 files 테이블 모두에서 조회 시도
     let referenceFile: { file_path: string } | null = null;
     if (referenceFileId) {
+      // 먼저 reference_files 테이블에서 조회 시도
       const { data: refFile, error: refFileError } = await supabase
         .from('reference_files')
         .select('file_path')
@@ -339,13 +341,27 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (refFileError || !refFile) {
-        console.error('[이미지 재생성 배치] 레퍼런스 파일 조회 실패:', refFileError);
-        return NextResponse.json(
-          { error: '레퍼런스 파일을 찾을 수 없습니다.' },
-          { status: 404 }
-        );
+        // reference_files에서 찾지 못하면 files 테이블에서 조회 시도
+        console.log('[이미지 재생성 배치] reference_files에서 찾지 못함, files 테이블에서 조회 시도...');
+        const { data: regularFile, error: regularFileError } = await supabase
+          .from('files')
+          .select('file_path')
+          .eq('id', referenceFileId)
+          .single();
+
+        if (regularFileError || !regularFile) {
+          console.error('[이미지 재생성 배치] 레퍼런스 파일 조회 실패 (reference_files 및 files 모두):', refFileError || regularFileError);
+          return NextResponse.json(
+            { error: '레퍼런스 파일을 찾을 수 없습니다.' },
+            { status: 404 }
+          );
+        }
+        referenceFile = regularFile;
+        console.log('[이미지 재생성 배치] files 테이블에서 레퍼런스 파일 찾음');
+      } else {
+        referenceFile = refFile;
+        console.log('[이미지 재생성 배치] reference_files 테이블에서 레퍼런스 파일 찾음');
       }
-      referenceFile = refFile;
     }
 
     // 이미지 다운로드 (원본과 레퍼런스를 병렬로, 타임아웃 설정)
@@ -584,10 +600,16 @@ export async function POST(request: NextRequest) {
           try {
             if (attempt > 0) {
               const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Gemini API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후)...`);
+              console.log(`[이미지 재생성 배치] Gemini API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
+                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+                promptLength: req.stylePrompt.length,
+              });
               await new Promise(resolve => setTimeout(resolve, delay));
             } else {
-              console.log(`[이미지 재생성 배치] Gemini API 호출 시작 (인덱스 ${req.index})...`);
+              console.log(`[이미지 재생성 배치] Gemini API 호출 시작 (인덱스 ${req.index}):`, {
+                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+                promptLength: req.stylePrompt.length,
+              });
             }
 
             const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -928,10 +950,16 @@ export async function POST(request: NextRequest) {
           try {
             if (attempt > 0) {
               const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Seedream API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후)...`);
+              console.log(`[이미지 재생성 배치] Seedream API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
+                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+                promptLength: req.stylePrompt.length,
+              });
               await new Promise(resolve => setTimeout(resolve, delay));
             } else {
-              console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index})...`);
+              console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
+                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+                promptLength: req.stylePrompt.length,
+              });
             }
 
             const seedreamRequestBody: Record<string, unknown> = {
