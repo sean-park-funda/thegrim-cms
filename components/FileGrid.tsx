@@ -549,8 +549,12 @@ export function FileGrid() {
         onSaveComplete={(processId, skipCloseDialog) => {
           // 저장 완료 시 다이얼로그 닫고 해당 공정 선택
           // 단, skipCloseDialog가 true면 다이얼로그를 닫지 않음 (수정사항 분석 다이얼로그 내부에서 저장한 경우)
+          console.log('[FileGrid] onSaveComplete 호출:', { processId, skipCloseDialog });
           if (!skipCloseDialog) {
+            console.log('[FileGrid] 파일 상세 다이얼로그 닫기');
             handleDetailDialogClose(false);
+          } else {
+            console.log('[FileGrid] 파일 상세 다이얼로그 유지 (수정사항 분석 다이얼로그 내부)');
           }
           // 해당 공정 선택
           const targetProcess = processes.find(p => p.id === processId);

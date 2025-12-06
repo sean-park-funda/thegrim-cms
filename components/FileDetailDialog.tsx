@@ -402,12 +402,22 @@ export function FileDetailDialog({
 
   const handleSaveWithProcess = async (closeDialog: boolean = true) => {
     if (selectedProcessId) {
-      onSaveImages(selectedProcessId);
-      setProcessSelectOpen(false);
-      // 저장 완료 후 다이얼로그 닫고 해당 공정 선택
-      // 수정사항 분석 다이얼로그 내부에서는 skipCloseDialog를 true로 전달하여 다이얼로그를 닫지 않음
-      if (onSaveComplete) {
-        onSaveComplete(selectedProcessId, !closeDialog);
+      try {
+        console.log('[FileDetailDialog] handleSaveWithProcess 시작:', { selectedProcessId, closeDialog, modificationAnalysisDialogOpen });
+        // 저장이 완료될 때까지 대기
+        await onSaveImages(selectedProcessId);
+        setProcessSelectOpen(false);
+        // 저장 완료 후 다이얼로그 닫고 해당 공정 선택
+        // 수정사항 분석 다이얼로그 내부에서는 skipCloseDialog를 true로 전달하여 다이얼로그를 닫지 않음
+        if (onSaveComplete) {
+          const skipCloseDialog = !closeDialog;
+          console.log('[FileDetailDialog] onSaveComplete 호출:', { selectedProcessId, skipCloseDialog });
+          onSaveComplete(selectedProcessId, skipCloseDialog);
+        }
+      } catch (error) {
+        console.error('이미지 저장 중 오류:', error);
+        // 오류가 발생해도 공정 선택 다이얼로그는 닫기
+        setProcessSelectOpen(false);
       }
     }
   };
