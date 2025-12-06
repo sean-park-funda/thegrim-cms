@@ -556,6 +556,7 @@ export function FileGrid() {
           }
         }}
         currentUserId={profile?.id}
+        webtoonId={selectedWebtoon?.id}
       />
 
       {/* 이미지 전체화면 뷰어 */}

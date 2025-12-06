@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2, FileSearch } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,8 @@ import { savePrompt } from '@/lib/api/imagePrompts';
 import { getStyles } from '@/lib/api/aiStyles';
 import { AiRegenerationStyle } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { getFilesByProcess } from '@/lib/api/files';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface RegeneratedImage {
@@ -60,6 +63,7 @@ interface FileDetailDialogProps {
   onSourceFileClick?: (file: FileType) => void; // 원본 파일 클릭 시 콜백
   onSaveComplete?: (processId: string) => void; // 저장 완료 시 콜백 (공정 선택 + 다이얼로그 닫기)
   currentUserId?: string; // 현재 사용자 ID
+  webtoonId?: string; // 웹툰 ID (레퍼런스 파일 조회용)
 }
 
 export function FileDetailDialog({
@@ -89,6 +93,7 @@ export function FileDetailDialog({
   onSourceFileClick,
   onSaveComplete,
   currentUserId,
+  webtoonId,
 }: FileDetailDialogProps) {
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
@@ -98,6 +103,33 @@ export function FileDetailDialog({
   const [isShared, setIsShared] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
+  
+  // 수정사항 분석 관련 상태
+  const [modificationAnalysisDialogOpen, setModificationAnalysisDialogOpen] = useState(false);
+  const [analyzingModifications, setAnalyzingModifications] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{ prompt: string; modificationPlan: string } | null>(null);
+  const [modificationHint, setModificationHint] = useState('');
+  const [analysisPrompt, setAnalysisPrompt] = useState<string>(`첫번째 이미지는 원본이고 두번째 이미지는 원본의 수정사항을 붉은선으로 표시한 수정안이야. 이 수정안의 붉은선이 지시하는 바를 상세하게 분석해서 디테일한 수정 프롬프트를 json 형식으로 만들어줘.
+
+다음 형식의 JSON을 반환해주세요:
+{
+  "prompt": "원본 이미지를 수정하는 상세한 영어 프롬프트 (전체 이미지를 새로 생성하는 프롬프트가 아니라, 원본 이미지의 특정 부분만 수정하는 지시사항을 작성)",
+  "modificationPlan": "수정 계획을 한국어로 설명한 텍스트"
+}
+
+프롬프트 작성 가이드:
+- prompt는 영어로 작성해야 함
+- prompt는 원본 이미지의 특정 부분만 수정하는 지시사항이어야 함 (전체 이미지 생성 프롬프트가 아님)
+- prompt는 매우 상세하고 구체적으로 작성해야 함
+- modificationPlan은 한국어로 작성
+
+반드시 유효한 JSON 형식으로만 응답해주세요. 다른 설명이나 마크다운 코드 블록 없이 순수 JSON만 반환해주세요.`);
+  const [originalFileId, setOriginalFileId] = useState<string>('');
+  const [processFiles, setProcessFiles] = useState<FileWithRelations[]>([]);
+  const [loadingProcessFiles, setLoadingProcessFiles] = useState(false);
+  const [applyingModification, setApplyingModification] = useState(false);
+  const [modifiedImageData, setModifiedImageData] = useState<Array<{ imageData: string; mimeType: string; fileId: string; fileUrl: string }>>([]);
+  const [savingModifiedImage, setSavingModifiedImage] = useState(false);
 
   // 스타일 목록 로드
   useEffect(() => {
@@ -107,6 +139,7 @@ export function FileDetailDialog({
         .catch(console.error);
     }
   }, [open]);
+
 
   // 다음 공정 찾기 (order_index 기준)
   const getNextProcessId = (currentProcessId: string): string => {
@@ -188,6 +221,310 @@ export function FileDetailDialog({
       alert('프롬프트 저장에 실패했습니다.');
     } finally {
       setSavingPrompt(false);
+    }
+  };
+
+  // 수정사항 분석 다이얼로그 열기
+  const handleAnalyzeModifications = async () => {
+    if (!file || file.file_type !== 'image') {
+      alert('이미지 파일만 분석할 수 있습니다.');
+      return;
+    }
+    
+    setModificationHint('');
+    setOriginalFileId('');
+    setAnalysisResult(null);
+    // 기본 프롬프트 초기화
+    setAnalysisPrompt(`첫번째 이미지는 원본이고 두번째 이미지는 원본의 수정사항을 붉은선으로 표시한 수정안이야. 이 수정안의 붉은선이 지시하는 바를 상세하게 분석해서 디테일한 수정 프롬프트를 json 형식으로 만들어줘.
+
+다음 형식의 JSON을 반환해주세요:
+{
+  "prompt": "원본 이미지를 수정하는 상세한 영어 프롬프트 (전체 이미지를 새로 생성하는 프롬프트가 아니라, 원본 이미지의 특정 부분만 수정하는 지시사항을 작성)",
+  "modificationPlan": "수정 계획을 한국어로 설명한 텍스트"
+}
+
+프롬프트 작성 가이드:
+- prompt는 영어로 작성해야 함
+- prompt는 원본 이미지의 특정 부분만 수정하는 지시사항이어야 함 (전체 이미지 생성 프롬프트가 아님)
+- prompt는 매우 상세하고 구체적으로 작성해야 함
+- modificationPlan은 한국어로 작성
+
+반드시 유효한 JSON 형식으로만 응답해주세요. 다른 설명이나 마크다운 코드 블록 없이 순수 JSON만 반환해주세요.`);
+    setModificationAnalysisDialogOpen(true);
+    
+    // 현재 공정의 파일 목록 로드
+    if (!file?.process_id) {
+      console.warn('[수정사항 분석] process_id가 없음:', { process_id: file?.process_id });
+      setLoadingProcessFiles(false);
+      setProcessFiles([]);
+      return;
+    }
+
+    setLoadingProcessFiles(true);
+    setProcessFiles([]); // 초기화
+    
+    // 타임아웃 설정 (10초)
+    const timeoutId = setTimeout(() => {
+      console.error('[수정사항 분석] 파일 목록 로드 타임아웃');
+      setLoadingProcessFiles(false);
+      setProcessFiles([]);
+      alert('파일 목록을 불러오는데 시간이 너무 오래 걸립니다. 다시 시도해주세요.');
+    }, 10000);
+
+    try {
+      console.log('[수정사항 분석] 파일 목록 로드 시작, process_id:', file.process_id);
+      const files = await getFilesByProcess(file.process_id);
+      clearTimeout(timeoutId);
+      console.log('[수정사항 분석] 공정의 모든 파일:', files.length, files.map(f => ({ id: f.id, name: f.file_name, cut_id: f.cut_id, is_temp: f.is_temp })));
+      // 이미지 파일만 필터링하고, 현재 파일 제외
+      const imageFiles = files.filter(f => 
+        f.file_type === 'image' && 
+        f.id !== file.id
+      );
+      console.log('[수정사항 분석] 필터링된 파일:', imageFiles.length, imageFiles.map(f => ({ id: f.id, name: f.file_name, cut_id: f.cut_id })));
+      setProcessFiles(imageFiles);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[수정사항 분석] 파일 목록 로드 실패:', error);
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+      console.error('[수정사항 분석] 에러 상세:', errorMessage, error);
+      alert(`파일 목록을 불러오는데 실패했습니다: ${errorMessage}`);
+      setProcessFiles([]);
+    } finally {
+      console.log('[수정사항 분석] 파일 목록 로드 완료, loadingProcessFiles를 false로 설정');
+      setLoadingProcessFiles(false);
+    }
+  };
+
+  // 분석 실행
+  const handleAnalyzeWithHint = async () => {
+    if (!file || file.file_type !== 'image') {
+      alert('이미지 파일만 분석할 수 있습니다.');
+      return;
+    }
+
+    if (!originalFileId) {
+      alert('원본 이미지를 선택해주세요.');
+      return;
+    }
+
+    setAnalyzingModifications(true);
+
+    try {
+      // 원본 이미지와 수정사항 이미지를 모두 전송
+      const response = await fetch('/api/analyze-modifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalFileId: originalFileId, // 원본 이미지 ID
+          fileId: file.id, // 수정사항이 표시된 이미지 ID
+          hint: modificationHint.trim() || undefined, // 힌트가 있으면 포함
+          customPrompt: analysisPrompt.trim(), // 분석 프롬프트 (항상 전송)
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+        throw new Error(errorData.error || '수정사항 분석에 실패했습니다.');
+      }
+
+      const result = await response.json();
+      setAnalysisResult(result);
+    } catch (error) {
+      console.error('수정사항 분석 실패:', error);
+      alert(error instanceof Error ? error.message : '수정사항 분석에 실패했습니다.');
+    } finally {
+      setAnalyzingModifications(false);
+    }
+  };
+
+  // 분석 결과를 이미지 수정에 적용 (4장씩 병렬 생성)
+  const handleApplyModification = async () => {
+    if (!analysisResult || !originalFileId || !file) {
+      alert('원본 이미지를 선택해주세요.');
+      return;
+    }
+
+    // 원본 파일 정보 가져오기
+    const originalFile = processFiles.find(f => f.id === originalFileId);
+    if (!originalFile) {
+      alert('원본 파일을 찾을 수 없습니다.');
+      return;
+    }
+
+    setApplyingModification(true);
+
+    try {
+      // 현재 파일의 이미지 URL 가져오기 (레퍼런스로 사용)
+      const referenceImageUrl = file.file_path?.startsWith('http')
+        ? file.file_path
+        : file.file_path?.startsWith('/')
+          ? file.file_path
+          : `https://${file.file_path}`;
+
+      // 4장씩 병렬로 생성
+      const GENERATION_COUNT = 4;
+      const generateSingleImage = async (index: number): Promise<{ imageData: string; mimeType: string; fileId: string; fileUrl: string } | null> => {
+        try {
+          // 분석 결과 프롬프트로 원본 이미지를 fileId로, 현재 파일을 레퍼런스로 사용해서 이미지 수정
+          const response = await fetch('/api/regenerate-image', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileId: originalFileId, // 원본 이미지 ID
+              referenceImageUrl: referenceImageUrl, // 현재 파일을 레퍼런스로 사용 (URL로 전달)
+              stylePrompt: analysisResult.prompt,
+              apiProvider: 'gemini', // gemini-3-pro-image-preview 사용
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+            throw new Error(errorData.error || `이미지 ${index + 1} 생성에 실패했습니다.`);
+          }
+
+          const result = await response.json();
+          
+          // 생성된 이미지를 임시 파일로 저장
+          const saveResponse = await fetch('/api/save-temp-image', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              imageData: result.imageData,
+              mimeType: result.mimeType || 'image/png',
+              cutId: originalFile.cut_id,
+              processId: originalFile.process_id,
+              fileName: `modified-${index + 1}-${originalFile.file_name}`,
+              description: `수정사항 분석 기반 이미지 수정 (${index + 1}/4): ${originalFile.file_name}`,
+              prompt: analysisResult.prompt,
+              sourceFileId: originalFileId,
+              createdBy: currentUserId,
+            }),
+          });
+
+          if (!saveResponse.ok) {
+            const errorData = await saveResponse.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+            throw new Error(errorData.error || `이미지 ${index + 1} 저장에 실패했습니다.`);
+          }
+
+          const saveResult = await saveResponse.json();
+          
+          return {
+            imageData: result.imageData,
+            mimeType: result.mimeType || 'image/png',
+            fileId: saveResult.file.id,
+            fileUrl: saveResult.fileUrl,
+          };
+        } catch (error) {
+          console.error(`이미지 ${index + 1} 생성 실패:`, error);
+          return null;
+        }
+      };
+
+      // 4장을 병렬로 생성
+      const imagePromises = Array.from({ length: GENERATION_COUNT }, (_, i) => generateSingleImage(i));
+      const results = await Promise.allSettled(imagePromises);
+
+      // 성공한 이미지들만 필터링
+      const successfulImages: Array<{ imageData: string; mimeType: string; fileId: string; fileUrl: string }> = [];
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          successfulImages.push(result.value);
+        } else {
+          console.error(`이미지 ${index + 1} 생성 실패:`, result.status === 'rejected' ? result.reason : '알 수 없는 오류');
+        }
+      });
+
+      if (successfulImages.length === 0) {
+        throw new Error('모든 이미지 생성에 실패했습니다.');
+      }
+
+      // 다이얼로그에 결과 표시
+      setModifiedImageData(successfulImages);
+
+      if (successfulImages.length < GENERATION_COUNT) {
+        alert(`${successfulImages.length}개의 이미지가 생성되었습니다. ${GENERATION_COUNT - successfulImages.length}개의 이미지 생성에 실패했습니다.`);
+      }
+    } catch (error) {
+      console.error('이미지 수정 적용 실패:', error);
+      alert(error instanceof Error ? error.message : '이미지 수정 적용에 실패했습니다.');
+    } finally {
+      setApplyingModification(false);
+    }
+  };
+
+  // 개별 이미지 저장 (is_temp = false로 변경)
+  const handleSaveSingleImage = async (fileId: string, index: number) => {
+    try {
+      const response = await fetch('/api/regenerate-image-save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileId: fileId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+        throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
+      }
+
+      alert(`이미지 ${index + 1}이 저장되었습니다.`);
+    } catch (error) {
+      console.error('이미지 저장 실패:', error);
+      alert(error instanceof Error ? error.message : '이미지 저장에 실패했습니다.');
+    }
+  };
+
+  // 수정된 이미지 저장 (is_temp = false로 변경) - 여러 이미지 처리
+  const handleSaveModifiedImage = async () => {
+    if (!modifiedImageData || modifiedImageData.length === 0) {
+      return;
+    }
+
+    setSavingModifiedImage(true);
+
+    try {
+      // 모든 이미지를 병렬로 저장
+      const savePromises = modifiedImageData.map((image) =>
+        fetch('/api/regenerate-image-save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileId: image.fileId,
+          }),
+        })
+      );
+
+      const results = await Promise.allSettled(savePromises);
+      const successful = results.filter((r) => r.status === 'fulfilled' && r.value.ok).length;
+      const failed = results.length - successful;
+
+      if (successful === 0) {
+        throw new Error('모든 이미지 저장에 실패했습니다.');
+      }
+
+      if (failed > 0) {
+        alert(`${successful}개의 이미지가 저장되었습니다. ${failed}개의 이미지 저장에 실패했습니다.`);
+      } else {
+        alert(`${successful}개의 이미지가 저장되었습니다.`);
+      }
+      // 다이얼로그는 열어두고 모든 상태를 유지하여 재시도 가능하게 함
+    } catch (error) {
+      console.error('이미지 저장 실패:', error);
+      alert(error instanceof Error ? error.message : '이미지 저장에 실패했습니다.');
+    } finally {
+      setSavingModifiedImage(false);
     }
   };
 
@@ -642,6 +979,21 @@ export function FileDetailDialog({
                   <Wand2 className={`h-4 w-4 mr-2 ${regeneratingImage === file.id ? 'animate-pulse' : ''}`} />
                   {regeneratingImage === file.id ? '재생성 중...' : 'AI 다시그리기'}
                 </Button>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "flex-1",
+                    analyzingModifications && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAnalyzeModifications();
+                  }}
+                  disabled={analyzingModifications || !file || file.file_type !== 'image'}
+                >
+                  <FileSearch className={`h-4 w-4 mr-2 ${analyzingModifications ? 'animate-pulse' : ''}`} />
+                  {analyzingModifications ? '분석 중...' : '수정사항 분석'}
+                </Button>
               </>
             )}
             {canDelete && (
@@ -749,6 +1101,296 @@ export function FileDetailDialog({
             ) : (
               '저장'
             )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* 수정사항 분석 통합 다이얼로그 */}
+    <Dialog open={modificationAnalysisDialogOpen} onOpenChange={setModificationAnalysisDialogOpen}>
+      <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>수정사항 분석</DialogTitle>
+          <DialogDescription>
+            수정사항이 표시된 레퍼런스 이미지를 분석하고 원본 이미지를 수정합니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-6">
+          {/* 수정용 레퍼런스 이미지 (현재 파일) */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">수정용 레퍼런스 이미지</label>
+            <div className="relative w-full h-[200px] bg-muted rounded-md overflow-hidden">
+              {file && file.file_type === 'image' ? (
+                <Image
+                  src={file.file_path?.startsWith('http')
+                    ? file.file_path
+                    : file.file_path?.startsWith('/')
+                      ? file.file_path
+                      : `https://${file.file_path}`}
+                  alt={file.file_name}
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 768px) 100vw, 90vw"
+                  unoptimized={true}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <FileIcon className="h-8 w-8 text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{file?.file_name}</p>
+          </div>
+
+          {/* 원본 이미지 선택 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">원본 이미지 선택</label>
+            {loadingProcessFiles ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : processFiles.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                현재 공정에 다른 이미지 파일이 없습니다.
+              </div>
+            ) : (
+              <div className="border rounded-md p-4">
+                <div className="flex flex-wrap gap-3">
+                  {processFiles.map((processFile) => (
+                    <div
+                      key={processFile.id}
+                      className={cn(
+                        "relative w-48 h-48 bg-muted rounded-md overflow-hidden cursor-pointer border-2 transition-colors",
+                        originalFileId === processFile.id ? "border-primary" : "border-transparent hover:border-muted-foreground/50"
+                      )}
+                      onClick={() => setOriginalFileId(processFile.id)}
+                    >
+                      {processFile.file_type === 'image' ? (
+                        <Image
+                          src={processFile.file_path?.startsWith('http')
+                            ? processFile.file_path
+                            : processFile.file_path?.startsWith('/')
+                              ? processFile.file_path
+                              : `https://${processFile.file_path}`}
+                          alt={processFile.file_name}
+                          fill
+                          className="object-contain"
+                          sizes="192px"
+                          unoptimized={true}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <FileIcon className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      {originalFileId === processFile.id && (
+                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                          <div className="bg-primary text-primary-foreground rounded-full p-1">
+                            <CheckSquare2 className="h-4 w-4" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 분석 프롬프트 입력 */}
+          <div className="space-y-2">
+            <label htmlFor="analysis-prompt" className="text-sm font-medium">
+              분석 프롬프트
+            </label>
+            <Textarea
+              id="analysis-prompt"
+              value={analysisPrompt}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnalysisPrompt(e.target.value)}
+              placeholder="분석에 사용할 프롬프트를 입력하세요..."
+              disabled={analyzingModifications}
+              className="min-h-[200px] font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              분석에 사용할 프롬프트를 수정할 수 있습니다. 힌트는 프롬프트 끝에 자동으로 추가됩니다.
+            </p>
+          </div>
+
+          {/* 힌트 입력 */}
+          <div className="space-y-2">
+            <label htmlFor="modification-hint" className="text-sm font-medium">
+              수정사항 힌트 (선택사항)
+            </label>
+            <Input
+              id="modification-hint"
+              value={modificationHint}
+              onChange={(e) => setModificationHint(e.target.value)}
+              placeholder="예: 입 위쪽 라인을 새로 그려서 입을 더 크게 벌리기"
+              disabled={analyzingModifications}
+            />
+            <p className="text-xs text-muted-foreground">
+              힌트를 입력하면 더 정확한 분석이 가능합니다.
+            </p>
+          </div>
+
+          {/* 분석 시작 버튼 */}
+          <Button
+            onClick={handleAnalyzeWithHint}
+            disabled={analyzingModifications || !originalFileId}
+            className="w-full"
+          >
+            {analyzingModifications ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                분석 중...
+              </>
+            ) : analysisResult ? (
+              '다시 분석'
+            ) : (
+              '분석 시작'
+            )}
+          </Button>
+
+          {/* 분석 결과 */}
+          {analysisResult && (
+            <div className="space-y-4 border-t pt-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">수정 계획</label>
+                <div className="p-4 bg-muted rounded-md">
+                  <p className="text-sm whitespace-pre-wrap break-words">{analysisResult.modificationPlan}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">생성된 프롬프트</label>
+                <ScrollArea className="h-[200px] border rounded-md">
+                  <pre className="p-4 text-xs overflow-auto break-words whitespace-pre-wrap">
+                    <code className="break-words">{analysisResult.prompt}</code>
+                  </pre>
+                </ScrollArea>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(analysisResult.prompt);
+                    alert('프롬프트가 클립보드에 복사되었습니다.');
+                  }}
+                >
+                  프롬프트 복사
+                </Button>
+                <Button
+                  onClick={handleApplyModification}
+                  disabled={!originalFileId || applyingModification}
+                  className="flex-1"
+                >
+                  {applyingModification ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      이미지 수정 중...
+                    </>
+                  ) : modifiedImageData.length > 0 ? (
+                    '다시 생성'
+                  ) : (
+                    '이미지 수정 적용'
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 수정된 이미지 미리보기 */}
+          {modifiedImageData && modifiedImageData.length > 0 && (
+            <div className="space-y-4 border-t pt-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">수정된 이미지 ({modifiedImageData.length}장)</label>
+                <div className="grid grid-cols-2 gap-4">
+                  {modifiedImageData.map((image, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="relative w-full h-[300px] bg-muted rounded-md overflow-hidden">
+                        <Image
+                          src={`data:${image.mimeType};base64,${image.imageData}`}
+                          alt={`수정된 이미지 ${index + 1}`}
+                          fill
+                          className="object-contain"
+                          sizes="(max-width: 768px) 50vw, 45vw"
+                          unoptimized={true}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = `data:${image.mimeType};base64,${image.imageData}`;
+                            link.download = `modified-image-${index + 1}-${Date.now()}.${image.mimeType === 'image/png' ? 'png' : 'jpg'}`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          className="flex-1"
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          다운로드
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleSaveSingleImage(image.fileId, index + 1)}
+                          className="flex-1"
+                        >
+                          <Save className="h-3 w-3 mr-1" />
+                          저장하기
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleApplyModification}
+                  disabled={applyingModification || !originalFileId}
+                >
+                  {applyingModification ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      재생성 중...
+                    </>
+                  ) : (
+                    '다시 생성'
+                  )}
+                </Button>
+                <Button
+                  onClick={handleSaveModifiedImage}
+                  disabled={savingModifiedImage}
+                  className="flex-1"
+                >
+                  {savingModifiedImage ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      모두 저장하기
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
+            setModificationAnalysisDialogOpen(false);
+            setAnalysisResult(null);
+            setOriginalFileId('');
+            setModificationHint('');
+            setModifiedImageData([]);
+          }}>
+            닫기
           </Button>
         </DialogFooter>
       </DialogContent>
