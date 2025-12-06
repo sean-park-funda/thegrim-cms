@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink, RefreshCw, Play } from 'lucide-react';
 
 interface GenerateResponse {
   image_url: string;
@@ -32,6 +32,7 @@ export default function ComfyTestPage() {
   const [seed, setSeed] = useState<string>('-1');
   const [useRandomSeed, setUseRandomSeed] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -121,6 +122,53 @@ export default function ComfyTestPage() {
     }
   };
 
+  // 워크플로우 테스트 (프롬프트 없이)
+  const testWorkflow = async () => {
+    if (!selectedWorkflow) {
+      setError('워크플로우를 선택해주세요');
+      return;
+    }
+
+    setTestLoading(true);
+    setError(null);
+    setImageUrl(null);
+
+    try {
+      const response = await fetch(
+        'https://api.rewardpang.com/thegrim-cms/comfyui/test',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workflow_name: selectedWorkflow,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const data: GenerateResponse = await response.json();
+      setImageUrl(data.image_url);
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message.includes('504') || err.name === 'AbortError') {
+          setError('작업이 타임아웃되었습니다. 다시 시도해주세요.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('알 수 없는 오류가 발생했습니다');
+      }
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
   const copyToClipboard = async () => {
     if (!imageUrl) return;
     try {
@@ -195,7 +243,7 @@ export default function ComfyTestPage() {
                     value={selectedWorkflow}
                     onChange={(e) => setSelectedWorkflow(e.target.value)}
                     className="w-full h-10 px-3 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                    disabled={loading}
+                    disabled={loading || testLoading}
                   >
                     {workflows.map((workflow) => (
                       <option key={workflow.name} value={workflow.name}>
@@ -203,6 +251,28 @@ export default function ComfyTestPage() {
                       </option>
                     ))}
                   </select>
+                )}
+                {/* 워크플로우 테스트 버튼 */}
+                {workflows.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={testWorkflow}
+                    disabled={loading || testLoading || !selectedWorkflow || loadingWorkflows}
+                    className="w-full h-8 mt-2 text-xs"
+                  >
+                    {testLoading ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                        테스트 중...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-3 w-3 mr-1.5" />
+                        프롬프트 없이 테스트
+                      </>
+                    )}
+                  </Button>
                 )}
               </div>
 
@@ -216,7 +286,7 @@ export default function ComfyTestPage() {
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="예: a beautiful sunset over the ocean, vibrant colors"
                   className="w-full min-h-[120px] p-3 text-sm border border-border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                  disabled={loading}
+                  disabled={loading || testLoading}
                 />
               </div>
 
@@ -230,7 +300,7 @@ export default function ComfyTestPage() {
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   placeholder="예: blurry, low quality, distorted"
                   className="w-full min-h-[80px] p-3 text-sm border border-border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                  disabled={loading}
+                  disabled={loading || testLoading}
                 />
               </div>
 
@@ -244,7 +314,7 @@ export default function ComfyTestPage() {
                       checked={useRandomSeed}
                       onChange={(e) => setUseRandomSeed(e.target.checked)}
                       className="w-4 h-4 rounded border-border"
-                      disabled={loading}
+                      disabled={loading || testLoading}
                     />
                     <span className="text-sm">랜덤 시드</span>
                   </label>
@@ -255,7 +325,7 @@ export default function ComfyTestPage() {
                       onChange={(e) => setSeed(e.target.value)}
                       placeholder="시드 값 입력"
                       className="w-32 h-8 text-sm"
-                      disabled={loading}
+                      disabled={loading || testLoading}
                     />
                   )}
                 </div>
@@ -274,7 +344,7 @@ export default function ComfyTestPage() {
               {/* 생성 버튼 */}
               <Button
                 onClick={generateImage}
-                disabled={loading || !prompt.trim() || !selectedWorkflow || loadingWorkflows}
+                disabled={loading || testLoading || !prompt.trim() || !selectedWorkflow || loadingWorkflows}
                 className="w-full h-10"
               >
                 {loading ? (
@@ -298,10 +368,12 @@ export default function ComfyTestPage() {
               <CardTitle className="text-base">생성 결과</CardTitle>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {(loading || testLoading) ? (
                 <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin mb-4" />
-                  <p className="text-sm">이미지를 생성하고 있습니다...</p>
+                  <p className="text-sm">
+                    {testLoading ? '워크플로우를 테스트하고 있습니다...' : '이미지를 생성하고 있습니다...'}
+                  </p>
                   <p className="text-xs mt-1">잠시만 기다려주세요</p>
                 </div>
               ) : imageUrl ? (

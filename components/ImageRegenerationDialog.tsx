@@ -4,18 +4,16 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Check, Plus } from 'lucide-react';
-import { styleOptions } from '@/lib/constants/imageRegeneration';
+import { Loader2, Check, Plus, Settings } from 'lucide-react';
 import { getReferenceFilesByWebtoon } from '@/lib/api/referenceFiles';
-import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt } from '@/lib/supabase';
+import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt, AiRegenerationStyle } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
 import { getProcesses } from '@/lib/api/processes';
 import { getImageRegenerationSettings } from '@/lib/api/settings';
-import { getPromptsByStyle, getDefaultPrompt, savePrompt, setPromptAsDefault } from '@/lib/api/imagePrompts';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { getPromptsByStyle, setPromptAsDefault } from '@/lib/api/imagePrompts';
+import { getStyles, getStyleByKey } from '@/lib/api/aiStyles';
+import { StyleManagementDialog } from './StyleManagementDialog';
 
 interface RegeneratedImage {
   id: string;
@@ -63,9 +61,14 @@ export function ImageRegenerationDialog({
   currentUserId,
 }: ImageRegenerationDialogProps) {
   const [countSelectionOpen, setCountSelectionOpen] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState<typeof styleOptions[0] | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<AiRegenerationStyle | null>(null);
   const [mangaShadingConfirmOpen, setMangaShadingConfirmOpen] = useState(false);
-  const [pendingMangaShadingStyle, setPendingMangaShadingStyle] = useState<typeof styleOptions[0] | null>(null);
+  const [pendingMangaShadingStyle, setPendingMangaShadingStyle] = useState<AiRegenerationStyle | null>(null);
+
+  // DB 기반 스타일 목록
+  const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
+  const [loadingStyles, setLoadingStyles] = useState(false);
+  const [styleManagementOpen, setStyleManagementOpen] = useState(false);
 
   // 프롬프트 관련 상태
   const [prompts, setPrompts] = useState<AiRegenerationPrompt[]>([]);
@@ -79,10 +82,30 @@ export function ImageRegenerationDialog({
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFileWithProcess[]>([]);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [selectedReferenceFile, setSelectedReferenceFile] = useState<ReferenceFileWithProcess | null>(null);
-  const [pendingReferenceStyle, setPendingReferenceStyle] = useState<typeof styleOptions[0] | null>(null);
+  const [pendingReferenceStyle, setPendingReferenceStyle] = useState<AiRegenerationStyle | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [processes, setProcesses] = useState<Process[]>([]);
   const [styleSettings, setStyleSettings] = useState<Record<string, boolean>>({});
+
+  // DB에서 스타일 목록 로드
+  const loadStyles = async () => {
+    setLoadingStyles(true);
+    try {
+      const data = await getStyles();
+      setStyles(data);
+    } catch (error) {
+      console.error('스타일 목록 로드 실패:', error);
+    } finally {
+      setLoadingStyles(false);
+    }
+  };
+
+  // 스타일 선택 다이얼로그 열릴 때 스타일 로드
+  useEffect(() => {
+    if (styleSelectionOpen) {
+      loadStyles();
+    }
+  }, [styleSelectionOpen]);
 
   // 공정 목록 로드
   useEffect(() => {
@@ -143,22 +166,23 @@ export function ImageRegenerationDialog({
 
       setLoadingPrompts(true);
       try {
-        const loadedPrompts = await getPromptsByStyle(style.id, currentUserId);
+        // style_key를 사용하여 프롬프트 조회
+        const loadedPrompts = await getPromptsByStyle(style.style_key, currentUserId);
         setPrompts(loadedPrompts);
-        
+
         // 기본 프롬프트 선택
         const defaultPrompt = loadedPrompts.find(p => p.is_default);
         if (defaultPrompt) {
           setSelectedPromptId(defaultPrompt.id);
           setEditedPrompt(defaultPrompt.prompt_text);
         } else {
-          // 기본 프롬프트가 없으면 스타일 옵션의 기본 프롬프트 사용
+          // 기본 프롬프트가 없으면 스타일의 기본 프롬프트 사용
           setSelectedPromptId(null);
           setEditedPrompt(style.prompt);
         }
       } catch (error) {
         console.error('프롬프트 로드 실패:', error);
-        // 에러 발생 시 스타일 옵션의 기본 프롬프트 사용
+        // 에러 발생 시 스타일의 기본 프롬프트 사용
         if (style) {
           setEditedPrompt(style.prompt);
         }
@@ -182,9 +206,9 @@ export function ImageRegenerationDialog({
     }
   }, [selectedPromptId, prompts]);
 
-  const handleStyleClick = (style: typeof styleOptions[0]) => {
+  const handleStyleClick = (style: AiRegenerationStyle) => {
     // 설정에서 레퍼런스 사용 여부 확인
-    const useReference = styleSettings[style.id] ?? style.requiresReference ?? false;
+    const useReference = styleSettings[style.style_key] ?? style.requires_reference ?? false;
 
     // 레퍼런스 사용이 설정되어 있고 웹툰이 선택되어 있으면 레퍼런스 선택 다이얼로그 표시
     if (useReference && webtoonId) {
@@ -196,7 +220,7 @@ export function ImageRegenerationDialog({
     }
 
     // 레퍼런스 사용하지 않거나 웹툰이 없으면 기존 로직대로 진행
-    if (style.id === 'tone-reference' || style.requiresReference) {
+    if (style.style_key === 'tone-reference' || style.requires_reference) {
       // 톤먹 넣기 등 레퍼런스 필수: 레퍼런스 파일 선택 다이얼로그 표시 (필수)
       if (!webtoonId) {
         alert('웹툰을 선택해주세요.');
@@ -206,44 +230,44 @@ export function ImageRegenerationDialog({
       setSelectedReferenceFile(null);
       setReferenceSelectionOpen(true);
       onStyleSelectionChange(false);
-    } else if (style.id === 'manga-shading') {
+    } else if (style.style_key === 'manga-shading') {
       // 만화풍 명암: 컨펌 다이얼로그 표시
       setPendingMangaShadingStyle(style);
       setMangaShadingConfirmOpen(true);
-    } else if (style.allowMultiple) {
+    } else if (style.allow_multiple) {
       // 괴수디테일 등: 장 수 선택 다이얼로그 표시
       setSelectedStyle(style);
       setCountSelectionOpen(true);
     } else {
       // 배경지우기, 채색 빼기: 바로 실행 (1장)
-      onRegenerate(style.prompt, style.defaultCount);
+      onRegenerate(style.prompt, style.default_count);
       onStyleSelectionChange(false);
     }
   };
 
-  const handleMangaShadingConfirm = () => {
+  const handleMangaShadingConfirm = async () => {
     if (!pendingMangaShadingStyle) return;
-    
+
     setMangaShadingConfirmOpen(false);
     onStyleSelectionChange(false);
-    
-    // 선화만 먼저 생성하기
-    const lineArtStyle = styleOptions.find(s => s.id === 'line-art-only');
+
+    // 선화만 먼저 생성하기 - DB에서 찾기
+    const lineArtStyle = styles.find(s => s.style_key === 'line-art-only');
     if (lineArtStyle) {
       // 선화만 남기기 실행 (1장)
       onRegenerate(lineArtStyle.prompt, 1);
     } else {
       // 선화 스타일을 찾지 못한 경우 일반적으로 실행
-      onRegenerate(pendingMangaShadingStyle.prompt, pendingMangaShadingStyle.defaultCount);
+      onRegenerate(pendingMangaShadingStyle.prompt, pendingMangaShadingStyle.default_count);
     }
-    
+
     setPendingMangaShadingStyle(null);
   };
 
   const handleMangaShadingCancel = () => {
     // 바로 명암 넣기: 설정에서 레퍼런스 사용 여부 확인
     if (pendingMangaShadingStyle) {
-      const useReference = styleSettings[pendingMangaShadingStyle.id] ?? false;
+      const useReference = styleSettings[pendingMangaShadingStyle.style_key] ?? false;
       if (useReference && webtoonId) {
         setPendingReferenceStyle(pendingMangaShadingStyle);
         setSelectedReferenceFile(null);
@@ -263,7 +287,7 @@ export function ImageRegenerationDialog({
   const handleCountConfirm = async () => {
     if (selectedStyle) {
       // 설정에서 레퍼런스 사용 여부 확인
-      const useReference = styleSettings[selectedStyle.id] ?? false;
+      const useReference = styleSettings[selectedStyle.style_key] ?? false;
       if (useReference && webtoonId) {
         setPendingReferenceStyle(selectedStyle);
         setSelectedReferenceFile(null);
@@ -273,13 +297,13 @@ export function ImageRegenerationDialog({
         // 프롬프트가 선택되어 있으면 기본으로 설정
         if (selectedPromptId && currentUserId) {
           try {
-            await setPromptAsDefault(selectedPromptId, selectedStyle.id);
+            await setPromptAsDefault(selectedPromptId, selectedStyle.style_key);
           } catch (error) {
             console.error('프롬프트 기본 설정 실패:', error);
             // 에러가 발생해도 계속 진행
           }
         }
-        
+
         onRegenerate(editedPrompt.trim() || selectedStyle.prompt, generationCount);
         setCountSelectionOpen(false);
         setSelectedStyle(null);
@@ -304,7 +328,7 @@ export function ImageRegenerationDialog({
     // 프롬프트가 선택되어 있으면 기본으로 설정
     if (selectedPromptId && currentUserId) {
       try {
-        await setPromptAsDefault(selectedPromptId, pendingReferenceStyle.id);
+        await setPromptAsDefault(selectedPromptId, pendingReferenceStyle.style_key);
       } catch (error) {
         console.error('프롬프트 기본 설정 실패:', error);
         // 에러가 발생해도 계속 진행
@@ -314,7 +338,7 @@ export function ImageRegenerationDialog({
     const referenceImage: ReferenceImageInfo = {
       id: selectedReferenceFile.id,
     };
-    
+
     // 레퍼런스 선택 다이얼로그에서 이미 장수를 선택할 수 있으므로 바로 생성
     // (레퍼런스 선택 다이얼로그에 장수 선택이 포함되어 있음)
     onRegenerate(editedPrompt.trim() || pendingReferenceStyle.prompt, generationCount, false, referenceImage);
@@ -333,7 +357,7 @@ export function ImageRegenerationDialog({
       // 프롬프트가 선택되어 있으면 기본으로 설정
       if (selectedPromptId && currentUserId) {
         try {
-          await setPromptAsDefault(selectedPromptId, selectedStyle.id);
+          await setPromptAsDefault(selectedPromptId, selectedStyle.style_key);
         } catch (error) {
           console.error('프롬프트 기본 설정 실패:', error);
           // 에러가 발생해도 계속 진행
@@ -388,30 +412,79 @@ export function ImageRegenerationDialog({
     }
   };
 
+  // 스타일을 그룹별로 분류
+  const groupedStyles = styles.reduce((acc, style) => {
+    const groupKey = style.group_name || '기타';
+    if (!acc[groupKey]) {
+      acc[groupKey] = [];
+    }
+    acc[groupKey].push(style);
+    return acc;
+  }, {} as Record<string, AiRegenerationStyle[]>);
+
+  // 그룹 정렬 (기타는 마지막에)
+  const sortedGroups = Object.keys(groupedStyles).sort((a, b) => {
+    if (a === '기타') return 1;
+    if (b === '기타') return -1;
+    return a.localeCompare(b);
+  });
+
   return (
     <>
       {/* 스타일 선택 Dialog */}
       <Dialog open={styleSelectionOpen} onOpenChange={onStyleSelectionChange}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>스타일 선택</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>스타일 선택</DialogTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  onStyleSelectionChange(false);
+                  setStyleManagementOpen(true);
+                }}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
             <DialogDescription>이미지를 재생성할 스타일을 선택하세요.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-2">
-              {styleOptions.map((style) => (
-                <Button
-                  key={style.id}
-                  variant="outline"
-                  className="h-auto py-3 flex flex-col items-center gap-2"
-                  onClick={() => handleStyleClick(style)}
-                  disabled={regeneratingImage !== null}
-                >
-                  <span className="text-sm font-medium">{style.name}</span>
-                </Button>
-              ))}
+          <ScrollArea className="max-h-[60vh]">
+            <div className="space-y-4 py-4 pr-4">
+              {loadingStyles ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : styles.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  등록된 스타일이 없습니다.
+                </div>
+              ) : (
+                sortedGroups.map((groupName) => (
+                  <div key={groupName} className="space-y-2">
+                    <h4 className="text-xs font-medium text-muted-foreground px-1">
+                      {groupName}
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {groupedStyles[groupName].map((style) => (
+                        <Button
+                          key={style.id}
+                          variant="outline"
+                          className="h-auto py-3 flex flex-col items-center gap-1"
+                          onClick={() => handleStyleClick(style)}
+                          disabled={regeneratingImage !== null}
+                        >
+                          <span className="text-sm font-medium">{style.name}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => onStyleSelectionChange(false)} disabled={regeneratingImage !== null}>
               취소
@@ -422,7 +495,7 @@ export function ImageRegenerationDialog({
 
       {/* 장 수 선택 Dialog (레퍼런스 없는 스타일용 또는 레퍼런스 선택 후) */}
       <Dialog open={countSelectionOpen} onOpenChange={setCountSelectionOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>생성 설정</DialogTitle>
             <DialogDescription>
@@ -584,10 +657,10 @@ export function ImageRegenerationDialog({
         if (!open) handleReferenceCancel();
         else setReferenceSelectionOpen(open);
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {pendingReferenceStyle?.id === 'tone-reference' ? '톤먹 넣기' : '레퍼런스 이미지 선택'}
+            {pendingReferenceStyle?.style_key === 'tone-reference' ? '톤먹 넣기' : '레퍼런스 이미지 선택'}
           </DialogTitle>
         </DialogHeader>
           <div className="py-4 space-y-4">
@@ -772,6 +845,13 @@ export function ImageRegenerationDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 스타일 관리 Dialog */}
+      <StyleManagementDialog
+        open={styleManagementOpen}
+        onOpenChange={setStyleManagementOpen}
+        onStylesChange={loadStyles}
+      />
     </>
   );
 }

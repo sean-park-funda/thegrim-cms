@@ -261,3 +261,65 @@ await mcp_supabase_apply_migration({
 - 문서가 없거나 부족한 경우, 코드베이스를 탐색하여 구조를 파악한 후 개발을 진행합니다.
 - ARCHITECTURE.md는 주요 시스템의 상세 설계를 포함하므로 관련 기능 개발 시 반드시 참고해야 합니다.
 
+---
+
+# Dialog 컴포넌트 크기 규칙
+
+## 모든 Dialog는 화면을 충분히 활용해야 함
+
+Dialog 컴포넌트를 생성하거나 수정할 때, 화면 공간을 충분히 활용하도록 크기를 설정해야 합니다.
+
+### 규칙 적용 방법:
+
+1. **Dialog 크기 설정**
+   - `sm:max-w-[90vw]` 사용하여 뷰포트 너비의 90% 활용
+   - `w-[90vw]` 추가하여 모바일에서도 90% 너비 유지
+   - `max-h-[85vh]` 추가하여 뷰포트 높이의 85% 활용
+   - 스크롤이 필요한 경우 `overflow-y-auto` 추가
+   - **중요**: `sm:` prefix 필수! (dialog.tsx의 기본 `sm:max-w-lg`를 덮어쓰기 위함)
+
+2. **기본 DialogContent 클래스**
+   ```typescript
+   // ✅ 올바른 방법
+   <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+   
+   // ❌ 잘못된 방법 (sm: prefix 없음 - 기본값에 덮어써짐)
+   <DialogContent className="max-w-4xl w-[90vw]">
+   
+   // ❌ 잘못된 방법 (너무 작음)
+   <DialogContent className="sm:max-w-lg">
+   ```
+
+3. **내용별 권장 크기**
+   - 모든 Dialog: `sm:max-w-[90vw] w-[90vw]` (화면의 90% 사용)
+
+### 예시:
+
+```typescript
+// ✅ 올바른 방법
+<Dialog open={open} onOpenChange={onOpenChange}>
+  <DialogContent className="max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
+    <DialogHeader>
+      <DialogTitle>제목</DialogTitle>
+    </DialogHeader>
+    {/* 내용 */}
+  </DialogContent>
+</Dialog>
+
+// ❌ 잘못된 방법: 너무 작은 Dialog
+<Dialog open={open} onOpenChange={onOpenChange}>
+  <DialogContent className="max-w-sm">
+    {/* 내용이 잘림 */}
+  </DialogContent>
+</Dialog>
+```
+
+### 적용 대상:
+- 모든 Dialog 컴포넌트
+- 모달 형태의 UI 컴포넌트
+
+### 참고:
+- 사용자가 충분한 정보를 한눈에 볼 수 있도록 Dialog 크기를 넉넉하게 설정합니다.
+- 모바일 환경에서도 `w-[90vw]`가 잘 작동합니다.
+- 내용이 많아 스크롤이 필요한 경우, 반드시 `overflow-y-auto`를 추가합니다.
+

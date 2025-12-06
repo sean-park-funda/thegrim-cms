@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Shield, Settings } from 'lucide-react';
 import { Navigation } from '@/components/Navigation';
 import { getImageRegenerationSettings, updateImageRegenerationSetting, ImageRegenerationSetting } from '@/lib/api/settings';
-import { styleOptions } from '@/lib/constants/imageRegeneration';
+import { getStyles } from '@/lib/api/aiStyles';
+import { AiRegenerationStyle } from '@/lib/supabase';
 import { Checkbox } from '@/components/ui/checkbox';
 
 export default function AdminPage() {
@@ -34,6 +35,7 @@ export default function AdminPage() {
   const [regenerationSettings, setRegenerationSettings] = useState<ImageRegenerationSetting[]>([]);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [updatingSettings, setUpdatingSettings] = useState<Set<string>>(new Set());
+  const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
 
   useEffect(() => {
     if (!isLoading && (!user || profile?.role !== 'admin')) {
@@ -147,8 +149,12 @@ export default function AdminPage() {
   const loadRegenerationSettings = async () => {
     try {
       setIsLoadingSettings(true);
-      const settings = await getImageRegenerationSettings();
+      const [settings, loadedStyles] = await Promise.all([
+        getImageRegenerationSettings(),
+        getStyles(),
+      ]);
       setRegenerationSettings(settings);
+      setStyles(loadedStyles);
     } catch (err: any) {
       console.error('설정 로드 오류:', err);
       setError('설정을 불러오는데 실패했습니다.');
@@ -417,12 +423,14 @@ export default function AdminPage() {
             <CardContent>
               {isLoadingSettings ? (
                 <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
+              ) : styles.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">등록된 스타일이 없습니다.</div>
               ) : (
                 <div className="space-y-4">
-                  {styleOptions.map((style) => {
-                    const useReference = getSettingForStyle(style.id);
-                    const isUpdating = updatingSettings.has(style.id);
-                    const isRequired = style.requiresReference === true;
+                  {styles.map((style) => {
+                    const useReference = getSettingForStyle(style.style_key);
+                    const isUpdating = updatingSettings.has(style.style_key);
+                    const isRequired = style.requires_reference === true;
 
                     return (
                       <div key={style.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -434,17 +442,17 @@ export default function AdminPage() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <Checkbox
-                            id={`setting-${style.id}`}
+                            id={`setting-${style.style_key}`}
                             checked={useReference || isRequired}
                             onCheckedChange={(checked) => {
                               if (!isRequired) {
-                                handleUpdateSetting(style.id, checked === true);
+                                handleUpdateSetting(style.style_key, checked === true);
                               }
                             }}
                             disabled={isRequired || isUpdating}
                           />
                           <label
-                            htmlFor={`setting-${style.id}`}
+                            htmlFor={`setting-${style.style_key}`}
                             className={`text-sm font-medium ${
                               isRequired ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'
                             }`}
