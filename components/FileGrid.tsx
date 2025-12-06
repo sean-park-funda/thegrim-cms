@@ -38,6 +38,7 @@ export function FileGrid() {
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
   const [viewingImageName, setViewingImageName] = useState<string>('');
+  const [draggedOverProcessId, setDraggedOverProcessId] = useState<string | null>(null);
 
   // 커스텀 훅 사용
   const {
@@ -359,6 +360,40 @@ export function FileGrid() {
     setSelectedImageIds(new Set());
   };
 
+  const handleFileMove = useCallback(async (fileId: string, newProcessId: string) => {
+    try {
+      await updateFile(fileId, { process_id: newProcessId });
+      await loadFiles();
+      // 이동 성공 시 해당 공정으로 탭 전환
+      const targetProcess = processes.find(p => p.id === newProcessId);
+      if (targetProcess) {
+        setSelectedProcess(targetProcess);
+      }
+    } catch (error) {
+      console.error('파일 이동 실패:', error);
+      alert('파일 이동에 실패했습니다.');
+    }
+  }, [loadFiles, processes, setSelectedProcess]);
+
+  const handleDragOver = useCallback((e: React.DragEvent, processId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDraggedOverProcessId(processId);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDraggedOverProcessId(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, processId: string) => {
+    e.preventDefault();
+    setDraggedOverProcessId(null);
+    const fileId = e.dataTransfer.getData('fileId');
+    if (fileId) {
+      handleFileMove(fileId, processId);
+    }
+  }, [handleFileMove]);
+
   // handleRegenerateSingle은 useImageRegeneration 훅에서 제공됨
 
   if (!selectedCut) {
@@ -415,7 +450,12 @@ export function FileGrid() {
                   <TabsTrigger
                     key={process.id}
                     value={process.id}
-                    className="flex items-center gap-1.5"
+                    className={`flex items-center gap-1.5 transition-colors ${
+                      draggedOverProcessId === process.id ? 'bg-primary/20 ring-2 ring-primary' : ''
+                    }`}
+                    onDragOver={(e) => handleDragOver(e, process.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, process.id)}
                   >
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: process.color }} />
                     <span>{process.name}</span>

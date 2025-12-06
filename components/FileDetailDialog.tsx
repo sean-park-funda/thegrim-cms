@@ -45,7 +45,7 @@ interface FileDetailDialogProps {
   onAnalyze?: (file: FileType, e: React.MouseEvent) => void;
   onDelete: (file: FileType, e: React.MouseEvent) => void;
   onRegenerateClick: () => void;
-  onRegenerate?: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: { id: string }) => void;
+  onRegenerate?: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: { id: string }, targetFileId?: string) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -380,14 +380,14 @@ export function FileDetailDialog({
       }
 
       // onRegenerate 콜백을 사용하여 배치 API로 4장 생성
-      // 현재 파일(수정사항이 표시된 파일)을 레퍼런스로 사용 (file.id를 referenceImage로 전달)
-      // 원본 파일이 fileToView로 설정되어 있어야 하므로, 원본 파일과 현재 파일이 같으면
-      // onSourceFileClick을 호출하지 않았으므로 이미 fileToView가 원본 파일임
+      // 입력 이미지: 원본 이미지 (originalFileId) - 수정용 프롬프트와 함께 사용
+      // 레퍼런스 이미지: 현재 파일(수정사항이 표시된 빨간펜 레퍼런스) (file.id)
       onRegenerate(
         analysisResult.prompt, // 분석된 프롬프트
         4, // 4장 생성
         false, // useLatestImageAsInput
-        { id: file.id } // 현재 파일(수정사항이 표시된 파일)을 레퍼런스로 사용
+        { id: file.id }, // 현재 파일(수정사항이 표시된 빨간펜 레퍼런스)을 레퍼런스로 사용
+        originalFileId // 원본 이미지 ID를 직접 전달하여 확실하게 원본 이미지를 입력으로 사용
       );
 
       // 수정사항 분석 다이얼로그는 닫지 않고 열어둠 (결과를 다이얼로그 내부에서 확인하기 위해)
