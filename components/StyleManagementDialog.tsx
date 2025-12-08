@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Pencil, GripVertical } from 'lucide-react';
+import { Loader2, Plus, Pencil, GripVertical, ArrowLeft } from 'lucide-react';
 import { AiRegenerationStyle } from '@/lib/supabase';
 import { getAllStyles, updateStyle } from '@/lib/api/aiStyles';
 import { StyleEditDialog } from './StyleEditDialog';
@@ -202,7 +202,8 @@ export function StyleManagementDialog({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              닫기
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              뒤로
             </Button>
           </DialogFooter>
         </DialogContent>

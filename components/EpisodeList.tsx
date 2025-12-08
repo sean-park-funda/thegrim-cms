@@ -1,19 +1,156 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getEpisodes, createEpisode, updateEpisode, deleteEpisode } from '@/lib/api/episodes';
 import { updateWebtoon } from '@/lib/api/webtoons';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, File } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Search, ArrowUpDown, X } from 'lucide-react';
 import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
+
+// 정렬 옵션
+type SortOption = 'number' | 'name' | 'updated' | 'status';
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'number', label: '회차순' },
+  { value: 'name', label: '이름순' },
+  { value: 'updated', label: '최근 수정순' },
+  { value: 'status', label: '상태순' },
+];
+
+// 날짜 포맷 함수
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
+}
+
+// 상태 스타일
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  pending: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: '대기' },
+  in_progress: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: '진행중' },
+  completed: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: '완료' },
+};
+
+// 회차 카드 컴포넌트
+interface EpisodeCardProps {
+  episode: Episode;
+  isSelected: boolean;
+  onClick: () => void;
+  onEdit: (e: React.MouseEvent) => void;
+  onDelete: (e: React.MouseEvent) => void;
+  profile: { role: string } | null;
+}
+
+function EpisodeCard({ episode, isSelected, onClick, onEdit, onDelete, profile }: EpisodeCardProps) {
+  const isMiscEpisode = episode.episode_number === 0;
+  const statusStyle = STATUS_STYLES[episode.status || 'pending'] || STATUS_STYLES.pending;
+
+  return (
+    <div
+      className={`
+        group cursor-pointer rounded-xl overflow-hidden
+        bg-card border transition-all duration-200 ease-out
+        hover:scale-[1.02] hover:shadow-xl
+        ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'border-border/50 hover:border-border'}
+        ${isMiscEpisode ? 'border-dashed bg-muted/30' : ''}
+      `}
+      style={{ aspectRatio: '4/5' }}
+      onClick={onClick}
+    >
+      {/* 상단 영역 (70%) - 썸네일 또는 회차 정보 표시 */}
+      <div className="relative h-[70%] bg-muted/50 overflow-hidden">
+        {episode.thumbnail_url ? (
+          <img
+            src={episode.thumbnail_url}
+            alt={`${episode.episode_number}화 썸네일`}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center p-4">
+              {isMiscEpisode ? (
+                <Folder className="h-12 w-12 text-muted-foreground/40 mx-auto mb-2" />
+              ) : (
+                <div className="text-4xl font-bold text-muted-foreground/30 mb-2">
+                  {episode.episode_number}
+                </div>
+              )}
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                {statusStyle.label}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 케밥 메뉴 (우상단) */}
+        {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 w-7 p-0 bg-background/80 backdrop-blur-sm hover:bg-background"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canEditContent(profile.role) && (
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    수정
+                  </DropdownMenuItem>
+                )}
+                {canDeleteContent(profile.role) && !isMiscEpisode && (
+                  <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    삭제
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+
+        {/* 파일 개수 (좌상단) */}
+        {episode.files_count !== undefined && episode.files_count > 0 && (
+          <div className="absolute top-2 left-2">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-background/80 text-foreground">
+              <FileText className="h-3 w-3" />
+              {episode.files_count}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 정보 영역 (30%) */}
+      <div className="h-[30%] p-3 flex flex-col justify-between">
+        {/* 제목 */}
+        <h3 className="text-sm font-semibold line-clamp-2 leading-tight">
+          {isMiscEpisode ? '기타' : `${episode.episode_number}화`} - {episode.title}
+        </h3>
+
+        {/* 하단 정보 */}
+        <div className="space-y-1">
+          {episode.description && (
+            <p className="text-xs text-muted-foreground line-clamp-1">
+              {episode.description}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground/70">
+            업데이트 {formatDate(episode.updated_at)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function EpisodeList() {
   const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile, setSelectedWebtoon } = useStore();
@@ -25,6 +162,10 @@ export function EpisodeList() {
   const [formData, setFormData] = useState({ episode_number: 1, title: '', description: '', status: 'pending' as 'pending' | 'in_progress' | 'completed' });
   const [saving, setSaving] = useState(false);
   const [updatingUnitType, setUpdatingUnitType] = useState(false);
+
+  // 검색, 정렬 상태
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('number');
 
   useEffect(() => {
     if (selectedWebtoon) {
@@ -40,13 +181,7 @@ export function EpisodeList() {
     try {
       setLoading(true);
       const data = await getEpisodes(selectedWebtoon.id);
-      // "기타" 회차(episode_number = 0)를 맨 위에 고정하고, 나머지는 episode_number 순으로 정렬
-      const sortedData = [...data].sort((a, b) => {
-        if (a.episode_number === 0) return -1;
-        if (b.episode_number === 0) return 1;
-        return a.episode_number - b.episode_number;
-      });
-      setEpisodes(sortedData);
+      setEpisodes(data);
     } catch (error) {
       console.error('회차 목록 로드 실패:', error);
       alert('회차 목록을 불러오는데 실패했습니다.');
@@ -54,6 +189,42 @@ export function EpisodeList() {
       setLoading(false);
     }
   };
+
+  // 필터링 및 정렬된 회차 목록
+  const filteredEpisodes = useMemo(() => {
+    let result = [...episodes];
+
+    // 검색 필터
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(e =>
+        e.title.toLowerCase().includes(query) ||
+        (e.description && e.description.toLowerCase().includes(query)) ||
+        e.episode_number.toString().includes(query)
+      );
+    }
+
+    // 정렬 ("기타" 회차는 항상 맨 위에)
+    result.sort((a, b) => {
+      // "기타" 회차 우선
+      if (a.episode_number === 0) return -1;
+      if (b.episode_number === 0) return 1;
+
+      switch (sortOption) {
+        case 'name':
+          return a.title.localeCompare(b.title, 'ko');
+        case 'updated':
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        case 'status':
+          return (a.status || '').localeCompare(b.status || '');
+        case 'number':
+        default:
+          return a.episode_number - b.episode_number;
+      }
+    });
+
+    return result;
+  }, [episodes, searchQuery, sortOption]);
 
   const handleCreate = () => {
     if (!selectedWebtoon) return;
@@ -188,110 +359,134 @@ export function EpisodeList() {
 
   return (
     <>
-      <div className="p-3 sm:p-4">
-        <div className="flex items-center gap-2 mb-2 sm:mb-3">
-          <h2 className="text-base sm:text-lg font-semibold truncate flex-1">{selectedWebtoon.title}</h2>
-          {profile && canEditContent(profile.role) && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">관리단위:</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    disabled={updatingUnitType}
-                  >
-                    {unitTypeLabel}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={() => handleUnitTypeChange('cut')}
-                    className={unitType === 'cut' ? 'bg-accent' : ''}
-                  >
-                    컷
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => handleUnitTypeChange('page')}
-                    className={unitType === 'page' ? 'bg-accent' : ''}
-                  >
-                    페이지
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
+        {/* 페이지 헤더 + 툴바 영역 */}
+        <div className="mb-6">
+          {/* 상단: 제목 + 새 회차 버튼 */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h2 className="text-xl font-semibold">{selectedWebtoon.title}</h2>
+              <span className="text-sm text-muted-foreground">
+                ({episodes.length}개 회차)
+              </span>
+              {profile && canEditContent(profile.role) && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-xs text-muted-foreground">관리단위:</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        disabled={updatingUnitType}
+                      >
+                        {unitTypeLabel}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => handleUnitTypeChange('cut')}
+                        className={unitType === 'cut' ? 'bg-accent' : ''}
+                      >
+                        컷
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleUnitTypeChange('page')}
+                        className={unitType === 'page' ? 'bg-accent' : ''}
+                      >
+                        페이지
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        {profile && canCreateContent(profile.role) && (
-          <Button size="sm" onClick={handleCreate} className="w-full mb-3 sm:mb-4 h-9 sm:h-8 touch-manipulation">
-            <Plus className="h-4 w-4 mr-2" />
-            새 회차
-          </Button>
-        )}
+            {profile && canCreateContent(profile.role) && (
+              <Button onClick={handleCreate} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                새 회차
+              </Button>
+            )}
+          </div>
 
+          {/* 툴바: 검색 + 정렬 */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            {/* 검색 */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="회차 제목, 번호로 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9 h-9"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="검색 초기화"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* 정렬 드롭다운 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                  <ArrowUpDown className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {SORT_OPTIONS.find(o => o.value === sortOption)?.label}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel>정렬 기준</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
+                  {SORT_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* 빈 상태 */}
         {episodes.length === 0 ? (
-          <Card>
-            <CardContent className="py-6 sm:py-8 text-center text-muted-foreground">
-              <BookOpen className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm sm:text-base">등록된 회차가 없습니다.</p>
+          <Card className="border-dashed">
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-base font-medium">등록된 회차가 없습니다.</p>
+              <p className="text-sm mt-1">새 회차를 추가해주세요.</p>
+            </CardContent>
+          </Card>
+        ) : filteredEpisodes.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-base font-medium">검색 결과가 없습니다.</p>
+              <p className="text-sm mt-1">다른 검색어를 시도해주세요.</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {episodes.map((episode) => {
-              const isMiscEpisode = episode.episode_number === 0;
-              return (
-                <Card key={episode.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation flex flex-col hover:bg-accent/50 ${selectedEpisode?.id === episode.id ? 'ring-2 ring-primary bg-accent' : ''} ${isMiscEpisode ? 'bg-muted/50 border-dashed' : ''}`} onClick={() => setSelectedEpisode(episode)}>
-                  <CardHeader className="pb-2 flex-shrink-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-sm sm:text-base line-clamp-2 flex items-center gap-1.5">
-                          {isMiscEpisode && <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-                          <span>{isMiscEpisode ? '기타' : `${episode.episode_number}화`} - {episode.title}</span>
-                        </CardTitle>
-                      </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                        {episode.files_count !== undefined && (
-                          <Badge variant="outline" className="text-xs whitespace-nowrap flex items-center gap-1">
-                            <File className="h-3 w-3" />
-                            {episode.files_count}
-                          </Badge>
-                        )}
-                        {profile && (canEditContent(profile.role) || canDeleteContent(profile.role)) && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="sm" className="h-9 w-9 sm:h-8 sm:w-8 p-0 touch-manipulation">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {canEditContent(profile.role) && (
-                                <DropdownMenuItem onClick={(e) => handleEdit(episode, e)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  수정
-                                </DropdownMenuItem>
-                              )}
-                              {canDeleteContent(profile.role) && !isMiscEpisode && (
-                                <DropdownMenuItem onClick={(e) => handleDelete(episode, e)} className="text-destructive">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  삭제
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  {episode.description && (
-                    <CardContent className="pt-0 pb-4 flex-1 flex flex-col justify-end">
-                      <p className="text-xs sm:text-sm text-muted-foreground line-clamp-3">{episode.description}</p>
-                    </CardContent>
-                  )}
-                </Card>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-4">
+            {filteredEpisodes.map((episode) => (
+              <EpisodeCard
+                key={episode.id}
+                episode={episode}
+                isSelected={selectedEpisode?.id === episode.id}
+                onClick={() => setSelectedEpisode(episode)}
+                onEdit={(e) => handleEdit(episode, e)}
+                onDelete={(e) => handleDelete(episode, e)}
+                profile={profile}
+              />
+            ))}
           </div>
         )}
       </div>

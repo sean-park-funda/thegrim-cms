@@ -77,7 +77,7 @@ export function Navigation() {
   };
 
   return (
-    <nav className="border-b border-border/20 bg-foreground shadow-sm">
+    <nav className="border-b border-white/10 shadow-lg backdrop-blur-sm" style={{ background: 'linear-gradient(90deg, #050816, #141827)' }}>
       <div className="container mx-auto max-w-[1600px] px-4 sm:px-6">
         <div className="flex items-center h-14 gap-6">
           {/* 타이틀 - Linear 스타일: 왼쪽에 깔끔하게 */}

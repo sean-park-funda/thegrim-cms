@@ -11,22 +11,23 @@ export async function getEpisodes(webtoonId: string): Promise<Episode[]> {
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
-  // 각 회차의 파일 개수 조회 (회차 -> 컷 -> 파일)
+  // 각 회차의 파일 개수와 첫 번째 파일 썸네일 조회 (회차 -> 컷 -> 파일)
   const episodeIds = data.map(episode => episode.id);
-  const filesCountPromises = episodeIds.map(async (episodeId) => {
+  const filesInfoPromises = episodeIds.map(async (episodeId) => {
     // 해당 회차의 모든 컷 ID 조회
     const { data: cuts, error: cutsError } = await supabase
       .from('cuts')
       .select('id')
-      .eq('episode_id', episodeId);
+      .eq('episode_id', episodeId)
+      .order('cut_number', { ascending: true });
 
     if (cutsError) {
       console.error(`컷 조회 실패 (episode_id: ${episodeId}):`, cutsError);
-      return { episodeId, count: 0 };
+      return { episodeId, count: 0, thumbnail_url: null };
     }
 
     if (!cuts || cuts.length === 0) {
-      return { episodeId, count: 0 };
+      return { episodeId, count: 0, thumbnail_url: null };
     }
 
     const cutIds = cuts.map(cut => cut.id);
@@ -39,18 +40,37 @@ export async function getEpisodes(webtoonId: string): Promise<Episode[]> {
 
     if (countError) {
       console.error(`파일 개수 조회 실패 (episode_id: ${episodeId}):`, countError);
-      return { episodeId, count: 0 };
     }
-    return { episodeId, count: count || 0 };
+
+    // 첫 번째 파일의 썸네일 조회
+    const { data: firstFile, error: fileError } = await supabase
+      .from('files')
+      .select('thumbnail_path')
+      .in('cut_id', cutIds)
+      .not('thumbnail_path', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    let thumbnailUrl = null;
+    if (!fileError && firstFile?.thumbnail_path) {
+      const { data: { publicUrl } } = supabase.storage
+        .from('webtoon-files')
+        .getPublicUrl(firstFile.thumbnail_path);
+      thumbnailUrl = publicUrl;
+    }
+
+    return { episodeId, count: count || 0, thumbnail_url: thumbnailUrl };
   });
 
-  const filesCounts = await Promise.all(filesCountPromises);
-  const filesCountMap = new Map(filesCounts.map(item => [item.episodeId, item.count]));
+  const filesInfos = await Promise.all(filesInfoPromises);
+  const filesInfoMap = new Map(filesInfos.map(item => [item.episodeId, item]));
 
-  // 각 회차에 파일 개수 추가
+  // 각 회차에 파일 개수와 썸네일 추가
   return data.map(episode => ({
     ...episode,
-    files_count: filesCountMap.get(episode.id) || 0
+    files_count: filesInfoMap.get(episode.id)?.count || 0,
+    thumbnail_url: filesInfoMap.get(episode.id)?.thumbnail_url || null
   }));
 }
 

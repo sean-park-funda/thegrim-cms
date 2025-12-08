@@ -849,7 +849,13 @@ export function ImageRegenerationDialog({
       {/* 스타일 관리 Dialog */}
       <StyleManagementDialog
         open={styleManagementOpen}
-        onOpenChange={setStyleManagementOpen}
+        onOpenChange={(open) => {
+          setStyleManagementOpen(open);
+          // 스타일 관리 다이얼로그가 닫힐 때 스타일 선택 다이얼로그 다시 열기
+          if (!open) {
+            onStyleSelectionChange(true);
+          }
+        }}
         onStylesChange={loadStyles}
       />
     </>

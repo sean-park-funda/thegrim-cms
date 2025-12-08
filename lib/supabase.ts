@@ -34,6 +34,7 @@ export interface Episode {
   created_at: string;
   updated_at: string;
   files_count?: number;
+  thumbnail_url?: string | null;
 }
 
 export interface Cut {

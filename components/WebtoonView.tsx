@@ -15,11 +15,11 @@ export function WebtoonView() {
     <>
       <BreadcrumbNav />
       {/* 모바일: 세로 스택 레이아웃 (한 번에 하나의 리스트만 표시) */}
-      <div className="flex flex-col lg:hidden h-full overflow-hidden">
+      <div className="flex flex-col lg:hidden h-full overflow-y-auto">
         {!selectedWebtoon && (
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0">
             <WebtoonList />
-          </ScrollArea>
+          </div>
         )}
         {selectedWebtoon && !selectedEpisode && (
           <ScrollArea className="flex-1">
