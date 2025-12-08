@@ -298,7 +298,7 @@ export function WebtoonList() {
         await updateWebtoon(editingWebtoon.id, {
           title: formData.title,
           description: formData.description,
-          thumbnail_url: formData.thumbnail_url || null
+          thumbnail_url: formData.thumbnail_url || undefined
         });
         alert('웹툰이 수정되었습니다.');
       } else {
