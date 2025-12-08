@@ -105,6 +105,7 @@ export function ImageRegenerationWorkspace({
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [selectedReferenceFile, setSelectedReferenceFile] = useState<ReferenceFileWithProcess | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [referenceSelectOpen, setReferenceSelectOpen] = useState(false);
   const [allProcesses, setAllProcesses] = useState<Process[]>([]);
 
   // 공정 선택 다이얼로그 상태
@@ -425,43 +426,39 @@ export function ImageRegenerationWorkspace({
                                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                               </div>
                             ) : (
-                              <div className="grid grid-cols-4 gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => setUploadDialogOpen(true)}
-                                  disabled={regeneratingImage !== null}
-                                  className="aspect-square bg-muted border border-dashed border-muted-foreground/25 rounded hover:border-primary/50 hover:bg-muted/80 transition-colors flex items-center justify-center disabled:opacity-50"
-                                >
-                                  <Plus className="h-4 w-4 text-muted-foreground" />
-                                </button>
-                                {referenceFiles.map((refFile) => (
-                                  <div
-                                    key={refFile.id}
-                                    className={cn(
-                                      "cursor-pointer transition-all overflow-hidden rounded aspect-square relative",
-                                      selectedReferenceFile?.id === refFile.id
-                                        ? "ring-2 ring-primary"
-                                        : "hover:ring-1 hover:ring-primary/50"
-                                    )}
-                                    onClick={() => setSelectedReferenceFile(refFile)}
-                                  >
+                              <button
+                                type="button"
+                                onClick={() => setReferenceSelectOpen(true)}
+                                disabled={regeneratingImage !== null}
+                                className={cn(
+                                  "w-full aspect-[4/3] rounded-md overflow-hidden transition-colors flex items-center justify-center disabled:opacity-50",
+                                  selectedReferenceFile
+                                    ? "bg-muted relative group"
+                                    : "bg-muted border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/80"
+                                )}
+                              >
+                                {selectedReferenceFile ? (
+                                  <>
                                     <img
-                                      src={refFile.thumbnail_path
-                                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${refFile.thumbnail_path}`
-                                        : refFile.file_path}
-                                      alt={refFile.file_name}
-                                      className="w-full h-full object-cover"
+                                      src={selectedReferenceFile.thumbnail_path
+                                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${selectedReferenceFile.thumbnail_path}`
+                                        : selectedReferenceFile.file_path}
+                                      alt={selectedReferenceFile.file_name}
+                                      className="w-full h-full object-contain"
                                     />
-                                    {selectedReferenceFile?.id === refFile.id && (
-                                      <div className="absolute top-0.5 right-0.5">
-                                        <div className="bg-primary rounded-full p-0.5">
-                                          <Check className="h-2 w-2 text-primary-foreground" />
-                                        </div>
-                                      </div>
-                                    )}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                      <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium">
+                                        변경하기
+                                      </span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                    <Plus className="h-6 w-6" />
+                                    <span className="text-xs">참조 이미지 선택</span>
                                   </div>
-                                ))}
-                              </div>
+                                )}
+                              </button>
                             )}
                           </CardContent>
                         </Card>
@@ -759,6 +756,90 @@ export function ImageRegenerationWorkspace({
             </Button>
             <Button onClick={handleSaveWithProcess} disabled={!selectedProcessId || savingImages}>
               {savingImages ? '등록 중...' : '등록'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 참조 이미지 선택 다이얼로그 */}
+      <Dialog open={referenceSelectOpen} onOpenChange={setReferenceSelectOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>참조 이미지 선택</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto py-4">
+            {loadingReferences ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : referenceFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <ImageIcon className="h-12 w-12 mb-2 opacity-50" />
+                <p className="text-sm">등록된 참조 이미지가 없습니다.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => {
+                    setReferenceSelectOpen(false);
+                    setUploadDialogOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  새 참조 이미지 추가
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                {referenceFiles.map((refFile) => (
+                  <div
+                    key={refFile.id}
+                    className={cn(
+                      "cursor-pointer transition-all overflow-hidden rounded-lg aspect-square relative group",
+                      selectedReferenceFile?.id === refFile.id
+                        ? "ring-2 ring-primary ring-offset-2"
+                        : "hover:ring-2 hover:ring-primary/50 hover:ring-offset-1"
+                    )}
+                    onClick={() => {
+                      setSelectedReferenceFile(refFile);
+                      setReferenceSelectOpen(false);
+                    }}
+                  >
+                    <img
+                      src={refFile.thumbnail_path
+                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${refFile.thumbnail_path}`
+                        : refFile.file_path}
+                      alt={refFile.file_name}
+                      className="w-full h-full object-cover"
+                    />
+                    {selectedReferenceFile?.id === refFile.id && (
+                      <div className="absolute top-2 right-2">
+                        <div className="bg-primary rounded-full p-1">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-white text-xs truncate">{refFile.file_name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReferenceSelectOpen(false);
+                setUploadDialogOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              새 참조 이미지 추가
+            </Button>
+            <Button variant="outline" onClick={() => setReferenceSelectOpen(false)}>
+              닫기
             </Button>
           </div>
         </DialogContent>
