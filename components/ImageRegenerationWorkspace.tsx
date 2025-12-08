@@ -60,6 +60,7 @@ interface ImageRegenerationWorkspaceProps {
   onImageViewerOpen: (imageUrl: string, imageName: string) => void;
   processes: Process[];
   canUpload: boolean;
+  onSaveComplete?: (processId: string) => void;
 }
 
 export function ImageRegenerationWorkspace({
@@ -83,6 +84,7 @@ export function ImageRegenerationWorkspace({
   onImageViewerOpen,
   processes,
   canUpload,
+  onSaveComplete,
 }: ImageRegenerationWorkspaceProps) {
   // 스타일 관련 상태
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
@@ -281,6 +283,9 @@ export function ImageRegenerationWorkspace({
     if (selectedProcessId) {
       await onSaveImages(selectedProcessId);
       setProcessSelectOpen(false);
+      // 다이얼로그 닫고 해당 공정으로 이동
+      onOpenChange(false);
+      onSaveComplete?.(selectedProcessId);
     }
   };
 

@@ -562,6 +562,15 @@ export function FileGrid() {
         onImageViewerOpen={handleImageViewerOpen}
         processes={processes}
         canUpload={!!canUpload}
+        onSaveComplete={(processId) => {
+          // 저장 완료 시 해당 공정으로 이동
+          const targetProcess = processes.find(p => p.id === processId);
+          if (targetProcess) {
+            setSelectedProcess(targetProcess);
+          }
+          // 파일 상세 다이얼로그도 닫기
+          setDetailDialogOpen(false);
+        }}
       />
 
       {/* 파일 상세 정보 Dialog */}
