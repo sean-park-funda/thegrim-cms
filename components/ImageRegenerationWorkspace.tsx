@@ -320,8 +320,8 @@ export function ImageRegenerationWorkspace({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 p-0 overflow-hidden">
           <div className="flex h-[95vh]">
-            {/* 왼쪽 패널 (30%) - 설정 */}
-            <div className="w-[30%] border-r h-[95vh] overflow-y-auto">
+            {/* 왼쪽 패널 - 설정 (고정 너비) */}
+            <div className="w-[300px] flex-shrink-0 border-r h-[95vh] overflow-y-auto">
               <div className="sticky top-0 z-10 bg-background px-4 py-3 border-b">
                 <div className="flex items-center justify-between">
                   <DialogTitle className="text-base">AI 다시그리기</DialogTitle>
@@ -575,8 +575,8 @@ export function ImageRegenerationWorkspace({
                 </div>
             </div>
 
-            {/* 오른쪽 패널 (70%) - 결과 */}
-            <div className="w-[70%] flex flex-col h-[95vh] bg-muted/30">
+            {/* 오른쪽 패널 - 결과 (남은 공간 차지) */}
+            <div className="flex-1 flex flex-col h-[95vh] bg-muted/30">
               {/* 결과 헤더 */}
               <div className="px-4 py-3 border-b bg-background flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
