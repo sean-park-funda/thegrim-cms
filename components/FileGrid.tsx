@@ -400,7 +400,7 @@ export function FileGrid() {
     return (
       <div className="p-4 text-center text-muted-foreground">
         <FileIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-        <p>{(selectedWebtoon?.unit_type || 'cut') === 'cut' ? '컷' : '페이지'}을(를) 선택해주세요</p>
+        <p>{(selectedWebtoon?.unit_type || 'cut') === 'cut' ? '컷을' : '페이지를'} 선택해주세요</p>
       </div>
     );
   }

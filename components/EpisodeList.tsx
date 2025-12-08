@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getEpisodes, createEpisode, updateEpisode, deleteEpisode } from '@/lib/api/episodes';
 import { updateWebtoon } from '@/lib/api/webtoons';
@@ -8,20 +8,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Search, ArrowUpDown, X } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText } from 'lucide-react';
 import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
-
-// 정렬 옵션
-type SortOption = 'number' | 'name' | 'updated' | 'status';
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'number', label: '회차순' },
-  { value: 'name', label: '이름순' },
-  { value: 'updated', label: '최근 수정순' },
-  { value: 'status', label: '상태순' },
-];
 
 // 날짜 포맷 함수
 function formatDate(dateString: string): string {
@@ -163,10 +154,6 @@ export function EpisodeList() {
   const [saving, setSaving] = useState(false);
   const [updatingUnitType, setUpdatingUnitType] = useState(false);
 
-  // 검색, 정렬 상태
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortOption, setSortOption] = useState<SortOption>('number');
-
   useEffect(() => {
     if (selectedWebtoon) {
       loadEpisodes();
@@ -190,41 +177,12 @@ export function EpisodeList() {
     }
   };
 
-  // 필터링 및 정렬된 회차 목록
-  const filteredEpisodes = useMemo(() => {
-    let result = [...episodes];
-
-    // 검색 필터
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      result = result.filter(e =>
-        e.title.toLowerCase().includes(query) ||
-        (e.description && e.description.toLowerCase().includes(query)) ||
-        e.episode_number.toString().includes(query)
-      );
-    }
-
-    // 정렬 ("기타" 회차는 항상 맨 위에)
-    result.sort((a, b) => {
-      // "기타" 회차 우선
-      if (a.episode_number === 0) return -1;
-      if (b.episode_number === 0) return 1;
-
-      switch (sortOption) {
-        case 'name':
-          return a.title.localeCompare(b.title, 'ko');
-        case 'updated':
-          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-        case 'status':
-          return (a.status || '').localeCompare(b.status || '');
-        case 'number':
-        default:
-          return a.episode_number - b.episode_number;
-      }
-    });
-
-    return result;
-  }, [episodes, searchQuery, sortOption]);
+  // 정렬된 회차 목록 ("기타" 회차는 맨 위, 나머지는 회차순)
+  const sortedEpisodes = [...episodes].sort((a, b) => {
+    if (a.episode_number === 0) return -1;
+    if (b.episode_number === 0) return 1;
+    return a.episode_number - b.episode_number;
+  });
 
   const handleCreate = () => {
     if (!selectedWebtoon) return;
@@ -362,13 +320,10 @@ export function EpisodeList() {
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
         {/* 페이지 헤더 + 툴바 영역 */}
         <div className="mb-6">
-          {/* 상단: 제목 + 새 회차 버튼 */}
-          <div className="flex items-center justify-between mb-4">
+          {/* 상단: 제목 + 관리단위 + 새 회차 버튼 */}
+          <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2 flex-wrap">
               <h2 className="text-xl font-semibold">{selectedWebtoon.title}</h2>
-              <span className="text-sm text-muted-foreground">
-                ({episodes.length}개 회차)
-              </span>
               {profile && canEditContent(profile.role) && (
                 <div className="flex items-center gap-1.5 ml-2">
                   <span className="text-xs text-muted-foreground">관리단위:</span>
@@ -402,58 +357,11 @@ export function EpisodeList() {
               )}
             </div>
             {profile && canCreateContent(profile.role) && (
-              <Button onClick={handleCreate} className="gap-1.5">
+              <Button onClick={handleCreate} size="sm" className="h-9 gap-1.5">
                 <Plus className="h-4 w-4" />
                 새 회차
               </Button>
             )}
-          </div>
-
-          {/* 툴바: 검색 + 정렬 */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            {/* 검색 */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="text"
-                placeholder="회차 제목, 번호로 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9 h-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="검색 초기화"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            {/* 정렬 드롭다운 */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5">
-                  <ArrowUpDown className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    {SORT_OPTIONS.find(o => o.value === sortOption)?.label}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuLabel>정렬 기준</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
-                  {SORT_OPTIONS.map((option) => (
-                    <DropdownMenuRadioItem key={option.value} value={option.value}>
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
 
@@ -466,17 +374,9 @@ export function EpisodeList() {
               <p className="text-sm mt-1">새 회차를 추가해주세요.</p>
             </CardContent>
           </Card>
-        ) : filteredEpisodes.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-base font-medium">검색 결과가 없습니다.</p>
-              <p className="text-sm mt-1">다른 검색어를 시도해주세요.</p>
-            </CardContent>
-          </Card>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-4">
-            {filteredEpisodes.map((episode) => (
+            {sortedEpisodes.map((episode) => (
               <EpisodeCard
                 key={episode.id}
                 episode={episode}
