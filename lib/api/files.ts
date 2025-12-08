@@ -1,5 +1,38 @@
 import { supabase, File, FileWithRelations } from '../supabase';
 
+// 파일 단건 조회
+export async function getFileById(fileId: string): Promise<FileWithRelations | null> {
+  const { data, error } = await supabase
+    .from('files')
+    .select(`
+      *,
+      process:processes (*),
+      created_by_user:user_profiles (id, email, name, role)
+    `)
+    .eq('id', fileId)
+    .single();
+
+  if (error) {
+    console.error('파일 조회 실패:', error);
+    return null;
+  }
+  
+  // source_file 정보 조회
+  if (data?.source_file_id) {
+    const { data: sourceFile } = await supabase
+      .from('files')
+      .select('*')
+      .eq('id', data.source_file_id)
+      .single();
+    
+    if (sourceFile) {
+      (data as FileWithRelations).source_file = sourceFile;
+    }
+  }
+  
+  return data;
+}
+
 // 파일 목록 조회 (컷 기준)
 export async function getFilesByCut(cutId: string): Promise<FileWithRelations[]> {
   const { data, error } = await supabase

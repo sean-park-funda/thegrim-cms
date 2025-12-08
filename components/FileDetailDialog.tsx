@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { File as FileType, Process, FileWithRelations, UserProfile } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -442,16 +443,197 @@ export function FileDetailDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
-        <DialogTitle asChild>
-          <h2 className="text-xl font-semibold break-words mb-0">{file.file_name}</h2>
-        </DialogTitle>
-        <div className="space-y-6">
-          {/* 파일 미리보기 */}
-          <div className="w-full">
+      <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] p-0 overflow-hidden">
+        <VisuallyHidden>
+          <DialogTitle>{file.file_name}</DialogTitle>
+        </VisuallyHidden>
+        <div className="flex h-[95vh]">
+          {/* 왼쪽 패널 - 기본 정보 + 메타데이터 */}
+          <div className="w-[240px] flex-shrink-0 border-r h-full overflow-y-auto bg-muted/30">
+            <div className="p-3 space-y-3">
+              {/* 파일명 */}
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">파일명</p>
+                <p className="text-xs font-medium break-words leading-tight">{file.file_name}</p>
+              </div>
+
+              {/* 기본 정보 */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">기본 정보</p>
+                
+                {file.file_size && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <HardDrive className="h-2.5 w-2.5" />
+                      크기
+                    </span>
+                    <span>{(file.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                  </div>
+                )}
+                
+                {file.file_type === 'image' && imageDimensions && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">사이즈</span>
+                    <span>{imageDimensions.width} × {imageDimensions.height}</span>
+                  </div>
+                )}
+                
+                {file.mime_type && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">타입</span>
+                    <span className="truncate max-w-[100px]">{file.mime_type}</span>
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-2.5 w-2.5" />
+                    생성일
+                  </span>
+                  <span>{format(new Date(file.created_at), 'MM/dd HH:mm')}</span>
+                </div>
+                
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <User className="h-2.5 w-2.5" />
+                    생성자
+                  </span>
+                  <span className="truncate max-w-[100px]">
+                    {file.created_by_user?.name || '알 수 없음'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 원본 파일 */}
+              {file.source_file && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <Link2 className="h-2.5 w-2.5" />
+                    원본 파일
+                  </p>
+                  <div 
+                    className="flex items-center gap-2 p-1.5 bg-background rounded cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => onSourceFileClick?.(file.source_file!)}
+                  >
+                    {file.source_file.file_type === 'image' ? (
+                      <div className="relative w-8 h-8 bg-muted rounded overflow-hidden flex-shrink-0">
+                        <Image
+                          src={(() => {
+                            const thumbnailPath = file.source_file!.thumbnail_path;
+                            if (thumbnailPath) {
+                              return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${thumbnailPath}`;
+                            }
+                            const filePath = file.source_file!.file_path;
+                            return filePath?.startsWith('http') ? filePath : `https://${filePath}`;
+                          })()}
+                          alt={file.source_file.file_name}
+                          fill
+                          className="object-cover"
+                          sizes="32px"
+                          unoptimized={true}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                        <FileIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <p className="text-xs truncate flex-1">{file.source_file.file_name}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 설명 */}
+              {file.description && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">설명</p>
+                  <p className="text-xs leading-relaxed">{file.description}</p>
+                </div>
+              )}
+
+              {/* 생성 프롬프트 */}
+              {file.prompt && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <Wand2 className="h-2.5 w-2.5" />
+                    생성 프롬프트
+                  </p>
+                  <div className="p-2 bg-background rounded text-xs leading-relaxed break-words max-h-[120px] overflow-y-auto">
+                    {file.prompt}
+                  </div>
+                </div>
+              )}
+
+              {/* 메타데이터 */}
+              {file.file_type === 'image' && (
+                <div className="space-y-1.5 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">메타데이터</p>
+                    {canUpload && onAnalyze && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAnalyze(file, e);
+                        }}
+                        disabled={analyzingFiles.has(file.id)}
+                        title="메타데이터 분석"
+                      >
+                        <Sparkles className={`h-3 w-3 ${analyzingFiles.has(file.id) ? 'animate-pulse' : ''}`} />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {hasMetadata ? (
+                    <div className="space-y-2">
+                      {metadata?.scene_summary && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-0.5">장면 요약</p>
+                          <p className="text-xs leading-relaxed">{metadata.scene_summary}</p>
+                        </div>
+                      )}
+                      {metadata?.tags && metadata.tags.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-1">태그</p>
+                          <div className="flex flex-wrap gap-1">
+                            {metadata.tags.map((tag, idx) => (
+                              <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {typeof metadata?.characters_count === 'number' && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">등장인물</span>
+                          <span>{metadata.characters_count}명</span>
+                        </div>
+                      )}
+                      {metadata?.analyzed_at && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">분석일시</span>
+                          <span>{format(new Date(metadata.analyzed_at), 'MM/dd HH:mm')}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      메타데이터가 없습니다
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 중앙 패널 - 이미지 */}
+          <div className="flex-1 flex items-center justify-center bg-muted/10 p-4 relative">
             {file.file_type === 'image' && !imageErrors.has(file.id) ? (
               <div 
-                className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden group cursor-pointer" 
+                className="relative w-full h-full bg-muted rounded-lg overflow-hidden group cursor-pointer" 
                 onClick={() => onImageViewerOpen(imageUrl, file.file_name)}
               >
                 <Image 
@@ -459,7 +641,7 @@ export function FileDetailDialog({
                   alt={file.file_name} 
                   fill 
                   className="object-contain" 
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                  sizes="(max-width: 768px) 100vw, 70vw"
                   unoptimized={true}
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
@@ -469,7 +651,7 @@ export function FileDetailDialog({
                 </div>
               </div>
             ) : (
-              <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
+              <div className="w-full h-full bg-muted rounded-lg flex items-center justify-center">
                 <div className="text-center">
                   <FileIcon className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
                   {file.file_type === 'image' && (
@@ -478,211 +660,33 @@ export function FileDetailDialog({
                 </div>
               </div>
             )}
+            
+            {/* 이미지 우상단 아이콘 버튼 */}
+            <div className="absolute top-6 right-6 flex gap-1.5">
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-8 w-8 bg-background/80 backdrop-blur-sm hover:bg-background"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDownload(file, e);
+                }}
+                title="다운로드"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          {/* 기본 정보 및 메타데이터 */}
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* 기본 정보 카드 */}
-            <Card className="flex-1">
-              <CardHeader>
-                <CardTitle className="text-base">기본 정보</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <span className="text-sm text-muted-foreground">파일명</span>
-                  <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{file.file_name}</span>
-                </div>
-                {file.file_size && (
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm text-muted-foreground flex items-center gap-1">
-                      <HardDrive className="h-3 w-3" />
-                      파일 크기
-                    </span>
-                    <span className="text-sm font-medium text-right flex-1 ml-4">
-                      {(file.file_size / 1024 / 1024).toFixed(2)} MB
-                    </span>
-                  </div>
-                )}
-                {file.mime_type && (
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm text-muted-foreground">MIME 타입</span>
-                    <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{file.mime_type}</span>
-                  </div>
-                )}
-                {file.file_type === 'image' && imageDimensions && (
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm text-muted-foreground">이미지 사이즈</span>
-                    <span className="text-sm font-medium text-right flex-1 ml-4">
-                      {imageDimensions.width} × {imageDimensions.height} px
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-start justify-between">
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    생성일
-                  </span>
-                  <span className="text-sm font-medium text-right flex-1 ml-4">
-                    {format(new Date(file.created_at), 'yyyy년 MM월 dd일 HH:mm')}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between">
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    생성자
-                  </span>
-                  <span className="text-sm font-medium text-right flex-1 ml-4">
-                    {file.created_by_user 
-                      ? `${file.created_by_user.name || '이름 없음'} (${file.created_by_user.email})`
-                      : '알 수 없음'}
-                  </span>
-                </div>
-                {file.source_file && (
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                      <Link2 className="h-3 w-3" />
-                      원본 파일
-                    </p>
-                    <div 
-                      className="flex items-center gap-3 p-2 bg-muted rounded-md cursor-pointer hover:bg-muted/80 transition-colors"
-                      onClick={() => onSourceFileClick?.(file.source_file!)}
-                    >
-                      {file.source_file.file_type === 'image' ? (
-                        <div className="relative w-12 h-12 bg-background rounded overflow-hidden flex-shrink-0">
-                          <Image
-                            src={(() => {
-                              // 썸네일이 있으면 썸네일 사용, 없으면 원본 사용
-                              const thumbnailPath = file.source_file!.thumbnail_path;
-                              if (thumbnailPath) {
-                                return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${thumbnailPath}`;
-                              }
-                              const filePath = file.source_file!.file_path;
-                              return filePath?.startsWith('http') ? filePath : `https://${filePath}`;
-                            })()}
-                            alt={file.source_file.file_name}
-                            fill
-                            className="object-cover"
-                            sizes="48px"
-                            unoptimized={true}
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-12 h-12 bg-background rounded flex items-center justify-center flex-shrink-0">
-                          <FileIcon className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{file.source_file.file_name}</p>
-                        <p className="text-xs text-muted-foreground">클릭하여 원본 파일 보기</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {file.description && (
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-muted-foreground mb-1">설명</p>
-                    <p className="text-sm">{file.description}</p>
-                  </div>
-                )}
-                {file.prompt && (
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                      <Wand2 className="h-3 w-3" />
-                      생성 프롬프트
-                    </p>
-                    <div className="p-3 bg-muted rounded-md">
-                      <p className="text-sm whitespace-pre-wrap break-words">{file.prompt}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 메타데이터 카드 */}
-            {file.file_type === 'image' && (
-              <Card className="flex-1">
-                <CardHeader>
-                  <CardTitle className="text-base">메타데이터</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {hasMetadata ? (
-                    <div className="space-y-3">
-                      {metadata?.scene_summary && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">장면 요약</p>
-                          <p className="text-sm">{metadata.scene_summary}</p>
-                        </div>
-                      )}
-                      {metadata?.tags && metadata.tags.length > 0 && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">태그</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {metadata.tags.map((tag, idx) => (
-                              <Badge key={idx} variant="secondary" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {typeof metadata?.characters_count === 'number' && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">등장 인물 수</p>
-                          <p className="text-sm">{metadata.characters_count}명</p>
-                        </div>
-                      )}
-                      {metadata?.analyzed_at && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">분석 일시</p>
-                          <p className="text-sm">
-                            {format(new Date(metadata.analyzed_at), 'yyyy년 MM월 dd일 HH:mm')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Sparkles className="h-4 w-4" />
-                      <span>메타데이터가 없습니다. 분석 버튼을 눌러 생성하세요.</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="flex gap-2 pt-4 border-t flex-wrap">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDownload(file, e);
-              }}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              다운로드
-            </Button>
-            {file.file_type === 'image' && canUpload && onAnalyze && (
+          {/* 우측 패널 - 액션 버튼 */}
+          <div className="w-[100px] flex-shrink-0 border-l h-full p-2 pt-10 flex flex-col gap-2">
+            {file.file_type === 'image' && canUpload && (
               <>
                 <Button
                   variant="outline"
-                  className="flex-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenChange(false);
-                    onAnalyze(file, e);
-                  }}
-                  disabled={analyzingFiles.has(file.id)}
-                >
-                  <Sparkles className={`h-4 w-4 mr-2 ${analyzingFiles.has(file.id) ? 'animate-pulse' : ''}`} />
-                  {analyzingFiles.has(file.id) ? '분석 중...' : '분석'}
-                </Button>
-                <Button
-                  variant="outline"
+                  size="sm"
                   className={cn(
-                    "flex-1",
+                    "w-full h-auto py-3 flex flex-col items-center gap-1",
                     regeneratingImage === file.id && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
                   )}
                   onClick={(e) => {
@@ -691,13 +695,15 @@ export function FileDetailDialog({
                   }}
                   disabled={regeneratingImage === file.id}
                 >
-                  <Wand2 className={`h-4 w-4 mr-2 ${regeneratingImage === file.id ? 'animate-pulse' : ''}`} />
-                  {regeneratingImage === file.id ? '재생성 중...' : 'AI 다시그리기'}
+                  <Wand2 className={`h-4 w-4 ${regeneratingImage === file.id ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px]">AI다시그리기</span>
                 </Button>
+
                 <Button
                   variant="outline"
+                  size="sm"
                   className={cn(
-                    "flex-1",
+                    "w-full h-auto py-3 flex flex-col items-center gap-1",
                     analyzingModifications && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
                   )}
                   onClick={(e) => {
@@ -706,23 +712,25 @@ export function FileDetailDialog({
                   }}
                   disabled={analyzingModifications || !file || file.file_type !== 'image'}
                 >
-                  <FileSearch className={`h-4 w-4 mr-2 ${analyzingModifications ? 'animate-pulse' : ''}`} />
-                  {analyzingModifications ? '분석 중...' : '수정사항 분석'}
+                  <FileSearch className={`h-4 w-4 ${analyzingModifications ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px]">수정분석</span>
                 </Button>
               </>
             )}
+
             {canDelete && (
               <Button
                 variant="destructive"
-                className="flex-1"
+                size="sm"
+                className="w-full h-auto py-3 flex flex-col items-center gap-1 mt-auto"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenChange(false);
                   onDelete(file, e);
                 }}
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                삭제
+                <Trash2 className="h-4 w-4" />
+                <span className="text-[10px]">삭제</span>
               </Button>
             )}
           </div>

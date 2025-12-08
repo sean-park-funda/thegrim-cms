@@ -253,7 +253,15 @@ export function FileGrid() {
         return newSet;
       });
 
-      alert('이미지 분석이 완료되었습니다.');
+      // 파일 상세 다이얼로그가 열려있으면 fileToView 업데이트
+      if (fileToView && fileToView.id === file.id) {
+        // 파일 정보 다시 로드
+        const { getFileById } = await import('@/lib/api/files');
+        const updatedFile = await getFileById(file.id);
+        if (updatedFile) {
+          setFileToView(updatedFile);
+        }
+      }
     } catch (error: unknown) {
       console.error('이미지 분석 실패:', error);
       // 실패 시에도 대기 목록에서 제거
