@@ -2,11 +2,6 @@ import { supabase } from '../supabase';
 
 // Supabase 환경 변수 가져오기
 const getSupabaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    return window.location.origin.includes('localhost') 
-      ? process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-      : process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  }
   return process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 };
 
@@ -524,7 +519,16 @@ export async function createInvitation(
 
     // 이메일 자동 전송 (비동기, 실패해도 초대는 성공으로 처리)
     try {
-      const invitationLink = `${window.location.origin}/signup?token=${data.token}`;
+      // 서버 사이드와 클라이언트 사이드 모두 지원 - 환경 변수만 사용하여 빌드 시 오류 방지
+      // NEXT_PUBLIC_ 접두사로 클라이언트에서도 접근 가능
+      const origin = process.env.NEXT_PUBLIC_APP_URL || 
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+      
+      if (!origin) {
+        console.warn('NEXT_PUBLIC_APP_URL 또는 VERCEL_URL 환경 변수가 설정되지 않았습니다. 초대 링크를 생성할 수 없습니다.');
+      }
+      
+      const invitationLink = origin ? `${origin}/signup?token=${data.token}` : '';
       
       // 초대한 사람의 이름 가져오기
       let inviterName: string | undefined;

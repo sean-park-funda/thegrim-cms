@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { File as FileType } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,7 @@ export function FileCard({
             className="object-cover" 
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             unoptimized={true}
+            draggable={false}
             onError={() => {
               console.error('이미지 로딩 실패:', imageUrl, file.id);
               // 썸네일 로딩 실패 시 원본으로 fallback
@@ -94,17 +96,56 @@ export function FileCard({
     );
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasDragged, setHasDragged] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    // 버튼 영역에서 시작된 드래그는 무시
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    // dataTransfer 설정
+    e.dataTransfer.setData('text/plain', file.id);
+    e.dataTransfer.setData('fileId', file.id);
+    e.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+    setHasDragged(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    // 드래그가 끝난 후 잠시 후에 hasDragged를 초기화하여 클릭 이벤트가 정상 작동하도록
+    setTimeout(() => {
+      setHasDragged(false);
+    }, 100);
+  };
+
   return (
     <Card 
-      className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-pointer"
+      draggable={true}
+      className={`overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-grab active:cursor-grabbing select-none ${
+        isDragging ? 'opacity-50 scale-95' : ''
+      }`}
       onClick={(e) => {
+        // 드래그가 발생했으면 클릭 무시
+        if (hasDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         e.stopPropagation();
         onClick();
       }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
     >
       {renderFilePreview()}
-      <div className="p-2 sm:p-3">
-        <p className="text-xs sm:text-sm font-medium truncate">{file.file_name}</p>
+      <div className="p-2 sm:p-3 select-none">
+        <p className="text-xs sm:text-sm font-medium truncate select-none">{file.file_name}</p>
         {file.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{file.description}</p>
         )}
@@ -141,8 +182,21 @@ export function FileCard({
             )}
           </div>
         )}
-        <div className="flex gap-1.5 sm:gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={onDownload}>
+        <div 
+          className="flex gap-1.5 sm:gap-2 mt-2" 
+          onClick={(e) => e.stopPropagation()}
+          onDragStart={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" 
+            onClick={onDownload}
+            draggable={false}
+          >
             <Download className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
           </Button>
           {file.file_type === 'image' && canUpload && onAnalyze && (
@@ -152,17 +206,30 @@ export function FileCard({
               className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" 
               onClick={onAnalyze}
               disabled={isAnalyzing}
+              draggable={false}
             >
               <Sparkles className={`h-3.5 w-3.5 sm:h-3 sm:w-3 ${isAnalyzing ? 'animate-pulse' : ''}`} />
             </Button>
           )}
           {canUpload && (!file.description || file.description.trim() === '') && onEdit && (
-            <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" onClick={onEdit}>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="h-8 sm:h-7 px-2 flex-1 touch-manipulation" 
+              onClick={onEdit}
+              draggable={false}
+            >
               <Edit className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           )}
           {canDelete && (
-            <Button size="sm" variant="ghost" className="h-8 sm:h-7 px-2 flex-1 text-destructive hover:text-destructive touch-manipulation" onClick={onDelete}>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="h-8 sm:h-7 px-2 flex-1 text-destructive hover:text-destructive touch-manipulation" 
+              onClick={onDelete}
+              draggable={false}
+            >
               <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
             </Button>
           )}

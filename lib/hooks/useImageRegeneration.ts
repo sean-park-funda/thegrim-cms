@@ -53,11 +53,13 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo) => {
-    if (!fileToView || fileToView.file_type !== 'image') return;
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string) => {
+    // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
+    const actualFileId = targetFileId || (fileToView?.id);
+    if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
 
     try {
-      setRegeneratingImage(fileToView.id);
+      setRegeneratingImage(actualFileId);
 
       // 기본값 사용 (스타일 정보는 호출 측에서 처리됨)
       const regenerateCount = count ?? generationCount;
@@ -115,7 +117,7 @@ export function useImageRegeneration({
       }
 
       // 배치 API 사용 (파일 ID 기반)
-      const fileId = fileToView.id;
+      const fileId = actualFileId;
       const referenceFileId = referenceImage?.id;
 
       // 생성할 이미지들을 provider별로 그룹화
