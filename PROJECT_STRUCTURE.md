@@ -47,7 +47,7 @@ thegrim-CMS/
 │   ├── FileEditDialog.tsx       # 파일 정보 수정 다이얼로그
 │   ├── FileDetailDialog.tsx     # 파일 상세 정보 다이얼로그
 │   ├── ImageViewer.tsx          # 이미지 전체화면 뷰어
-│   ├── ImageRegenerationDialog.tsx  # 이미지 재생성 스타일 선택 다이얼로그
+│   ├── ImageRegenerationWorkspace.tsx  # AI 다시그리기 통합 작업 공간 (2패널 레이아웃)
 │   ├── StyleManagementDialog.tsx    # 스타일 관리 다이얼로그 (생성/수정/삭제)
 │   ├── StyleEditDialog.tsx          # 스타일 편집 폼 다이얼로그
 │   ├── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
@@ -226,10 +226,12 @@ thegrim-CMS/
 - 이미지 전체화면 뷰어
 - 줌 인/아웃, 드래그, 모바일 핀치 줌 지원
 
-**ImageRegenerationDialog.tsx**
-- 이미지 재생성 스타일 선택 다이얼로그
-- 톤먹 넣기: 레퍼런스 이미지 선택 및 생성 장수 선택 기능
-- 스타일별 다양한 워크플로우 지원 (바로 실행, 장수 선택, 레퍼런스 선택)
+**ImageRegenerationWorkspace.tsx**
+- AI 다시그리기 통합 작업 공간 (2패널 레이아웃)
+- **왼쪽 패널 (30%)**: 원본 이미지 미리보기, 스타일 선택, 참조 이미지, 생성 장수, 프롬프트 편집
+- **오른쪽 패널 (70%)**: 생성된 이미지 그리드, 선택/저장 기능
+- 설정을 바꿔가며 생성할 때마다 결과가 계속 누적됨 (여러 스타일 비교 가능)
+- 톤먹 넣기: 레퍼런스 이미지 선택 기능
 
 **ProcessFileSection.tsx**
 - 공정별 파일 섹션 컴포넌트

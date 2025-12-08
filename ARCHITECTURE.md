@@ -295,7 +295,7 @@ Gemini 2.5 Flash Image 모델과 Seedream API를 활용하여 기존 이미지�
 - **DB 테이블**: `ai_regeneration_styles`
 - **API 파일**: `lib/api/aiStyles.ts`
 - **UI 컴포넌트**:
-  - `components/ImageRegenerationDialog.tsx`: 스타일 선택 다이얼로그
+  - `components/ImageRegenerationWorkspace.tsx`: 통합 재생성 작업 공간 (2패널 레이아웃)
   - `components/StyleManagementDialog.tsx`: 스타일 관리 다이얼로그
   - `components/StyleEditDialog.tsx`: 스타일 생성/수정 폼
 - **기능**:
@@ -337,16 +337,18 @@ Gemini 2.5 Flash Image 모델과 Seedream API를 활용하여 기존 이미지�
   - 최신순으로 정렬하여 표시
 
 #### 5. UI 컴포넌트
-- **파일**: `components/FileDetailDialog.tsx`, `components/ImageRegenerationDialog.tsx`
+- **파일**: `components/FileDetailDialog.tsx`, `components/ImageRegenerationWorkspace.tsx`
 - **기능**:
   - 파일 상세 Dialog에 "AI 다시그리기" 버튼 추가
-  - 버튼 클릭 시 스타일 선택 Dialog 표시
+  - 버튼 클릭 시 통합 재생성 작업 공간 열림
+  - **2패널 레이아웃** (왼쪽 30%, 오른쪽 70%):
+    - **왼쪽 패널**: 원본 이미지 미리보기, 스타일 선택, 참조 이미지, 생성 장수, 프롬프트 편집
+    - **오른쪽 패널**: 생성된 이미지 그리드 (스크롤 영역), 선택/저장 기능
   - 레퍼런스 이미지 선택 기능 (톤먹 넣기)
   - 생성 장수 선택 기능
-  - 재생성된 이미지 표시 영역 (원본 이미지 아래)
+  - **결과 누적**: 설정을 바꿔가며 생성할 때마다 결과가 계속 쌓임
   - 재생성된 이미지 선택 및 일괄 저장 기능
   - 재생성된 이미지 저장 시 공정 선택 기능
-  - 히스토리 탭: 임시 파일 히스토리 조회 및 표시
   - 재생성 중 로딩 상태 표시 (샤이닝 효과 및 아이콘 회전)
   - 점진적 로딩: 배치별로 완료된 이미지 즉시 표시
 
@@ -389,18 +391,25 @@ GEMINI_API_KEY=your-gemini-api-key
    - 파일 그리드에서 이미지 파일 클릭
    - 파일 상세 Dialog 열림
 
-2. **스타일 선택**
+2. **AI 다시그리기 작업 공간 열기**
    - "AI 다시그리기" 버튼 클릭
-   - 스타일 선택 Dialog에서 원하는 스타일 선택
+   - 통합 재생성 작업 공간 (2패널) 열림
 
-3. **이미지 재생성**
-   - API 호출하여 이미지 재생성
-   - 재생성된 이미지 표시
+3. **스타일 선택 및 이미지 재생성**
+   - 왼쪽 패널에서 원하는 스타일 선택
+   - 필요시 참조 이미지, 생성 장수, 프롬프트 수정
+   - "생성하기" 버튼 클릭
+   - 오른쪽 패널에 재생성된 이미지 표시
 
-4. **추가 작업**
-   - **다시그리기**: 우상단 리프레시 아이콘 클릭하여 동일한 스타일로 재생성
-   - **파일로 등록**: 재생성된 이미지를 파일로 저장 (원본과 같은 공정)
-   - **다운로드**: 재생성된 이미지를 로컬에 다운로드
+4. **다양한 스타일 시도**
+   - 왼쪽 패널에서 다른 스타일 선택
+   - 다시 "생성하기" 클릭
+   - 오른쪽 패널에 결과가 계속 누적됨 (여러 스타일 비교 가능)
+
+5. **결과 저장**
+   - 원하는 이미지 선택 (체크박스)
+   - "선택한 이미지 등록" 클릭
+   - 저장할 공정 선택 후 등록
 
 ### 파일 구조
 ```
@@ -416,8 +425,8 @@ app/
         └── route.ts          # 임시 파일 히스토리 조회 API
 
 components/
-├── FileDetailDialog.tsx         # 파일 상세 정보 (재생성 UI 포함)
-├── ImageRegenerationDialog.tsx  # 재생성 스타일 선택 다이얼로그
+├── FileDetailDialog.tsx         # 파일 상세 정보
+├── ImageRegenerationWorkspace.tsx  # 통합 재생성 작업 공간 (2패널 레이아웃)
 ├── StyleManagementDialog.tsx    # 스타일 관리 다이얼로그 (생성/수정/삭제)
 └── StyleEditDialog.tsx          # 스타일 편집 폼 다이얼로그
 

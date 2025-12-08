@@ -15,7 +15,7 @@ import { FileDeleteDialog } from '@/components/FileDeleteDialog';
 import { FileEditDialog } from '@/components/FileEditDialog';
 import { FileDetailDialog } from '@/components/FileDetailDialog';
 import { ImageViewer } from '@/components/ImageViewer';
-import { ImageRegenerationDialog } from '@/components/ImageRegenerationDialog';
+import { ImageRegenerationWorkspace } from '@/components/ImageRegenerationWorkspace';
 import { ProcessFileSection } from '@/components/ProcessFileSection';
 
 export function FileGrid() {
@@ -32,7 +32,7 @@ export function FileGrid() {
   const [analyzingFiles, setAnalyzingFiles] = useState<Set<string>>(new Set());
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [fileToView, setFileToView] = useState<FileWithRelations | null>(null);
-  const [styleSelectionOpen, setStyleSelectionOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [generationCount, setGenerationCount] = useState<number>(2);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
@@ -528,20 +528,40 @@ export function FileGrid() {
         onDescriptionChange={setEditDescription}
       />
 
-      {/* 스타일 선택 Dialog */}
-      <ImageRegenerationDialog
-        styleSelectionOpen={styleSelectionOpen}
-        onStyleSelectionChange={setStyleSelectionOpen}
-        onRegenerate={handleRegenerate}
+      {/* AI 다시그리기 통합 작업 공간 */}
+      <ImageRegenerationWorkspace
+        open={workspaceOpen}
+        onOpenChange={(open) => {
+          setWorkspaceOpen(open);
+          if (!open) {
+            // Blob URL 정리
+            regeneratedImages.forEach((img) => {
+              if (img.url) {
+                URL.revokeObjectURL(img.url);
+              }
+            });
+            setRegeneratedImages([]);
+            setSelectedImageIds(new Set());
+          }
+        }}
+        file={fileToView}
+        webtoonId={selectedWebtoon?.id}
+        currentUserId={profile?.id}
         regeneratedImages={regeneratedImages}
         selectedImageIds={selectedImageIds}
-        onImageSelect={handleImageSelect}
-        onSaveImages={handleSaveImages}
         regeneratingImage={regeneratingImage}
+        savingImages={savingImages}
         generationCount={generationCount}
         onGenerationCountChange={setGenerationCount}
-        fileToViewId={fileToView?.id || null}
-        webtoonId={selectedWebtoon?.id}
+        onRegenerate={handleRegenerate}
+        onRegenerateSingle={handleRegenerateSingle}
+        onImageSelect={handleImageSelect}
+        onSaveImages={handleSaveImages}
+        onSelectAll={handleSelectAll}
+        onDeselectAll={handleDeselectAll}
+        onImageViewerOpen={handleImageViewerOpen}
+        processes={processes}
+        canUpload={!!canUpload}
       />
 
       {/* 파일 상세 정보 Dialog */}
@@ -553,7 +573,7 @@ export function FileGrid() {
         onDownload={handleDownload}
         onAnalyze={canUpload ? handleAnalyzeClick : undefined}
         onDelete={handleDeleteClick}
-        onRegenerateClick={() => setStyleSelectionOpen(true)}
+        onRegenerateClick={() => setWorkspaceOpen(true)}
         onRegenerate={handleRegenerate}
         onRegenerateSingle={handleRegenerateSingle}
         onImageSelect={handleImageSelect}
