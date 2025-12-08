@@ -434,15 +434,8 @@ export function FileGrid() {
   return (
     <>
       <div className="h-full flex flex-col">
-        <div className="p-3 sm:p-4 pb-0 flex-shrink-0">
-          <div className="mb-3 sm:mb-4">
-            <h2 className="text-base sm:text-lg font-semibold">공정별 파일</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground">{(selectedWebtoon?.unit_type || 'cut') === 'cut' ? '컷' : '페이지'} {selectedCut.cut_number}의 제작 파일들</p>
-          </div>
-        </div>
-
         <Tabs value={activeProcessId} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div className="px-3 sm:px-4 pb-3 flex-shrink-0">
+          <div className="px-3 sm:px-4 pt-2 pb-3 flex-shrink-0">
             <TabsList className="w-full overflow-x-auto">
               {sortedProcesses.map((process) => {
                 const processFiles = getFilesByProcess(process.id);
