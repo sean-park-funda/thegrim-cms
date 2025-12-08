@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Search, ArrowUpDown, X } from 'lucide-react';
 import { Episode } from '@/lib/supabase';
-import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
+import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
 
 // 정렬 옵션
 type SortOption = 'number' | 'name' | 'updated' | 'status';
@@ -43,7 +43,7 @@ interface EpisodeCardProps {
   onClick: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
-  profile: { role: string } | null;
+  profile: { role: UserRole } | null;
 }
 
 function EpisodeCard({ episode, isSelected, onClick, onEdit, onDelete, profile }: EpisodeCardProps) {

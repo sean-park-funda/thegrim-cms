@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { getWebtoons, createWebtoon, updateWebtoon, deleteWebtoon } from '@/lib/api/webtoons';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, Search, SlidersHorizontal, ArrowUpDown, X, Upload, ImageIcon } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Webtoon, supabase } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
@@ -16,24 +16,6 @@ import { ReferenceFileDialog } from './ReferenceFileDialog';
 
 // 상수
 const MAX_WEBTOONS = 10;
-
-// 정렬 옵션
-type SortOption = 'updated' | 'name' | 'status' | 'created';
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'updated', label: '최근 수정순' },
-  { value: 'name', label: '이름순' },
-  { value: 'status', label: '연재 상태' },
-  { value: 'created', label: '생성일순' },
-];
-
-// 필터 옵션
-type FilterOption = 'all' | 'active' | 'completed' | 'private';
-const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
-  { value: 'all', label: '전체' },
-  { value: 'active', label: '연재중' },
-  { value: 'completed', label: '완결' },
-  { value: 'private', label: '비공개' },
-];
 
 // 상태 뱃지 컬러 매핑
 const STATUS_BADGE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -174,47 +156,6 @@ export function WebtoonList() {
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [referenceFileDialogOpen, setReferenceFileDialogOpen] = useState(false);
   const [selectedWebtoonForReference, setSelectedWebtoonForReference] = useState<Webtoon | null>(null);
-
-  // 검색, 정렬, 필터 상태
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortOption, setSortOption] = useState<SortOption>('updated');
-  const [filterOption, setFilterOption] = useState<FilterOption>('all');
-
-  // 필터링 및 정렬된 웹툰 목록
-  const filteredWebtoons = useMemo(() => {
-    let result = [...webtoons];
-
-    // 검색 필터
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      result = result.filter(w =>
-        w.title.toLowerCase().includes(query) ||
-        (w.description && w.description.toLowerCase().includes(query))
-      );
-    }
-
-    // 상태 필터
-    if (filterOption !== 'all') {
-      result = result.filter(w => w.status === filterOption);
-    }
-
-    // 정렬
-    result.sort((a, b) => {
-      switch (sortOption) {
-        case 'name':
-          return a.title.localeCompare(b.title, 'ko');
-        case 'status':
-          return (a.status || '').localeCompare(b.status || '');
-        case 'created':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        case 'updated':
-        default:
-          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-      }
-    });
-
-    return result;
-  }, [webtoons, searchQuery, sortOption, filterOption]);
 
   // 최대 개수 도달 여부
   const isMaxReached = webtoons.length >= MAX_WEBTOONS;
@@ -389,109 +330,25 @@ export function WebtoonList() {
   return (
     <>
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
-        {/* 페이지 헤더 + 툴바 영역 */}
-        <div className="mb-6">
-          {/* 상단: 제목 + 새 웹툰 버튼 */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-xl font-semibold">웹툰 목록</h2>
-              <span className="text-sm text-muted-foreground">
-                ({webtoons.length}개 · 최대 {MAX_WEBTOONS}개)
-              </span>
-            </div>
-            {profile && canCreateContent(profile.role) && (
-              <Button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleCreate();
-                }}
-                disabled={isMaxReached}
-                title={isMaxReached ? `최대 ${MAX_WEBTOONS}개까지 생성 가능합니다.` : '새 웹툰 추가'}
-                className="gap-1.5"
-              >
-                <Plus className="h-4 w-4" />
-                새 웹툰
-              </Button>
-            )}
+        {/* 새 웹툰 버튼 */}
+        {profile && canCreateContent(profile.role) && (
+          <div className="flex justify-end mb-6">
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCreate();
+              }}
+              disabled={isMaxReached}
+              title={isMaxReached ? `최대 ${MAX_WEBTOONS}개까지 생성 가능합니다.` : '새 웹툰 추가'}
+              size="sm"
+              className="h-9 gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              새 웹툰
+            </Button>
           </div>
-
-          {/* 툴바: 검색 + 정렬 + 필터 */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            {/* 검색 */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="text"
-                placeholder="웹툰 제목으로 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9 h-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="검색 초기화"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* 정렬 드롭다운 */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 gap-1.5">
-                    <ArrowUpDown className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {SORT_OPTIONS.find(o => o.value === sortOption)?.label}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuLabel>정렬 기준</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuRadioGroup value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
-                    {SORT_OPTIONS.map((option) => (
-                      <DropdownMenuRadioItem key={option.value} value={option.value}>
-                        {option.label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* 필터 드롭다운 */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant={filterOption !== 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-9 gap-1.5"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {FILTER_OPTIONS.find(o => o.value === filterOption)?.label}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-36">
-                  <DropdownMenuLabel>상태 필터</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuRadioGroup value={filterOption} onValueChange={(v) => setFilterOption(v as FilterOption)}>
-                    {FILTER_OPTIONS.map((option) => (
-                      <DropdownMenuRadioItem key={option.value} value={option.value}>
-                        {option.label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* 빈 상태 */}
         {webtoons.length === 0 ? (
@@ -502,17 +359,9 @@ export function WebtoonList() {
               <p className="text-sm mt-1">새 웹툰을 추가해주세요.</p>
             </CardContent>
           </Card>
-        ) : filteredWebtoons.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-base font-medium">검색 결과가 없습니다.</p>
-              <p className="text-sm mt-1">다른 검색어나 필터를 시도해주세요.</p>
-            </CardContent>
-          </Card>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-4">
-            {filteredWebtoons.map((webtoon) => (
+            {webtoons.map((webtoon) => (
               <WebtoonCard
                 key={webtoon.id}
                 webtoon={webtoon}
