@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Webtoon, supabase } from '@/lib/supabase';
-import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
+import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
 import { ReferenceFileDialog } from './ReferenceFileDialog';
 
 // 상수
@@ -39,7 +39,7 @@ interface WebtoonCardProps {
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
   onManageReferences: (e: React.MouseEvent) => void;
-  profile: { role: string } | null;
+  profile: { role: UserRole } | null;
 }
 
 function WebtoonCard({ webtoon, isSelected, onClick, onEdit, onDelete, onManageReferences, profile }: WebtoonCardProps) {
