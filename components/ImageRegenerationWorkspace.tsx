@@ -190,25 +190,13 @@ export function ImageRegenerationWorkspace({
           setEditedPrompt(defaultPrompt.prompt_text);
         } else {
           setSelectedPromptId(null);
-          // 캐릭터 바꾸기 스타일이면 디폴트 프롬프트 설정
-          const isCharacterChange = selectedStyle.style_key === 'character-change' || selectedStyle.name === '캐릭터 바꾸기';
-          if (isCharacterChange) {
-            const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
-            setEditedPrompt(characterChangePrompt);
-          } else {
-            setEditedPrompt(selectedStyle.prompt);
-          }
+          // DB에서 가져온 스타일 프롬프트 사용
+          setEditedPrompt(selectedStyle.prompt);
         }
       } catch (error) {
         console.error('프롬프트 로드 실패:', error);
-        // 캐릭터 바꾸기 스타일이면 디폴트 프롬프트 설정
-        const isCharacterChange = selectedStyle.style_key === 'character-change' || selectedStyle.name === '캐릭터 바꾸기';
-        if (isCharacterChange) {
-          const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
-          setEditedPrompt(characterChangePrompt);
-        } else {
-          setEditedPrompt(selectedStyle.prompt);
-        }
+        // 프롬프트 로드 실패 시에도 DB에서 가져온 스타일 프롬프트 사용
+        setEditedPrompt(selectedStyle.prompt);
       } finally {
         setLoadingPrompts(false);
       }

@@ -979,11 +979,10 @@ export async function POST(request: NextRequest) {
       const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
       
       if (hasCharacterSheets && characterSheetImages.length > 0) {
-        // 캐릭터 바꾸기: 특별한 프롬프트 + 원본 이미지(1번) + 캐릭터시트 이미지들(2번 이후)
-        const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
-        
+        // 캐릭터 바꾸기: DB에서 가져온 프롬프트 사용 + 원본 이미지(1번) + 캐릭터시트 이미지들(2번 이후)
+        // stylePrompt는 DB의 스타일 프롬프트 또는 사용자가 수정한 프롬프트
         contentParts.push({
-          text: characterChangePrompt,
+          text: stylePrompt,
         });
         
         // 1번 이미지: 원본 이미지
