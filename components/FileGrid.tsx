@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile, deleteFile, updateFile, analyzeImage, getFilesByCut } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
@@ -143,31 +144,42 @@ export function FileGrid() {
   const handleFileUpload = useCallback(async (acceptedFiles: globalThis.File[], processId: string) => {
     if (!selectedCut) return;
 
-    // 상태 업데이트를 즉시 반영하기 위해 함수형 업데이트 사용
-    setUploadingFiles(prev => {
-      const newState = { ...prev, [processId]: acceptedFiles };
-      return newState;
-    });
-    
-    // 진행률 초기화도 즉시 반영
-    setUploadProgress(prev => {
-      const newState = { ...prev };
-      if (!newState[processId]) {
-        newState[processId] = {};
-      }
-      acceptedFiles.forEach(file => {
-        newState[processId][file.name] = 0;
+    // 상태 업데이트를 즉시 반영하기 위해 flushSync 사용
+    flushSync(() => {
+      setUploadingFiles(prev => {
+        const newState = { ...prev, [processId]: acceptedFiles };
+        return newState;
       });
-      return newState;
+      
+      // 진행률 초기화도 즉시 반영
+      setUploadProgress(prev => {
+        const newState = { ...prev };
+        if (!newState[processId]) {
+          newState[processId] = {};
+        }
+        acceptedFiles.forEach(file => {
+          newState[processId][file.name] = 0;
+        });
+        return newState;
+      });
     });
 
     try {
       const uploadedImageIds: string[] = [];
+      const uploadStartTime = Date.now();
+      const minDisplayTime = 500; // 최소 표시 시간 (500ms)
 
       for (const file of acceptedFiles) {
         try {
+          // 업로드 진행률 업데이트 (50%로 설정 - Storage 업로드 중)
+          setUploadProgress(prev => ({
+            ...prev,
+            [processId]: { ...prev[processId], [file.name]: 50 }
+          }));
+
           const uploadedFile = await uploadFile(file, selectedCut.id, processId, '', profile?.id);
 
+          // 업로드 완료 (100%)
           setUploadProgress(prev => ({
             ...prev,
             [processId]: { ...prev[processId], [file.name]: 100 }
@@ -183,6 +195,7 @@ export function FileGrid() {
         }
       }
 
+      // POST 요청(DB 저장)이 완료된 후 리프레시
       await loadFiles();
 
       // 업로드된 이미지 파일들을 메타데이터 생성 대기 목록에 추가
@@ -194,6 +207,13 @@ export function FileGrid() {
         });
       }
 
+      // 최소 표시 시간이 지나지 않았다면 대기
+      const elapsedTime = Date.now() - uploadStartTime;
+      if (elapsedTime < minDisplayTime) {
+        await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsedTime));
+      }
+
+      // 상태 초기화
       setUploadingFiles(prev => {
         const newState = { ...prev };
         delete newState[processId];
@@ -203,6 +223,19 @@ export function FileGrid() {
         const newState = { ...prev };
         delete newState[processId];
         return newState;
+      });
+
+      // 업로드 완료 후 스크롤을 맨 위로 이동 (새로 업로드된 파일이 보이도록)
+      // 다음 프레임에서 실행하여 DOM 업데이트가 완료된 후 스크롤 이동
+      requestAnimationFrame(() => {
+        // 업로드가 완료된 프로세스의 ScrollArea viewport 찾기
+        const processTabContent = document.querySelector(`[data-process-id="${processId}"]`);
+        if (processTabContent) {
+          const scrollAreaViewport = processTabContent.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement;
+          if (scrollAreaViewport) {
+            scrollAreaViewport.scrollTop = 0;
+          }
+        }
       });
     } catch (error) {
       console.error('파일 업로드 실패:', error);
@@ -286,7 +319,7 @@ export function FileGrid() {
       const fileName = `clipboard-${timestamp}.${fileExtension}`;
       const file = new File([blob], fileName, { type: blob.type });
 
-      // handleFileUpload 직접 호출 (상태 업데이트가 정상 작동하도록)
+      // handleFileUpload 직접 호출 (상태 업데이트는 handleFileUpload 내부에서 처리)
       await handleFileUpload([file], selectedProcess.id);
     } catch (error) {
       console.error('클립보드 이미지 붙여넣기 실패:', error);
@@ -616,8 +649,9 @@ export function FileGrid() {
                 key={process.id}
                 value={process.id}
                 className="flex-1 overflow-hidden mt-0 min-h-0"
+                data-process-id={process.id}
               >
-                <ScrollArea className="h-full">
+                <ScrollArea className="h-full" data-process-id={process.id}>
                   <div className="p-3 sm:p-4">
                     <ProcessFileSection
                       process={process}
@@ -637,6 +671,7 @@ export function FileGrid() {
                       onImageError={handleImageError}
                       canUpload={!!canUpload}
                       canDelete={!!canDelete}
+                      loading={loading}
                     />
                   </div>
                 </ScrollArea>

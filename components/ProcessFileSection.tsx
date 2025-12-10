@@ -27,6 +27,7 @@ interface ProcessFileSectionProps {
   onImageError: (fileId: string, originalUrl: string) => void;
   canUpload: boolean;
   canDelete: boolean;
+  loading?: boolean;
 }
 
 export function ProcessFileSection({
@@ -47,6 +48,7 @@ export function ProcessFileSection({
   onImageError,
   canUpload,
   canDelete,
+  loading = false,
 }: ProcessFileSectionProps) {
   const ProcessDropzone = ({ children }: { children: (open: () => void) => React.ReactNode }) => {
     const onDrop = (acceptedFiles: globalThis.File[]) => {
@@ -114,7 +116,7 @@ export function ProcessFileSection({
                 </div>
               )}
 
-              {files.length === 0 ? (
+              {files.length === 0 && uploadingFiles.length === 0 && !loading ? (
                 <div className="py-8 sm:py-12 text-center border-2 border-dashed border-muted-foreground/25 rounded-lg">
                   {canUpload ? (
                     <>
