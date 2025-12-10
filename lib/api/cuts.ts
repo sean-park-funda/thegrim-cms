@@ -11,13 +11,14 @@ export async function getCuts(episodeId: string): Promise<Cut[]> {
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
-  // 각 컷의 파일 개수 조회
+  // 각 컷의 파일 개수 조회 (임시 파일 제외)
   const cutIds = data.map(cut => cut.id);
   const filesCountPromises = cutIds.map(async (cutId) => {
     const { count, error: countError } = await supabase
       .from('files')
       .select('*', { count: 'exact', head: true })
-      .eq('cut_id', cutId);
+      .eq('cut_id', cutId)
+      .eq('is_temp', false);
 
     if (countError) {
       console.error(`파일 개수 조회 실패 (cut_id: ${cutId}):`, countError);

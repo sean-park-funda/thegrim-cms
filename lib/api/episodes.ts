@@ -32,21 +32,23 @@ export async function getEpisodes(webtoonId: string): Promise<Episode[]> {
 
     const cutIds = cuts.map(cut => cut.id);
 
-    // 해당 컷들에 속한 파일 개수 조회
+    // 해당 컷들에 속한 파일 개수 조회 (임시 파일 제외)
     const { count, error: countError } = await supabase
       .from('files')
       .select('*', { count: 'exact', head: true })
-      .in('cut_id', cutIds);
+      .in('cut_id', cutIds)
+      .eq('is_temp', false);
 
     if (countError) {
       console.error(`파일 개수 조회 실패 (episode_id: ${episodeId}):`, countError);
     }
 
-    // 첫 번째 파일의 썸네일 조회
+    // 첫 번째 파일의 썸네일 조회 (임시 파일 제외)
     const { data: firstFile, error: fileError } = await supabase
       .from('files')
       .select('thumbnail_path')
       .in('cut_id', cutIds)
+      .eq('is_temp', false)
       .not('thumbnail_path', 'is', null)
       .order('created_at', { ascending: true })
       .limit(1)

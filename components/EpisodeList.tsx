@@ -10,9 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users } from 'lucide-react';
 import { Episode } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
+import { CharacterManagementDialog } from './CharacterManagementDialog';
 
 // 날짜 포맷 함수
 function formatDate(dateString: string): string {
@@ -153,6 +154,7 @@ export function EpisodeList() {
   const [formData, setFormData] = useState({ episode_number: 1, title: '', description: '', status: 'pending' as 'pending' | 'in_progress' | 'completed' });
   const [saving, setSaving] = useState(false);
   const [updatingUnitType, setUpdatingUnitType] = useState(false);
+  const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
 
   useEffect(() => {
     if (selectedWebtoon) {
@@ -356,11 +358,24 @@ export function EpisodeList() {
                 </div>
               )}
             </div>
-            {profile && canCreateContent(profile.role) && (
-              <Button onClick={handleCreate} size="sm" className="h-9 gap-1.5">
-                <Plus className="h-4 w-4" />
-                새 회차
-              </Button>
+            {profile && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  onClick={() => setCharacterDialogOpen(true)}
+                >
+                  <Users className="h-4 w-4" />
+                  캐릭터 관리
+                </Button>
+                {canCreateContent(profile.role) && (
+                  <Button onClick={handleCreate} size="sm" className="h-9 gap-1.5">
+                    <Plus className="h-4 w-4" />
+                    새 회차
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -529,6 +544,15 @@ export function EpisodeList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 캐릭터 관리 Dialog */}
+      {selectedWebtoon && (
+        <CharacterManagementDialog
+          open={characterDialogOpen}
+          onOpenChange={setCharacterDialogOpen}
+          webtoon={selectedWebtoon}
+        />
+      )}
     </>
   );
 }

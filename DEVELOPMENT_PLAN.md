@@ -68,8 +68,11 @@
 - ✅ 컷 API (CRUD)
 - ✅ 공정 API (CRUD, 순서 변경)
 - ✅ 파일 API (조회, 검색, 업로드, 다운로드, 삭제)
+- ✅ 캐릭터 API (CRUD)
+- ✅ 캐릭터 시트 API (CRUD, 업로드)
 - ✅ 이미지 분석 API (Gemini 2.5 Pro 연동)
 - ✅ 이미지 재생성 API (Gemini 2.5 Flash Image 연동)
+- ✅ 캐릭터 시트 생성 API (Gemini 3 Pro Image 연동)
 
 #### 9. 공정 관리
 - ✅ 공정 생성 기능
@@ -93,6 +96,13 @@
 - ✅ UI 요소 권한별 표시/숨김 (모든 컴포넌트 적용)
 - ✅ 관리자 페이지 (사용자 관리, 초대 관리)
 - ✅ Row Level Security (RLS) 정책 (user_profiles, invitations)
+
+#### 12. 캐릭터 관리
+- ✅ 웹툰별 캐릭터 목록 관리 (생성, 수정, 삭제)
+- ✅ 캐릭터별 캐릭터 시트(이미지) 관리
+- ✅ 캐릭터 시트 직접 업로드 (드래그 앤 드롭 지원)
+- ✅ AI 캐릭터 시트 자동 생성 (Gemini API - 4방향 캐릭터 시트)
+- ✅ 캐릭터 관리 UI (EpisodeList 상단 버튼)
 
 ---
 

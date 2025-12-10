@@ -11,6 +11,7 @@ thegrim-CMS/
 ├── app/                          # Next.js App Router
 │   ├── api/                     # API 라우트
 │   │   ├── analyze-image/       # 이미지 분석 API
+│   │   ├── generate-character-sheet/  # 캐릭터 시트 AI 생성 API (Gemini)
 │   │   ├── generate-thumbnail/  # 썸네일 생성 API
 │   │   └── regenerate-image/    # 이미지 재생성 API (Gemini/Seedream)
 │   ├── admin/                   # 관리자 페이지
@@ -53,7 +54,10 @@ thegrim-CMS/
 │   ├── ProcessFileSection.tsx   # 공정별 파일 섹션 컴포넌트
 │   ├── ReferenceFileDialog.tsx  # 레퍼런스 파일 관리 다이얼로그
 │   ├── ReferenceFileUpload.tsx  # 레퍼런스 파일 업로드 다이얼로그
-│   └── ReferenceFileList.tsx    # 레퍼런스 파일 목록 표시
+│   ├── ReferenceFileList.tsx    # 레퍼런스 파일 목록 표시
+│   ├── CharacterManagementDialog.tsx  # 캐릭터 관리 메인 다이얼로그
+│   ├── CharacterEditDialog.tsx        # 캐릭터 추가/수정 폼
+│   └── CharacterSheetDialog.tsx       # 캐릭터 시트 관리 (업로드/AI생성)
 │
 ├── lib/                          # 유틸리티 및 라이브러리
 │   ├── api/                     # API 함수들
@@ -63,6 +67,8 @@ thegrim-CMS/
 │   │   ├── processes.ts         # 공정 관련 API
 │   │   ├── files.ts             # 파일 관련 API
 │   │   ├── referenceFiles.ts    # 레퍼런스 파일 관련 API
+│   │   ├── characters.ts        # 캐릭터 관련 API
+│   │   ├── characterSheets.ts   # 캐릭터 시트 관련 API
 │   │   ├── aiStyles.ts          # AI 재생성 스타일 관련 API
 │   │   ├── auth.ts              # 인증 관련 API
 │   │   └── admin.ts             # 관리자 유틸리티
@@ -253,6 +259,22 @@ thegrim-CMS/
 - 파일 미리보기, 다운로드, 삭제 기능
 - 이미지 클릭 시 전체화면 뷰어로 확대 보기
 
+**CharacterManagementDialog.tsx**
+- 캐릭터 관리 메인 다이얼로그
+- 웹툰별 캐릭터 목록 표시
+- 캐릭터 추가/수정/삭제 기능
+- 캐릭터 카드 (첫 번째 시트 이미지 썸네일)
+
+**CharacterEditDialog.tsx**
+- 캐릭터 추가/수정 폼
+- 이름 및 설명 입력
+
+**CharacterSheetDialog.tsx**
+- 캐릭터 시트 관리 다이얼로그
+- 탭 UI: 시트 목록 / 직접 업로드 / AI 생성
+- Gemini API를 사용한 4방향 캐릭터 시트 자동 생성
+- 이미지 업로드 및 저장 기능
+
 
 **SearchResults.tsx**
 - 검색 결과 표시
@@ -310,6 +332,22 @@ thegrim-CMS/
 - \`deleteReferenceFile(id)\`: 레퍼런스 파일 삭제 (Storage + DB)
 - \`updateReferenceFile(id, updates)\`: 레퍼런스 파일 정보 수정
 - \`getReferenceFileThumbnailUrl(file)\`: 레퍼런스 파일 썸네일 URL 가져오기
+
+**characters.ts**
+- \`getCharactersByWebtoon(webtoonId)\`: 웹툰의 캐릭터 목록 (시트 포함)
+- \`getCharacterWithSheets(characterId)\`: 캐릭터 상세 (시트 포함)
+- \`createCharacter(data)\`: 캐릭터 생성
+- \`updateCharacter(id, data)\`: 캐릭터 수정
+- \`deleteCharacter(id)\`: 캐릭터 삭제 (시트 파일 포함)
+
+**characterSheets.ts**
+- \`getSheetsByCharacter(characterId)\`: 캐릭터의 시트 목록
+- \`getCharacterSheet(sheetId)\`: 캐릭터 시트 상세
+- \`uploadCharacterSheet(file, characterId, description)\`: 캐릭터 시트 업로드
+- \`saveCharacterSheetFromBase64(imageData, mimeType, characterId, fileName, description)\`: base64 이미지로 시트 저장
+- \`updateCharacterSheet(sheetId, data)\`: 캐릭터 시트 수정
+- \`deleteCharacterSheet(sheetId)\`: 캐릭터 시트 삭제 (Storage + DB)
+- \`getSheetThumbnailUrl(sheet)\`: 캐릭터 시트 썸네일 URL 가져오기
 
 
 ### 상태 관리 (\`lib/store/\`)
@@ -369,7 +407,9 @@ thegrim-CMS/
   - \`File\` (created_by, source_file_id, is_temp 포함)
   - \`UserProfile\` (id, email, name, role)
   - \`ReferenceFile\`
-  - 관계형 타입 (FileWithRelations: created_by_user, source_file 포함)
+  - \`Character\` (웹툰별 캐릭터)
+  - \`CharacterSheet\` (캐릭터 시트 이미지)
+  - 관계형 타입 (FileWithRelations, CharacterWithSheets 등)
 
 ## 📊 데이터 흐름
 

@@ -467,3 +467,124 @@ app/
 
 **완료일**: 2025-01-08 (초기 구현), 2025-01-XX (배치 처리 및 임시 파일 시스템 개선)
 
+---
+
+## 👤 캐릭터 관리 시스템 (✅ 구현 완료)
+
+### 개요
+웹툰별로 캐릭터를 관리하고, 각 캐릭터에 대해 복수의 캐릭터 시트(이미지)를 저장할 수 있는 시스템입니다. Gemini API를 활용하여 캐릭터 이미지로부터 4방향 캐릭터 시트를 자동 생성하는 기능을 포함합니다.
+
+### 구현된 기능
+
+#### 1. 캐릭터 관리
+- **파일**: `lib/api/characters.ts`, `components/CharacterManagementDialog.tsx`
+- **기능**:
+  - 웹툰별 캐릭터 목록 조회
+  - 캐릭터 생성/수정/삭제
+  - 캐릭터 카드 UI (첫 번째 시트 이미지 썸네일 표시)
+  - 캐릭터별 시트 개수 표시
+
+#### 2. 캐릭터 시트 관리
+- **파일**: `lib/api/characterSheets.ts`, `components/CharacterSheetDialog.tsx`
+- **기능**:
+  - 캐릭터별 시트 목록 조회
+  - 시트 직접 업로드 (드래그 앤 드롭 지원)
+  - 시트 삭제 및 다운로드
+  - 이미지 뷰어 (전체화면 보기)
+
+#### 3. AI 캐릭터 시트 생성
+- **파일**: `app/api/generate-character-sheet/route.ts`
+- **기능**:
+  - Gemini API를 사용한 4방향 캐릭터 시트 자동 생성
+  - 드래그 앤 드롭으로 소스 이미지 선택
+  - 생성된 이미지 미리보기 및 저장
+
+### 데이터베이스 스키마
+
+#### characters 테이블
+```sql
+CREATE TABLE characters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  webtoon_id UUID NOT NULL REFERENCES webtoons(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### character_sheets 테이블
+```sql
+CREATE TABLE character_sheets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  file_name VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  thumbnail_path TEXT,
+  file_size BIGINT,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### AI 캐릭터 시트 생성 프롬프트
+
+```
+Use the uploaded image as the main reference for the character.
+Recreate the character exactly — same style, colors, and details.
+
+Body proportions rule:
+- If the reference image shows the full body, preserve the exact body proportions.
+- If the reference image does NOT show the full body, draw with long legs and voluptuous figure.
+
+Generate four full-body images on a solid background, arranged HORIZONTALLY:
+1. Front view (leftmost)
+2. Right side view (second from left)
+3. Back view (third from left)
+4. Three-quarter (3/4) view (rightmost)
+
+Final output: a single combined image with all four views in one row.
+```
+
+### UI 흐름
+
+1. **웹툰 선택 후** EpisodeList 상단에 "캐릭터 관리" 버튼 표시
+2. **캐릭터 관리 다이얼로그**: 캐릭터 카드 그리드 + 추가/수정/삭제
+3. **캐릭터 카드 클릭**: 해당 캐릭터의 시트 관리 다이얼로그 열림
+4. **시트 관리 다이얼로그 탭**:
+   - 시트 목록: 저장된 시트 이미지 그리드
+   - 직접 업로드: 드래그 앤 드롭으로 이미지 업로드
+   - AI 생성: 캐릭터 이미지 → 4방향 시트 자동 생성
+
+### 파일 구조
+
+```
+app/
+└── api/
+    └── generate-character-sheet/
+        └── route.ts          # Gemini 캐릭터 시트 생성 API
+
+components/
+├── CharacterManagementDialog.tsx  # 캐릭터 관리 메인 다이얼로그
+├── CharacterEditDialog.tsx        # 캐릭터 추가/수정 폼
+└── CharacterSheetDialog.tsx       # 캐릭터 시트 관리 (업로드/AI생성)
+
+lib/
+└── api/
+    ├── characters.ts        # 캐릭터 CRUD API
+    └── characterSheets.ts   # 캐릭터 시트 CRUD API
+```
+
+### 스토리지 경로
+- 캐릭터 시트 저장 경로: `webtoon-files/characters/{characterId}/{fileName}`
+- 파일명에서 한글 및 특수문자는 자동 제거 (Supabase Storage 호환성)
+
+### 기술 스택
+- **Gemini API**: Google Gemini 3 Pro Image Preview (이미지 생성)
+- **이미지 비율**: 21:9 (4개 캐릭터 가로 배열)
+- **Supabase Storage**: 캐릭터 시트 이미지 저장
+
+**완료일**: 2025-01-XX
+

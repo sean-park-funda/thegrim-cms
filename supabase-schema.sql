@@ -90,6 +90,30 @@ CREATE TABLE IF NOT EXISTS reference_files (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 7. 캐릭터 테이블 (웹툰별)
+CREATE TABLE IF NOT EXISTS characters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  webtoon_id UUID NOT NULL REFERENCES webtoons(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 8. 캐릭터 시트 테이블
+CREATE TABLE IF NOT EXISTS character_sheets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  file_name VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  thumbnail_path TEXT,
+  file_size BIGINT,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ========================================
 -- 인덱스 생성
 -- ========================================
@@ -104,6 +128,8 @@ CREATE INDEX IF NOT EXISTS idx_files_source_file_id ON files(source_file_id);
 CREATE INDEX IF NOT EXISTS idx_processes_order ON processes(order_index);
 CREATE INDEX IF NOT EXISTS idx_reference_files_webtoon_id ON reference_files(webtoon_id);
 CREATE INDEX IF NOT EXISTS idx_reference_files_process_id ON reference_files(process_id);
+CREATE INDEX IF NOT EXISTS idx_characters_webtoon_id ON characters(webtoon_id);
+CREATE INDEX IF NOT EXISTS idx_character_sheets_character_id ON character_sheets(character_id);
 
 -- Full-text search를 위한 인덱스
 CREATE INDEX IF NOT EXISTS idx_files_description ON files USING GIN (to_tsvector('korean', COALESCE(description, '')));
@@ -155,6 +181,12 @@ CREATE TRIGGER update_files_updated_at BEFORE UPDATE ON files
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_reference_files_updated_at BEFORE UPDATE ON reference_files
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_characters_updated_at BEFORE UPDATE ON characters
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_character_sheets_updated_at BEFORE UPDATE ON character_sheets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ========================================

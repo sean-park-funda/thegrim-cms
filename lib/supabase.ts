@@ -133,6 +133,35 @@ export interface ReferenceFileWithProcess extends ReferenceFile {
   process?: Process;
 }
 
+// 캐릭터 타입
+export interface Character {
+  id: string;
+  webtoon_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 캐릭터 시트 타입
+export interface CharacterSheet {
+  id: string;
+  character_id: string;
+  file_name: string;
+  file_path: string;
+  storage_path: string;
+  thumbnail_path?: string | null;
+  file_size?: number;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 캐릭터와 시트 포함 타입
+export interface CharacterWithSheets extends Character {
+  character_sheets?: CharacterSheet[];
+}
+
 export interface AiRegenerationPrompt {
   id: string;
   style_id: string;
