@@ -829,18 +829,22 @@ export async function POST(request: NextRequest) {
               throw new Error('생성된 이미지를 받을 수 없습니다.');
             }
 
+            // TypeScript 타입 가드: null 체크 후에는 string으로 확정
+            const finalImageData: string = generatedImageData;
+            const finalMimeType: string = generatedImageMimeType || 'image/png';
+
             const requestTime = Date.now() - requestStartTime;
             console.log(`[이미지 재생성 배치] Gemini API 호출 완료 (인덱스 ${req.index}):`, {
               requestTime: `${requestTime}ms`,
-              imageDataLength: generatedImageData.length,
-              mimeType: generatedImageMimeType,
+              imageDataLength: finalImageData.length,
+              mimeType: finalMimeType,
             });
 
             // base64 데이터를 Buffer로 변환
-            const imageBuffer = Buffer.from(generatedImageData, 'base64');
+            const imageBuffer = Buffer.from(finalImageData, 'base64');
             
             // 영구 파일과 같은 경로에 임시 파일 저장
-            const extension = getExtensionFromMimeType(generatedImageMimeType || 'image/png');
+            const extension = getExtensionFromMimeType(finalMimeType);
             const uuid = crypto.randomUUID().substring(0, 8);
             const baseFileName = sourceFile.file_name.replace(/\.[^/.]+$/, '') || 'regenerated';
             // 파일명 sanitize (한글 및 특수문자 처리)
@@ -854,7 +858,7 @@ export async function POST(request: NextRequest) {
             const { error: uploadError } = await supabase.storage
               .from('webtoon-files')
               .upload(storagePath, imageBuffer, {
-                contentType: generatedImageMimeType || 'image/png',
+                contentType: finalMimeType,
                 upsert: false,
               });
 
@@ -874,7 +878,7 @@ export async function POST(request: NextRequest) {
               const { error: retryError } = await supabase.storage
                 .from('webtoon-files')
                 .upload(fallbackStoragePath, imageBuffer, {
-                  contentType: generatedImageMimeType || 'image/png',
+                  contentType: finalMimeType,
                   upsert: false,
                 });
               
@@ -883,8 +887,8 @@ export async function POST(request: NextRequest) {
                 // 저장 실패 시 기존 방식으로 fallback (base64 반환)
                 return {
                   index: req.index,
-                  imageData: generatedImageData,
-                  mimeType: generatedImageMimeType || 'image/png',
+                  imageData: finalImageData,
+                  mimeType: finalMimeType,
                   apiProvider: 'gemini' as const,
                   fileId: '',
                   filePath: '',
@@ -920,7 +924,7 @@ export async function POST(request: NextRequest) {
                   storage_path: fallbackStoragePath,
                   file_size: imageBuffer.length,
                   file_type: 'image',
-                  mime_type: generatedImageMimeType || 'image/png',
+                  mime_type: finalMimeType,
                   description: `AI 재생성: ${sourceFile.file_name}`,
                   prompt: req.stylePrompt,
                   created_by: sourceFile.created_by,
@@ -939,8 +943,8 @@ export async function POST(request: NextRequest) {
                 await supabase.storage.from('webtoon-files').remove([fallbackStoragePath]);
                 return {
                   index: req.index,
-                  imageData: generatedImageData,
-                  mimeType: generatedImageMimeType || 'image/png',
+                  imageData: finalImageData,
+                  mimeType: finalMimeType,
                   apiProvider: 'gemini' as const,
                   fileId: '',
                   filePath: '',
@@ -954,7 +958,7 @@ export async function POST(request: NextRequest) {
                 fileId: fileData.id,
                 filePath: fallbackStoragePath,
                 fileUrl: fileUrl,
-                mimeType: generatedImageMimeType || 'image/png',
+                mimeType: finalMimeType,
                 apiProvider: 'gemini' as const,
                 stylePrompt: req.stylePrompt,
               };
@@ -988,7 +992,7 @@ export async function POST(request: NextRequest) {
                 storage_path: storagePath,
                 file_size: imageBuffer.length,
                 file_type: 'image',
-                mime_type: generatedImageMimeType || 'image/png',
+                mime_type: finalMimeType,
                 description: `AI 재생성: ${sourceFile.file_name}`,
                 prompt: req.stylePrompt,
                 created_by: sourceFile.created_by,
@@ -1009,8 +1013,8 @@ export async function POST(request: NextRequest) {
               // 저장 실패 시 기존 방식으로 fallback (base64 반환)
               return {
                 index: req.index,
-                imageData: generatedImageData,
-                mimeType: generatedImageMimeType || 'image/png',
+                imageData: finalImageData,
+                mimeType: finalMimeType,
                 apiProvider: 'gemini' as const,
                 fileId: '',
                 filePath: '',
@@ -1031,7 +1035,7 @@ export async function POST(request: NextRequest) {
               fileId: fileData.id,
               filePath: storagePath,
               fileUrl: fileUrl,
-              mimeType: generatedImageMimeType || 'image/png',
+              mimeType: finalMimeType,
               apiProvider: 'gemini' as const,
               stylePrompt: req.stylePrompt,
             };
