@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Pencil, GripVertical, ArrowLeft } from 'lucide-react';
+import { Loader2, Plus, Pencil, GripVertical, ArrowLeft, Trash2 } from 'lucide-react';
 import { AiRegenerationStyle } from '@/lib/supabase';
-import { getAllStyles, updateStyle } from '@/lib/api/aiStyles';
+import { getAllStyles, updateStyle, deleteStyle } from '@/lib/api/aiStyles';
 import { StyleEditDialog } from './StyleEditDialog';
 
 interface StyleManagementDialogProps {
@@ -26,6 +26,7 @@ export function StyleManagementDialog({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [draggedStyle, setDraggedStyle] = useState<AiRegenerationStyle | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [dragOverDelete, setDragOverDelete] = useState(false);
 
   // 스타일 목록 로드
   const loadStyles = async () => {
@@ -57,6 +58,7 @@ export function StyleManagementDialog({
   const handleDragEnd = () => {
     setDraggedStyle(null);
     setDragOverGroup(null);
+    setDragOverDelete(false);
   };
 
   // 그룹 위로 드래그
@@ -64,6 +66,47 @@ export function StyleManagementDialog({
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverGroup(groupName);
+    setDragOverDelete(false);
+  };
+
+  // 삭제 영역 위로 드래그
+  const handleDeleteDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverDelete(true);
+    setDragOverGroup(null);
+  };
+
+  // 삭제 영역에서 드래그 떠남
+  const handleDeleteDragLeave = () => {
+    setDragOverDelete(false);
+  };
+
+  // 삭제 영역에 드롭
+  const handleDeleteDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedStyle) return;
+
+    const confirmed = window.confirm(`"${draggedStyle.name}" 스타일을 삭제하시겠습니까?`);
+    if (!confirmed) {
+      setDraggedStyle(null);
+      setDragOverDelete(false);
+      return;
+    }
+
+    setActionLoading(draggedStyle.id);
+    try {
+      await deleteStyle(draggedStyle.id);
+      await loadStyles();
+      onStylesChange?.();
+    } catch (error) {
+      console.error('스타일 삭제 실패:', error);
+      alert('스타일 삭제에 실패했습니다.');
+    } finally {
+      setActionLoading(null);
+      setDraggedStyle(null);
+      setDragOverDelete(false);
+    }
   };
 
   // 그룹에 드롭
@@ -142,6 +185,25 @@ export function StyleManagementDialog({
               <Plus className="h-4 w-4 mr-1" />
               새 스타일 추가
             </Button>
+          </div>
+
+          {/* 삭제 영역 */}
+          <div
+            className={`border-2 border-dashed rounded-lg p-4 mb-4 transition-colors ${
+              dragOverDelete
+                ? 'border-destructive bg-destructive/10'
+                : 'border-muted-foreground/30 bg-muted/20'
+            }`}
+            onDragOver={handleDeleteDragOver}
+            onDragLeave={handleDeleteDragLeave}
+            onDrop={handleDeleteDrop}
+          >
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Trash2 className={`h-4 w-4 ${dragOverDelete ? 'text-destructive' : ''}`} />
+              <span className={`text-sm font-medium ${dragOverDelete ? 'text-destructive' : ''}`}>
+                {dragOverDelete ? '여기에 놓으면 삭제됩니다' : '스타일을 여기로 드래그하여 삭제'}
+              </span>
+            </div>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto max-h-[50vh]">
