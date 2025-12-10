@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon } from 'lucide-react';
+import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X } from 'lucide-react';
 import { getReferenceFilesByWebtoon } from '@/lib/api/referenceFiles';
 import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt, AiRegenerationStyle, FileWithRelations } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
@@ -16,6 +16,7 @@ import { getImageRegenerationSettings } from '@/lib/api/settings';
 import { getPromptsByStyle, setPromptAsDefault } from '@/lib/api/imagePrompts';
 import { getStyles } from '@/lib/api/aiStyles';
 import { StyleManagementDialog } from './StyleManagementDialog';
+import { CharacterSheetSelectDialog, SelectedCharacterSheet } from './CharacterSheetSelectDialog';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
@@ -51,7 +52,7 @@ interface ImageRegenerationWorkspaceProps {
   savingImages: boolean;
   generationCount: number;
   onGenerationCountChange: (count: number) => void;
-  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo) => void;
+  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string, characterSheets?: Array<{ sheetId: string }>) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -111,6 +112,10 @@ export function ImageRegenerationWorkspace({
   // 공정 선택 다이얼로그 상태
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
+
+  // 캐릭터 바꾸기 관련 상태
+  const [characterSheetSelectOpen, setCharacterSheetSelectOpen] = useState(false);
+  const [selectedCharacterSheets, setSelectedCharacterSheets] = useState<SelectedCharacterSheet[]>([]);
 
   // API Provider에 따른 모델명 반환
   const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
@@ -185,11 +190,25 @@ export function ImageRegenerationWorkspace({
           setEditedPrompt(defaultPrompt.prompt_text);
         } else {
           setSelectedPromptId(null);
-          setEditedPrompt(selectedStyle.prompt);
+          // 캐릭터 바꾸기 스타일이면 디폴트 프롬프트 설정
+          const isCharacterChange = selectedStyle.style_key === 'character-change' || selectedStyle.name === '캐릭터 바꾸기';
+          if (isCharacterChange) {
+            const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
+            setEditedPrompt(characterChangePrompt);
+          } else {
+            setEditedPrompt(selectedStyle.prompt);
+          }
         }
       } catch (error) {
         console.error('프롬프트 로드 실패:', error);
-        setEditedPrompt(selectedStyle.prompt);
+        // 캐릭터 바꾸기 스타일이면 디폴트 프롬프트 설정
+        const isCharacterChange = selectedStyle.style_key === 'character-change' || selectedStyle.name === '캐릭터 바꾸기';
+        if (isCharacterChange) {
+          const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
+          setEditedPrompt(characterChangePrompt);
+        } else {
+          setEditedPrompt(selectedStyle.prompt);
+        }
       } finally {
         setLoadingPrompts(false);
       }
@@ -210,6 +229,9 @@ export function ImageRegenerationWorkspace({
     }
   }, [selectedPromptId, prompts]);
 
+  // 캐릭터 바꾸기 스타일인지 확인
+  const isCharacterChangeStyle = selectedStyle?.style_key === 'character-change' || selectedStyle?.name === '캐릭터 바꾸기';
+
   // 스타일 선택 핸들러
   const handleStyleSelect = (style: AiRegenerationStyle) => {
     setSelectedStyle(style);
@@ -217,6 +239,12 @@ export function ImageRegenerationWorkspace({
     setEditedPrompt(style.prompt);
     setSelectedPromptId(null);
     setPromptEditOpen(false);
+    
+    // 캐릭터 바꾸기 스타일이 아니면 캐릭터시트 선택 초기화
+    const isCharacterChange = style.style_key === 'character-change' || style.name === '캐릭터 바꾸기';
+    if (!isCharacterChange) {
+      setSelectedCharacterSheets([]);
+    }
   };
 
   // 생성하기 핸들러
@@ -236,9 +264,15 @@ export function ImageRegenerationWorkspace({
       ? { id: selectedReferenceFile.id }
       : undefined;
 
+    const characterSheets = selectedCharacterSheets.length > 0
+      ? selectedCharacterSheets.map(sheet => ({ sheetId: sheet.sheetId }))
+      : undefined;
+
     const count = selectedStyle.allow_multiple ? generationCount : selectedStyle.default_count;
 
-    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImage);
+    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImage?, targetFileId?, characterSheets?)
+    // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
+    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImage, undefined, characterSheets);
   };
 
   // 레퍼런스 업로드 완료 핸들러
@@ -464,6 +498,75 @@ export function ImageRegenerationWorkspace({
                         </Card>
                       )}
 
+                      {/* 캐릭터 바꾸기 카드 - 캐릭터 바꾸기 스타일 선택 시에만 표시 */}
+                      {isCharacterChangeStyle && (
+                        <Card>
+                          <CardHeader className="py-2 px-3">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1.5">
+                              <Users className="h-3.5 w-3.5" />
+                              캐릭터 추가
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="px-3 pb-3 pt-0 space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setCharacterSheetSelectOpen(true)}
+                              disabled={regeneratingImage !== null || !webtoonId}
+                              className={cn(
+                                "w-full aspect-[4/3] rounded-md overflow-hidden transition-colors flex items-center justify-center disabled:opacity-50",
+                                selectedCharacterSheets.length > 0
+                                  ? "bg-muted border-2 border-primary/50"
+                                  : "bg-muted border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/80"
+                              )}
+                            >
+                              {selectedCharacterSheets.length > 0 ? (
+                                <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                  <Users className="h-6 w-6" />
+                                  <span className="text-xs font-medium">{selectedCharacterSheets.length}개 선택됨</span>
+                                  <span className="text-xs text-muted-foreground/70">클릭하여 변경</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                  <Plus className="h-6 w-6" />
+                                  <span className="text-xs">캐릭터시트 선택</span>
+                                </div>
+                              )}
+                            </button>
+                            {selectedCharacterSheets.length > 0 && (
+                              <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                                {selectedCharacterSheets.map((sheet) => (
+                                  <div
+                                    key={sheet.sheetId}
+                                    className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-md text-xs"
+                                  >
+                                    <img
+                                      src={sheet.sheetPath}
+                                      alt={sheet.sheetName}
+                                      className="w-8 h-8 object-cover rounded"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium truncate">{sheet.characterName}</p>
+                                      <p className="text-muted-foreground truncate text-[10px]">{sheet.sheetName}</p>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedCharacterSheets(selectedCharacterSheets.filter((s) => s.sheetId !== sheet.sheetId));
+                                      }}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+
                       {/* 생성 설정 카드 */}
                       <Card>
                         <CardHeader className="py-2 px-3">
@@ -549,7 +652,11 @@ export function ImageRegenerationWorkspace({
                       {/* 생성 버튼 */}
                       <Button
                         onClick={handleGenerate}
-                        disabled={regeneratingImage !== null || (needsReference && !selectedReferenceFile)}
+                        disabled={
+                          regeneratingImage !== null || 
+                          (needsReference && !selectedReferenceFile) || 
+                          (isCharacterChangeStyle && selectedCharacterSheets.length === 0)
+                        }
                         className={cn(
                           "w-full",
                           regeneratingImage !== null && "bg-gradient-to-r from-primary/80 via-primary to-primary/80 bg-[length:200%_100%] animate-shimmer"
@@ -862,6 +969,17 @@ export function ImageRegenerationWorkspace({
         onOpenChange={setStyleManagementOpen}
         onStylesChange={loadStyles}
       />
+
+      {/* 캐릭터시트 선택 다이얼로그 */}
+      {webtoonId && (
+        <CharacterSheetSelectDialog
+          open={characterSheetSelectOpen}
+          onOpenChange={setCharacterSheetSelectOpen}
+          webtoonId={webtoonId}
+          selectedSheets={selectedCharacterSheets}
+          onSheetsChange={setSelectedCharacterSheets}
+        />
+      )}
     </>
   );
 }

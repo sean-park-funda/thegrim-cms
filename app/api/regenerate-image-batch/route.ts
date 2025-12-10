@@ -248,6 +248,7 @@ interface RegenerateImageRequest {
 }
 
 interface RegenerateImageBatchRequest {
+  characterSheets?: Array<{ sheetId: string }>; // 캐릭터시트 정보 (sheetId만 필요, file_path는 DB에서 조회)
   fileId: string;
   referenceFileId?: string;
   requests: RegenerateImageRequest[];
@@ -284,7 +285,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: RegenerateImageBatchRequest = await request.json();
-    const { fileId, referenceFileId, requests } = body;
+    const { fileId, referenceFileId, requests, characterSheets } = body;
+    
+    const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
+    
+    // 캐릭터시트가 있으면 모든 요청을 Gemini로 변경
+    if (hasCharacterSheets) {
+      console.log('[이미지 재생성 배치] 캐릭터 바꾸기 모드: 모든 요청을 Gemini로 변경');
+      requests.forEach(req => {
+        req.apiProvider = 'gemini';
+      });
+    }
 
     if (!fileId) {
       return NextResponse.json(
@@ -362,6 +373,74 @@ export async function POST(request: NextRequest) {
         referenceFile = refFile;
         console.log('[이미지 재생성 배치] reference_files 테이블에서 레퍼런스 파일 찾음');
       }
+    }
+
+    // 캐릭터시트 이미지 캐시 (한 번만 다운로드)
+    let characterSheetImagesCache: Array<{ base64: string; mimeType: string }> | null = null;
+    
+    if (hasCharacterSheets && characterSheets) {
+      console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 시작...', { count: characterSheets.length });
+      characterSheetImagesCache = [];
+      
+      for (const sheet of characterSheets) {
+        try {
+          // 레퍼런스 파일처럼 DB에서 file_path 조회
+          console.log('[이미지 재생성 배치] 캐릭터시트 파일 ID로 파일 정보 조회 시작...', { sheetId: sheet.sheetId });
+          const { data: sheetFile, error: sheetFileError } = await supabase
+            .from('character_sheets')
+            .select('file_path')
+            .eq('id', sheet.sheetId)
+            .single();
+
+          if (sheetFileError || !sheetFile) {
+            console.error('[이미지 재생성 배치] 캐릭터시트 파일 조회 실패:', {
+              sheetId: sheet.sheetId,
+              error: sheetFileError,
+            });
+            continue;
+          }
+
+          console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 시작...', { sheetId: sheet.sheetId, filePath: sheetFile.file_path });
+          const sheetResponse = await fetch(sheetFile.file_path);
+          
+          if (!sheetResponse.ok) {
+            console.error('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 실패:', {
+              sheetId: sheet.sheetId,
+              status: sheetResponse.status,
+              filePath: sheetFile.file_path,
+            });
+            continue;
+          }
+          
+          const sheetArrayBuffer = await sheetResponse.arrayBuffer();
+          const sheetBuffer = Buffer.from(sheetArrayBuffer);
+          const sheetBase64 = sheetBuffer.toString('base64');
+          const sheetMimeType = sheetResponse.headers.get('content-type') || 'image/jpeg';
+          
+          characterSheetImagesCache.push({
+            base64: sheetBase64,
+            mimeType: sheetMimeType,
+          });
+        } catch (error) {
+          console.error('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 중 오류:', {
+            sheetId: sheet.sheetId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      
+      if (characterSheetImagesCache.length === 0) {
+        console.error('[이미지 재생성 배치] 모든 캐릭터시트 이미지 다운로드 실패');
+        return NextResponse.json(
+          { error: '캐릭터시트 이미지를 가져올 수 없습니다.' },
+          { status: 400 }
+        );
+      }
+      
+      console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 완료:', {
+        total: characterSheets.length,
+        success: characterSheetImagesCache.length,
+      });
     }
 
     // 이미지 다운로드 (원본과 레퍼런스를 병렬로, 타임아웃 설정)
@@ -614,7 +693,32 @@ export async function POST(request: NextRequest) {
 
             const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
             
-            if (refImageBase64 && refMimeType) {
+            if (hasCharacterSheets && characterSheets) {
+              // 캐릭터 바꾸기: 특별한 프롬프트 + 원본 이미지(1번) + 캐릭터시트 이미지들(2번 이후)
+              const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
+              
+              contentParts.push({
+                text: characterChangePrompt,
+              });
+              // 1번 이미지: 원본 이미지
+              contentParts.push({
+                inlineData: {
+                  mimeType: mimeType,
+                  data: imageBase64,
+                },
+              });
+              // 2번 이후: 캐릭터시트 이미지들 (캐시에서 재사용)
+              if (characterSheetImagesCache) {
+                for (const sheetImage of characterSheetImagesCache) {
+                  contentParts.push({
+                    inlineData: {
+                      mimeType: sheetImage.mimeType,
+                      data: sheetImage.base64,
+                    },
+                  });
+                }
+              }
+            } else if (refImageBase64 && refMimeType) {
               contentParts.push({ text: req.stylePrompt });
               contentParts.push({
                 inlineData: {

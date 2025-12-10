@@ -340,6 +340,8 @@ interface RegenerateImageRequest {
   referenceImageUrl?: string; // 레퍼런스 이미지 URL
   referenceImageBase64?: string; // 레퍼런스 이미지 base64 데이터
   referenceImageMimeType?: string; // 레퍼런스 이미지 MIME 타입
+  // 캐릭터 바꾸기용 캐릭터시트
+  characterSheets?: Array<{ sheetId: string }>; // 캐릭터시트 정보 (sheetId만 필요, file_path는 DB에서 조회)
 }
 
 export async function POST(request: NextRequest) {
@@ -360,9 +362,16 @@ export async function POST(request: NextRequest) {
       referenceImageUrl,
       referenceImageBase64,
       referenceImageMimeType,
+      characterSheets,
     } = body;
     
     const hasReferenceImage = !!(referenceImageBase64 || referenceImageUrl || referenceFileId);
+    const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
+    
+    // 캐릭터시트가 있으면 Gemini만 사용
+    if (hasCharacterSheets && apiProvider !== 'gemini') {
+      console.log('[이미지 재생성] 캐릭터 바꾸기 기능은 Gemini만 사용 가능, Gemini로 변경');
+    }
 
     // API 제공자 결정
     let useSeedream: boolean;
@@ -387,12 +396,23 @@ export async function POST(request: NextRequest) {
       referenceImageUrl: referenceImageUrl || '없음',
     });
 
-    if (!fileId && !requestImageBase64 && !imageUrl) {
-      console.error('[이미지 재생성] 파일 ID, 이미지 URL 또는 base64 데이터가 없음');
-      return NextResponse.json(
-        { error: '파일 ID, 이미지 URL 또는 base64 데이터가 필요합니다.' },
-        { status: 400 }
-      );
+    // 캐릭터 바꾸기 모드에서는 원본 이미지가 필수
+    if (hasCharacterSheets) {
+      if (!fileId && !requestImageBase64 && !imageUrl) {
+        console.error('[이미지 재생성] 캐릭터 바꾸기 모드: 원본 이미지 데이터가 없음');
+        return NextResponse.json(
+          { error: '캐릭터 바꾸기 모드에서는 원본 이미지가 필요합니다. 파일 ID, 이미지 URL 또는 base64 데이터를 제공해주세요.' },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (!fileId && !requestImageBase64 && !imageUrl) {
+        console.error('[이미지 재생성] 파일 ID, 이미지 URL 또는 base64 데이터가 없음');
+        return NextResponse.json(
+          { error: '파일 ID, 이미지 URL 또는 base64 데이터가 필요합니다.' },
+          { status: 400 }
+        );
+      }
     }
 
     if (!stylePrompt) {
@@ -410,7 +430,7 @@ export async function POST(request: NextRequest) {
 
     // 파일 ID가 있으면 파일 정보 조회 후 다운로드
     if (fileId) {
-      console.log('[이미지 재생성] 파일 ID로 파일 정보 조회 시작...');
+      console.log('[이미지 재생성] 파일 ID로 파일 정보 조회 시작...', { fileId, hasCharacterSheets });
       const { data: file, error: fileError } = await supabase
         .from('files')
         .select('*')
@@ -418,9 +438,21 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (fileError || !file) {
-        console.error('[이미지 재생성] 파일 조회 실패:', fileError);
+        console.error('[이미지 재생성] 파일 조회 실패:', {
+          fileId,
+          error: fileError,
+          errorCode: fileError?.code,
+          errorMessage: fileError?.message,
+          hasCharacterSheets,
+        });
         return NextResponse.json(
-          { error: '파일을 찾을 수 없습니다.' },
+          { 
+            error: '파일을 찾을 수 없습니다.',
+            details: fileError ? {
+              code: fileError.code,
+              message: fileError.message,
+            } : undefined,
+          },
           { status: 404 }
         );
       }
@@ -614,10 +646,88 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 캐릭터시트 이미지 처리 (캐릭터 바꾸기용)
+    const characterSheetImages: Array<{ base64: string; mimeType: string }> = [];
+    
+    if (hasCharacterSheets && characterSheets) {
+      console.log('[이미지 재생성] 캐릭터시트 이미지 다운로드 시작...', { count: characterSheets.length });
+      
+      for (const sheet of characterSheets) {
+        try {
+          // 레퍼런스 파일처럼 DB에서 file_path 조회
+          console.log('[이미지 재생성] 캐릭터시트 파일 ID로 파일 정보 조회 시작...', { sheetId: sheet.sheetId });
+          const { data: sheetFile, error: sheetFileError } = await supabase
+            .from('character_sheets')
+            .select('file_path')
+            .eq('id', sheet.sheetId)
+            .single();
+
+          if (sheetFileError || !sheetFile) {
+            console.error('[이미지 재생성] 캐릭터시트 파일 조회 실패:', {
+              sheetId: sheet.sheetId,
+              error: sheetFileError,
+            });
+            continue; // 개별 실패해도 계속 진행
+          }
+
+          console.log('[이미지 재생성] 캐릭터시트 이미지 다운로드 시작...', { sheetId: sheet.sheetId, filePath: sheetFile.file_path });
+          const sheetResponse = await fetch(sheetFile.file_path);
+          
+          if (!sheetResponse.ok) {
+            console.error('[이미지 재생성] 캐릭터시트 이미지 다운로드 실패:', {
+              sheetId: sheet.sheetId,
+              status: sheetResponse.status,
+              statusText: sheetResponse.statusText,
+              filePath: sheetFile.file_path,
+            });
+            continue; // 개별 실패해도 계속 진행
+          }
+          
+          const sheetArrayBuffer = await sheetResponse.arrayBuffer();
+          const sheetBuffer = Buffer.from(sheetArrayBuffer);
+          const sheetBase64 = sheetBuffer.toString('base64');
+          const sheetMimeType = sheetResponse.headers.get('content-type') || 'image/jpeg';
+          
+          characterSheetImages.push({
+            base64: sheetBase64,
+            mimeType: sheetMimeType,
+          });
+          
+          console.log('[이미지 재생성] 캐릭터시트 이미지 다운로드 완료:', {
+            sheetId: sheet.sheetId,
+            size: sheetBuffer.length,
+            mimeType: sheetMimeType,
+          });
+        } catch (error) {
+          console.error('[이미지 재생성] 캐릭터시트 이미지 다운로드 중 오류:', {
+            sheetId: sheet.sheetId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // 개별 실패해도 계속 진행
+        }
+      }
+      
+      if (characterSheetImages.length === 0) {
+        console.error('[이미지 재생성] 모든 캐릭터시트 이미지 다운로드 실패');
+        return NextResponse.json(
+          { error: '캐릭터시트 이미지를 가져올 수 없습니다.' },
+          { status: 400 }
+        );
+      }
+      
+      console.log('[이미지 재생성] 캐릭터시트 이미지 다운로드 완료:', {
+        total: characterSheets.length,
+        success: characterSheetImages.length,
+      });
+    }
+
     let generatedImageData: string | null = null;
     let generatedImageMimeType: string | null = null;
 
-    if (useSeedream) {
+    // 캐릭터시트가 있으면 Gemini만 사용
+    const finalUseSeedream = hasCharacterSheets ? false : useSeedream;
+
+    if (finalUseSeedream) {
       // Seedream API 호출
       if (!SEEDREAM_API_KEY) {
         console.error('[이미지 재생성] SEEDREAM_API_KEY가 설정되지 않음');
@@ -868,7 +978,47 @@ export async function POST(request: NextRequest) {
       // 레퍼런스 이미지가 있는 경우 두 이미지를 함께 전달
       const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
       
-      if (hasReferenceImage && refImageBase64 && refMimeType) {
+      if (hasCharacterSheets && characterSheetImages.length > 0) {
+        // 캐릭터 바꾸기: 특별한 프롬프트 + 원본 이미지(1번) + 캐릭터시트 이미지들(2번 이후)
+        const characterChangePrompt = '1번 이미지의 캐릭터들을 나머지 첨부된 캐릭터시트들의 캐릭터들로 교체해주세요 (남성은 남성으로, 여성은 여성으로).\n\n1번 이미지의 캐릭터 자세와 구도는 그대로 유지합니다';
+        
+        contentParts.push({
+          text: characterChangePrompt,
+        });
+        
+        // 1번 이미지: 원본 이미지
+        // imageBase64는 fileId나 requestImageBase64에서 가져온 것
+        // 캐릭터 바꾸기 모드에서는 항상 원본 이미지가 필요하므로 imageBase64 사용
+        if (imageBase64) {
+          contentParts.push({
+            inlineData: {
+              mimeType: mimeType,
+              data: imageBase64,
+            },
+          });
+        } else {
+          console.error('[이미지 재생성] 캐릭터 바꾸기 모드에서 원본 이미지 데이터가 없음');
+          return NextResponse.json(
+            { error: '원본 이미지 데이터가 필요합니다.' },
+            { status: 400 }
+          );
+        }
+        
+        // 2번 이후: 캐릭터시트 이미지들
+        for (const sheetImage of characterSheetImages) {
+          contentParts.push({
+            inlineData: {
+              mimeType: sheetImage.mimeType,
+              data: sheetImage.base64,
+            },
+          });
+        }
+        console.log('[이미지 재생성] 캐릭터 바꾸기 모드로 Gemini API 호출', {
+          originalImage: '1번',
+          characterSheets: `${characterSheetImages.length}개`,
+          hasImageBase64: !!imageBase64,
+        });
+      } else if (hasReferenceImage && refImageBase64 && refMimeType) {
         // 톤먹 넣기: 원본(이미지1) + 레퍼런스(이미지2) + 프롬프트
         contentParts.push({
           text: stylePrompt, // "1번 이미지의 스케치를 2번 이미지의 명암과 톤 스타일을 참고해서 완성해줘"

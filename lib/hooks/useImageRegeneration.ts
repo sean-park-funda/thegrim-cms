@@ -22,6 +22,10 @@ interface ReferenceImageInfo {
   id: string; // 레퍼런스 파일 ID
 }
 
+interface CharacterSheetInfo {
+  sheetId: string;
+}
+
 interface UseImageRegenerationOptions {
   fileToView: FileType | null;
   selectedCutId: string | null;
@@ -53,7 +57,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string) => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[]) => {
     // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
     const actualFileId = targetFileId || (fileToView?.id);
     if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
@@ -120,6 +124,19 @@ export function useImageRegeneration({
       const fileId = actualFileId;
       const referenceFileId = referenceImage?.id;
 
+      // 캐릭터시트가 있으면 Gemini만 사용
+      const useCharacterSheets = characterSheets && characterSheets.length > 0;
+      
+      // 디버깅: fileId 확인
+      console.log('[이미지 재생성] 배치 API 준비:', {
+        fileId,
+        fileIdType: typeof fileId,
+        referenceFileId,
+        characterSheetsCount: characterSheets?.length || 0,
+        useCharacterSheets,
+      });
+      const finalApiProvider: ApiProvider = useCharacterSheets ? 'gemini' : apiProvider;
+
       // 생성할 이미지들을 provider별로 그룹화
       const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream' }> = [];
       
@@ -128,8 +145,8 @@ export function useImageRegeneration({
           ? generateVariedPrompt(stylePrompt, styleId)
           : stylePrompt;
 
-        let actualProvider: ApiProvider = apiProvider;
-        if (apiProvider === 'auto') {
+        let actualProvider: ApiProvider = finalApiProvider;
+        if (finalApiProvider === 'auto') {
           // auto: 홀수 인덱스는 Gemini, 짝수 인덱스는 Seedream
           actualProvider = i % 2 === 0 ? 'seedream' : 'gemini';
         }
@@ -141,8 +158,10 @@ export function useImageRegeneration({
         });
       }
 
+      // 캐릭터 바꾸기 모드에서는 useLatestImageAsInput을 사용하지 않음 (원본 이미지가 필요하므로)
       // base64 데이터가 있는 경우 (useLatestImageAsInput)는 단일 이미지 API 사용
-      if (useLatestImageAsInputBase64) {
+      // 단, 캐릭터 바꾸기 모드가 아닐 때만
+      if (useLatestImageAsInputBase64 && !useCharacterSheets) {
         // 단일 이미지 API 사용 (기존 로직 유지)
         const generateSingleImage = async (index: number): Promise<RegeneratedImage | null> => {
           try {
@@ -151,7 +170,7 @@ export function useImageRegeneration({
               : stylePrompt;
 
             let actualProvider: ApiProvider = apiProvider;
-            if (apiProvider === 'auto') {
+            if (actualProvider === 'auto') {
               actualProvider = index % 2 === 0 ? 'seedream' : 'gemini';
             }
 
@@ -311,11 +330,34 @@ export function useImageRegeneration({
 
           console.log(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 처리 시작 (${batch.length}개 요청)...`);
 
+          // fileId가 올바른지 확인 (문자열이어야 함)
+          if (!fileId || typeof fileId !== 'string') {
+            console.error('[이미지 재생성] fileId가 올바르지 않음:', { 
+              fileId, 
+              type: typeof fileId,
+              isArray: Array.isArray(fileId),
+              actualFileId,
+            });
+            throw new Error(`원본 파일 ID가 필요합니다. 현재 값: ${JSON.stringify(fileId)}`);
+          }
+
           const batchRequestBody = {
-            fileId,
-            referenceFileId,
+            fileId: String(fileId), // 명시적으로 문자열로 변환
+            referenceFileId: referenceFileId || undefined,
             requests: batch,
+            ...(useCharacterSheets && characterSheets ? { characterSheets } : {}),
           };
+          
+          // 디버깅: 요청 본문 확인
+          console.log('[이미지 재생성] 배치 요청 본문 구조:', {
+            fileId: batchRequestBody.fileId,
+            fileIdType: typeof batchRequestBody.fileId,
+            hasCharacterSheets: 'characterSheets' in batchRequestBody,
+            characterSheetsType: 'characterSheets' in batchRequestBody 
+              ? (Array.isArray(batchRequestBody.characterSheets) ? 'array' : typeof batchRequestBody.characterSheets)
+              : '없음',
+            requestsCount: batch.length,
+          });
 
           try {
             const batchResponse = await fetch('/api/regenerate-image-batch', {
