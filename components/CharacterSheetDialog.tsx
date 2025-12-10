@@ -12,6 +12,7 @@ import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { getSheetsByCharacter, uploadCharacterSheet, saveCharacterSheetFromBase64, deleteCharacterSheet } from '@/lib/api/characterSheets';
 import { useStore } from '@/lib/store/useStore';
 import { canCreateContent, canDeleteContent } from '@/lib/utils/permissions';
+import { ImageViewer } from './ImageViewer';
 
 interface CharacterSheetDialogProps {
   open: boolean;
@@ -42,7 +43,7 @@ export function CharacterSheetDialog({
   const sourceImageInputRef = useRef<HTMLInputElement>(null);
 
   // 뷰어 상태
-  const [viewerImage, setViewerImage] = useState<string | null>(null);
+  const [viewerSheet, setViewerSheet] = useState<CharacterSheet | null>(null);
 
   // 드래그 앤 드롭 상태
   const [isDragging, setIsDragging] = useState(false);
@@ -68,6 +69,7 @@ export function CharacterSheetDialog({
       setGeneratedImage(null);
       setGeneratedDescription('');
       setUploadDescription('');
+      setViewerSheet(null);
     }
   }, [open, loadSheets]);
 
@@ -241,14 +243,22 @@ export function CharacterSheetDialog({
   };
 
   // 이미지 다운로드
-  const handleDownload = (sheet: CharacterSheet) => {
-    const link = document.createElement('a');
-    link.href = sheet.file_path;
-    link.download = sheet.file_name;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (sheet: CharacterSheet) => {
+    try {
+      const response = await fetch(sheet.file_path);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = sheet.file_name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('파일 다운로드 실패:', error);
+      alert('파일 다운로드에 실패했습니다.');
+    }
   };
 
   return (
@@ -299,7 +309,7 @@ export function CharacterSheetDialog({
                       >
                         <div
                           className="aspect-square bg-muted cursor-pointer"
-                          onClick={() => setViewerImage(sheet.file_path)}
+                          onClick={() => setViewerSheet(sheet)}
                         >
                           <img
                             src={sheet.file_path}
@@ -313,7 +323,10 @@ export function CharacterSheetDialog({
                             variant="secondary"
                             size="sm"
                             className="h-7 w-7 p-0 bg-background/80 backdrop-blur-sm"
-                            onClick={() => handleDownload(sheet)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownload(sheet);
+                            }}
                           >
                             <Download className="h-3.5 w-3.5" />
                           </Button>
@@ -322,7 +335,10 @@ export function CharacterSheetDialog({
                               variant="secondary"
                               size="sm"
                               className="h-7 w-7 p-0 bg-background/80 backdrop-blur-sm text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteSheet(sheet)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSheet(sheet);
+                              }}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -470,7 +486,17 @@ export function CharacterSheetDialog({
                     <>
                       <div
                         className="cursor-pointer"
-                        onClick={() => setViewerImage(`data:${generatedImage.mimeType};base64,${generatedImage.base64}`)}
+                        onClick={() => {
+                          // 생성된 이미지는 임시이므로 별도 처리
+                          const dataUrl = `data:${generatedImage.mimeType};base64,${generatedImage.base64}`;
+                          const link = document.createElement('a');
+                          link.href = dataUrl;
+                          link.download = `${character.name}-character-sheet-generated.png`;
+                          link.target = '_blank';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
                       >
                         <img
                           src={`data:${generatedImage.mimeType};base64,${generatedImage.base64}`}
@@ -530,27 +556,18 @@ export function CharacterSheetDialog({
       </Dialog>
 
       {/* 이미지 뷰어 */}
-      {viewerImage && (
-        <Dialog open={!!viewerImage} onOpenChange={() => setViewerImage(null)}>
-          <DialogContent className="sm:max-w-[95vw] w-[95vw] max-h-[95vh] p-0 bg-black/95">
-            <DialogTitle className="sr-only">캐릭터 시트 이미지 뷰어</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute top-2 right-2 z-50 text-white hover:bg-white/20"
-              onClick={() => setViewerImage(null)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-            <div className="flex items-center justify-center h-[90vh]">
-              <img
-                src={viewerImage}
-                alt="캐릭터 시트"
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+      {viewerSheet && (
+        <ImageViewer
+          imageUrl={viewerSheet.file_path}
+          imageName={viewerSheet.file_name}
+          open={!!viewerSheet}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewerSheet(null);
+            }
+          }}
+          onDownload={() => handleDownload(viewerSheet)}
+        />
       )}
     </>
   );

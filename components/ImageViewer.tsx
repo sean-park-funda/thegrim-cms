@@ -3,7 +3,7 @@
 import { useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, RefreshCw, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RefreshCw, X, Download } from 'lucide-react';
 import Image from 'next/image';
 import { useImageViewer } from '@/lib/hooks/useImageViewer';
 
@@ -12,6 +12,7 @@ interface ImageViewerProps {
   imageName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDownload?: () => void;
 }
 
 export function ImageViewer({
@@ -19,6 +20,7 @@ export function ImageViewer({
   imageName,
   open,
   onOpenChange,
+  onDownload,
 }: ImageViewerProps) {
   const {
     imageZoom,
@@ -324,6 +326,19 @@ export function ImageViewer({
             >
               <RefreshCw className="h-5 w-5" />
             </Button>
+            {onDownload && (
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDownload();
+                }}
+                title="다운로드"
+              >
+                <Download className="h-5 w-5" />
+              </Button>
+            )}
           </div>
 
           {/* 이미지 컨테이너 */}
