@@ -120,7 +120,8 @@ export function ProcessFileSection({
                     <>
                       <Upload className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 sm:mb-3 text-muted-foreground opacity-50" />
                       <p className="text-xs sm:text-sm text-muted-foreground mb-1">파일을 드래그하여 업로드</p>
-                      <p className="text-xs text-muted-foreground">또는 클릭하여 파일 선택</p>
+                      <p className="text-xs text-muted-foreground mb-1">또는 클릭하여 파일 선택</p>
+                      <p className="text-xs text-muted-foreground">또는 Ctrl+V로 클립보드 붙여넣기</p>
                     </>
                   ) : (
                     <>
@@ -144,7 +145,8 @@ export function ProcessFileSection({
                         <Plus className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                       <div className="p-2 sm:p-3 text-center">
-                        <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">파일 추가</p>
+                        <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors mb-0.5">파일 추가</p>
+                        <p className="text-[10px] text-muted-foreground/70 group-hover:text-muted-foreground/90 transition-colors">Ctrl+V 붙여넣기</p>
                       </div>
                     </Card>
                   )}

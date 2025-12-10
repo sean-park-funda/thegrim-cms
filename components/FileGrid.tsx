@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile, deleteFile, updateFile, analyzeImage, getFilesByCut } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
@@ -39,6 +39,8 @@ export function FileGrid() {
   const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
   const [viewingImageName, setViewingImageName] = useState<string>('');
   const [draggedOverProcessId, setDraggedOverProcessId] = useState<string | null>(null);
+  const isProcessingPaste = useRef(false);
+  const pasteListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
 
   // 커스텀 훅 사용
   const {
@@ -141,18 +143,29 @@ export function FileGrid() {
   const handleFileUpload = useCallback(async (acceptedFiles: globalThis.File[], processId: string) => {
     if (!selectedCut) return;
 
-    setUploadingFiles(prev => ({ ...prev, [processId]: acceptedFiles }));
+    // 상태 업데이트를 즉시 반영하기 위해 함수형 업데이트 사용
+    setUploadingFiles(prev => {
+      const newState = { ...prev, [processId]: acceptedFiles };
+      return newState;
+    });
+    
+    // 진행률 초기화도 즉시 반영
+    setUploadProgress(prev => {
+      const newState = { ...prev };
+      if (!newState[processId]) {
+        newState[processId] = {};
+      }
+      acceptedFiles.forEach(file => {
+        newState[processId][file.name] = 0;
+      });
+      return newState;
+    });
 
     try {
       const uploadedImageIds: string[] = [];
 
       for (const file of acceptedFiles) {
         try {
-          setUploadProgress(prev => ({
-            ...prev,
-            [processId]: { ...prev[processId], [file.name]: 0 }
-          }));
-
           const uploadedFile = await uploadFile(file, selectedCut.id, processId, '', profile?.id);
 
           setUploadProgress(prev => ({
@@ -195,7 +208,131 @@ export function FileGrid() {
       console.error('파일 업로드 실패:', error);
       alert('파일 업로드에 실패했습니다.');
     }
-  }, [selectedCut, loadFiles, setPendingAnalysisFiles]);
+  }, [selectedCut, loadFiles, setPendingAnalysisFiles, profile?.id]);
+
+  // 클립보드에서 이미지 붙여넣기 처리
+  const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
+    // DOM에서 ImageRegenerationWorkspace 다이얼로그가 열려있는지 확인
+    // 이렇게 하면 이벤트 리스너 실행 순서에 의존하지 않고 안정적으로 동작함
+    const imageRegenerationDialog = document.querySelector('[data-dialog-type="image-regeneration-workspace"]');
+    const isImageRegenerationOpen = imageRegenerationDialog && imageRegenerationDialog.getAttribute('data-state') === 'open';
+    
+    // 다이얼로그가 열려있으면 즉시 무시 (다이얼로그의 핸들러가 처리하도록)
+    if (isImageRegenerationOpen || workspaceOpen || detailDialogOpen || editDialogOpen || deleteDialogOpen) {
+      // ImageRegenerationWorkspace 핸들러가 실행되도록 이벤트 전파는 막지 않음
+      return;
+    }
+
+    // 이미 처리 중이면 무시 (중복 방지)
+    if (isProcessingPaste.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // 입력 필드에 포커스가 있으면 기본 동작 허용
+    const activeElement = document.activeElement;
+    if (
+      activeElement &&
+      (activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.getAttribute('contenteditable') === 'true')
+    ) {
+      return;
+    }
+
+    // 업로드 권한 확인
+    if (!profile || !canUploadFile(profile.role)) {
+      return;
+    }
+
+    // 컷이 선택되지 않았거나 공정이 없으면 무시
+    if (!selectedCut || !selectedProcess) {
+      return;
+    }
+
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) {
+      return;
+    }
+
+    // 클립보드에서 이미지 찾기
+    const items = Array.from(clipboardData.items);
+    const imageItem = items.find((item) => item.type.indexOf('image') !== -1);
+
+    if (!imageItem) {
+      // 이미지가 아니면 무시
+      return;
+    }
+
+    // 기본 동작 방지
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // 처리 중 플래그 설정
+    isProcessingPaste.current = true;
+
+    try {
+      // Blob으로 변환
+      const blob = imageItem.getAsFile();
+      if (!blob) {
+        return;
+      }
+
+      // File 객체로 변환 (파일명은 타임스탬프 기반)
+      const timestamp = Date.now();
+      const fileExtension = blob.type.split('/')[1] || 'png';
+      const fileName = `clipboard-${timestamp}.${fileExtension}`;
+      const file = new File([blob], fileName, { type: blob.type });
+
+      // handleFileUpload 직접 호출 (상태 업데이트가 정상 작동하도록)
+      await handleFileUpload([file], selectedProcess.id);
+    } catch (error) {
+      console.error('클립보드 이미지 붙여넣기 실패:', error);
+      alert('클립보드 이미지 붙여넣기에 실패했습니다.');
+    } finally {
+      // 처리 완료 후 플래그 해제 (짧은 딜레이를 두어 중복 방지)
+      setTimeout(() => {
+        isProcessingPaste.current = false;
+      }, 500);
+    }
+  }, [profile, selectedCut, selectedProcess, handleFileUpload, workspaceOpen, detailDialogOpen, editDialogOpen, deleteDialogOpen]);
+
+  // 클립보드 붙여넣기 이벤트 리스너 등록 (한 번만)
+  // ImageRegenerationWorkspace보다 먼저 등록하여 나중에 실행되도록 함
+  useEffect(() => {
+    // 업로드 권한이 없으면 리스너 등록하지 않음
+    if (!profile || !canUploadFile(profile.role)) {
+      // 권한이 없으면 기존 리스너 제거
+      if (pasteListenerRef.current) {
+        window.removeEventListener('paste', pasteListenerRef.current, true);
+        pasteListenerRef.current = null;
+      }
+      return;
+    }
+
+    // 리스너 함수 생성 (최신 handlePasteFromClipboard를 참조)
+    const pasteHandler = (e: ClipboardEvent) => {
+      handlePasteFromClipboard(e);
+    };
+
+    // 이미 리스너가 등록되어 있으면 제거
+    if (pasteListenerRef.current) {
+      window.removeEventListener('paste', pasteListenerRef.current, true);
+    }
+
+    // 새 리스너 등록 (즉시 등록하여 ImageRegenerationWorkspace보다 먼저 등록되도록 함)
+    pasteListenerRef.current = pasteHandler;
+    window.addEventListener('paste', pasteHandler, true); // capture phase에서 처리
+
+    return () => {
+      if (pasteListenerRef.current) {
+        window.removeEventListener('paste', pasteListenerRef.current, true);
+        pasteListenerRef.current = null;
+      }
+    };
+  }, [handlePasteFromClipboard, profile]);
 
   const handleDownload = async (file: FileType, e: React.MouseEvent) => {
     e.stopPropagation();

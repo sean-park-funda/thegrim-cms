@@ -13,6 +13,9 @@ const SEEDREAM_API_ENDPOINT = `${SEEDREAM_API_BASE_URL}/images/generations`; // 
 // Seedream API 타임아웃 설정 (밀리초)
 const SEEDREAM_API_TIMEOUT = 60000; // 60초
 
+// Gemini API 타임아웃 설정 (밀리초)
+const GEMINI_API_TIMEOUT = 120000; // 120초 (이미지 생성이 더 오래 걸릴 수 있음)
+
 // 재시도 가능한 네트워크 에러 코드 목록
 const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
 
@@ -29,6 +32,10 @@ const MAX_CACHE_SIZE = 100;
  */
 function isRetryableError(error: unknown): boolean {
   if (error instanceof Error) {
+    // 타임아웃 에러는 재시도 가능 (일시적인 네트워크 문제일 수 있음)
+    if (error.message.includes('타임아웃') || error.message.includes('timeout')) {
+      return true;
+    }
     // TypeError: terminated (ECONNRESET 포함)
     if (error.message === 'terminated' || error.message.includes('ECONNRESET')) {
       return true;
@@ -1074,13 +1081,23 @@ export async function POST(request: NextRequest) {
             attempt: attempt + 1,
             maxRetries: maxRetries + 1,
             aspectRatio: aspectRatio || '미지정',
+            timeout: `${GEMINI_API_TIMEOUT}ms`,
           });
 
-          response = await ai.models.generateContentStream({
+          // 타임아웃과 함께 API 호출
+          const apiPromise = ai.models.generateContentStream({
             model,
             config,
             contents,
           });
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`));
+            }, GEMINI_API_TIMEOUT);
+          });
+
+          response = await Promise.race([apiPromise, timeoutPromise]);
 
           // 성공적으로 응답을 받았으면 재시도 루프 종료
           break;
@@ -1107,33 +1124,61 @@ export async function POST(request: NextRequest) {
         throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
       }
 
-      // 스트림에서 모든 chunk 수집
-      for await (const chunk of response) {
-        if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-          continue;
-        }
+      // 스트림에서 모든 chunk 수집 (타임아웃 포함)
+      const streamReadStartTime = Date.now();
+      const STREAM_READ_TIMEOUT = GEMINI_API_TIMEOUT; // 스트림 읽기 타임아웃 (전체 타임아웃과 동일)
 
-        const parts = chunk.candidates[0].content.parts;
-        
-        for (const part of parts) {
-          if (part.inlineData) {
-            const inlineData = part.inlineData;
-            if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-              generatedImageData = inlineData.data;
-              generatedImageMimeType = inlineData.mimeType || 'image/png';
-              console.log('[이미지 재생성] 이미지 데이터를 찾음:', {
-                dataLength: generatedImageData.length,
-                mimeType: generatedImageMimeType
-              });
+      try {
+        const readStreamWithTimeout = async () => {
+          for await (const chunk of response!) {
+            // 타임아웃 체크
+            const elapsed = Date.now() - streamReadStartTime;
+            if (elapsed > STREAM_READ_TIMEOUT) {
+              throw new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`);
+            }
+
+            if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
+              continue;
+            }
+
+            const parts = chunk.candidates[0].content.parts;
+            
+            for (const part of parts) {
+              if (part.inlineData) {
+                const inlineData = part.inlineData;
+                if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
+                  generatedImageData = inlineData.data;
+                  generatedImageMimeType = inlineData.mimeType || 'image/png';
+                  console.log('[이미지 재생성] 이미지 데이터를 찾음:', {
+                    dataLength: generatedImageData.length,
+                    mimeType: generatedImageMimeType
+                  });
+                  break;
+                }
+              }
+            }
+
+            // 이미지 데이터를 찾았으면 더 이상 처리하지 않음
+            if (generatedImageData) {
               break;
             }
           }
-        }
+        };
 
-        // 이미지 데이터를 찾았으면 더 이상 처리하지 않음
-        if (generatedImageData) {
-          break;
+        await Promise.race([
+          readStreamWithTimeout(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`));
+            }, STREAM_READ_TIMEOUT);
+          }),
+        ]);
+      } catch (streamError) {
+        if (streamError instanceof Error && streamError.message.includes('타임아웃')) {
+          console.error('[이미지 재생성] 스트림 읽기 타임아웃:', streamError.message);
+          throw streamError;
         }
+        throw streamError;
       }
 
       const geminiRequestTime = Date.now() - geminiRequestStart;

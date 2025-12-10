@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,10 +30,11 @@ export function ReferenceFileUpload({
     const [uploading, setUploading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isProcessingPaste = useRef(false);
 
-    const handleFileSelect = (file: File) => {
+    const handleFileSelect = useCallback((file: File) => {
         setSelectedFile(file);
-    };
+    }, []);
 
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
@@ -92,6 +93,100 @@ export function ReferenceFileUpload({
         setDescription('');
         onOpenChange(false);
     };
+
+    // 클립보드에서 이미지 붙여넣기 처리
+    const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
+        // Dialog가 닫혀있으면 무시
+        if (!open) {
+            return;
+        }
+
+        // Dialog가 열려있으면 즉시 이벤트 전파 중단 (FileGrid로 전파 방지)
+        // 조건을 확인하기 전에 먼저 이벤트 전파를 막아야 함
+        e.stopPropagation();
+
+        // 이미 처리 중이면 무시 (중복 방지)
+        if (isProcessingPaste.current) {
+            e.preventDefault();
+            return;
+        }
+
+        // 입력 필드에 포커스가 있으면 기본 동작 허용 (하지만 이벤트 전파는 막음)
+        const activeElement = document.activeElement;
+        if (
+            activeElement &&
+            (activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.getAttribute('contenteditable') === 'true')
+        ) {
+            // 입력 필드에 포커스가 있으면 FileGrid로 전파되지 않도록 막음
+            e.stopPropagation();
+            return;
+        }
+
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) {
+            // 다이얼로그가 열려있으면 이벤트 전파는 막음
+            e.stopPropagation();
+            return;
+        }
+
+        // 클립보드에서 이미지 찾기
+        const items = Array.from(clipboardData.items);
+        const imageItem = items.find((item) => item.type.indexOf('image') !== -1);
+
+        if (!imageItem) {
+            // 이미지가 아니면 무시 (하지만 다이얼로그가 열려있으면 이벤트 전파는 막음)
+            e.stopPropagation();
+            return;
+        }
+
+        // 이미지를 찾았으면 즉시 이벤트 전파 중단 (다른 핸들러가 실행되지 않도록)
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // 처리 중 플래그 설정
+        isProcessingPaste.current = true;
+
+        try {
+            // Blob으로 변환
+            const blob = imageItem.getAsFile();
+            if (!blob) {
+                return;
+            }
+
+            // File 객체로 변환 (파일명은 타임스탬프 기반)
+            const timestamp = Date.now();
+            const fileExtension = blob.type.split('/')[1] || 'png';
+            const fileName = `clipboard-${timestamp}.${fileExtension}`;
+            const file = new File([blob], fileName, { type: blob.type });
+
+            // 파일 선택 상태 업데이트
+            handleFileSelect(file);
+        } catch (error) {
+            console.error('클립보드 이미지 붙여넣기 실패:', error);
+            alert('클립보드 이미지 붙여넣기에 실패했습니다.');
+        } finally {
+            // 처리 완료 후 플래그 해제
+            setTimeout(() => {
+                isProcessingPaste.current = false;
+            }, 500);
+        }
+    }, [open, handleFileSelect]);
+
+    // 클립보드 붙여넣기 이벤트 리스너 등록
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        window.addEventListener('paste', handlePasteFromClipboard, true);
+
+        return () => {
+            window.removeEventListener('paste', handlePasteFromClipboard, true);
+        };
+    }, [open, handlePasteFromClipboard]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -155,6 +250,9 @@ export function ReferenceFileUpload({
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-1">
                                         이미지, 비디오, PSD, AI, PDF 파일 지원
+                                    </p>
+                                    <p className="text-xs text-muted-foreground/70 mt-1">
+                                        또는 Ctrl+V로 클립보드 붙여넣기 (이미지만)
                                     </p>
                                 </div>
                             )}

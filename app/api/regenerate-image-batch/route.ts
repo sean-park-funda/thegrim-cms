@@ -10,6 +10,7 @@ const SEEDREAM_API_BASE_URL = process.env.SEEDREAM_API_BASE_URL || 'https://ark.
 const SEEDREAM_API_ENDPOINT = `${SEEDREAM_API_BASE_URL}/images/generations`;
 
 const SEEDREAM_API_TIMEOUT = 60000; // 60초
+const GEMINI_API_TIMEOUT = 120000; // 120초 (이미지 생성이 더 오래 걸릴 수 있음)
 const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
 const SEEDREAM_MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const SEEDREAM_MAX_PIXELS = 36000000; // 36,000,000 픽셀
@@ -35,6 +36,10 @@ const SEEDREAM_ASPECT_RATIOS = [
 
 function isRetryableError(error: unknown): boolean {
   if (error instanceof Error) {
+    // 타임아웃 에러는 재시도 가능 (일시적인 네트워크 문제일 수 있음)
+    if (error.message.includes('타임아웃') || error.message.includes('timeout')) {
+      return true;
+    }
     if (error.message === 'terminated' || error.message.includes('ECONNRESET')) {
       return true;
     }
@@ -746,36 +751,78 @@ export async function POST(request: NextRequest) {
               parts: contentParts,
             }];
 
-            const response = await ai.models.generateContentStream({
+            console.log(`[이미지 재생성 배치] Gemini API 호출 (인덱스 ${req.index}):`, {
+              timeout: `${GEMINI_API_TIMEOUT}ms`,
+            });
+
+            // 타임아웃과 함께 API 호출
+            const apiPromise = ai.models.generateContentStream({
               model,
               config,
               contents,
             });
 
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`));
+              }, GEMINI_API_TIMEOUT);
+            });
+
+            const response = await Promise.race([apiPromise, timeoutPromise]);
+
             let generatedImageData: string | null = null;
             let generatedImageMimeType: string | null = null;
 
-            for await (const chunk of response) {
-              if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-                continue;
-              }
+            // 스트림 읽기 타임아웃 설정
+            const streamReadStartTime = Date.now();
+            const STREAM_READ_TIMEOUT = GEMINI_API_TIMEOUT;
 
-              const parts = chunk.candidates[0].content.parts;
-              
-              for (const part of parts) {
-                if (part.inlineData) {
-                  const inlineData = part.inlineData;
-                  if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-                    generatedImageData = inlineData.data;
-                    generatedImageMimeType = inlineData.mimeType || 'image/png';
+            try {
+              const readStreamWithTimeout = async () => {
+                for await (const chunk of response) {
+                  // 타임아웃 체크
+                  const elapsed = Date.now() - streamReadStartTime;
+                  if (elapsed > STREAM_READ_TIMEOUT) {
+                    throw new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`);
+                  }
+
+                  if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
+                    continue;
+                  }
+
+                  const parts = chunk.candidates[0].content.parts;
+                  
+                  for (const part of parts) {
+                    if (part.inlineData) {
+                      const inlineData = part.inlineData;
+                      if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
+                        generatedImageData = inlineData.data;
+                        generatedImageMimeType = inlineData.mimeType || 'image/png';
+                        break;
+                      }
+                    }
+                  }
+
+                  if (generatedImageData) {
                     break;
                   }
                 }
-              }
+              };
 
-              if (generatedImageData) {
-                break;
+              await Promise.race([
+                readStreamWithTimeout(),
+                new Promise<never>((_, reject) => {
+                  setTimeout(() => {
+                    reject(new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`));
+                  }, STREAM_READ_TIMEOUT);
+                }),
+              ]);
+            } catch (streamError) {
+              if (streamError instanceof Error && streamError.message.includes('타임아웃')) {
+                console.error(`[이미지 재생성 배치] 스트림 읽기 타임아웃 (인덱스 ${req.index}):`, streamError.message);
+                throw streamError;
               }
+              throw streamError;
             }
 
             if (!generatedImageData) {

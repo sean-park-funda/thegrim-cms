@@ -44,9 +44,13 @@ export function CharacterSheetDialog({
 
   // 뷰어 상태
   const [viewerSheet, setViewerSheet] = useState<CharacterSheet | null>(null);
+  const [viewerGeneratedImage, setViewerGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
 
   // 드래그 앤 드롭 상태
   const [isDragging, setIsDragging] = useState(false);
+  
+  // 클립보드 붙여넣기 상태
+  const isProcessingPaste = useRef(false);
 
   const loadSheets = useCallback(async () => {
     if (!character.id) return;
@@ -70,14 +74,12 @@ export function CharacterSheetDialog({
       setGeneratedDescription('');
       setUploadDescription('');
       setViewerSheet(null);
+      setViewerGeneratedImage(null);
     }
   }, [open, loadSheets]);
 
   // 직접 업로드 핸들러
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleFileSelect = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('이미지 파일만 업로드 가능합니다.');
       return;
@@ -99,13 +101,16 @@ export function CharacterSheetDialog({
         fileInputRef.current.value = '';
       }
     }
+  }, [character.id, uploadDescription, loadSheets]);
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleFileSelect(file);
   };
 
   // AI 생성을 위한 소스 이미지 선택
-  const handleSourceImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleSourceImageSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('이미지 파일만 선택 가능합니다.');
       return;
@@ -123,6 +128,12 @@ export function CharacterSheetDialog({
       setGeneratedImage(null);
     };
     reader.readAsDataURL(file);
+  }, []);
+
+  const handleSourceImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleSourceImageSelect(file);
   };
 
   // 드래그 앤 드롭으로 소스 이미지 선택
@@ -145,25 +156,110 @@ export function CharacterSheetDialog({
 
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
+    handleSourceImageSelect(file);
+  };
 
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 선택 가능합니다.');
+  // 클립보드에서 이미지 붙여넣기 처리
+  const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
+    // Dialog가 닫혀있으면 무시
+    if (!open) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      const base64 = result.split(',')[1];
-      setSourceImage({
-        base64,
-        mimeType: file.type,
-        name: file.name,
-      });
-      setGeneratedImage(null);
+    // 이미 처리 중이면 무시 (중복 방지)
+    if (isProcessingPaste.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // 입력 필드에 포커스가 있으면 기본 동작 허용
+    const activeElement = document.activeElement;
+    if (
+      activeElement &&
+      (activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.getAttribute('contenteditable') === 'true')
+    ) {
+      return;
+    }
+
+    // 권한 확인
+    if (!profile || !canCreateContent(profile.role)) {
+      return;
+    }
+
+    // 업로드 탭 또는 생성 탭이 활성화되어 있을 때만 처리
+    if (activeTab !== 'upload' && activeTab !== 'generate') {
+      return;
+    }
+
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) {
+      return;
+    }
+
+    // 클립보드에서 이미지 찾기
+    const items = Array.from(clipboardData.items);
+    const imageItem = items.find((item) => item.type.indexOf('image') !== -1);
+
+    if (!imageItem) {
+      // 이미지가 아니면 무시
+      return;
+    }
+
+    // 기본 동작 방지
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // 처리 중 플래그 설정
+    isProcessingPaste.current = true;
+
+    try {
+      // Blob으로 변환
+      const blob = imageItem.getAsFile();
+      if (!blob) {
+        return;
+      }
+
+      // File 객체로 변환 (파일명은 타임스탬프 기반)
+      const timestamp = Date.now();
+      const fileExtension = blob.type.split('/')[1] || 'png';
+      const fileName = `clipboard-${timestamp}.${fileExtension}`;
+      const file = new File([blob], fileName, { type: blob.type });
+
+      // 탭에 따라 다른 처리
+      if (activeTab === 'upload') {
+        // 직접 업로드 탭: 즉시 업로드
+        await handleFileSelect(file);
+      } else if (activeTab === 'generate') {
+        // AI 생성 탭: 소스 이미지로 설정
+        handleSourceImageSelect(file);
+      }
+    } catch (error) {
+      console.error('클립보드 이미지 붙여넣기 실패:', error);
+      alert('클립보드 이미지 붙여넣기에 실패했습니다.');
+    } finally {
+      // 처리 완료 후 플래그 해제
+      setTimeout(() => {
+        isProcessingPaste.current = false;
+      }, 500);
+    }
+  }, [open, activeTab, profile, handleFileSelect, handleSourceImageSelect]);
+
+  // 클립보드 붙여넣기 이벤트 리스너 등록
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    window.addEventListener('paste', handlePasteFromClipboard, true);
+
+    return () => {
+      window.removeEventListener('paste', handlePasteFromClipboard, true);
     };
-    reader.readAsDataURL(file);
-  };
+  }, [open, handlePasteFromClipboard]);
 
   // AI 캐릭터 시트 생성
   const handleGenerate = async () => {
@@ -380,13 +476,16 @@ export function CharacterSheetDialog({
                   <p className="text-xs text-muted-foreground/70 mt-1">
                     PNG, JPG, WEBP 지원
                   </p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    또는 Ctrl+V로 클립보드 붙여넣기
+                  </p>
                 </div>
 
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={handleFileSelect}
+                  onChange={handleFileInputChange}
                   className="hidden"
                   disabled={uploading}
                 />
@@ -402,12 +501,12 @@ export function CharacterSheetDialog({
 
             {/* AI 생성 */}
             <TabsContent value="generate" className="flex-1 overflow-auto mt-4 data-[state=inactive]:hidden">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+              <div className="flex gap-6 h-full">
                 {/* 왼쪽: 소스 이미지 선택 */}
-                <div className="space-y-4">
-                  <h3 className="font-medium">1. 캐릭터 이미지 선택</h3>
-                  <p className="text-sm text-muted-foreground">
-                    캐릭터가 나온 이미지를 업로드하면 4방향(정면, 오른쪽, 뒷면, 3/4) 캐릭터 시트를 생성합니다.
+                <div className="w-[200px] flex-shrink-0 space-y-4">
+                  <h3 className="font-medium text-sm">1. 캐릭터 이미지 선택</h3>
+                  <p className="text-xs text-muted-foreground">
+                    캐릭터 이미지를 업로드하면 4방향 캐릭터 시트를 생성합니다.
                   </p>
 
                   {sourceImage ? (
@@ -415,7 +514,7 @@ export function CharacterSheetDialog({
                       <img
                         src={`data:${sourceImage.mimeType};base64,${sourceImage.base64}`}
                         alt="소스 이미지"
-                        className="w-full max-h-[300px] object-contain rounded-lg border"
+                        className="w-full object-contain rounded-lg border"
                       />
                       <Button
                         variant="secondary"
@@ -434,7 +533,7 @@ export function CharacterSheetDialog({
                     </div>
                   ) : (
                     <div
-                      className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                      className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
                         isDragging
                           ? 'border-primary bg-primary/10'
                           : 'border-border hover:border-primary/50'
@@ -444,9 +543,12 @@ export function CharacterSheetDialog({
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
                     >
-                      <Plus className={`h-12 w-12 mx-auto mb-3 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <p className={`text-sm ${isDragging ? 'text-primary' : 'text-muted-foreground'}`}>
-                        {isDragging ? '여기에 이미지를 놓으세요' : '클릭 또는 드래그하여 캐릭터 이미지 선택'}
+                      <Plus className={`h-8 w-8 mx-auto mb-2 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <p className={`text-xs ${isDragging ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {isDragging ? '여기에 놓으세요' : '클릭 또는 드래그'}
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 mt-1">
+                        Ctrl+V 붙여넣기
                       </p>
                     </div>
                   )}
@@ -455,31 +557,32 @@ export function CharacterSheetDialog({
                     ref={sourceImageInputRef}
                     type="file"
                     accept="image/*"
-                    onChange={handleSourceImageSelect}
+                    onChange={handleSourceImageInputChange}
                     className="hidden"
                   />
 
                   <Button
                     onClick={handleGenerate}
                     disabled={!sourceImage || generating}
-                    className="w-full gap-2"
+                    className="w-full gap-2 text-sm"
+                    size="sm"
                   >
                     {generating ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-3 w-3 animate-spin" />
                         생성 중...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="h-4 w-4" />
-                        캐릭터 시트 생성
+                        <Sparkles className="h-3 w-3" />
+                        생성
                       </>
                     )}
                   </Button>
                 </div>
 
                 {/* 오른쪽: 생성 결과 */}
-                <div className="space-y-4">
+                <div className="flex-1 space-y-4 min-w-0">
                   <h3 className="font-medium">2. 생성 결과</h3>
 
                   {generatedImage ? (
@@ -487,21 +590,13 @@ export function CharacterSheetDialog({
                       <div
                         className="cursor-pointer"
                         onClick={() => {
-                          // 생성된 이미지는 임시이므로 별도 처리
-                          const dataUrl = `data:${generatedImage.mimeType};base64,${generatedImage.base64}`;
-                          const link = document.createElement('a');
-                          link.href = dataUrl;
-                          link.download = `${character.name}-character-sheet-generated.png`;
-                          link.target = '_blank';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
+                          setViewerGeneratedImage(generatedImage);
                         }}
                       >
                         <img
                           src={`data:${generatedImage.mimeType};base64,${generatedImage.base64}`}
                           alt="생성된 캐릭터 시트"
-                          className="w-full max-h-[300px] object-contain rounded-lg border"
+                          className="w-full max-h-[600px] object-contain rounded-lg border"
                         />
                       </div>
 
@@ -567,6 +662,31 @@ export function CharacterSheetDialog({
             }
           }}
           onDownload={() => handleDownload(viewerSheet)}
+        />
+      )}
+
+      {/* 생성된 이미지 뷰어 */}
+      {viewerGeneratedImage && (
+        <ImageViewer
+          imageUrl={`data:${viewerGeneratedImage.mimeType};base64,${viewerGeneratedImage.base64}`}
+          imageName={`${character.name}-character-sheet-generated.png`}
+          open={!!viewerGeneratedImage}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewerGeneratedImage(null);
+            }
+          }}
+          onDownload={() => {
+            if (!viewerGeneratedImage) return;
+            const dataUrl = `data:${viewerGeneratedImage.mimeType};base64,${viewerGeneratedImage.base64}`;
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `${character.name}-character-sheet-generated.png`;
+            document.body.appendChild(link);
+            link.click();
+            window.URL.revokeObjectURL(dataUrl);
+            document.body.removeChild(link);
+          }}
         />
       )}
     </>

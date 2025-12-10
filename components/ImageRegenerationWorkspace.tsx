@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X } from 'lucide-react';
-import { getReferenceFilesByWebtoon } from '@/lib/api/referenceFiles';
+import { getReferenceFilesByWebtoon, uploadReferenceFile, deleteReferenceFile } from '@/lib/api/referenceFiles';
 import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt, AiRegenerationStyle, FileWithRelations } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
 import { getProcesses } from '@/lib/api/processes';
@@ -19,6 +19,8 @@ import { StyleManagementDialog } from './StyleManagementDialog';
 import { CharacterSheetSelectDialog, SelectedCharacterSheet } from './CharacterSheetSelectDialog';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import { useStore } from '@/lib/store/useStore';
+import { canDeleteContent } from '@/lib/utils/permissions';
 
 interface RegeneratedImage {
   id: string;
@@ -87,6 +89,8 @@ export function ImageRegenerationWorkspace({
   canUpload,
   onSaveComplete,
 }: ImageRegenerationWorkspaceProps) {
+  const { profile } = useStore();
+  
   // 스타일 관련 상태
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
   const [loadingStyles, setLoadingStyles] = useState(false);
@@ -108,6 +112,11 @@ export function ImageRegenerationWorkspace({
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [referenceSelectOpen, setReferenceSelectOpen] = useState(false);
   const [allProcesses, setAllProcesses] = useState<Process[]>([]);
+  const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
+  
+  // 임시 레퍼런스 이미지 (클립보드에서 붙여넣은 이미지)
+  const [tempReferenceImage, setTempReferenceImage] = useState<{ url: string; name: string } | null>(null);
+  const isProcessingPaste = useRef(false);
 
   // 공정 선택 다이얼로그 상태
   const [processSelectOpen, setProcessSelectOpen] = useState(false);
@@ -264,7 +273,7 @@ export function ImageRegenerationWorkspace({
   };
 
   // 레퍼런스 업로드 완료 핸들러
-  const handleReferenceUploadComplete = async (uploadedFile?: ReferenceFile) => {
+  const handleReferenceUploadComplete = useCallback(async (uploadedFile?: ReferenceFile) => {
     if (webtoonId) {
       try {
         const files = await getReferenceFilesByWebtoon(webtoonId);
@@ -281,7 +290,163 @@ export function ImageRegenerationWorkspace({
         console.error('레퍼런스 파일 로드 실패:', error);
       }
     }
+  }, [webtoonId]);
+
+  // 참조 이미지 삭제 핸들러
+  const handleDeleteReferenceFile = async (fileId: string, fileName: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // 클릭 이벤트 전파 방지 (이미지 선택 방지)
+    
+    if (!confirm(`"${fileName}" 참조 이미지를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      setDeletingReferenceId(fileId);
+      await deleteReferenceFile(fileId);
+      
+      // 삭제된 파일이 선택된 파일이면 선택 해제
+      if (selectedReferenceFile?.id === fileId) {
+        setSelectedReferenceFile(null);
+      }
+      
+      // 목록 새로고침
+      if (webtoonId) {
+        const files = await getReferenceFilesByWebtoon(webtoonId);
+        const imageFiles = files.filter(f => f.file_type === 'image');
+        setReferenceFiles(imageFiles);
+      }
+      
+      alert('참조 이미지가 삭제되었습니다.');
+    } catch (error) {
+      console.error('참조 이미지 삭제 실패:', error);
+      alert('참조 이미지 삭제에 실패했습니다.');
+    } finally {
+      setDeletingReferenceId(null);
+    }
   };
+
+  // 클립보드에서 이미지 붙여넣기 처리
+  const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
+    // Dialog가 닫혀있으면 무시
+    if (!open) {
+      return;
+    }
+
+    // 레퍼런스 이미지가 필요한 스타일이 선택되지 않았으면 무시
+    const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
+    
+    if (!needsReference || !selectedStyle) {
+      return;
+    }
+
+    // 이미 처리 중이면 무시 (중복 방지)
+    if (isProcessingPaste.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // 입력 필드에 포커스가 있으면 기본 동작 허용
+    const activeElement = document.activeElement;
+    if (
+      activeElement &&
+      (activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.getAttribute('contenteditable') === 'true')
+    ) {
+      return;
+    }
+
+    // 권한 확인
+    if (!canUpload) {
+      return;
+    }
+
+    // webtoonId가 없으면 무시
+    if (!webtoonId || allProcesses.length === 0) {
+      return;
+    }
+
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) {
+      return;
+    }
+
+    // 클립보드에서 이미지 찾기
+    const items = Array.from(clipboardData.items);
+    const imageItem = items.find((item) => item.type.indexOf('image') !== -1);
+
+    if (!imageItem) {
+      return;
+    }
+
+    // 이미지를 찾았으면 즉시 이벤트 전파 중단 (다른 핸들러가 실행되지 않도록)
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // 처리 중 플래그 설정
+    isProcessingPaste.current = true;
+
+    try {
+      // Blob으로 변환
+      const blob = imageItem.getAsFile();
+      if (!blob) {
+        return;
+      }
+
+      // File 객체로 변환 (파일명은 타임스탬프 기반)
+      const timestamp = Date.now();
+      const fileExtension = blob.type.split('/')[1] || 'png';
+      const fileName = `clipboard-${timestamp}.${fileExtension}`;
+      const file = new File([blob], fileName, { type: blob.type });
+
+      // 첫 번째 공정을 기본값으로 사용
+      const defaultProcess = allProcesses.sort((a, b) => a.order_index - b.order_index)[0];
+      const processId = defaultProcess?.id || allProcesses[0]?.id;
+
+      if (!processId) {
+        alert('공정을 선택할 수 없습니다.');
+        return;
+      }
+
+      console.log('[ImageRegenerationWorkspace] 레퍼런스 파일 업로드 시작:', { fileName, processId, webtoonId });
+      
+      // 레퍼런스 파일로 업로드
+      const uploadedFile = await uploadReferenceFile(file, webtoonId, processId, '클립보드에서 붙여넣은 이미지');
+      
+      // 업로드 완료 핸들러 호출하여 레퍼런스 파일 목록 갱신 및 선택
+      await handleReferenceUploadComplete(uploadedFile);
+    } catch (error) {
+      console.error('클립보드 이미지 붙여넣기 실패:', error);
+      alert('클립보드 이미지 붙여넣기에 실패했습니다.');
+    } finally {
+      // 처리 완료 후 플래그 해제
+      setTimeout(() => {
+        isProcessingPaste.current = false;
+      }, 500);
+    }
+  }, [open, selectedStyle, styleSettings, canUpload, webtoonId, allProcesses, handleReferenceUploadComplete]);
+
+  // 클립보드 붙여넣기 이벤트 리스너 등록
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const pasteHandler = (e: ClipboardEvent) => {
+      // 다이얼로그가 열려있으면 즉시 이벤트 전파 중단 (FileGrid로 전파 방지)
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      handlePasteFromClipboard(e);
+    };
+
+    window.addEventListener('paste', pasteHandler, true);
+
+    return () => {
+      window.removeEventListener('paste', pasteHandler, true);
+    };
+  }, [open, handlePasteFromClipboard]);
 
   // 다음 공정 찾기
   const getNextProcessId = (currentProcessId: string): string => {
@@ -341,7 +506,10 @@ export function ImageRegenerationWorkspace({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 p-0 overflow-hidden">
+        <DialogContent 
+          className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 p-0 overflow-hidden"
+          data-dialog-type="image-regeneration-workspace"
+        >
           <div className="flex h-[95vh]">
             {/* 왼쪽 패널 - 설정 (고정 너비) */}
             <div className="w-[300px] flex-shrink-0 border-r h-[95vh] overflow-y-auto">
@@ -478,6 +646,9 @@ export function ImageRegenerationWorkspace({
                                   <div className="flex flex-col items-center gap-1 text-muted-foreground">
                                     <Plus className="h-6 w-6" />
                                     <span className="text-xs">참조 이미지 선택</span>
+                                    <span className="text-[10px] text-muted-foreground/70 mt-0.5">
+                                      또는 Ctrl+V 붙여넣기
+                                    </span>
                                   </div>
                                 )}
                               </button>
@@ -913,6 +1084,20 @@ export function ImageRegenerationWorkspace({
                           <Check className="h-3 w-3 text-primary-foreground" />
                         </div>
                       </div>
+                    )}
+                    {profile && canDeleteContent(profile.role) && (
+                      <button
+                        className="absolute top-2 left-2 bg-destructive/80 hover:bg-destructive text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        onClick={(e) => handleDeleteReferenceFile(refFile.id, refFile.file_name, e)}
+                        disabled={deletingReferenceId === refFile.id}
+                        title="삭제"
+                      >
+                        {deletingReferenceId === refFile.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3" />
+                        )}
+                      </button>
                     )}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <p className="text-white text-xs truncate">{refFile.file_name}</p>
