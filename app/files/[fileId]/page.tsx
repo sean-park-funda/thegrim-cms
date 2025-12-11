@@ -460,7 +460,7 @@ export default function FileDetailPage() {
                 size="sm"
                 className={cn(
                   "w-full h-auto py-3 flex flex-col items-center gap-1",
-                  analyzingFiles.has(file.id) && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                  analyzingFiles.has(file.id) && 'relative overflow-hidden bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer'
                 )}
                 onClick={handleAnalyzeClick}
                 disabled={analyzingFiles.has(file.id)}

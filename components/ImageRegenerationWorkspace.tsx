@@ -877,7 +877,7 @@ export function ImageRegenerationWorkspace({
                         }
                         className={cn(
                           "w-full",
-                          regeneratingImage !== null && "bg-gradient-to-r from-primary/80 via-primary to-primary/80 bg-[length:200%_100%] animate-shimmer"
+                          regeneratingImage !== null && "bg-gradient-to-r from-purple-600/80 via-purple-500 to-purple-600/80 bg-[length:200%_100%] animate-shimmer"
                         )}
                       >
                         {regeneratingImage !== null ? (
@@ -957,10 +957,10 @@ export function ImageRegenerationWorkspace({
                           <div key={img.id} className="relative space-y-1.5">
                             <div
                               className={cn(
-                                "relative w-full aspect-square bg-muted rounded-md overflow-hidden",
+                                "relative w-full aspect-square rounded-md overflow-hidden",
                                 isPlaceholder
-                                  ? "bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
-                                  : "group cursor-pointer"
+                                  ? "bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
+                                  : "bg-muted group cursor-pointer"
                               )}
                               onClick={(e) => {
                                 e.preventDefault();
@@ -1003,7 +1003,7 @@ export function ImageRegenerationWorkspace({
                                       variant="secondary"
                                       className={cn(
                                         "h-6 w-6",
-                                        regeneratingImage === img.id && "bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer"
+                                        regeneratingImage === img.id && "bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer"
                                       )}
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1024,7 +1024,7 @@ export function ImageRegenerationWorkspace({
                               )}
                               {isPlaceholder ? (
                                 <div className="absolute inset-0 flex items-center justify-center">
-                                  <Wand2 className="h-6 w-6 text-primary/50 animate-pulse" />
+                                  <Wand2 className="h-6 w-6 text-purple-400/70 animate-pulse" />
                                 </div>
                               ) : img.url ? (
                                 <Image

@@ -687,7 +687,7 @@ export function FileDetailDialog({
                   size="sm"
                   className={cn(
                     "w-full h-auto py-3 flex flex-col items-center gap-1",
-                    regeneratingImage === file.id && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                    regeneratingImage === file.id && 'relative overflow-hidden bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer'
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -704,7 +704,7 @@ export function FileDetailDialog({
                   size="sm"
                   className={cn(
                     "w-full h-auto py-3 flex flex-col items-center gap-1",
-                    analyzingModifications && 'relative overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer'
+                    analyzingModifications && 'relative overflow-hidden bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer'
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1075,10 +1075,10 @@ export function FileDetailDialog({
                     <div key={img.id} className="relative space-y-2">
                       <div 
                         className={cn(
-                          "relative w-full aspect-square bg-muted rounded-md overflow-hidden",
+                          "relative w-full aspect-square rounded-md overflow-hidden",
                           isPlaceholder 
-                            ? "overflow-hidden bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
-                            : "group cursor-pointer"
+                            ? "overflow-hidden bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
+                            : "bg-muted group cursor-pointer"
                         )}
                         onClick={() => {
                           if (!isPlaceholder && img.url) {
