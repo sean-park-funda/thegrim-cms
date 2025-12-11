@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -29,26 +29,46 @@ export function RegeneratedImageHistoryDialog({ open, onOpenChange }: Regenerate
   const [loading, setLoading] = useState(false);
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
   const [viewerImageTitle, setViewerImageTitle] = useState<string>('');
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     const loadHistory = async () => {
-      if (open && !loading) {
-        setLoading(true);
-        try {
-          const response = await fetch('/api/regenerate-image-history?limit=100');
-          if (response.ok) {
-            const data = await response.json();
-            setHistoryItems(data.history || []);
-          }
-        } catch (error) {
-          console.error('히스토리 로드 실패:', error);
-        } finally {
+      if (!open || !isMountedRef.current) return;
+
+      setLoading(true);
+      try {
+        const response = await fetch('/api/regenerate-image-history?limit=100');
+        
+        if (!isMountedRef.current) return;
+        
+        if (response.ok) {
+          const data = await response.json();
+          setHistoryItems(data.history || []);
+        }
+      } catch (error) {
+        if (!isMountedRef.current) return;
+        
+        console.error('히스토리 로드 실패:', error);
+      } finally {
+        if (isMountedRef.current) {
           setLoading(false);
         }
       }
     };
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    if (open) {
+      loadHistory();
+    } else {
+      // 다이얼로그가 닫힐 때 상태 초기화
+      setHistoryItems([]);
+      setLoading(false);
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [open]);
 
   const handleImageClick = (item: HistoryItem) => {

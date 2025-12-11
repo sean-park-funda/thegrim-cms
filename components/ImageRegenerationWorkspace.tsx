@@ -106,11 +106,12 @@ export function ImageRegenerationWorkspace({
   // 레퍼런스 파일 관련 상태
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFileWithProcess[]>([]);
   const [loadingReferences, setLoadingReferences] = useState(false);
-  const [selectedReferenceFile, setSelectedReferenceFile] = useState<ReferenceFileWithProcess | null>(null);
+  const [selectedReferenceFiles, setSelectedReferenceFiles] = useState<ReferenceFileWithProcess[]>([]);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [referenceSelectOpen, setReferenceSelectOpen] = useState(false);
   const [allProcesses, setAllProcesses] = useState<Process[]>([]);
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
+  const [tempSelectedReferenceIds, setTempSelectedReferenceIds] = useState<Set<string>>(new Set());
   
   // 임시 레퍼런스 이미지 (클립보드에서 붙여넣은 이미지)
   const [tempReferenceImage, setTempReferenceImage] = useState<{ url: string; name: string } | null>(null);
@@ -228,7 +229,7 @@ export function ImageRegenerationWorkspace({
   // 스타일 선택 핸들러
   const handleStyleSelect = (style: AiRegenerationStyle) => {
     setSelectedStyle(style);
-    setSelectedReferenceFile(null);
+    setSelectedReferenceFiles([]);
     setEditedPrompt(style.prompt);
     setSelectedPromptId(null);
     setPromptEditOpen(false);
@@ -253,8 +254,8 @@ export function ImageRegenerationWorkspace({
       }
     }
 
-    const referenceImage: ReferenceImageInfo | undefined = selectedReferenceFile
-      ? { id: selectedReferenceFile.id }
+    const referenceImages: ReferenceImageInfo[] | undefined = selectedReferenceFiles.length > 0
+      ? selectedReferenceFiles.map(file => ({ id: file.id }))
       : undefined;
 
     const characterSheets = selectedCharacterSheets.length > 0
@@ -263,9 +264,9 @@ export function ImageRegenerationWorkspace({
 
     const count = selectedStyle.allow_multiple ? generationCount : selectedStyle.default_count;
 
-    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImage?, targetFileId?, characterSheets?)
+    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?)
     // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
-    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImage, undefined, characterSheets);
+    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImages, undefined, characterSheets);
   };
 
   // 레퍼런스 업로드 완료 핸들러
@@ -277,10 +278,15 @@ export function ImageRegenerationWorkspace({
         setReferenceFiles(imageFiles);
         if (uploadedFile && uploadedFile.file_type === 'image') {
           const foundFile = imageFiles.find(f => f.id === uploadedFile.id);
-          if (foundFile) setSelectedReferenceFile(foundFile);
-          else if (imageFiles.length > 0) setSelectedReferenceFile(imageFiles[0]);
-        } else if (imageFiles.length > 0) {
-          setSelectedReferenceFile(imageFiles[0]);
+          if (foundFile) {
+            // 이미 선택된 파일이 아니면 추가
+            setSelectedReferenceFiles(prev => {
+              if (prev.some(f => f.id === foundFile.id)) {
+                return prev;
+              }
+              return [...prev, foundFile];
+            });
+          }
         }
       } catch (error) {
         console.error('레퍼런스 파일 로드 실패:', error);
@@ -300,10 +306,8 @@ export function ImageRegenerationWorkspace({
       setDeletingReferenceId(fileId);
       await deleteReferenceFile(fileId);
       
-      // 삭제된 파일이 선택된 파일이면 선택 해제
-      if (selectedReferenceFile?.id === fileId) {
-        setSelectedReferenceFile(null);
-      }
+      // 삭제된 파일이 선택된 파일 목록에서 제거
+      setSelectedReferenceFiles(prev => prev.filter(f => f.id !== fileId));
       
       // 목록 새로고침
       if (webtoonId) {
@@ -319,6 +323,43 @@ export function ImageRegenerationWorkspace({
     } finally {
       setDeletingReferenceId(null);
     }
+  };
+
+  // 참조 이미지 선택/해제 핸들러
+  const handleReferenceFileToggle = (file: ReferenceFileWithProcess) => {
+    setTempSelectedReferenceIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(file.id)) {
+        newSet.delete(file.id);
+      } else {
+        newSet.add(file.id);
+      }
+      return newSet;
+    });
+  };
+
+  // 선택된 참조 이미지 추가 핸들러
+  const handleAddSelectedReferences = () => {
+    if (tempSelectedReferenceIds.size === 0) return;
+
+    const newFiles: ReferenceFileWithProcess[] = [];
+    tempSelectedReferenceIds.forEach(fileId => {
+      const file = referenceFiles.find(f => f.id === fileId);
+      if (file && !selectedReferenceFiles.some(f => f.id === fileId)) {
+        newFiles.push(file);
+      }
+    });
+
+    if (newFiles.length > 0) {
+      setSelectedReferenceFiles(prev => [...prev, ...newFiles]);
+      setTempSelectedReferenceIds(new Set());
+      setReferenceSelectOpen(false);
+    }
+  };
+
+  // 선택된 참조 이미지 제거 핸들러
+  const handleRemoveReferenceFile = (fileId: string) => {
+    setSelectedReferenceFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
   // 클립보드에서 이미지 붙여넣기 처리
@@ -607,48 +648,68 @@ export function ImageRegenerationWorkspace({
                               참조 이미지
                             </CardTitle>
                           </CardHeader>
-                          <CardContent className="px-3 pb-3 pt-0">
-                            {loadingReferences ? (
-                              <div className="flex items-center justify-center py-4">
-                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setReferenceSelectOpen(true)}
-                                disabled={regeneratingImage !== null}
-                                className={cn(
-                                  "w-full aspect-[4/3] rounded-md overflow-hidden transition-colors flex items-center justify-center disabled:opacity-50",
-                                  selectedReferenceFile
-                                    ? "bg-muted relative group"
-                                    : "bg-muted border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/80"
-                                )}
-                              >
-                                {selectedReferenceFile ? (
-                                  <>
+                          <CardContent className="px-3 pb-3 pt-0 space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTempSelectedReferenceIds(new Set());
+                                setReferenceSelectOpen(true);
+                              }}
+                              disabled={regeneratingImage !== null}
+                              className={cn(
+                                "w-full aspect-[4/3] rounded-md overflow-hidden transition-colors flex items-center justify-center disabled:opacity-50",
+                                selectedReferenceFiles.length > 0
+                                  ? "bg-muted border-2 border-primary/50"
+                                  : "bg-muted border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/80"
+                              )}
+                            >
+                              {selectedReferenceFiles.length > 0 ? (
+                                <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                  <ImageIcon className="h-6 w-6" />
+                                  <span className="text-xs font-medium">{selectedReferenceFiles.length}개 선택됨</span>
+                                  <span className="text-xs text-muted-foreground/70">클릭하여 추가</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                  <Plus className="h-6 w-6" />
+                                  <span className="text-xs">참조 이미지 선택</span>
+                                  <span className="text-[10px] text-muted-foreground/70 mt-0.5">
+                                    또는 Ctrl+V 붙여넣기
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                            {selectedReferenceFiles.length > 0 && (
+                              <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                                {selectedReferenceFiles.map((file) => (
+                                  <div
+                                    key={file.id}
+                                    className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-md text-xs"
+                                  >
                                     <img
-                                      src={selectedReferenceFile.thumbnail_path
-                                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${selectedReferenceFile.thumbnail_path}`
-                                        : selectedReferenceFile.file_path}
-                                      alt={selectedReferenceFile.file_name}
-                                      className="w-full h-full object-contain"
+                                      src={file.thumbnail_path
+                                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${file.thumbnail_path}`
+                                        : file.file_path}
+                                      alt={file.file_name}
+                                      className="w-8 h-8 object-cover rounded"
                                     />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                                      <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium">
-                                        변경하기
-                                      </span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium truncate">{file.file_name}</p>
                                     </div>
-                                  </>
-                                ) : (
-                                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                                    <Plus className="h-6 w-6" />
-                                    <span className="text-xs">참조 이미지 선택</span>
-                                    <span className="text-[10px] text-muted-foreground/70 mt-0.5">
-                                      또는 Ctrl+V 붙여넣기
-                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveReferenceFile(file.id);
+                                      }}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
                                   </div>
-                                )}
-                              </button>
+                                ))}
+                              </div>
                             )}
                           </CardContent>
                         </Card>
@@ -810,7 +871,7 @@ export function ImageRegenerationWorkspace({
                         onClick={handleGenerate}
                         disabled={
                           regeneratingImage !== null || 
-                          (needsReference && !selectedReferenceFile) || 
+                          (needsReference && selectedReferenceFiles.length === 0) || 
                           (isCharacterChangeStyle && selectedCharacterSheets.length === 0)
                         }
                         className={cn(
@@ -1027,81 +1088,142 @@ export function ImageRegenerationWorkspace({
 
       {/* 참조 이미지 선택 다이얼로그 */}
       <Dialog open={referenceSelectOpen} onOpenChange={setReferenceSelectOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>참조 이미지 선택</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {loadingReferences ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : referenceFiles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <ImageIcon className="h-12 w-12 mb-2 opacity-50" />
-                <p className="text-sm">등록된 참조 이미지가 없습니다.</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => {
-                    setReferenceSelectOpen(false);
-                    setUploadDialogOpen(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  새 참조 이미지 추가
-                </Button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                {referenceFiles.map((refFile) => (
-                  <div
-                    key={refFile.id}
-                    className={cn(
-                      "cursor-pointer transition-all overflow-hidden rounded-lg aspect-square relative group",
-                      selectedReferenceFile?.id === refFile.id
-                        ? "ring-2 ring-primary ring-offset-2"
-                        : "hover:ring-2 hover:ring-primary/50 hover:ring-offset-1"
-                    )}
+          <div className="flex-1 overflow-hidden flex flex-col gap-4">
+            <div className="flex-1 overflow-y-auto py-4">
+              {loadingReferences ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : referenceFiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <ImageIcon className="h-12 w-12 mb-2 opacity-50" />
+                  <p className="text-sm">등록된 참조 이미지가 없습니다.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
                     onClick={() => {
-                      setSelectedReferenceFile(refFile);
                       setReferenceSelectOpen(false);
+                      setUploadDialogOpen(true);
                     }}
                   >
-                    <img
-                      src={refFile.thumbnail_path
-                        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${refFile.thumbnail_path}`
-                        : refFile.file_path}
-                      alt={refFile.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                    {selectedReferenceFile?.id === refFile.id && (
-                      <div className="absolute top-2 right-2">
-                        <div className="bg-primary rounded-full p-1">
-                          <Check className="h-3 w-3 text-primary-foreground" />
+                    <Plus className="h-4 w-4 mr-1" />
+                    새 참조 이미지 추가
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {referenceFiles.map((refFile) => {
+                    const isSelected = tempSelectedReferenceIds.has(refFile.id);
+                    const isAlreadyAdded = selectedReferenceFiles.some(f => f.id === refFile.id);
+
+                    return (
+                      <div
+                        key={refFile.id}
+                        className={cn(
+                          "cursor-pointer transition-all overflow-hidden rounded-lg aspect-square relative group",
+                          isSelected
+                            ? "ring-2 ring-primary ring-offset-2"
+                            : isAlreadyAdded
+                              ? "opacity-50 ring-2 ring-muted"
+                              : "hover:ring-2 hover:ring-primary/50 hover:ring-offset-1"
+                        )}
+                        onClick={() => !isAlreadyAdded && handleReferenceFileToggle(refFile)}
+                      >
+                        <img
+                          src={refFile.thumbnail_path
+                            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${refFile.thumbnail_path}`
+                            : refFile.file_path}
+                          alt={refFile.file_name}
+                          className="w-full h-full object-cover"
+                        />
+                        {isSelected && (
+                          <div className="absolute top-2 right-2">
+                            <div className="bg-primary rounded-full p-1">
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          </div>
+                        )}
+                        {isAlreadyAdded && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">추가됨</span>
+                          </div>
+                        )}
+                        {profile && canDeleteContent(profile.role) && (
+                          <button
+                            className="absolute top-2 left-2 bg-destructive/80 hover:bg-destructive text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                            onClick={(e) => handleDeleteReferenceFile(refFile.id, refFile.file_name, e)}
+                            disabled={deletingReferenceId === refFile.id}
+                            title="삭제"
+                          >
+                            {deletingReferenceId === refFile.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <X className="h-3 w-3" />
+                            )}
+                          </button>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <p className="text-white text-xs truncate">{refFile.file_name}</p>
                         </div>
                       </div>
-                    )}
-                    {profile && canDeleteContent(profile.role) && (
-                      <button
-                        className="absolute top-2 left-2 bg-destructive/80 hover:bg-destructive text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                        onClick={(e) => handleDeleteReferenceFile(refFile.id, refFile.file_name, e)}
-                        disabled={deletingReferenceId === refFile.id}
-                        title="삭제"
-                      >
-                        {deletingReferenceId === refFile.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <X className="h-3 w-3" />
-                        )}
-                      </button>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-white text-xs truncate">{refFile.file_name}</p>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {tempSelectedReferenceIds.size > 0 && (
+              <div className="px-3 py-2 border-t">
+                <Button
+                  onClick={handleAddSelectedReferences}
+                  size="sm"
+                  className="w-full"
+                  disabled={tempSelectedReferenceIds.size === 0}
+                >
+                  선택한 참조 이미지 추가 ({tempSelectedReferenceIds.size}개)
+                </Button>
+              </div>
+            )}
+            {selectedReferenceFiles.length > 0 && (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="px-4 py-2 border-b bg-muted/50">
+                  <h3 className="text-sm font-medium">선택된 참조 이미지 ({selectedReferenceFiles.length}개)</h3>
+                </div>
+                <ScrollArea className="max-h-[200px]">
+                  <div className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {selectedReferenceFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="relative group flex items-center gap-2 px-3 py-2 bg-muted rounded-lg"
+                        >
+                          <img
+                            src={file.thumbnail_path
+                              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/webtoon-files/${file.thumbnail_path}`
+                              : file.file_path}
+                            alt={file.file_name}
+                            className="w-10 h-10 object-cover rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{file.file_name}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handleRemoveReferenceFile(file.id)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
+                </ScrollArea>
               </div>
             )}
           </div>

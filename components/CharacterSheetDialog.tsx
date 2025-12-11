@@ -52,20 +52,32 @@ export function CharacterSheetDialog({
   // 클립보드 붙여넣기 상태
   const isProcessingPaste = useRef(false);
 
+  const isMountedRef = useRef(true);
+
   const loadSheets = useCallback(async () => {
-    if (!character.id) return;
+    if (!character.id || !isMountedRef.current) return;
+    
     try {
       setLoading(true);
       const data = await getSheetsByCharacter(character.id);
+      
+      if (!isMountedRef.current) return;
+      
       setSheets(data);
     } catch (error) {
+      if (!isMountedRef.current) return;
+      
       console.error('캐릭터 시트 목록 로드 실패:', error);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [character.id]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (open) {
       loadSheets();
       setActiveTab('list');
@@ -75,7 +87,15 @@ export function CharacterSheetDialog({
       setUploadDescription('');
       setViewerSheet(null);
       setViewerGeneratedImage(null);
+    } else {
+      // 다이얼로그가 닫힐 때 상태 초기화
+      setSheets([]);
+      setLoading(false);
     }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [open, loadSheets]);
 
   // 직접 업로드 핸들러
@@ -88,17 +108,23 @@ export function CharacterSheetDialog({
     try {
       setUploading(true);
       await uploadCharacterSheet(file, character.id, uploadDescription || undefined);
-      await loadSheets();
-      setUploadDescription('');
-      setActiveTab('list');
-      alert('캐릭터 시트가 업로드되었습니다.');
+      if (isMountedRef.current) {
+        await loadSheets();
+        setUploadDescription('');
+        setActiveTab('list');
+        alert('캐릭터 시트가 업로드되었습니다.');
+      }
     } catch (error) {
-      console.error('캐릭터 시트 업로드 실패:', error);
-      alert('캐릭터 시트 업로드에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('캐릭터 시트 업로드 실패:', error);
+        alert('캐릭터 시트 업로드에 실패했습니다.');
+      }
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (isMountedRef.current) {
+        setUploading(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     }
   }, [character.id, uploadDescription, loadSheets]);
@@ -311,17 +337,23 @@ export function CharacterSheetDialog({
         fileName,
         generatedDescription || 'AI 생성 캐릭터 시트'
       );
-      await loadSheets();
-      setSourceImage(null);
-      setGeneratedImage(null);
-      setGeneratedDescription('');
-      setActiveTab('list');
-      alert('캐릭터 시트가 저장되었습니다.');
+      if (isMountedRef.current) {
+        await loadSheets();
+        setSourceImage(null);
+        setGeneratedImage(null);
+        setGeneratedDescription('');
+        setActiveTab('list');
+        alert('캐릭터 시트가 저장되었습니다.');
+      }
     } catch (error) {
-      console.error('캐릭터 시트 저장 실패:', error);
-      alert('캐릭터 시트 저장에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('캐릭터 시트 저장 실패:', error);
+        alert('캐릭터 시트 저장에 실패했습니다.');
+      }
     } finally {
-      setUploading(false);
+      if (isMountedRef.current) {
+        setUploading(false);
+      }
     }
   };
 
@@ -331,10 +363,14 @@ export function CharacterSheetDialog({
 
     try {
       await deleteCharacterSheet(sheet.id);
-      await loadSheets();
+      if (isMountedRef.current) {
+        await loadSheets();
+      }
     } catch (error) {
-      console.error('캐릭터 시트 삭제 실패:', error);
-      alert('캐릭터 시트 삭제에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('캐릭터 시트 삭제 실패:', error);
+        alert('캐릭터 시트 삭제에 실패했습니다.');
+      }
     }
   };
 

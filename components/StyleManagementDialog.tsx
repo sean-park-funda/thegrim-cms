@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Pencil, GripVertical, ArrowLeft, Trash2 } from 'lucide-react';
@@ -27,25 +27,37 @@ export function StyleManagementDialog({
   const [draggedStyle, setDraggedStyle] = useState<AiRegenerationStyle | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [dragOverDelete, setDragOverDelete] = useState(false);
+  const isMountedRef = useRef(true);
 
   // 스타일 목록 로드
   const loadStyles = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
     try {
       console.log('[StyleManagementDialog] 스타일 목록 로드 시작');
       const data = await getAllStyles();
+      
+      if (!isMountedRef.current) return;
+      
       console.log('[StyleManagementDialog] 스타일 목록 로드 완료:', data?.length || 0, '개');
       setStyles(data || []);
     } catch (error) {
+      if (!isMountedRef.current) return;
+      
       console.error('[StyleManagementDialog] 스타일 목록 로드 실패:', error);
       alert('스타일 목록을 불러오는데 실패했습니다: ' + (error instanceof Error ? error.message : String(error)));
       setStyles([]);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (open) {
       console.log('[StyleManagementDialog] 다이얼로그 열림, loadStyles 호출');
       loadStyles();
@@ -54,6 +66,10 @@ export function StyleManagementDialog({
       setStyles([]);
       setLoading(false);
     }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [open, loadStyles]);
 
   // 드래그 시작
@@ -105,15 +121,21 @@ export function StyleManagementDialog({
     setActionLoading(draggedStyle.id);
     try {
       await deleteStyle(draggedStyle.id);
-      await loadStyles();
-      onStylesChange?.();
+      if (isMountedRef.current) {
+        await loadStyles();
+        onStylesChange?.();
+      }
     } catch (error) {
-      console.error('스타일 삭제 실패:', error);
-      alert('스타일 삭제에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('스타일 삭제 실패:', error);
+        alert('스타일 삭제에 실패했습니다.');
+      }
     } finally {
-      setActionLoading(null);
-      setDraggedStyle(null);
-      setDragOverDelete(false);
+      if (isMountedRef.current) {
+        setActionLoading(null);
+        setDraggedStyle(null);
+        setDragOverDelete(false);
+      }
     }
   };
 
@@ -132,30 +154,40 @@ export function StyleManagementDialog({
     setActionLoading(draggedStyle.id);
     try {
       await updateStyle(draggedStyle.id, { group_name: newGroupName });
-      await loadStyles();
-      onStylesChange?.();
+      if (isMountedRef.current) {
+        await loadStyles();
+        onStylesChange?.();
+      }
     } catch (error) {
-      console.error('스타일 그룹 변경 실패:', error);
-      alert('스타일 그룹 변경에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('스타일 그룹 변경 실패:', error);
+        alert('스타일 그룹 변경에 실패했습니다.');
+      }
     } finally {
-      setActionLoading(null);
-      setDraggedStyle(null);
-      setDragOverGroup(null);
+      if (isMountedRef.current) {
+        setActionLoading(null);
+        setDraggedStyle(null);
+        setDragOverGroup(null);
+      }
     }
   };
 
   // 스타일 수정 완료 핸들러
   const handleEditComplete = () => {
     setEditingStyle(null);
-    loadStyles();
-    onStylesChange?.();
+    if (isMountedRef.current) {
+      loadStyles();
+      onStylesChange?.();
+    }
   };
 
   // 스타일 생성 완료 핸들러
   const handleCreateComplete = () => {
     setCreateDialogOpen(false);
-    loadStyles();
-    onStylesChange?.();
+    if (isMountedRef.current) {
+      loadStyles();
+      onStylesChange?.();
+    }
   };
 
   // 그룹별로 스타일 분류 (활성 스타일만)

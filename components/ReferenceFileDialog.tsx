@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -26,36 +26,61 @@ export function ReferenceFileDialog({ open, onOpenChange, webtoon }: ReferenceFi
     const [loading, setLoading] = useState(false);
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const [selectedProcessId, setSelectedProcessId] = useState<string>('all');
+    const isMountedRef = useRef(true);
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
+        if (!isMountedRef.current) return;
+        
         try {
             setLoading(true);
             const [filesData, processesData] = await Promise.all([
                 getReferenceFilesByWebtoon(webtoon.id),
                 getProcesses()
             ]);
+            
+            if (!isMountedRef.current) return;
+            
             setFiles(filesData);
             setProcesses(processesData);
         } catch (error) {
+            if (!isMountedRef.current) return;
+            
             console.error('데이터 로드 실패:', error);
             alert('데이터를 불러오는데 실패했습니다.');
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    };
+    }, [webtoon.id]);
 
     useEffect(() => {
+        isMountedRef.current = true;
+        
         if (open) {
             loadData();
+        } else {
+            // 다이얼로그가 닫힐 때 상태 초기화
+            setFiles([]);
+            setProcesses([]);
+            setLoading(false);
         }
-    }, [open, webtoon.id]);
+
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, [open, loadData]);
 
     const handleUploadComplete = () => {
-        loadData();
+        if (isMountedRef.current) {
+            loadData();
+        }
     };
 
     const handleFileDeleted = () => {
-        loadData();
+        if (isMountedRef.current) {
+            loadData();
+        }
     };
 
     // 선택된 공정에 따라 파일 필터링

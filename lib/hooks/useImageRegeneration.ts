@@ -57,7 +57,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[]) => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[]) => {
     // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
     const actualFileId = targetFileId || (fileToView?.id);
     if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
@@ -122,7 +122,12 @@ export function useImageRegeneration({
 
       // 배치 API 사용 (파일 ID 기반)
       const fileId = actualFileId;
-      const referenceFileId = referenceImage?.id;
+      // referenceImages가 배열이면 배열로, 단일 객체면 배열로 변환, 없으면 undefined
+      const referenceFileIds = referenceImages 
+        ? Array.isArray(referenceImages) 
+          ? referenceImages.map(img => img.id)
+          : [referenceImages.id]
+        : undefined;
 
       // 캐릭터시트가 있으면 Gemini만 사용
       const useCharacterSheets = characterSheets && characterSheets.length > 0;
@@ -131,7 +136,8 @@ export function useImageRegeneration({
       console.log('[이미지 재생성] 배치 API 준비:', {
         fileId,
         fileIdType: typeof fileId,
-        referenceFileId,
+        referenceFileIds,
+        referenceFileIdsCount: referenceFileIds?.length || 0,
         characterSheetsCount: characterSheets?.length || 0,
         useCharacterSheets,
       });
@@ -182,8 +188,8 @@ export function useImageRegeneration({
               imageMimeType: useLatestImageAsInputMimeType,
             };
 
-            if (referenceFileId) {
-              requestBody.referenceFileId = referenceFileId;
+            if (referenceFileIds && referenceFileIds.length > 0) {
+              requestBody.referenceFileIds = referenceFileIds;
             }
 
             const response = await fetch('/api/regenerate-image', {
@@ -317,7 +323,8 @@ export function useImageRegeneration({
 
         console.log('[이미지 재생성] 배치 API 호출 시작 (4개씩 배치 처리)...', {
           fileId,
-          referenceFileId: referenceFileId || '없음',
+          referenceFileIds: referenceFileIds || '없음',
+          referenceFileIdsCount: referenceFileIds?.length || 0,
           totalRequestCount: batchRequests.length,
           batchCount: Math.ceil(batchRequests.length / BATCH_SIZE),
         });
@@ -343,7 +350,7 @@ export function useImageRegeneration({
 
           const batchRequestBody = {
             fileId: String(fileId), // 명시적으로 문자열로 변환
-            referenceFileId: referenceFileId || undefined,
+            referenceFileIds: referenceFileIds || undefined,
             requests: batch,
             ...(useCharacterSheets && characterSheets ? { characterSheets } : {}),
           };

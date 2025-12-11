@@ -255,7 +255,8 @@ interface RegenerateImageRequest {
 interface RegenerateImageBatchRequest {
   characterSheets?: Array<{ sheetId: string }>; // 캐릭터시트 정보 (sheetId만 필요, file_path는 DB에서 조회)
   fileId: string;
-  referenceFileId?: string;
+  referenceFileId?: string; // 하위 호환성
+  referenceFileIds?: string[]; // 레퍼런스 이미지 파일 ID 배열
   requests: RegenerateImageRequest[];
 }
 
@@ -290,7 +291,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: RegenerateImageBatchRequest = await request.json();
-    const { fileId, referenceFileId, requests, characterSheets } = body;
+    const { fileId, referenceFileId, referenceFileIds, requests, characterSheets } = body;
+    
+    // referenceFileIds가 있으면 사용, 없으면 referenceFileId를 배열로 변환 (하위 호환성)
+    const finalReferenceFileIds = referenceFileIds || (referenceFileId ? [referenceFileId] : undefined);
     
     const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
     
@@ -318,7 +322,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[이미지 재생성 배치] 요청 파라미터:', {
       fileId,
-      referenceFileId: referenceFileId || '없음',
+      referenceFileIds: finalReferenceFileIds || '없음',
+      referenceFileIdsCount: finalReferenceFileIds?.length || 0,
       requestCount: requests.length,
     });
 
@@ -346,38 +351,51 @@ export async function POST(request: NextRequest) {
     }
 
     // 레퍼런스 파일 정보 조회 (있는 경우)
-    // reference_files 테이블과 files 테이블 모두에서 조회 시도
-    let referenceFile: { file_path: string } | null = null;
-    if (referenceFileId) {
-      // 먼저 reference_files 테이블에서 조회 시도
-      const { data: refFile, error: refFileError } = await supabase
-        .from('reference_files')
-        .select('file_path')
-        .eq('id', referenceFileId)
-        .single();
-
-      if (refFileError || !refFile) {
-        // reference_files에서 찾지 못하면 files 테이블에서 조회 시도
-        console.log('[이미지 재생성 배치] reference_files에서 찾지 못함, files 테이블에서 조회 시도...');
-        const { data: regularFile, error: regularFileError } = await supabase
-          .from('files')
+    const referenceFiles: Array<{ file_path: string }> = [];
+    if (finalReferenceFileIds && finalReferenceFileIds.length > 0) {
+      console.log('[이미지 재생성 배치] 레퍼런스 파일 정보 조회 시작...', { count: finalReferenceFileIds.length });
+      
+      for (const refFileId of finalReferenceFileIds) {
+        // 먼저 reference_files 테이블에서 조회 시도
+        const { data: refFile, error: refFileError } = await supabase
+          .from('reference_files')
           .select('file_path')
-          .eq('id', referenceFileId)
+          .eq('id', refFileId)
           .single();
 
-        if (regularFileError || !regularFile) {
-          console.error('[이미지 재생성 배치] 레퍼런스 파일 조회 실패 (reference_files 및 files 모두):', refFileError || regularFileError);
-          return NextResponse.json(
-            { error: '레퍼런스 파일을 찾을 수 없습니다.' },
-            { status: 404 }
-          );
+        if (refFileError || !refFile) {
+          // reference_files에서 찾지 못하면 files 테이블에서 조회 시도
+          console.log('[이미지 재생성 배치] reference_files에서 찾지 못함, files 테이블에서 조회 시도...', { refFileId });
+          const { data: regularFile, error: regularFileError } = await supabase
+            .from('files')
+            .select('file_path')
+            .eq('id', refFileId)
+            .single();
+
+          if (regularFileError || !regularFile) {
+            console.error('[이미지 재생성 배치] 레퍼런스 파일 조회 실패:', { refFileId, error: refFileError || regularFileError });
+            continue; // 개별 실패해도 계속 진행
+          }
+          referenceFiles.push(regularFile);
+          console.log('[이미지 재생성 배치] files 테이블에서 레퍼런스 파일 찾음', { refFileId });
+        } else {
+          referenceFiles.push(refFile);
+          console.log('[이미지 재생성 배치] reference_files 테이블에서 레퍼런스 파일 찾음', { refFileId });
         }
-        referenceFile = regularFile;
-        console.log('[이미지 재생성 배치] files 테이블에서 레퍼런스 파일 찾음');
-      } else {
-        referenceFile = refFile;
-        console.log('[이미지 재생성 배치] reference_files 테이블에서 레퍼런스 파일 찾음');
       }
+      
+      if (referenceFiles.length === 0) {
+        console.error('[이미지 재생성 배치] 모든 레퍼런스 파일 조회 실패');
+        return NextResponse.json(
+          { error: '레퍼런스 파일을 찾을 수 없습니다.' },
+          { status: 404 }
+        );
+      }
+      
+      console.log('[이미지 재생성 배치] 레퍼런스 파일 조회 완료:', {
+        total: finalReferenceFileIds.length,
+        success: referenceFiles.length,
+      });
     }
 
     // 캐릭터시트 이미지 캐시 (한 번만 다운로드)
@@ -452,65 +470,58 @@ export async function POST(request: NextRequest) {
     console.log('[이미지 재생성 배치] 이미지 다운로드 시작...');
     const IMAGE_DOWNLOAD_TIMEOUT = 30000; // 30초
     
-    // 원본 이미지와 레퍼런스 이미지를 병렬로 다운로드
-    const downloadPromises: Array<Promise<{ buffer: Buffer; mimeType: string; isReference: boolean }>> = [
-      fetchWithTimeout(file.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
+    // 원본 이미지 다운로드
+    const imageDownloadPromise = fetchWithTimeout(file.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`이미지 다운로드 실패: ${response.status} ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        console.log('[이미지 재생성 배치] 원본 이미지 다운로드 완료:', {
+          size: buffer.length,
+          mimeType: response.headers.get('content-type') || 'image/jpeg',
+        });
+        return {
+          buffer,
+          mimeType: response.headers.get('content-type') || 'image/jpeg',
+        };
+      });
+
+    // 레퍼런스 이미지들 다운로드 (병렬)
+    const referenceDownloadPromises = referenceFiles.map((refFile, index) =>
+      fetchWithTimeout(refFile.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error(`이미지 다운로드 실패: ${response.status} ${response.statusText}`);
+            throw new Error(`레퍼런스 이미지 다운로드 실패: ${response.status} ${response.statusText}`);
           }
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-          console.log('[이미지 재생성 배치] 원본 이미지 다운로드 완료:', {
+          console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 완료:', {
+            index: index + 1,
+            total: referenceFiles.length,
             size: buffer.length,
             mimeType: response.headers.get('content-type') || 'image/jpeg',
           });
           return {
             buffer,
             mimeType: response.headers.get('content-type') || 'image/jpeg',
-            isReference: false,
           };
-        }),
-    ];
+        })
+    );
 
-    if (referenceFile) {
-      console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 시작...');
-      downloadPromises.push(
-        fetchWithTimeout(referenceFile.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
-          .then(async (response) => {
-            if (!response.ok) {
-              throw new Error(`레퍼런스 이미지 다운로드 실패: ${response.status} ${response.statusText}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 완료:', {
-              size: buffer.length,
-              mimeType: response.headers.get('content-type') || 'image/jpeg',
-            });
-            return {
-              buffer,
-              mimeType: response.headers.get('content-type') || 'image/jpeg',
-              isReference: true,
-            };
-          })
-      );
-    }
-
-    const downloadResults = await Promise.allSettled(downloadPromises);
+    // 원본과 레퍼런스 이미지들을 병렬로 다운로드
+    const [imageResult, ...referenceResults] = await Promise.allSettled([
+      imageDownloadPromise,
+      ...referenceDownloadPromises,
+    ]);
 
     // 원본 이미지 처리
-    const imageResult = downloadResults[0];
     if (imageResult.status === 'rejected') {
       console.error('[이미지 재생성 배치] 이미지 다운로드 실패:', imageResult.reason);
       return NextResponse.json(
         { error: '이미지를 가져올 수 없습니다.' },
         { status: 400 }
-      );
-    }
-    if (imageResult.value.isReference) {
-      return NextResponse.json(
-        { error: '원본 이미지 다운로드 결과가 잘못되었습니다.' },
-        { status: 500 }
       );
     }
 
@@ -530,28 +541,33 @@ export async function POST(request: NextRequest) {
     });
 
     // 레퍼런스 이미지 처리
-    let refImageBase64: string | undefined;
-    let refMimeType: string | undefined;
-    if (referenceFile) {
-      const refResult = downloadResults[1];
-      if (refResult.status === 'rejected') {
-        console.error('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 실패:', refResult.reason);
-        return NextResponse.json(
-          { error: '레퍼런스 이미지를 가져올 수 없습니다.' },
-          { status: 400 }
-        );
+    const refImages: Array<{ base64: string; mimeType: string }> = [];
+    referenceResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        refImages.push({
+          base64: result.value.buffer.toString('base64'),
+          mimeType: result.value.mimeType,
+        });
+      } else {
+        console.error('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 실패:', {
+          index: index + 1,
+          error: result.reason,
+        });
       }
-      if (!refResult.value.isReference) {
-        return NextResponse.json(
-          { error: '레퍼런스 이미지 다운로드 결과가 잘못되었습니다.' },
-          { status: 500 }
-        );
-      }
-
-      const refBuffer = refResult.value.buffer;
-      refImageBase64 = refBuffer.toString('base64');
-      refMimeType = refResult.value.mimeType;
+    });
+    
+    if (referenceFiles.length > 0 && refImages.length === 0) {
+      console.error('[이미지 재생성 배치] 모든 레퍼런스 이미지 다운로드 실패');
+      return NextResponse.json(
+        { error: '레퍼런스 이미지를 가져올 수 없습니다.' },
+        { status: 400 }
+      );
     }
+    
+    console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 완료:', {
+      total: referenceFiles.length,
+      success: refImages.length,
+    });
 
     // Provider별로 그룹화
     console.log('[이미지 재생성 배치] Provider별 그룹화 시작...');
@@ -590,41 +606,44 @@ export async function POST(request: NextRequest) {
       const seedreamImageInput = `data:${seedreamMimeType};base64,${seedreamImageBase64}`;
 
       seedreamImages = [seedreamImageInput];
-      if (refImageBase64 && refMimeType) {
-        console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 시작 (Seedream용)...');
-        const refResizeStartTime = Date.now();
-        const cacheKey = referenceFileId 
-          ? `id:${referenceFileId}`
-          : `base64:${crypto.createHash('sha256').update(refImageBase64).digest('hex')}`;
+      if (refImages.length > 0) {
+        console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 시작 (Seedream용)...', { count: refImages.length });
         
-        let refResizeResult: { base64: string; mimeType: string; resized: boolean };
-        if (referenceImageResizeCache.has(cacheKey)) {
-          refResizeResult = referenceImageResizeCache.get(cacheKey)!;
-          console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 결과 캐시에서 재사용');
-        } else {
-          const refBuffer = Buffer.from(refImageBase64, 'base64');
-          refResizeResult = await resizeImageIfNeeded(refBuffer);
-          const refResizeTime = Date.now() - refResizeStartTime;
-          console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 완료:', {
-            resized: refResizeResult.resized,
-            resizeTime: `${refResizeTime}ms`,
-            originalBase64Length: refImageBase64.length,
-            resizedBase64Length: refResizeResult.base64.length,
-          });
+        for (const refImage of refImages) {
+          const refResizeStartTime = Date.now();
+          const cacheKey = `base64:${crypto.createHash('sha256').update(refImage.base64).digest('hex')}`;
           
-          if (referenceImageResizeCache.size >= MAX_CACHE_SIZE) {
-            const firstKey = referenceImageResizeCache.keys().next().value;
-            if (firstKey) {
-              referenceImageResizeCache.delete(firstKey);
+          let refResizeResult: { base64: string; mimeType: string; resized: boolean };
+          if (referenceImageResizeCache.has(cacheKey)) {
+            refResizeResult = referenceImageResizeCache.get(cacheKey)!;
+            console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 결과 캐시에서 재사용');
+          } else {
+            const refBuffer = Buffer.from(refImage.base64, 'base64');
+            refResizeResult = await resizeImageIfNeeded(refBuffer);
+            const refResizeTime = Date.now() - refResizeStartTime;
+            console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 완료:', {
+              resized: refResizeResult.resized,
+              resizeTime: `${refResizeTime}ms`,
+              originalBase64Length: refImage.base64.length,
+              resizedBase64Length: refResizeResult.base64.length,
+            });
+            
+            if (referenceImageResizeCache.size >= MAX_CACHE_SIZE) {
+              const firstKey = referenceImageResizeCache.keys().next().value;
+              if (firstKey) {
+                referenceImageResizeCache.delete(firstKey);
+              }
             }
+            referenceImageResizeCache.set(cacheKey, refResizeResult);
           }
-          referenceImageResizeCache.set(cacheKey, refResizeResult);
+          
+          const finalRefBase64 = refResizeResult.resized ? refResizeResult.base64 : refImage.base64;
+          const finalRefMimeType = refResizeResult.resized ? refResizeResult.mimeType : refImage.mimeType;
+          const refDataUrl = `data:${finalRefMimeType};base64,${finalRefBase64}`;
+          seedreamImages.push(refDataUrl);
         }
         
-        const finalRefBase64 = refResizeResult.resized ? refResizeResult.base64 : refImageBase64;
-        const finalRefMimeType = refResizeResult.resized ? refResizeResult.mimeType : refMimeType;
-        const refDataUrl = `data:${finalRefMimeType};base64,${finalRefBase64}`;
-        seedreamImages.push(refDataUrl);
+        console.log('[이미지 재생성 배치] Seedream API에 레퍼런스 이미지 포함', { count: refImages.length });
       }
 
       seedreamSize = calculateSeedreamSize(originalWidth, originalHeight);
@@ -722,7 +741,7 @@ export async function POST(request: NextRequest) {
                   });
                 }
               }
-            } else if (refImageBase64 && refMimeType) {
+            } else if (refImages.length > 0) {
               contentParts.push({ text: req.stylePrompt });
               contentParts.push({
                 inlineData: {
@@ -730,12 +749,16 @@ export async function POST(request: NextRequest) {
                   data: imageBase64,
                 },
               });
-              contentParts.push({
-                inlineData: {
-                  mimeType: refMimeType,
-                  data: refImageBase64,
-                },
-              });
+              // 여러 레퍼런스 이미지 추가
+              for (const refImage of refImages) {
+                contentParts.push({
+                  inlineData: {
+                    mimeType: refImage.mimeType,
+                    data: refImage.base64,
+                  },
+                });
+              }
+              console.log(`[이미지 재생성 배치] Gemini API 호출 (인덱스 ${req.index}): 레퍼런스 이미지 포함`, { count: refImages.length });
             } else {
               contentParts.push({ text: req.stylePrompt });
               contentParts.push({

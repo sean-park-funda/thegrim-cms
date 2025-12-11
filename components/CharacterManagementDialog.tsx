@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -31,24 +31,43 @@ export function CharacterManagementDialog({
   const [editingCharacter, setEditingCharacter] = useState<CharacterWithSheets | null>(null);
   const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterWithSheets | null>(null);
+  const isMountedRef = useRef(true);
 
   const loadCharacters = useCallback(async () => {
-    if (!webtoon.id) return;
+    if (!webtoon.id || !isMountedRef.current) return;
+    
     try {
       setLoading(true);
       const data = await getCharactersByWebtoon(webtoon.id);
+      
+      if (!isMountedRef.current) return;
+      
       setCharacters(data);
     } catch (error) {
+      if (!isMountedRef.current) return;
+      
       console.error('캐릭터 목록 로드 실패:', error);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [webtoon.id]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (open) {
       loadCharacters();
+    } else {
+      // 다이얼로그가 닫힐 때 상태 초기화
+      setCharacters([]);
+      setLoading(false);
     }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [open, loadCharacters]);
 
   const handleCreateCharacter = () => {
@@ -67,10 +86,14 @@ export function CharacterManagementDialog({
     }
     try {
       await deleteCharacter(character.id);
-      await loadCharacters();
+      if (isMountedRef.current) {
+        await loadCharacters();
+      }
     } catch (error) {
-      console.error('캐릭터 삭제 실패:', error);
-      alert('캐릭터 삭제에 실패했습니다.');
+      if (isMountedRef.current) {
+        console.error('캐릭터 삭제 실패:', error);
+        alert('캐릭터 삭제에 실패했습니다.');
+      }
     }
   };
 
@@ -81,12 +104,16 @@ export function CharacterManagementDialog({
 
   const handleCharacterSaved = () => {
     setEditDialogOpen(false);
-    loadCharacters();
+    if (isMountedRef.current) {
+      loadCharacters();
+    }
   };
 
   const handleSheetDialogClose = () => {
     setSheetDialogOpen(false);
-    loadCharacters(); // 시트가 변경되었을 수 있으므로 다시 로드
+    if (isMountedRef.current) {
+      loadCharacters(); // 시트가 변경되었을 수 있으므로 다시 로드
+    }
   };
 
   return (

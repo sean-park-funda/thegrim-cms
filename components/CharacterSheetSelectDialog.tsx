@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,15 +36,21 @@ export function CharacterSheetSelectDialog({
   const [loading, setLoading] = useState(false);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedSheetIds, setSelectedSheetIds] = useState<Set<string>>(new Set());
+  const isMountedRef = useRef(true);
 
   // 캐릭터 목록 로드
   useEffect(() => {
+    isMountedRef.current = true;
+    
     const loadCharacters = async () => {
-      if (!open || !webtoonId) return;
+      if (!open || !webtoonId || !isMountedRef.current) return;
 
       setLoading(true);
       try {
         const data = await getCharactersByWebtoon(webtoonId);
+        
+        if (!isMountedRef.current) return;
+        
         // 캐릭터시트가 있는 캐릭터만 필터링
         const charactersWithSheets = data.filter(
           (char) => char.character_sheets && char.character_sheets.length > 0
@@ -56,14 +62,28 @@ export function CharacterSheetSelectDialog({
           setSelectedCharacterId(charactersWithSheets[0].id);
         }
       } catch (error) {
+        if (!isMountedRef.current) return;
+        
         console.error('캐릭터 목록 로드 실패:', error);
       } finally {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
-    loadCharacters();
-  }, [open, webtoonId, selectedCharacterId]);
+    if (open && webtoonId) {
+      loadCharacters();
+    } else {
+      // 다이얼로그가 닫힐 때 상태 초기화
+      setCharacters([]);
+      setLoading(false);
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [open, webtoonId]);
 
   // 선택된 캐릭터의 캐릭터시트 목록
   const selectedCharacter = characters.find((char) => char.id === selectedCharacterId);
