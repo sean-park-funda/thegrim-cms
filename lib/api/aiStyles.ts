@@ -128,7 +128,7 @@ export async function getAllStyles(maxRetries: number = 3): Promise<AiRegenerati
           code: error.code,
           details: error.details,
           hint: error.hint,
-          status: error.status,
+          ...('status' in error && typeof error.status === 'number' ? { status: error.status } : {}),
         });
         lastError = error;
         
