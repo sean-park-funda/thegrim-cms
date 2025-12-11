@@ -32,7 +32,7 @@ export function StyleEditDialog({
     default_count: 2,
     allow_multiple: true,
     api_provider: 'auto',
-    requires_reference: false,
+    requires_reference: null,
     group_name: null,
   });
 
@@ -66,7 +66,7 @@ export function StyleEditDialog({
           default_count: 2,
           allow_multiple: true,
           api_provider: 'auto',
-          requires_reference: false,
+          requires_reference: null,
           group_name: null,
         });
         setUseNewGroup(false);
@@ -287,17 +287,26 @@ export function StyleEditDialog({
               </label>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="requires_reference"
-                checked={formData.requires_reference}
-                onCheckedChange={(checked) =>
-                  setFormData(prev => ({ ...prev, requires_reference: !!checked }))
+            <div className="space-y-2">
+              <label className="text-sm font-medium">레퍼런스 이미지</label>
+              <Select
+                value={formData.requires_reference || 'none'}
+                onValueChange={(value) =>
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    requires_reference: value === 'none' ? null : value as 'required' | 'optional'
+                  }))
                 }
-              />
-              <label htmlFor="requires_reference" className="text-sm cursor-pointer">
-                레퍼런스 이미지 필요 (톤먹 넣기 등)
-              </label>
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">불필요</SelectItem>
+                  <SelectItem value="optional">옵셔널 (선택사항)</SelectItem>
+                  <SelectItem value="required">필수</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </form>

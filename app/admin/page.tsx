@@ -441,20 +441,22 @@ export default function AdminPage() {
                   {styles.map((style) => {
                     const useReference = getSettingForStyle(style.style_key);
                     const isUpdating = updatingSettings.has(style.style_key);
-                    const isRequired = style.requires_reference === true;
+                    const isRequired = style.requires_reference === 'required';
+                    const isOptional = style.requires_reference === 'optional';
 
                     return (
                       <div key={style.id} className="flex items-center justify-between p-4 border rounded-lg">
                         <div className="flex-1">
                           <div className="font-medium">{style.name}</div>
                           <div className="text-sm text-muted-foreground mt-1">
-                            {isRequired ? '(레퍼런스 이미지 필수)' : '(선택사항)'}
+                            {isRequired ? '(레퍼런스 이미지 필수)' : isOptional ? '(레퍼런스 이미지 옵셔널)' : '(레퍼런스 이미지 불필요)'}
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
                           <Checkbox
                             id={`setting-${style.style_key}`}
                             checked={useReference || isRequired}
+                            disabled={isRequired}
                             onCheckedChange={(checked) => {
                               if (!isRequired) {
                                 handleUpdateSetting(style.style_key, checked === true);

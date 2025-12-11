@@ -163,7 +163,8 @@ export function ImageRegenerationWorkspace({
   // 레퍼런스 파일 로드
   useEffect(() => {
     const loadReferenceFiles = async () => {
-      const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
+      const referenceType = selectedStyle?.requires_reference || (styleSettings[selectedStyle?.style_key || ''] ? 'required' : null);
+      const needsReference = referenceType === 'required' || referenceType === 'optional';
       if (webtoonId && needsReference) {
         setLoadingReferences(true);
         try {
@@ -367,7 +368,8 @@ export function ImageRegenerationWorkspace({
   const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
 
     // 레퍼런스 이미지가 필요한 스타일이 선택되지 않았으면 무시
-    const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
+    const referenceType = selectedStyle?.requires_reference || (styleSettings[selectedStyle?.style_key || ''] ? 'required' : null);
+    const needsReference = referenceType === 'required' || referenceType === 'optional';
     
     if (!needsReference || !selectedStyle) {
       return;
@@ -531,7 +533,9 @@ export function ImageRegenerationWorkspace({
       : file?.file_path ? `https://${file.file_path}` : '';
 
   // 레퍼런스 필요 여부
-  const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
+  const referenceType = selectedStyle?.requires_reference || (styleSettings[selectedStyle?.style_key || ''] ? 'required' : null);
+  const needsReference = referenceType === 'required' || referenceType === 'optional';
+  const requiresReference = referenceType === 'required';
 
   if (!file) return null;
 
@@ -872,7 +876,7 @@ export function ImageRegenerationWorkspace({
                         onClick={handleGenerate}
                         disabled={
                           regeneratingImage !== null || 
-                          (needsReference && selectedReferenceFiles.length === 0) || 
+                          (requiresReference && selectedReferenceFiles.length === 0) || 
                           (isCharacterChangeStyle && selectedCharacterSheets.length === 0)
                         }
                         className={cn(

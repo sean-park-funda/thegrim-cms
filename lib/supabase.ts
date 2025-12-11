@@ -187,7 +187,7 @@ export interface AiRegenerationStyle {
   default_count: number;
   allow_multiple: boolean;
   api_provider: ApiProvider;
-  requires_reference: boolean;
+  requires_reference: 'required' | 'optional' | null;
   group_name: string | null;
   order_index: number;
   is_active: boolean;
@@ -203,7 +203,7 @@ export interface AiRegenerationStyleInput {
   default_count?: number;
   allow_multiple?: boolean;
   api_provider?: ApiProvider;
-  requires_reference?: boolean;
+  requires_reference?: 'required' | 'optional' | null;
   group_name?: string | null;
   order_index?: number;
   is_active?: boolean;
