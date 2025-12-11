@@ -15,7 +15,7 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 
-function SearchResultsContent() {
+export function SearchResults() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { profile } = useStore();
