@@ -67,7 +67,9 @@ export default function RegeneratePage() {
     fileToView: file,
     selectedCutId: file?.cut_id || null,
     generationCount,
-    onFilesReload: () => {},
+    onFilesReload: async () => {
+      await loadFile();
+    },
     currentUserId: profile?.id,
   });
 
