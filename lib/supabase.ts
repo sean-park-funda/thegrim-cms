@@ -95,6 +95,7 @@ export interface WebtoonWithEpisodes extends Webtoon {
 
 export interface EpisodeWithCuts extends Episode {
   cuts?: Cut[];
+  webtoon?: Webtoon;
 }
 
 export interface CutWithFiles extends Cut {

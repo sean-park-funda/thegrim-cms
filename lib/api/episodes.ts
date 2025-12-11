@@ -105,6 +105,9 @@ export async function getEpisodeWithCuts(id: string): Promise<EpisodeWithCuts | 
       *,
       cuts (
         *
+      ),
+      webtoon:webtoons (
+        *
       )
     `)
     .eq('id', id)
