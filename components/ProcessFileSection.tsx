@@ -89,8 +89,8 @@ export function ProcessFileSection({
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-3 sm:p-6 flex-1 min-h-0">
+    <div className="h-full flex flex-col" style={{ height: '100%', minHeight: 0, flex: '1 1 0' }}>
+      <div className="p-3 sm:p-6 flex-1 min-h-0 overflow-y-auto" style={{ flex: '1 1 0', minHeight: 0 }}>
         <ProcessDropzone>
           {(open) => (
             <>

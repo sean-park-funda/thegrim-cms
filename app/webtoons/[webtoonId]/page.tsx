@@ -14,6 +14,8 @@ export default async function WebtoonDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  return <EpisodeList webtoon={webtoon} />;
+  return (
+    <EpisodeList webtoon={webtoon} />
+  );
 }
 

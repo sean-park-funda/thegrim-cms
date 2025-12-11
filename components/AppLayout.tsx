@@ -9,7 +9,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-col h-screen bg-background">
       <Navigation />
-      <div className="flex-1 overflow-hidden bg-background">
+      <div className="flex-1 min-h-0 bg-background">
         {children}
       </div>
     </div>

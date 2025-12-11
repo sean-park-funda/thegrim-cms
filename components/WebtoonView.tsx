@@ -32,7 +32,7 @@ export function WebtoonView() {
       <BreadcrumbNav />
       {/* 모바일: 세로 스택 레이아웃 (한 번에 하나의 리스트만 표시) */}
       {!isDesktop && (
-        <div className="flex flex-col h-full overflow-y-auto">
+        <div className="flex flex-col h-full min-h-0">
           {!selectedWebtoon && (
             <div className="flex-1 min-h-0">
               <WebtoonList />
@@ -49,7 +49,7 @@ export function WebtoonView() {
             </div>
           )}
           {selectedWebtoon && selectedEpisode && selectedCut && fileGridKey && (
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0">
               <FileGrid key={fileGridKey} cutId={selectedCut.id} />
             </div>
           )}
@@ -58,7 +58,7 @@ export function WebtoonView() {
 
       {/* 데스크톱: 웹툰/회차는 개별 화면, 회차 선택 후 컷+파일을 한 화면에 나란히 */}
       {isDesktop && (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col h-full min-h-0">
           {!selectedWebtoon && (
             <ScrollArea className="flex-1">
               <WebtoonList />
@@ -70,11 +70,11 @@ export function WebtoonView() {
             </ScrollArea>
           )}
           {selectedWebtoon && selectedEpisode && (
-            <div className="flex-1 grid grid-cols-12 h-full overflow-hidden">
-              <div className="col-span-2 border-r border-border/40 h-full overflow-hidden bg-background">
+            <div className="flex-1 grid grid-cols-12 h-full min-h-0">
+              <div className="col-span-2 border-r border-border/40 h-full min-h-0 bg-background">
                 <CutList episode={{ ...selectedEpisode, cuts: [], webtoon: selectedWebtoon }} />
               </div>
-              <div className="col-span-10 h-full overflow-hidden bg-background">
+              <div className="col-span-10 h-full min-h-0 bg-background">
                 {fileGridKey && selectedCut && <FileGrid key={fileGridKey} cutId={selectedCut.id} />}
               </div>
             </div>

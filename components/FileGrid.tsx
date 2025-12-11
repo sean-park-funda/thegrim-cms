@@ -8,7 +8,9 @@ import { uploadFile, deleteFile, updateFile, analyzeImage, getFilesByCut } from 
 import { getProcesses } from '@/lib/api/processes';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { FileIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { FileIcon, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 import { File as FileType, FileWithRelations, Process } from '@/lib/supabase';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 import { useFileGrid } from '@/lib/hooks/useFileGrid';
@@ -624,9 +626,9 @@ export function FileGrid({ cutId }: FileGridProps) {
   return (
     <>
       {/* 해결 방법 적용: flex: 1 1 0 사용, overflow-hidden 제거 */}
-      <div className="flex flex-col" style={{ flex: '1 1 0', minHeight: 0 }}>
-        <Tabs value={activeProcessId} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
-          <div className="px-3 sm:px-4 pt-2 pb-3 flex-shrink-0">
+      <div className="flex flex-col h-full" style={{ flex: '1 1 0', minHeight: 0, height: '100%' }}>
+        <Tabs value={activeProcessId} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0 h-full">
+          <div className="px-3 sm:px-4 pt-2 pb-3 flex-shrink-0" style={{ flexShrink: 0 }}>
             <TabsList className="w-full overflow-x-auto">
               {sortedProcesses.map((process) => {
                 const processFiles = getFilesByProcess(process.id);
@@ -652,6 +654,16 @@ export function FileGrid({ cutId }: FileGridProps) {
             </TabsList>
           </div>
 
+          {/* 괴수 생성기 버튼 */}
+          <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
+            <Link href={`/monster-generator?cutId=${cutId}`}>
+              <Button variant="outline" size="sm" className="w-full gap-2">
+                <Sparkles className="h-4 w-4" />
+                랜덤 괴수 생성기
+              </Button>
+            </Link>
+          </div>
+
           {/* TabsContent 대신 직접 렌더링하여 높이 제약 문제 해결 */}
           {/* 활성 탭만 렌더링하되 높이 제약을 명확히 전달 */}
           {sortedProcesses.map((process) => {
@@ -667,7 +679,7 @@ export function FileGrid({ cutId }: FileGridProps) {
                 key={process.id}
                 data-process-id={process.id}
                 className="flex-1 flex flex-col min-h-0"
-                style={{ overflowY: 'auto', overflowX: 'hidden' }}
+                style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
               >
                 <ProcessFileSection
                   process={process}

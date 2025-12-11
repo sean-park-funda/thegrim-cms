@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
       createdAt: file.created_at,
       mimeType: file.mime_type || 'image/png',
       prompt: file.prompt || '',
+      description: file.description || '',
       sourceFileId: file.source_file_id,
     }));
 
