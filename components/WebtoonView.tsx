@@ -5,7 +5,6 @@ import { WebtoonList } from './WebtoonList';
 import { EpisodeList } from './EpisodeList';
 import { CutList } from './CutList';
 import { FileGrid } from './FileGrid';
-import { BreadcrumbNav } from './BreadcrumbNav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useStore } from '@/lib/store/useStore';
 
@@ -29,7 +28,6 @@ export function WebtoonView() {
 
   return (
     <>
-      <BreadcrumbNav />
       {/* 모바일: 세로 스택 레이아웃 (한 번에 하나의 리스트만 표시) */}
       {!isDesktop && (
         <div className="flex flex-col h-full min-h-0">

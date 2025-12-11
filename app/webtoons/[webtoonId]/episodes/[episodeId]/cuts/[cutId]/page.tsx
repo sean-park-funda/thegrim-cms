@@ -7,11 +7,13 @@ import { CutList } from '@/components/CutList';
 import { getEpisodeWithCuts } from '@/lib/api/episodes';
 import { EpisodeWithCuts, Cut } from '@/lib/supabase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useStore } from '@/lib/store/useStore';
 
 export default function CutDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { setSelectedWebtoon, setSelectedEpisode, setSelectedCut } = useStore();
   const webtoonId = params.webtoonId as string;
   const episodeId = params.episodeId as string;
   const cutId = params.cutId as string;
@@ -37,6 +39,17 @@ export default function CutDetailPage() {
         setLoading(true);
         const data = await getEpisodeWithCuts(episodeId);
         setEpisode(data);
+        
+        // 브레드크럼 네비게이션을 위해 store에 상태 설정
+        if (data) {
+          setSelectedWebtoon(data.webtoon);
+          setSelectedEpisode(data);
+          // 선택된 컷 설정
+          const selectedCut = data.cuts?.find(c => c.id === cutId);
+          if (selectedCut) {
+            setSelectedCut(selectedCut);
+          }
+        }
       } catch (error) {
         console.error('회차 로드 실패:', error);
       } finally {
@@ -47,7 +60,7 @@ export default function CutDetailPage() {
     if (episodeId) {
       loadEpisode();
     }
-  }, [episodeId]);
+  }, [episodeId, cutId, setSelectedWebtoon, setSelectedEpisode, setSelectedCut]);
 
   return (
     <div className="flex-1 h-full bg-background relative">

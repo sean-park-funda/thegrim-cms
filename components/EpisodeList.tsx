@@ -151,7 +151,7 @@ function EpisodeCard({ episode, isSelected, onClick, onEdit, onDelete, profile }
 
 export function EpisodeList({ webtoon }: EpisodeListProps) {
   const router = useRouter();
-  const { profile, setWebtoons } = useStore();
+  const { profile, setWebtoons, setSelectedWebtoon } = useStore();
   const [episodes, setEpisodes] = useState<Episode[]>(webtoon.episodes || []);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -180,6 +180,11 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
   useEffect(() => {
     loadEpisodes();
   }, [webtoon.id]);
+
+  // 웹툰이 로드되면 브레드크럼 네비게이션을 위해 store에 설정
+  useEffect(() => {
+    setSelectedWebtoon(webtoon);
+  }, [webtoon.id, setSelectedWebtoon]);
 
   // 정렬된 회차 목록 ("기타" 회차는 맨 위, 나머지는 회차순)
   const sortedEpisodes = [...episodes].sort((a, b) => {
