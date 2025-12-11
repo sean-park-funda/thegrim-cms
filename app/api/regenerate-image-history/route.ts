@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const before = searchParams.get('before') || undefined;
     
-    console.log('[이미지 재생성 히스토리] 임시 파일 목록 조회 시작:', {
+    console.log('[이미지 재생성 히스토리] AI 생성 파일 목록 조회 시작:', {
       sourceFileId,
       userId,
       limit,
@@ -30,10 +30,11 @@ export async function GET(request: NextRequest) {
     });
 
     // 전체 개수 조회 (필터링 조건 동일하게 적용)
+    // AI로 생성된 파일 (prompt가 있는 파일)을 모두 포함
     let countQuery = supabase
       .from('files')
       .select('*', { count: 'exact', head: true })
-      .eq('is_temp', true);
+      .not('prompt', 'is', null);
 
     if (sourceFileId) {
       countQuery = countQuery.eq('source_file_id', sourceFileId);
@@ -49,11 +50,12 @@ export async function GET(request: NextRequest) {
       console.error('[이미지 재생성 히스토리] 전체 개수 조회 실패:', countError);
     }
 
-    // DB에서 is_temp = true인 파일만 조회
+    // DB에서 AI로 생성된 파일 (prompt가 있는 파일)을 모두 조회
+    // is_temp 여부와 관계없이 모든 AI 생성 파일 포함
     let query = supabase
       .from('files')
       .select('*')
-      .eq('is_temp', true)
+      .not('prompt', 'is', null)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -76,15 +78,16 @@ export async function GET(request: NextRequest) {
     if (dbError) {
       console.error('[이미지 재생성 히스토리] DB 조회 실패:', dbError);
       return NextResponse.json(
-        { error: '임시 파일 목록을 조회할 수 없습니다.' },
+        { error: 'AI 생성 파일 목록을 조회할 수 없습니다.' },
         { status: 500 }
       );
     }
 
     if (!files || files.length === 0) {
-      console.log('[이미지 재생성 히스토리] 임시 파일 없음');
+      console.log('[이미지 재생성 히스토리] AI 생성 파일 없음');
       return NextResponse.json({
         history: [],
+        total: 0,
       });
     }
 
