@@ -50,7 +50,7 @@ export function WebtoonView() {
           )}
           {selectedWebtoon && selectedEpisode && selectedCut && fileGridKey && (
             <div className="flex-1 overflow-hidden">
-              <FileGrid key={fileGridKey} />
+              <FileGrid key={fileGridKey} cutId={selectedCut.id} />
             </div>
           )}
         </div>
@@ -75,7 +75,7 @@ export function WebtoonView() {
                 <CutList episode={{ ...selectedEpisode, cuts: [], webtoon: selectedWebtoon }} />
               </div>
               <div className="col-span-10 h-full overflow-hidden bg-background">
-                {fileGridKey && <FileGrid key={fileGridKey} />}
+                {fileGridKey && selectedCut && <FileGrid key={fileGridKey} cutId={selectedCut.id} />}
               </div>
             </div>
           )}
