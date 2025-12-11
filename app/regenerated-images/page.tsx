@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Loader2, ChevronRight, ChevronLeft, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { ImageViewer } from '@/components/ImageViewer';
-import { Navigation } from '@/components/Navigation';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface HistoryItem {
   fileId: string;
@@ -21,12 +21,12 @@ interface HistoryItem {
   sourceFileId?: string;
 }
 
-const PAGE_SIZE = 1; // 페이지 사이즈는 1로 고정
+const PAGE_SIZE = 10; // 페이지 사이즈는 10으로 고정
 
 function RegeneratedImagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [currentImage, setCurrentImage] = useState<HistoryItem | null>(null);
+  const [images, setImages] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -34,7 +34,7 @@ function RegeneratedImagesContent() {
   const [pageInput, setPageInput] = useState('1');
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
   const [viewerImageTitle, setViewerImageTitle] = useState<string>('');
-  const [imageCache, setImageCache] = useState<Map<number, HistoryItem>>(new Map());
+  const [imageCache, setImageCache] = useState<Map<number, HistoryItem[]>>(new Map());
 
   // 브라우저 이미지 프리로드
   const preloadImage = useCallback((url: string) => {
@@ -45,7 +45,7 @@ function RegeneratedImagesContent() {
   }, []);
 
   // 이전/다음 페이지 프리로드
-  const preloadAdjacentPages = useCallback(async (page: number, totalPages: number, currentCache: Map<number, HistoryItem>) => {
+  const preloadAdjacentPages = useCallback(async (page: number, totalPages: number, currentCache: Map<number, HistoryItem[]>) => {
     const pagesToPreload: number[] = [];
     
     if (page > 1) pagesToPreload.push(page - 1);
@@ -66,10 +66,11 @@ function RegeneratedImagesContent() {
         if (response.ok) {
           const data = await response.json();
           if (data.history && data.history.length > 0) {
-            const image = data.history[0];
-            setImageCache(prev => new Map(prev).set(p, image));
+            setImageCache(prev => new Map(prev).set(p, data.history));
             // 브라우저 이미지 프리로드
-            preloadImage(image.fileUrl);
+            data.history.forEach((image: HistoryItem) => {
+              preloadImage(image.fileUrl);
+            });
           }
         }
       } catch (error) {
@@ -92,11 +93,11 @@ function RegeneratedImagesContent() {
 
   // 이미지 로드
   useEffect(() => {
-    const loadImage = async () => {
+    const loadImages = async () => {
       // 캐시 확인
       if (imageCache.has(currentPage)) {
-        const cachedImage = imageCache.get(currentPage)!;
-        setCurrentImage(cachedImage);
+        const cachedImages = imageCache.get(currentPage)!;
+        setImages(cachedImages);
         setLoading(false);
         // 캐시에서 로드했어도 total 정보는 항상 확인 (최신 정보 유지)
         try {
@@ -128,18 +129,16 @@ function RegeneratedImagesContent() {
         const response = await fetch(`/api/regenerate-image-history?limit=${PAGE_SIZE}&offset=${offset}`);
         if (response.ok) {
           const data = await response.json();
-          let loadedImage: HistoryItem | null = null;
           if (data.history && data.history.length > 0) {
-            loadedImage = data.history[0];
-            setCurrentImage(loadedImage);
+            setImages(data.history);
             // 캐시에 저장
-            setImageCache(prev => new Map(prev).set(currentPage, loadedImage!));
+            setImageCache(prev => new Map(prev).set(currentPage, data.history));
             // 브라우저 이미지 프리로드
-            if (loadedImage) {
-              preloadImage(loadedImage.fileUrl);
-            }
+            data.history.forEach((image: HistoryItem) => {
+              preloadImage(image.fileUrl);
+            });
           } else {
-            setCurrentImage(null);
+            setImages([]);
           }
           if (data.total !== undefined) {
             setTotalCount(data.total);
@@ -147,10 +146,8 @@ function RegeneratedImagesContent() {
             setTotalPages(calculatedTotalPages);
             // 이미지 로드 완료 후 이전/다음 페이지 프리로드
             // 캐시에 현재 이미지가 추가된 상태이므로 최신 캐시 사용
-            if (loadedImage) {
-              const updatedCache = new Map(imageCache).set(currentPage, loadedImage);
-              preloadAdjacentPages(currentPage, calculatedTotalPages, updatedCache);
-            }
+            const updatedCache = new Map(imageCache).set(currentPage, data.history);
+            preloadAdjacentPages(currentPage, calculatedTotalPages, updatedCache);
           }
         }
       } catch (error) {
@@ -159,7 +156,7 @@ function RegeneratedImagesContent() {
         setLoading(false);
       }
     };
-    loadImage();
+    loadImages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
@@ -212,156 +209,150 @@ function RegeneratedImagesContent() {
     }
   };
 
-  const handleImageClick = () => {
-    if (currentImage) {
-      setViewerImageUrl(currentImage.fileUrl);
-      setViewerImageTitle(`생성된 이미지 - ${format(new Date(currentImage.createdAt), 'yyyy-MM-dd HH:mm')}`);
-    }
+  const handleImageClick = (image: HistoryItem) => {
+    setViewerImageUrl(image.fileUrl);
+    setViewerImageTitle(`생성된 이미지 - ${format(new Date(image.createdAt), 'yyyy-MM-dd HH:mm')}`);
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
-      <div className="container mx-auto px-4 pt-4 max-w-4xl">
-
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : !currentImage ? (
-          <Card>
-            <CardContent className="flex items-center justify-center py-24">
-              <p className="text-muted-foreground">생성된 이미지가 없습니다.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
+    <Fragment>
+      <ScrollArea className="h-full">
+      <div className="container mx-auto px-4 pt-4 pb-8">
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : images.length === 0 ? (
             <Card>
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  {/* 이미지 */}
-                  <div
-                    className="relative w-full aspect-auto bg-muted rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all min-h-[400px]"
-                    onClick={handleImageClick}
+              <CardContent className="flex items-center justify-center py-24">
+                <p className="text-muted-foreground">생성된 이미지가 없습니다.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {/* 이미지 그리드 */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {images.map((image) => (
+                  <Card
+                    key={image.fileId}
+                    className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-pointer"
+                    onClick={() => handleImageClick(image)}
                   >
-                    {currentImage.fileUrl && (
+                    <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
                       <Image
-                        src={currentImage.fileUrl}
+                        src={image.fileUrl}
                         alt="생성된 이미지"
                         fill
-                        className="object-contain"
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+                        className="object-cover"
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                         unoptimized={true}
                         onError={(e) => {
                           console.error('[이미지 로드 실패]', {
-                            fileId: currentImage.fileId,
-                            fileUrl: currentImage.fileUrl,
+                            fileId: image.fileId,
+                            fileUrl: image.fileUrl,
                           });
                         }}
                       />
-                    )}
-                  </div>
-
-                  {/* 메타데이터 */}
-                  <div className="space-y-2 pt-4 border-t">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>
-                        {format(new Date(currentImage.createdAt), 'yyyy년 MM월 dd일 HH:mm')}
-                      </span>
                     </div>
-                    {currentImage.prompt && (
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">프롬프트: </span>
-                        <span className="text-foreground">{currentImage.prompt}</span>
+                    <div className="p-2 sm:p-3">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                        <Calendar className="h-3 w-3" />
+                        <span className="truncate">
+                          {format(new Date(image.createdAt), 'yyyy-MM-dd HH:mm')}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 페이지네이션 */}
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2 flex-wrap justify-center">
-                <Button
-                  onClick={handlePrevious}
-                  disabled={currentPage <= 1 || loading}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  이전
-                </Button>
-
-                {/* 페이지 번호 버튼들 */}
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum: number;
-                    if (totalPages <= 5) {
-                      // 전체 페이지가 5개 이하면 모두 표시
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      // 현재 페이지가 앞쪽이면 1-5 표시
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      // 현재 페이지가 뒤쪽이면 마지막 5개 표시
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      // 중간이면 현재 페이지 기준 앞뒤 2개씩
-                      pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        onClick={() => handlePageChange(pageNum)}
-                        disabled={loading}
-                        variant={currentPage === pageNum ? 'default' : 'outline'}
-                        size="sm"
-                        className="min-w-[2.5rem]"
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
-                </div>
-
-                {/* 페이지 입력 필드 */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">이동</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={totalPages}
-                    value={pageInput}
-                    onChange={(e) => setPageInput(e.target.value)}
-                    onKeyDown={handlePageInputKeyDown}
-                    onBlur={handlePageInputBlur}
-                    className="w-16 h-9 text-center"
-                    disabled={loading}
-                  />
-                  <span className="text-sm text-muted-foreground">/ {totalPages}</span>
-                </div>
-
-                <Button
-                  onClick={handleNext}
-                  disabled={currentPage >= totalPages || loading}
-                  variant="outline"
-                  size="sm"
-                >
-                  다음
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
+                      {image.prompt && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                          {image.prompt}
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                ))}
               </div>
 
-              <div className="text-sm text-muted-foreground">
-                전체 {totalCount}개 중 {currentPage}페이지
+              {/* 페이지네이션 */}
+              <div className="flex flex-col items-center gap-4 pb-4">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  <Button
+                    onClick={handlePrevious}
+                    disabled={currentPage <= 1 || loading}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    이전
+                  </Button>
+
+                  {/* 페이지 번호 버튼들 */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        // 전체 페이지가 5개 이하면 모두 표시
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        // 현재 페이지가 앞쪽이면 1-5 표시
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        // 현재 페이지가 뒤쪽이면 마지막 5개 표시
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        // 중간이면 현재 페이지 기준 앞뒤 2개씩
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          disabled={loading}
+                          variant={currentPage === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          className="min-w-[2.5rem]"
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 페이지 입력 필드 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">이동</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={handlePageInputKeyDown}
+                      onBlur={handlePageInputBlur}
+                      className="w-16 h-9 text-center"
+                      disabled={loading}
+                    />
+                    <span className="text-sm text-muted-foreground">/ {totalPages}</span>
+                  </div>
+
+                  <Button
+                    onClick={handleNext}
+                    disabled={currentPage >= totalPages || loading}
+                    variant="outline"
+                    size="sm"
+                  >
+                    다음
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  전체 {totalCount}개 중 {currentPage}페이지
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </ScrollArea>
 
       {/* 이미지 뷰어 */}
       {viewerImageUrl && (
@@ -377,7 +368,7 @@ function RegeneratedImagesContent() {
           }}
         />
       )}
-    </div>
+    </Fragment>
   );
 }
 
