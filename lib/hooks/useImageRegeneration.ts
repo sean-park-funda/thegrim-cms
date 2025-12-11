@@ -57,7 +57,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[]) => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[], apiProvider: ApiProvider = 'auto') => {
     // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
     const actualFileId = targetFileId || (fileToView?.id);
     if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
@@ -71,7 +71,6 @@ export function useImageRegeneration({
       const styleId = stylePrompt.toLowerCase().includes('berserk') ? 'berserk'
         : stylePrompt.toLowerCase().includes('shading') || stylePrompt.toLowerCase().includes('chiaroscuro') ? 'shading'
         : '';
-      const apiProvider: ApiProvider = 'auto';
       
       // count가 지정되지 않았으면 (새로 생성하는 경우) 기존 이미지 초기화
       // 단, useLatestImageAsInput이 true면 기존 이미지 유지 (선화 결과를 사용하기 위해)

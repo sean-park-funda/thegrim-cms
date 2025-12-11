@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Pencil, GripVertical, ArrowLeft, Trash2 } from 'lucide-react';
 import { AiRegenerationStyle } from '@/lib/supabase';
@@ -31,22 +31,34 @@ export function StyleManagementDialog({
 
   // 스타일 목록 로드
   const loadStyles = useCallback(async () => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) {
+      console.log('[StyleManagementDialog] 컴포넌트가 마운트되지 않음, loadStyles 중단');
+      return;
+    }
     
     setLoading(true);
     try {
       console.log('[StyleManagementDialog] 스타일 목록 로드 시작');
       const data = await getAllStyles();
       
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) {
+        console.log('[StyleManagementDialog] 컴포넌트가 언마운트됨, 상태 업데이트 중단');
+        return;
+      }
       
       console.log('[StyleManagementDialog] 스타일 목록 로드 완료:', data?.length || 0, '개');
       setStyles(data || []);
     } catch (error) {
-      if (!isMountedRef.current) return;
-      
       console.error('[StyleManagementDialog] 스타일 목록 로드 실패:', error);
-      alert('스타일 목록을 불러오는데 실패했습니다: ' + (error instanceof Error ? error.message : String(error)));
+      
+      if (!isMountedRef.current) {
+        console.log('[StyleManagementDialog] 에러 발생 후 컴포넌트 언마운트 확인됨');
+        return;
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[StyleManagementDialog] 최종 에러:', errorMessage);
+      alert('스타일 목록을 불러오는데 실패했습니다: ' + errorMessage);
       setStyles([]);
     } finally {
       if (isMountedRef.current) {
@@ -214,6 +226,9 @@ export function StyleManagementDialog({
         <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>스타일 관리</DialogTitle>
+            <DialogDescription>
+              AI 다시그리기 스타일을 관리합니다. 스타일을 드래그하여 그룹을 변경하거나 삭제할 수 있습니다.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center py-2">

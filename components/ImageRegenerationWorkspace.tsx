@@ -52,7 +52,7 @@ interface ImageRegenerationWorkspaceProps {
   savingImages: boolean;
   generationCount: number;
   onGenerationCountChange: (count: number) => void;
-  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string, characterSheets?: Array<{ sheetId: string }>) => void;
+  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo, targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto') => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -264,9 +264,10 @@ export function ImageRegenerationWorkspace({
 
     const count = selectedStyle.allow_multiple ? generationCount : selectedStyle.default_count;
 
-    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?)
+    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?)
     // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
-    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImages, undefined, characterSheets);
+    // apiProvider는 스타일의 api_provider 값 사용
+    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImages, undefined, characterSheets, selectedStyle.api_provider);
   };
 
   // 레퍼런스 업로드 완료 핸들러
@@ -802,7 +803,7 @@ export function ImageRegenerationWorkspace({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {Array.from({ length: 10 }, (_, i) => (i + 1) * 2).map((count) => (
+                                  {Array.from({ length: 10 }, (_, i) => i + 1).map((count) => (
                                     <SelectItem key={count} value={count.toString()}>
                                       {count}장
                                     </SelectItem>
