@@ -657,7 +657,7 @@ export function FileGrid({ cutId }: FileGridProps) {
           {/* 괴수 생성기 버튼 */}
           <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
             <Link href={`/monster-generator?cutId=${cutId}`}>
-              <Button variant="outline" size="sm" className="w-full gap-2">
+              <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
                 <Sparkles className="h-4 w-4" />
                 랜덤 괴수 생성기
               </Button>
