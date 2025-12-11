@@ -42,7 +42,7 @@ export default function CutDetailPage() {
         
         // 브레드크럼 네비게이션을 위해 store에 상태 설정
         if (data) {
-          setSelectedWebtoon(data.webtoon);
+          setSelectedWebtoon(data.webtoon || null);
           setSelectedEpisode(data);
           // 선택된 컷 설정
           const selectedCut = data.cuts?.find(c => c.id === cutId);
