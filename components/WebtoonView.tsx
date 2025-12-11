@@ -40,12 +40,12 @@ export function WebtoonView() {
           )}
           {selectedWebtoon && !selectedEpisode && (
             <ScrollArea className="flex-1">
-              <EpisodeList />
+              <EpisodeList webtoon={{ ...selectedWebtoon, episodes: [] }} />
             </ScrollArea>
           )}
           {selectedWebtoon && selectedEpisode && !selectedCut && (
             <div className="flex-1 overflow-hidden">
-              <CutList />
+              <CutList episode={{ ...selectedEpisode, cuts: [], webtoon: selectedWebtoon }} />
             </div>
           )}
           {selectedWebtoon && selectedEpisode && selectedCut && fileGridKey && (
@@ -66,13 +66,13 @@ export function WebtoonView() {
           )}
           {selectedWebtoon && !selectedEpisode && (
             <ScrollArea className="flex-1">
-              <EpisodeList />
+              <EpisodeList webtoon={{ ...selectedWebtoon, episodes: [] }} />
             </ScrollArea>
           )}
           {selectedWebtoon && selectedEpisode && (
             <div className="flex-1 grid grid-cols-12 h-full overflow-hidden">
               <div className="col-span-2 border-r border-border/40 h-full overflow-hidden bg-background">
-                <CutList />
+                <CutList episode={{ ...selectedEpisode, cuts: [], webtoon: selectedWebtoon }} />
               </div>
               <div className="col-span-10 h-full overflow-hidden bg-background">
                 {fileGridKey && <FileGrid key={fileGridKey} />}
