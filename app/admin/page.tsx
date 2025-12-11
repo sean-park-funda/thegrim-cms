@@ -456,13 +456,12 @@ export default function AdminPage() {
                           <Checkbox
                             id={`setting-${style.style_key}`}
                             checked={useReference || isRequired}
-                            disabled={isRequired}
+                            disabled={isRequired || isUpdating}
                             onCheckedChange={(checked) => {
                               if (!isRequired) {
                                 handleUpdateSetting(style.style_key, checked === true);
                               }
                             }}
-                            disabled={isRequired || isUpdating}
                           />
                           <label
                             htmlFor={`setting-${style.style_key}`}
