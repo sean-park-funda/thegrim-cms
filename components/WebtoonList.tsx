@@ -139,13 +139,13 @@ function WebtoonCard({ webtoon, isSelected, onClick, onEdit, onDelete, onManageR
   );
 }
 
-// 모듈 레벨 변수로 전역 로딩 상태 관리 (여러 컴포넌트 인스턴스 간 공유)
-let isLoadingGlobally = false;
-let hasLoadedGlobally = false;
+interface WebtoonListProps {
+  initialWebtoons?: Webtoon[];
+}
 
-export function WebtoonList() {
+export function WebtoonList({ initialWebtoons }: WebtoonListProps = {}) {
   const router = useRouter();
-  const { webtoons, setWebtoons, selectedWebtoon, setSelectedWebtoon, profile } = useStore();
+  const { webtoons, setWebtoons, profile } = useStore();
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -157,37 +157,29 @@ export function WebtoonList() {
   const [referenceFileDialogOpen, setReferenceFileDialogOpen] = useState(false);
   const [selectedWebtoonForReference, setSelectedWebtoonForReference] = useState<Webtoon | null>(null);
 
+  // 초기 웹툰 데이터 설정
+  useEffect(() => {
+    if (initialWebtoons && initialWebtoons.length > 0 && webtoons.length === 0) {
+      setWebtoons(initialWebtoons);
+    }
+  }, [initialWebtoons, setWebtoons, webtoons.length]);
+
   // 최대 개수 도달 여부
-  const isMaxReached = webtoons.length >= MAX_WEBTOONS;
+  const currentWebtoons = webtoons.length > 0 ? webtoons : (initialWebtoons || []);
+  const isMaxReached = currentWebtoons.length >= MAX_WEBTOONS;
 
   const loadWebtoons = useCallback(async () => {
-    // 이미 로딩 중이거나 데이터가 있으면 중복 호출 방지
-    if (isLoadingGlobally || webtoons.length > 0 || hasLoadedGlobally) {
-      return;
-    }
     try {
-      isLoadingGlobally = true;
-      hasLoadedGlobally = true;
       setLoading(true);
       const data = await getWebtoons();
       setWebtoons(data);
     } catch (error) {
       console.error('웹툰 목록 로드 실패:', error);
       alert('웹툰 목록을 불러오는데 실패했습니다.');
-      hasLoadedGlobally = false; // 실패 시 다시 시도 가능하도록
     } finally {
-      isLoadingGlobally = false;
       setLoading(false);
     }
-  }, [setWebtoons, webtoons.length]);
-
-  useEffect(() => {
-    // 웹툰 목록이 이미 로드되어 있으면 다시 로드하지 않음
-    if (webtoons.length === 0 && !hasLoadedGlobally && !isLoadingGlobally) {
-      loadWebtoons();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 마운트 시 한 번만 실행
+  }, [setWebtoons]);
 
   const handleCreate = () => {
     setFormData({ title: '', description: '', thumbnail_url: '' });
@@ -275,9 +267,6 @@ export function WebtoonList() {
 
     try {
       await deleteWebtoon(webtoon.id);
-      if (selectedWebtoon?.id === webtoon.id) {
-        setSelectedWebtoon(null);
-      }
       await loadWebtoons();
       alert('웹툰이 삭제되었습니다.');
     } catch (error) {
@@ -351,7 +340,7 @@ export function WebtoonList() {
         )}
 
         {/* 빈 상태 */}
-        {webtoons.length === 0 ? (
+        {currentWebtoons.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="py-12 text-center text-muted-foreground">
               <Film className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -361,12 +350,12 @@ export function WebtoonList() {
           </Card>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-4">
-            {webtoons.map((webtoon) => (
+            {currentWebtoons.map((webtoon) => (
               <WebtoonCard
                 key={webtoon.id}
                 webtoon={webtoon}
-                isSelected={selectedWebtoon?.id === webtoon.id}
-                onClick={() => setSelectedWebtoon(webtoon)}
+                isSelected={false}
+                onClick={() => router.push(`/webtoons/${webtoon.id}`)}
                 onEdit={(e) => handleEdit(webtoon, e)}
                 onDelete={(e) => handleDelete(webtoon, e)}
                 onManageReferences={(e) => handleManageReferences(webtoon, e)}

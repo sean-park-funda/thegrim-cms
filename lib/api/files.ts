@@ -6,6 +6,13 @@ export async function getFileById(fileId: string): Promise<FileWithRelations | n
     .from('files')
     .select(`
       *,
+      cut:cuts (
+        *,
+        episode:episodes (
+          *,
+          webtoon:webtoons (*)
+        )
+      ),
       process:processes (*),
       created_by_user:user_profiles (id, email, name, role)
     `)

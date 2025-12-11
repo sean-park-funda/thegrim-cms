@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Pencil, GripVertical, ArrowLeft, Trash2 } from 'lucide-react';
@@ -29,24 +29,32 @@ export function StyleManagementDialog({
   const [dragOverDelete, setDragOverDelete] = useState(false);
 
   // 스타일 목록 로드
-  const loadStyles = async () => {
+  const loadStyles = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('[StyleManagementDialog] 스타일 목록 로드 시작');
       const data = await getAllStyles();
-      setStyles(data);
+      console.log('[StyleManagementDialog] 스타일 목록 로드 완료:', data?.length || 0, '개');
+      setStyles(data || []);
     } catch (error) {
-      console.error('스타일 목록 로드 실패:', error);
-      alert('스타일 목록을 불러오는데 실패했습니다.');
+      console.error('[StyleManagementDialog] 스타일 목록 로드 실패:', error);
+      alert('스타일 목록을 불러오는데 실패했습니다: ' + (error instanceof Error ? error.message : String(error)));
+      setStyles([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (open) {
+      console.log('[StyleManagementDialog] 다이얼로그 열림, loadStyles 호출');
       loadStyles();
+    } else {
+      // 다이얼로그가 닫힐 때 상태 초기화
+      setStyles([]);
+      setLoading(false);
     }
-  }, [open]);
+  }, [open, loadStyles]);
 
   // 드래그 시작
   const handleDragStart = (e: React.DragEvent, style: AiRegenerationStyle) => {

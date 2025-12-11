@@ -138,3 +138,45 @@
     animation: shimmer 2s infinite;
   }
 }
+
+/* 얇은 스크롤바 스타일 */
+@layer base {
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.7 0 0 / 0.3) transparent;
+  }
+
+  /* WebKit 기반 브라우저 (Chrome, Safari, Edge) */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: oklch(0.7 0 0 / 0.3);
+    border-radius: 3px;
+    border: none;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.6 0 0 / 0.5);
+  }
+
+  /* 다크 모드 */
+  .dark * {
+    scrollbar-color: oklch(0.5 0 0 / 0.4) transparent;
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: oklch(0.5 0 0 / 0.4);
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.4 0 0 / 0.6);
+  }
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { getCuts, createCut, updateCut, deleteCut } from '@/lib/api/cuts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,14 +11,22 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Plus, Image, MoreVertical, Edit, Trash2, File } from 'lucide-react';
-import { Cut } from '@/lib/supabase';
+import { Cut, EpisodeWithCuts } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-export function CutList() {
-  const { selectedWebtoon, selectedEpisode, selectedCut, setSelectedCut, profile } = useStore();
-  const [cuts, setCuts] = useState<Cut[]>([]);
+interface CutListProps {
+  episode: EpisodeWithCuts;
+  selectedCutId?: string | null;
+}
+
+export function CutList({ episode, selectedCutId }: CutListProps) {
+  const router = useRouter();
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const { profile } = useStore();
+  const [cuts, setCuts] = useState<Cut[]>(episode.cuts || []);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -25,23 +34,14 @@ export function CutList() {
   const [formData, setFormData] = useState({ cut_number: 1, title: '', description: '' });
   const [saving, setSaving] = useState(false);
 
-  const unitType = selectedWebtoon?.unit_type || 'cut';
+  const webtoonId = params.webtoonId as string;
+  const unitType = episode.webtoon?.unit_type || 'cut';
   const unitLabel = unitType === 'cut' ? '컷' : '페이지';
 
-  useEffect(() => {
-    if (selectedEpisode) {
-      loadCuts();
-    } else {
-      setCuts([]);
-    }
-  }, [selectedEpisode]);
-
   const loadCuts = async () => {
-    if (!selectedEpisode) return;
-
     try {
       setLoading(true);
-      const data = await getCuts(selectedEpisode.id);
+      const data = await getCuts(episode.id);
       setCuts(data);
     } catch (error) {
       console.error(`${unitLabel} 목록 로드 실패:`, error);
@@ -52,7 +52,6 @@ export function CutList() {
   };
 
   const handleCreate = () => {
-    if (!selectedEpisode) return;
     const nextCutNumber = cuts.length > 0 ? Math.max(...cuts.map(c => c.cut_number)) + 1 : 1;
     setFormData({ cut_number: nextCutNumber, title: '', description: '' });
     setEditingCut(null);
@@ -78,9 +77,6 @@ export function CutList() {
 
     try {
       await deleteCut(cut.id);
-      if (selectedCut?.id === cut.id) {
-        setSelectedCut(null);
-      }
       await loadCuts();
       alert(`${unitLabel}이(가) 삭제되었습니다.`);
     } catch (error) {
@@ -97,8 +93,6 @@ export function CutList() {
   };
 
   const handleSave = async () => {
-    if (!selectedEpisode) return;
-
     try {
       setSaving(true);
       let newCut: Cut | null = null;
@@ -108,7 +102,7 @@ export function CutList() {
         alert(`${unitLabel}이(가) 수정되었습니다.`);
       } else {
         newCut = await createCut({
-          episode_id: selectedEpisode.id,
+          episode_id: episode.id,
           ...formData
         });
         // 생성 시 얼러트 제거
@@ -120,9 +114,9 @@ export function CutList() {
       setEditingCut(null);
       setFormData({ cut_number: 1, title: '', description: '' });
 
-      // 새로 생성된 컷이 있으면 선택
+      // 새로 생성된 컷이 있으면 해당 페이지로 이동
       if (newCut) {
-        setSelectedCut(newCut);
+        router.push(`/webtoons/${webtoonId}/episodes/${episode.id}/cuts/${newCut.id}`);
       }
     } catch (error) {
       console.error(`${unitLabel} 저장 실패:`, error);
@@ -132,22 +126,13 @@ export function CutList() {
     }
   };
 
-  if (!selectedEpisode) {
-    return (
-      <div className="p-4 text-center text-muted-foreground">
-        <Image className="h-12 w-12 mx-auto mb-2 opacity-50" />
-        <p>회차를 선택해주세요</p>
-      </div>
-    );
-  }
-
   if (loading) {
     return <div className="p-4 text-center text-muted-foreground">로딩 중...</div>;
   }
 
   return (
     <>
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-col h-full">
         {/* 상단 고정: 생성 버튼 */}
         {profile && canCreateContent(profile.role) && (
           <div className="p-3 sm:p-4 pb-2 flex-shrink-0 border-b bg-background z-10">
@@ -159,7 +144,7 @@ export function CutList() {
         )}
 
         {/* 중간 스크롤: 컷/페이지 목록 */}
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0" style={{ overflow: 'hidden' }}>
           <div className="px-2 py-2">
             {cuts.length === 0 ? (
               <Card>
@@ -170,8 +155,22 @@ export function CutList() {
               </Card>
             ) : (
               <div className="grid gap-1 sm:gap-1.5">
-                {cuts.map((cut) => (
-                  <Card key={cut.id} className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation hover:bg-accent/50 ${selectedCut?.id === cut.id ? 'ring-2 ring-primary bg-accent' : ''}`} onClick={() => setSelectedCut(cut)}>
+                {cuts.map((cut) => {
+                  const isSelected = selectedCutId === cut.id;
+                  return (
+                    <Card
+                      key={cut.id}
+                      className={`cursor-pointer transition-all duration-200 ease-in-out active:scale-[0.98] touch-manipulation hover:bg-accent/50 ${
+                        isSelected ? 'ring-2 ring-primary bg-accent' : ''
+                      }`}
+                      onClick={() => {
+                        // 현재 선택된 공정(process) 파라미터 유지
+                        const currentProcess = searchParams.get('process');
+                        const url = `/webtoons/${webtoonId}/episodes/${episode.id}/cuts/${cut.id}`;
+                        const urlWithProcess = currentProcess ? `${url}?process=${currentProcess}` : url;
+                        router.push(urlWithProcess);
+                      }}
+                    >
                     <CardHeader className="pb-1 pt-2 px-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -218,8 +217,9 @@ export function CutList() {
                         <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-2">{cut.description}</p>
                       </CardContent>
                     )}
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>

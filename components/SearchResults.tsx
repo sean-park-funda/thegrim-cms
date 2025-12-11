@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { searchFiles, analyzeImage, deleteFile } from '@/lib/api/files';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,12 +15,13 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 
-export function SearchResults() {
-  const { selectedWebtoon, activeSearchQuery, profile, setSearchQuery, setActiveSearchQuery } = useStore();
+function SearchResultsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { profile } = useStore();
+  const activeSearchQuery = searchParams.get('q') || '';
   const [results, setResults] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [fileToView, setFileToView] = useState<FileWithRelations | null>(null);
   const [analyzingFiles, setAnalyzingFiles] = useState<Set<string>>(new Set());
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
@@ -81,7 +83,6 @@ export function SearchResults() {
       await deleteFile(file.id);
       // 검색 결과에서 제거
       setResults(prev => prev.filter(f => f.id !== file.id));
-      setDetailDialogOpen(false);
       alert('파일이 삭제되었습니다.');
     } catch (error: any) {
       console.error('파일 삭제 실패:', error);
@@ -158,8 +159,7 @@ export function SearchResults() {
   }
 
   const handleClearSearch = () => {
-    setSearchQuery('');
-    setActiveSearchQuery('');
+    router.push('/webtoons');
   };
 
   if (loading) {
@@ -231,8 +231,7 @@ export function SearchResults() {
                 key={file.id} 
                 className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                 onClick={() => {
-                  setFileToView(file);
-                  setDetailDialogOpen(true);
+                  router.push(`/files/${file.id}`);
                 }}
               >
                 <CardContent className="p-4">
@@ -299,209 +298,6 @@ export function SearchResults() {
         )}
       </div>
 
-      {/* 파일 상세 정보 Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 !sm:max-w-[95vw] overflow-y-auto p-6">
-          {fileToView && (
-            <>
-              <DialogTitle asChild>
-                <h2 className="text-xl font-semibold break-words mb-0">{fileToView.file_name}</h2>
-              </DialogTitle>
-              <div className="space-y-6">
-              {/* 파일 미리보기 */}
-              <div className="w-full">
-                {fileToView.file_type === 'image' && !imageErrors.has(fileToView.id) ? (
-                  <div className="relative w-full h-[60vh] min-h-[400px] bg-muted rounded-md overflow-hidden">
-                    <Image 
-                      src={fileToView.file_path?.startsWith('http') 
-                        ? fileToView.file_path 
-                        : fileToView.file_path?.startsWith('/') 
-                          ? fileToView.file_path 
-                          : `https://${fileToView.file_path}`} 
-                      alt={fileToView.file_name} 
-                      fill 
-                      className="object-contain" 
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-                      unoptimized={true}
-                      onError={() => {
-                        console.error('이미지 로딩 실패:', fileToView.file_path);
-                        setImageErrors(prev => new Set(prev).add(fileToView.id));
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full h-[60vh] min-h-[400px] bg-muted rounded-md flex items-center justify-center">
-                    <div className="text-center">
-                      <FileIcon className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
-                      {fileToView.file_type === 'image' && (
-                        <p className="text-sm text-muted-foreground">이미지를 불러올 수 없습니다</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 기본 정보 및 메타데이터 */}
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* 기본 정보 카드 */}
-                <Card className="flex-1">
-                  <CardHeader>
-                    <CardTitle className="text-base">기본 정보</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <span className="text-sm text-muted-foreground">파일명</span>
-                      <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{fileToView.file_name}</span>
-                    </div>
-                    {fileToView.file_size && (
-                      <div className="flex items-start justify-between">
-                        <span className="text-sm text-muted-foreground flex items-center gap-1">
-                          <HardDrive className="h-3 w-3" />
-                          파일 크기
-                        </span>
-                        <span className="text-sm font-medium text-right flex-1 ml-4">
-                          {(fileToView.file_size / 1024 / 1024).toFixed(2)} MB
-                        </span>
-                      </div>
-                    )}
-                    {fileToView.mime_type && (
-                      <div className="flex items-start justify-between">
-                        <span className="text-sm text-muted-foreground">MIME 타입</span>
-                        <span className="text-sm font-medium text-right flex-1 ml-4 break-words">{fileToView.mime_type}</span>
-                      </div>
-                    )}
-                    <div className="flex items-start justify-between">
-                      <span className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        생성일
-                      </span>
-                      <span className="text-sm font-medium text-right flex-1 ml-4">
-                        {format(new Date(fileToView.created_at), 'yyyy년 MM월 dd일 HH:mm')}
-                      </span>
-                    </div>
-                    {fileToView.description && (
-                      <div className="pt-2 border-t">
-                        <p className="text-xs text-muted-foreground mb-1">설명</p>
-                        <p className="text-sm">{fileToView.description}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* 메타데이터 카드 */}
-                {fileToView.file_type === 'image' && (
-                  <Card className="flex-1">
-                    <CardHeader>
-                      <CardTitle className="text-base">메타데이터</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {(() => {
-                        const metadata = fileToView.metadata as {
-                          scene_summary?: string;
-                          tags?: string[];
-                          characters_count?: number;
-                          analyzed_at?: string;
-                        } | undefined;
-                        
-                        if (metadata && metadata.scene_summary && metadata.tags) {
-                          return (
-                            <div className="space-y-3">
-                              {metadata.scene_summary && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">장면 요약</p>
-                                  <p className="text-sm">{metadata.scene_summary}</p>
-                                </div>
-                              )}
-                              {metadata.tags && metadata.tags.length > 0 && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-2">태그</p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {metadata.tags.map((tag, idx) => (
-                                      <Badge key={idx} variant="secondary" className="text-xs">
-                                        {tag}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {typeof metadata.characters_count === 'number' && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">등장 인물 수</p>
-                                  <p className="text-sm">{metadata.characters_count}명</p>
-                                </div>
-                              )}
-                              {metadata.analyzed_at && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">분석 일시</p>
-                                  <p className="text-sm">
-                                    {format(new Date(metadata.analyzed_at), 'yyyy년 MM월 dd일 HH:mm')}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        } else {
-                          return (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Sparkles className="h-4 w-4" />
-                              <span>메타데이터가 없습니다. 분석 버튼을 눌러 생성하세요.</span>
-                            </div>
-                          );
-                        }
-                      })()}
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-              {/* 액션 버튼 */}
-              <div className="flex gap-2 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload(fileToView, e);
-                  }}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  다운로드
-                </Button>
-                {fileToView.file_type === 'image' && profile && canUploadFile(profile.role) && (
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDetailDialogOpen(false);
-                      handleAnalyzeClick(fileToView, e);
-                    }}
-                    disabled={analyzingFiles.has(fileToView.id)}
-                  >
-                    <Sparkles className={`h-4 w-4 mr-2 ${analyzingFiles.has(fileToView.id) ? 'animate-pulse' : ''}`} />
-                    {analyzingFiles.has(fileToView.id) ? '분석 중...' : '분석'}
-                  </Button>
-                )}
-                {profile && canDeleteFile(profile.role) && (
-                  <Button 
-                    variant="destructive" 
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDetailDialogOpen(false);
-                      handleDeleteClick(fileToView, e);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    삭제
-                  </Button>
-                )}
-              </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </ScrollArea>
   );
 }

@@ -89,8 +89,8 @@ export function ProcessFileSection({
   };
 
   return (
-    <Card>
-      <CardContent className="p-3 sm:p-6">
+    <div className="h-full flex flex-col">
+      <div className="p-3 sm:p-6 flex-1 min-h-0">
         <ProcessDropzone>
           {(open) => (
             <>
@@ -187,8 +187,8 @@ export function ProcessFileSection({
             </>
           )}
         </ProcessDropzone>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

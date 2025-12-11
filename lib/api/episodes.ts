@@ -43,23 +43,44 @@ export async function getEpisodes(webtoonId: string): Promise<Episode[]> {
       console.error(`파일 개수 조회 실패 (episode_id: ${episodeId}):`, countError);
     }
 
-    // 첫 번째 파일의 썸네일 조회 (임시 파일 제외)
+    // 첫 번째 이미지 파일 조회 (임시 파일 제외)
     const { data: firstFile, error: fileError } = await supabase
       .from('files')
-      .select('thumbnail_path')
+      .select('thumbnail_path, file_path, file_type')
       .in('cut_id', cutIds)
       .eq('is_temp', false)
-      .not('thumbnail_path', 'is', null)
+      .eq('file_type', 'image')
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
 
     let thumbnailUrl = null;
-    if (!fileError && firstFile?.thumbnail_path) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('webtoon-files')
-        .getPublicUrl(firstFile.thumbnail_path);
-      thumbnailUrl = publicUrl;
+    if (!fileError && firstFile) {
+      // 썸네일이 있으면 썸네일 URL 사용
+      if (firstFile.thumbnail_path) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('webtoon-files')
+          .getPublicUrl(firstFile.thumbnail_path);
+        thumbnailUrl = publicUrl;
+      } else if (firstFile.file_path) {
+        // 썸네일이 없으면 원본 파일 경로 사용
+        // file_path가 절대 URL인지 확인
+        if (firstFile.file_path.startsWith('http')) {
+          thumbnailUrl = firstFile.file_path;
+        } else if (firstFile.file_path.startsWith('/')) {
+          thumbnailUrl = firstFile.file_path;
+        } else {
+          // Supabase Storage 경로인 경우 공개 URL 생성
+          try {
+            const { data: { publicUrl } } = supabase.storage
+              .from('webtoon-files')
+              .getPublicUrl(firstFile.file_path);
+            thumbnailUrl = publicUrl;
+          } catch (error) {
+            console.error(`파일 URL 생성 실패 (episode_id: ${episodeId}):`, error);
+          }
+        }
+      }
     }
 
     return { episodeId, count: count || 0, thumbnail_url: thumbnailUrl };

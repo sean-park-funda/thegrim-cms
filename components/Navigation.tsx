@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
@@ -23,19 +24,22 @@ import {
 } from '@/components/ui/dialog';
 export function Navigation() {
   const router = useRouter();
-  const { viewMode, setViewMode, searchQuery, setSearchQuery, setActiveSearchQuery, user, profile, setSelectedWebtoon } = useStore();
+  const pathname = usePathname();
+  const { searchQuery, setSearchQuery, user, profile } = useStore();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      setActiveSearchQuery(searchQuery.trim());
+      const query = searchQuery.trim();
+      if (query.length >= 1) {
+        router.push(`/search?q=${encodeURIComponent(query)}`);
+      }
     }
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
-    setActiveSearchQuery('');
   };
 
   const handleLogout = async () => {
@@ -50,8 +54,7 @@ export function Navigation() {
   };
 
   const handleTitleClick = () => {
-    setSelectedWebtoon(null);
-    router.push('/');
+    router.push('/webtoons');
   };
 
   // 모바일 검색 다이얼로그가 열릴 때 입력 필드에 자동 포커스
@@ -66,7 +69,10 @@ export function Navigation() {
   }, [mobileSearchOpen]);
 
   const handleMobileSearchSubmit = () => {
-    setActiveSearchQuery(searchQuery.trim());
+    const query = searchQuery.trim();
+    if (query.length >= 1) {
+      router.push(`/search?q=${encodeURIComponent(query)}`);
+    }
     setMobileSearchOpen(false);
   };
 
@@ -87,32 +93,34 @@ export function Navigation() {
 
           {/* 탭 네비게이션 - Linear 스타일: 미니멀한 탭 */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setViewMode('webtoon')} 
-              className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
-                viewMode === 'webtoon' 
-                  ? 'bg-background/20 text-background' 
-                  : 'text-background/70 hover:text-background hover:bg-background/10'
-              }`}
-            >
-              <Film className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">웹툰</span>
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setViewMode('process')} 
-              className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
-                viewMode === 'process' 
-                  ? 'bg-background/20 text-background' 
-                  : 'text-background/70 hover:text-background hover:bg-background/10'
-              }`}
-            >
-              <FolderTree className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">공정</span>
-            </Button>
+            <Link href="/webtoons">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                  pathname?.startsWith('/webtoons') 
+                    ? 'bg-background/20 text-background' 
+                    : 'text-background/70 hover:text-background hover:bg-background/10'
+                }`}
+              >
+                <Film className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">웹툰</span>
+              </Button>
+            </Link>
+            <Link href="/processes">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                  pathname?.startsWith('/processes') 
+                    ? 'bg-background/20 text-background' 
+                    : 'text-background/70 hover:text-background hover:bg-background/10'
+                }`}
+              >
+                <FolderTree className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">공정</span>
+              </Button>
+            </Link>
           </div>
 
           {/* 검색바 - PC: 검색창, 모바일: 검색 아이콘 */}

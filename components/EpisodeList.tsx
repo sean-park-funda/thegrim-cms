@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { getEpisodes, createEpisode, updateEpisode, deleteEpisode } from '@/lib/api/episodes';
 import { updateWebtoon } from '@/lib/api/webtoons';
@@ -11,9 +12,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users } from 'lucide-react';
-import { Episode } from '@/lib/supabase';
+import { Episode, WebtoonWithEpisodes } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
 import { CharacterManagementDialog } from './CharacterManagementDialog';
+
+interface EpisodeListProps {
+  webtoon: WebtoonWithEpisodes;
+}
 
 // 날짜 포맷 함수
 function formatDate(dateString: string): string {
@@ -144,9 +149,10 @@ function EpisodeCard({ episode, isSelected, onClick, onEdit, onDelete, profile }
   );
 }
 
-export function EpisodeList() {
-  const { selectedWebtoon, selectedEpisode, setSelectedEpisode, profile, setSelectedWebtoon } = useStore();
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
+export function EpisodeList({ webtoon }: EpisodeListProps) {
+  const router = useRouter();
+  const { profile, setWebtoons } = useStore();
+  const [episodes, setEpisodes] = useState<Episode[]>(webtoon.episodes || []);
   const [loading, setLoading] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -155,21 +161,12 @@ export function EpisodeList() {
   const [saving, setSaving] = useState(false);
   const [updatingUnitType, setUpdatingUnitType] = useState(false);
   const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (selectedWebtoon) {
-      loadEpisodes();
-    } else {
-      setEpisodes([]);
-    }
-  }, [selectedWebtoon]);
+  const [currentWebtoon, setCurrentWebtoon] = useState(webtoon);
 
   const loadEpisodes = async () => {
-    if (!selectedWebtoon) return;
-
     try {
       setLoading(true);
-      const data = await getEpisodes(selectedWebtoon.id);
+      const data = await getEpisodes(webtoon.id);
       setEpisodes(data);
     } catch (error) {
       console.error('회차 목록 로드 실패:', error);
@@ -179,6 +176,11 @@ export function EpisodeList() {
     }
   };
 
+  // 컴포넌트 마운트 시 회차 목록 로드 (thumbnail_url과 files_count 포함)
+  useEffect(() => {
+    loadEpisodes();
+  }, [webtoon.id]);
+
   // 정렬된 회차 목록 ("기타" 회차는 맨 위, 나머지는 회차순)
   const sortedEpisodes = [...episodes].sort((a, b) => {
     if (a.episode_number === 0) return -1;
@@ -187,7 +189,6 @@ export function EpisodeList() {
   });
 
   const handleCreate = () => {
-    if (!selectedWebtoon) return;
     // episode_number = 0인 "기타" 회차는 제외하고 다음 번호 계산
     const regularEpisodes = episodes.filter(e => e.episode_number !== 0);
     const nextEpisodeNumber = regularEpisodes.length > 0 ? Math.max(...regularEpisodes.map(e => e.episode_number)) + 1 : 1;
@@ -221,9 +222,6 @@ export function EpisodeList() {
 
     try {
       await deleteEpisode(episode.id);
-      if (selectedEpisode?.id === episode.id) {
-        setSelectedEpisode(null);
-      }
       await loadEpisodes();
       alert('회차가 삭제되었습니다.');
     } catch (error) {
@@ -233,7 +231,6 @@ export function EpisodeList() {
   };
 
   const handleSave = async () => {
-    if (!selectedWebtoon) return;
     if (!formData.title.trim()) {
       alert('회차 제목을 입력해주세요.');
       return;
@@ -255,7 +252,7 @@ export function EpisodeList() {
         alert('회차가 수정되었습니다.');
       } else {
         await createEpisode({
-          webtoon_id: selectedWebtoon.id,
+          webtoon_id: webtoon.id,
           ...formData
         });
         alert('회차가 생성되었습니다.');
@@ -274,8 +271,8 @@ export function EpisodeList() {
   };
 
   const handleUnitTypeChange = async (newUnitType: 'cut' | 'page') => {
-    if (!selectedWebtoon || !profile || !canEditContent(profile.role)) return;
-    if (selectedWebtoon.unit_type === newUnitType) return;
+    if (!profile || !canEditContent(profile.role)) return;
+    if (currentWebtoon.unit_type === newUnitType) return;
 
     const newUnitLabel = newUnitType === 'cut' ? '컷' : '페이지';
     const currentUnitLabel = unitTypeLabel;
@@ -286,8 +283,12 @@ export function EpisodeList() {
 
     try {
       setUpdatingUnitType(true);
-      const updatedWebtoon = await updateWebtoon(selectedWebtoon.id, { unit_type: newUnitType });
-      setSelectedWebtoon(updatedWebtoon);
+      const updatedWebtoon = await updateWebtoon(webtoon.id, { unit_type: newUnitType });
+      setCurrentWebtoon(updatedWebtoon);
+      // Zustand 스토어도 업데이트
+      const { webtoons } = useStore.getState();
+      const updatedWebtoons = webtoons.map(w => w.id === updatedWebtoon.id ? updatedWebtoon : w);
+      setWebtoons(updatedWebtoons);
     } catch (error: any) {
       console.error('관리 단위 변경 실패:', error);
       const errorMessage = error?.message || error?.error?.message || '알 수 없는 오류';
@@ -301,20 +302,11 @@ export function EpisodeList() {
     }
   };
 
-  if (!selectedWebtoon) {
-    return (
-      <div className="p-4 text-center text-muted-foreground">
-        <BookOpen className="h-12 w-12 mx-auto mb-2 opacity-50" />
-        <p>웹툰을 선택해주세요</p>
-      </div>
-    );
-  }
-
   if (loading) {
     return <div className="p-4 text-center text-muted-foreground">로딩 중...</div>;
   }
 
-  const unitType = selectedWebtoon.unit_type || 'cut';
+  const unitType = currentWebtoon.unit_type || 'cut';
   const unitTypeLabel = unitType === 'cut' ? '컷' : '페이지';
 
   return (
@@ -325,7 +317,7 @@ export function EpisodeList() {
           {/* 상단: 제목 + 관리단위 + 새 회차 버튼 */}
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2 flex-wrap">
-              <h2 className="text-xl font-semibold">{selectedWebtoon.title}</h2>
+              <h2 className="text-xl font-semibold">{currentWebtoon.title}</h2>
               {profile && canEditContent(profile.role) && (
                 <div className="flex items-center gap-1.5 ml-2">
                   <span className="text-xs text-muted-foreground">관리단위:</span>
@@ -395,8 +387,8 @@ export function EpisodeList() {
               <EpisodeCard
                 key={episode.id}
                 episode={episode}
-                isSelected={selectedEpisode?.id === episode.id}
-                onClick={() => setSelectedEpisode(episode)}
+                isSelected={false}
+                onClick={() => router.push(`/webtoons/${webtoon.id}/episodes/${episode.id}`)}
                 onEdit={(e) => handleEdit(episode, e)}
                 onDelete={(e) => handleDelete(episode, e)}
                 profile={profile}
@@ -546,13 +538,11 @@ export function EpisodeList() {
       </Dialog>
 
       {/* 캐릭터 관리 Dialog */}
-      {selectedWebtoon && (
-        <CharacterManagementDialog
-          open={characterDialogOpen}
-          onOpenChange={setCharacterDialogOpen}
-          webtoon={selectedWebtoon}
-        />
-      )}
+      <CharacterManagementDialog
+        open={characterDialogOpen}
+        onOpenChange={setCharacterDialogOpen}
+        webtoon={currentWebtoon}
+      />
     </>
   );
 }

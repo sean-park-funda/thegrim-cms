@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'; // 내부 다이얼로그용
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X } from 'lucide-react';
+import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X, ArrowLeft } from 'lucide-react';
 import { getReferenceFilesByWebtoon, uploadReferenceFile, deleteReferenceFile } from '@/lib/api/referenceFiles';
 import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt, AiRegenerationStyle, FileWithRelations } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
@@ -43,8 +43,6 @@ interface ReferenceImageInfo {
 }
 
 interface ImageRegenerationWorkspaceProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   file: FileWithRelations | null;
   webtoonId?: string;
   currentUserId?: string;
@@ -63,12 +61,11 @@ interface ImageRegenerationWorkspaceProps {
   onImageViewerOpen: (imageUrl: string, imageName: string) => void;
   processes: Process[];
   canUpload: boolean;
+  onBack?: () => void;
   onSaveComplete?: (processId: string) => void;
 }
 
 export function ImageRegenerationWorkspace({
-  open,
-  onOpenChange,
   file,
   webtoonId,
   currentUserId,
@@ -87,6 +84,7 @@ export function ImageRegenerationWorkspace({
   onImageViewerOpen,
   processes,
   canUpload,
+  onBack,
   onSaveComplete,
 }: ImageRegenerationWorkspaceProps) {
   const { profile } = useStore();
@@ -146,28 +144,26 @@ export function ImageRegenerationWorkspace({
     }
   };
 
-  // 다이얼로그 열릴 때 데이터 로드
+  // 데이터 로드
   useEffect(() => {
-    if (open) {
-      loadStyles();
-      // 공정 목록 로드
-      getProcesses().then(setAllProcesses).catch(console.error);
-      // 설정 로드
-      getImageRegenerationSettings().then(settings => {
-        const settingsMap: Record<string, boolean> = {};
-        settings.forEach(setting => {
-          settingsMap[setting.style_id] = setting.use_reference;
-        });
-        setStyleSettings(settingsMap);
-      }).catch(console.error);
-    }
-  }, [open]);
+    loadStyles();
+    // 공정 목록 로드
+    getProcesses().then(setAllProcesses).catch(console.error);
+    // 설정 로드
+    getImageRegenerationSettings().then(settings => {
+      const settingsMap: Record<string, boolean> = {};
+      settings.forEach(setting => {
+        settingsMap[setting.style_id] = setting.use_reference;
+      });
+      setStyleSettings(settingsMap);
+    }).catch(console.error);
+  }, []);
 
   // 레퍼런스 파일 로드
   useEffect(() => {
     const loadReferenceFiles = async () => {
       const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
-      if (open && webtoonId && needsReference) {
+      if (webtoonId && needsReference) {
         setLoadingReferences(true);
         try {
           const files = await getReferenceFilesByWebtoon(webtoonId);
@@ -181,7 +177,7 @@ export function ImageRegenerationWorkspace({
       }
     };
     loadReferenceFiles();
-  }, [open, webtoonId, selectedStyle, styleSettings]);
+  }, [webtoonId, selectedStyle, styleSettings]);
 
   // 프롬프트 로드
   useEffect(() => {
@@ -211,10 +207,10 @@ export function ImageRegenerationWorkspace({
       }
     };
 
-    if (open && selectedStyle) {
+    if (selectedStyle) {
       loadPrompts();
     }
-  }, [selectedStyle, open, currentUserId]);
+  }, [selectedStyle, currentUserId]);
 
   // 선택된 프롬프트 변경 시 편집 프롬프트 업데이트
   useEffect(() => {
@@ -327,10 +323,6 @@ export function ImageRegenerationWorkspace({
 
   // 클립보드에서 이미지 붙여넣기 처리
   const handlePasteFromClipboard = useCallback(async (e: ClipboardEvent) => {
-    // Dialog가 닫혀있으면 무시
-    if (!open) {
-      return;
-    }
 
     // 레퍼런스 이미지가 필요한 스타일이 선택되지 않았으면 무시
     const needsReference = selectedStyle?.requires_reference || styleSettings[selectedStyle?.style_key || ''];
@@ -426,7 +418,7 @@ export function ImageRegenerationWorkspace({
         isProcessingPaste.current = false;
       }, 500);
     }
-  }, [open, selectedStyle, styleSettings, canUpload, webtoonId, allProcesses, handleReferenceUploadComplete]);
+  }, [selectedStyle, styleSettings, canUpload, webtoonId, allProcesses, handleReferenceUploadComplete]);
 
   // 클립보드 붙여넣기 이벤트 리스너 등록
   useEffect(() => {
@@ -471,8 +463,6 @@ export function ImageRegenerationWorkspace({
     if (selectedProcessId) {
       await onSaveImages(selectedProcessId);
       setProcessSelectOpen(false);
-      // 다이얼로그 닫고 해당 공정으로 이동
-      onOpenChange(false);
       onSaveComplete?.(selectedProcessId);
     }
   };
@@ -505,29 +495,36 @@ export function ImageRegenerationWorkspace({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent 
-          className="!max-w-[95vw] !w-[95vw] !h-[95vh] !max-h-[95vh] !top-[2.5vh] !left-[2.5vw] !translate-x-0 !translate-y-0 p-0 overflow-hidden"
-          data-dialog-type="image-regeneration-workspace"
-        >
-          <div className="flex h-[95vh]">
-            {/* 왼쪽 패널 - 설정 (고정 너비) */}
-            <div className="w-[300px] flex-shrink-0 border-r h-[95vh] overflow-y-auto">
-              <div className="sticky top-0 z-10 bg-background px-4 py-3 border-b">
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="text-base">AI 다시그리기</DialogTitle>
+      <div className="flex h-full" style={{ flex: '1 1 0', minHeight: 0 }}>
+        {/* 왼쪽 패널 - 설정 (고정 너비) */}
+        <div className="w-[300px] flex-shrink-0 border-r flex flex-col" style={{ minHeight: 0 }}>
+          <div className="flex-shrink-0 bg-background px-4 py-3 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {onBack && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setStyleManagementOpen(true)}
+                    className="h-6 w-6"
+                    onClick={onBack}
                   >
-                    <Settings className="h-4 w-4" />
+                    <ArrowLeft className="h-3.5 w-3.5" />
                   </Button>
-                </div>
+                )}
+                <h2 className="text-base font-semibold">AI 다시그리기</h2>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setStyleManagementOpen(true)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-              <div className="p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3" style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
                   {/* 원본 이미지 카드 */}
                   <Card>
                     <CardHeader className="py-2 px-3">
@@ -835,11 +832,11 @@ export function ImageRegenerationWorkspace({
                       </Button>
                     </>
                   )}
-                </div>
-            </div>
+          </div>
+        </div>
 
-            {/* 오른쪽 패널 - 결과 (남은 공간 차지) */}
-            <div className="flex-1 flex flex-col h-[95vh] bg-muted/30">
+        {/* 오른쪽 패널 - 결과 (남은 공간 차지) */}
+        <div className="flex-1 flex flex-col bg-muted/30" style={{ minHeight: 0 }}>
               {/* 결과 헤더 */}
               <div className="px-4 py-3 border-b bg-background flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -903,7 +900,9 @@ export function ImageRegenerationWorkspace({
                                   ? "bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
                                   : "group cursor-pointer"
                               )}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 if (!isPlaceholder && img.url) {
                                   onImageViewerOpen(img.url, `재생성된 이미지 - ${file.file_name}`);
                                 }
@@ -970,9 +969,10 @@ export function ImageRegenerationWorkspace({
                                   src={img.url}
                                   alt="재생성된 이미지"
                                   fill
-                                  className="object-contain"
+                                  className="object-contain pointer-events-none"
                                   sizes="(max-width: 768px) 50vw, 25vw"
                                   unoptimized={true}
+                                  draggable={false}
                                 />
                               ) : null}
                             </div>
@@ -990,10 +990,8 @@ export function ImageRegenerationWorkspace({
                   )}
                 </div>
               </ScrollArea>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
 
       {/* 공정 선택 다이얼로그 */}
       <Dialog open={processSelectOpen} onOpenChange={setProcessSelectOpen}>

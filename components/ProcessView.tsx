@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { getProcesses, createProcess, updateProcess, deleteProcess, reorderProcesses } from '@/lib/api/processes';
 import { getFilesByProcess, getFileCountByProcess } from '@/lib/api/files';
@@ -37,8 +38,17 @@ import { Process, FileWithRelations } from '@/lib/supabase';
 import Image from 'next/image';
 import { canManageProcesses } from '@/lib/utils/permissions';
 
-export function ProcessView() {
-  const { selectedWebtoon, processes, setProcesses, selectedProcess, setSelectedProcess, profile } = useStore();
+interface ProcessViewProps {
+  initialProcesses?: Process[];
+  processId?: string;
+}
+
+export function ProcessView({ initialProcesses, processId }: ProcessViewProps = {}) {
+  const router = useRouter();
+  const params = useParams();
+  const { processes, setProcesses, profile } = useStore();
+  const currentProcessId = processId || (params?.processId as string);
+  const selectedProcess = processes.find(p => p.id === currentProcessId) || null;
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [processesLoading, setProcessesLoading] = useState(true);
@@ -57,6 +67,13 @@ export function ProcessView() {
   const [editingProcess, setEditingProcess] = useState<Process | null>(null);
   const [formData, setFormData] = useState({ name: '', description: '', color: '#3b82f6' });
   const [saving, setSaving] = useState(false);
+
+  // 초기 공정 데이터 설정
+  useEffect(() => {
+    if (initialProcesses && initialProcesses.length > 0 && processes.length === 0) {
+      setProcesses(initialProcesses);
+    }
+  }, [initialProcesses, setProcesses, processes.length]);
 
   const loadProcesses = useCallback(async () => {
     try {
@@ -88,8 +105,10 @@ export function ProcessView() {
   }, [setProcesses]);
 
   useEffect(() => {
-    loadProcesses();
-  }, [loadProcesses]);
+    if (processes.length === 0 && !initialProcesses) {
+      loadProcesses();
+    }
+  }, [loadProcesses, processes.length, initialProcesses]);
 
   const loadFiles = useCallback(async () => {
     if (!selectedProcess) return;
@@ -140,10 +159,11 @@ export function ProcessView() {
 
     try {
       await deleteProcess(process.id);
-      if (selectedProcess?.id === process.id) {
-        setSelectedProcess(null);
-      }
       await loadProcesses();
+      // 현재 선택된 공정이 삭제된 경우 공정 목록 페이지로 이동
+      if (selectedProcess?.id === process.id) {
+        router.push('/processes');
+      }
       alert('공정이 삭제되었습니다.');
     } catch (error) {
       console.error('공정 삭제 실패:', error);
@@ -322,7 +342,7 @@ export function ProcessView() {
       <div ref={setNodeRef} style={style}>
         <Card
           className={`cursor-pointer transition-all duration-200 ease-in-out hover:bg-accent/50 ${selectedProcess?.id === process.id ? 'ring-2 ring-primary bg-accent' : ''}`}
-          onClick={() => setSelectedProcess(process)}
+          onClick={() => router.push(`/processes/${process.id}`)}
         >
           <CardHeader className="pb-2">
             <div className="flex items-start justify-between gap-2">
@@ -522,8 +542,7 @@ export function ProcessView() {
                       className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFileToView(file);
-                        setDetailDialogOpen(true);
+                        router.push(`/files/${file.id}`);
                       }}
                     >
                       {renderFilePreview(file)}
@@ -614,7 +633,7 @@ export function ProcessView() {
           <>
             <div className="flex-shrink-0 border-b border-border/40 bg-background">
               <div className="p-3 sm:p-4">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedProcess(null)} className="text-xs sm:text-sm">
+                <Button variant="ghost" size="sm" onClick={() => router.push('/processes')} className="text-xs sm:text-sm">
                   ← 공정 목록으로
                 </Button>
               </div>
