@@ -679,7 +679,7 @@ function Viewer3DPage() {
                 </div>
 
                 {/* 중앙: 미리보기 버튼과 변환 버튼 */}
-                <div className="flex flex-col items-center justify-center gap-2">
+                <div className="flex flex-col items-center justify-center gap-2 self-center">
                   <Button
                     variant="outline"
                     size="icon"
