@@ -15,6 +15,7 @@ import { Loader2 } from 'lucide-react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { SAM3DService } from '@/lib/api/sam3d';
 import { getCharactersByWebtoon } from '@/lib/api/characters';
+import { getProcesses } from '@/lib/api/processes';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -220,7 +221,7 @@ function Viewer3DPage() {
   const [savingImage, setSavingImage] = useState(false);
   const [additionalPrompt, setAdditionalPrompt] = useState<string>('');
   const { profile } = useAuth();
-  const { selectedCut, selectedEpisode, processes } = useStore();
+  const { selectedCut, selectedEpisode, processes, setProcesses } = useStore();
   const [processSelectDialogOpen, setProcessSelectDialogOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
 
@@ -255,6 +256,19 @@ function Viewer3DPage() {
     console.error('3D 모델 로드 실패:', error);
     setModelError('3D 모델을 로드하는데 실패했습니다. 파일이 유효한 GLB 형식인지 확인해주세요.');
   };
+
+  // 공정 목록 로드
+  useEffect(() => {
+    const loadProcesses = async () => {
+      try {
+        const data = await getProcesses();
+        setProcesses(data);
+      } catch (error) {
+        console.error('공정 목록 로드 실패:', error);
+      }
+    };
+    loadProcesses();
+  }, [setProcesses]);
 
   // 캐릭터 목록 로드 (URL 파라미터의 webtoonId 또는 store의 selectedWebtoon 사용)
   useEffect(() => {
@@ -786,8 +800,14 @@ function Viewer3DPage() {
                     <div className="flex flex-col gap-2">
                       <label className="text-sm font-medium">프롬프트</label>
                       <div className="p-3 bg-muted rounded-lg">
-                        <p className="text-sm">
-                          이미지1의 캐릭터를 이미지2의 자세와 구도로 그려주세요. 캐릭터의 특징과 디자인은 이미지1을 정확히 따르되, 자세와 구도는 이미지2와 동일하게 해주세요.
+                        <p className="text-sm whitespace-pre-wrap">
+                          {(() => {
+                            let previewPrompt = '이미지2의 자세와 구도에 이미지1의 캐릭터를 입혀주세요';
+                            if (additionalPrompt && additionalPrompt.trim()) {
+                              previewPrompt += ` 참고: ${additionalPrompt.trim()} (이 설명은 자세와 구도를 변경하지 않고, 감정, 표정, 분위기 등 보조적인 요소에만 적용해주세요. 이미지2의 자세와 구도는 엄격히 유지해야 합니다.)`;
+                            }
+                            return previewPrompt;
+                          })()}
                         </p>
                       </div>
                     </div>
