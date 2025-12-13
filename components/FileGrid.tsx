@@ -9,7 +9,7 @@ import { getProcesses } from '@/lib/api/processes';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Sparkles } from 'lucide-react';
+import { FileIcon, Sparkles, Box } from 'lucide-react';
 import Link from 'next/link';
 import { File as FileType, FileWithRelations, Process } from '@/lib/supabase';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
@@ -28,7 +28,7 @@ interface FileGridProps {
 export function FileGrid({ cutId }: FileGridProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { processes, setProcesses, profile } = useStore();
+  const { processes, setProcesses, profile, selectedWebtoon, selectedEpisode } = useStore();
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, Record<string, number>>>({});
@@ -654,12 +654,18 @@ export function FileGrid({ cutId }: FileGridProps) {
             </TabsList>
           </div>
 
-          {/* 괴수 생성기 버튼 */}
-          <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
-            <Link href={`/monster-generator?cutId=${cutId}`}>
+          {/* 괴수 생성기 및 3D 뷰어 버튼 */}
+          <div className="px-3 sm:px-4 pb-2 flex-shrink-0 flex gap-2">
+            <Link href={`/monster-generator?cutId=${cutId}${selectedEpisode?.id ? `&episodeId=${selectedEpisode.id}` : ''}${selectedWebtoon?.id ? `&webtoonId=${selectedWebtoon.id}` : ''}`}>
               <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
                 <Sparkles className="h-4 w-4" />
                 랜덤 괴수 생성기
+              </Button>
+            </Link>
+            <Link href={`/3d-viewer?cutId=${cutId}${selectedEpisode?.id ? `&episodeId=${selectedEpisode.id}` : ''}${selectedWebtoon?.id ? `&webtoonId=${selectedWebtoon.id}` : ''}`}>
+              <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
+                <Box className="h-4 w-4" />
+                캐릭터 자세 만들기
               </Button>
             </Link>
           </div>
