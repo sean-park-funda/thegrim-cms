@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     });
 
     const model = 'gemini-3-pro-image-preview';
-    let prompt = '이미지1의 캐릭터를 이미지2의 자세와 구도로 그려주세요. 캐릭터의 특징과 디자인은 이미지1을 정확히 따르되, 자세와 구도는 이미지2와 동일하게 해주세요.';
+    let prompt = '이미지1의 캐릭터를 이미지2의 자세와 구도로 그려주세요. 캐릭터의 생김새, 체형, 특징과 디자인은 이미지1을 정확히 따르되, 자세와 구도는 이미지2와 동일하게 해주세요.';
     
     // 추가 프롬프트가 있으면 보조적으로 추가 (자세와 구도는 변경하지 않음)
     if (additionalPrompt && additionalPrompt.trim()) {

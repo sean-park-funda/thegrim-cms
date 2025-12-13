@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Upload, X, RotateCcw, AlertCircle, Box, Eye, ArrowRight, RectangleHorizontal, Square, RectangleVertical } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import Image from 'next/image';
 import { useDropzone } from 'react-dropzone';
 import { Loader2 } from 'lucide-react';
@@ -220,7 +220,9 @@ function Viewer3DPage() {
   const [savingImage, setSavingImage] = useState(false);
   const [additionalPrompt, setAdditionalPrompt] = useState<string>('');
   const { profile } = useAuth();
-  const { selectedCut, selectedEpisode } = useStore();
+  const { selectedCut, selectedEpisode, processes } = useStore();
+  const [processSelectDialogOpen, setProcessSelectDialogOpen] = useState(false);
+  const [selectedProcessId, setSelectedProcessId] = useState<string>('');
 
   // URL 파라미터에서 webtoonId, episodeId, cutId 가져오기 (우선순위: URL > store)
   const webtoonId = searchParams.get('webtoonId') || selectedWebtoon?.id;
@@ -757,57 +759,17 @@ function Viewer3DPage() {
                   {/* 저장하기 버튼 - 이미지 아래 */}
                   {convertedFileId && (
                     <Button
-                      onClick={async () => {
+                      onClick={() => {
                         if (!convertedFileId) return;
-                        
-                        setSavingImage(true);
-                        try {
-                          // URL 파라미터에서 cutId, episodeId 가져오기
-                          const cutIdFromUrl = searchParams.get('cutId');
-                          const episodeIdFromUrl = searchParams.get('episodeId');
-                          
-                          const response = await fetch('/api/regenerate-image-save', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                              fileId: convertedFileId,
-                              cutId: cutIdFromUrl || selectedCut?.id,
-                              episodeId: episodeIdFromUrl || episodeId,
-                            }),
-                          });
-
-                          if (!response.ok) {
-                            const errorData = await response.json();
-                            throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
-                          }
-
-                          alert('이미지가 정식 공정에 저장되었습니다.');
-                          setConvertedFileId(null); // 저장 완료 후 버튼 숨김
-                        } catch (err) {
-                          console.error('이미지 저장 실패:', err);
-                          const errorMessage = err instanceof Error ? err.message : '이미지 저장에 실패했습니다.';
-                          alert(errorMessage);
-                        } finally {
-                          setSavingImage(false);
-                        }
+                        // 공정 선택 다이얼로그 열기
+                        setProcessSelectDialogOpen(true);
                       }}
                       disabled={savingImage}
                       size="sm"
                       className="gap-2 self-end"
                     >
-                      {savingImage ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          저장 중...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4" />
-                          저장하기
-                        </>
-                      )}
+                      <Save className="h-4 w-4" />
+                      저장하기
                     </Button>
                   )}
                 </div>
@@ -888,6 +850,109 @@ function Viewer3DPage() {
                       )}
                     </div>
                   </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* 공정 선택 다이얼로그 */}
+              <Dialog open={processSelectDialogOpen} onOpenChange={setProcessSelectDialogOpen}>
+                <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>공정 선택</DialogTitle>
+                    <DialogDescription>
+                      이미지를 저장할 공정을 선택해주세요.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4 py-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">공정</label>
+                      <Select
+                        value={selectedProcessId}
+                        onValueChange={setSelectedProcessId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="공정을 선택하세요" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {processes.map((process) => (
+                            <SelectItem key={process.id} value={process.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: process.color }}
+                                />
+                                {process.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setProcessSelectDialogOpen(false);
+                        setSelectedProcessId('');
+                      }}
+                    >
+                      취소
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        if (!selectedProcessId || !convertedFileId) {
+                          alert('공정을 선택해주세요.');
+                          return;
+                        }
+
+                        setSavingImage(true);
+                        try {
+                          // URL 파라미터에서 cutId, episodeId 가져오기
+                          const cutIdFromUrl = searchParams.get('cutId');
+                          const episodeIdFromUrl = searchParams.get('episodeId');
+                          
+                          const response = await fetch('/api/regenerate-image-save', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              fileId: convertedFileId,
+                              processId: selectedProcessId,
+                              cutId: cutIdFromUrl || selectedCut?.id,
+                              episodeId: episodeIdFromUrl || episodeId,
+                            }),
+                          });
+
+                          if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
+                          }
+
+                          alert('이미지가 정식 공정에 저장되었습니다.');
+                          setConvertedFileId(null); // 저장 완료 후 버튼 숨김
+                          setProcessSelectDialogOpen(false);
+                          setSelectedProcessId('');
+                        } catch (err) {
+                          console.error('이미지 저장 실패:', err);
+                          const errorMessage = err instanceof Error ? err.message : '이미지 저장에 실패했습니다.';
+                          alert(errorMessage);
+                        } finally {
+                          setSavingImage(false);
+                        }
+                      }}
+                      disabled={savingImage || !selectedProcessId}
+                    >
+                      {savingImage ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          저장 중...
+                        </>
+                      ) : (
+                        '저장하기'
+                      )}
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>

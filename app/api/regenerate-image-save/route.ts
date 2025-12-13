@@ -50,21 +50,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // cutId와 episodeId가 있으면 해당 컷의 공정 목록에서 첫 번째 공정 사용
-    let finalProcessId = processId;
-    if (!finalProcessId && cutId) {
-      // 해당 컷의 공정 목록 조회 (processes 테이블에서 order_index 순으로)
-      const { data: processes, error: processError } = await supabase
-        .from('processes')
-        .select('id')
-        .order('order_index', { ascending: true })
-        .limit(1);
-      
-      if (!processError && processes && processes.length > 0) {
-        finalProcessId = processes[0].id;
-        console.log('[이미지 저장] 컷의 첫 번째 공정 자동 선택:', finalProcessId);
-      }
+    // processId는 필수 (사용자가 선택해야 함)
+    if (!processId) {
+      return NextResponse.json(
+        { error: '공정을 선택해주세요.' },
+        { status: 400 }
+      );
     }
+    
+    const finalProcessId = processId;
 
     // 업데이트할 데이터 준비
     const updateData: {
