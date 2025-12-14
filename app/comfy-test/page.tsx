@@ -47,9 +47,21 @@ export default function ComfyTestPage() {
         throw new Error('워크플로우 리스트를 불러올 수 없습니다');
       }
       const data = await response.json();
-      setWorkflows(data.workflows || []);
-      if (data.workflows && data.workflows.length > 0 && !selectedWorkflow) {
-        setSelectedWorkflow(data.workflows[0].name);
+      
+      // 워크플로우 필터링: private_으로 시작하는 워크플로우는 "박성준" 유저만 볼 수 있음
+      const isParkSungJun = profile?.name === '박성준';
+      const filteredWorkflows = (data.workflows || []).filter((workflow: WorkflowInfo) => {
+        // private_으로 시작하는 워크플로우는 "박성준" 유저만 표시
+        if (workflow.name.startsWith('private_')) {
+          return isParkSungJun;
+        }
+        // 일반 워크플로우는 모든 사용자에게 표시
+        return true;
+      });
+      
+      setWorkflows(filteredWorkflows);
+      if (filteredWorkflows.length > 0 && !selectedWorkflow) {
+        setSelectedWorkflow(filteredWorkflows[0].name);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '워크플로우 리스트 로드 실패');
@@ -58,10 +70,12 @@ export default function ComfyTestPage() {
     }
   };
 
-  // 컴포넌트 마운트 시 워크플로우 리스트 로드
+  // 컴포넌트 마운트 시 및 프로필 변경 시 워크플로우 리스트 로드
   useEffect(() => {
-    loadWorkflows();
-  }, []);
+    if (profile) {
+      loadWorkflows();
+    }
+  }, [profile]);
 
   // 로그인 확인
   if (!user || !profile) {
