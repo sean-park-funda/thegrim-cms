@@ -107,6 +107,14 @@
 - ✅ AI 캐릭터 시트 자동 생성 (Gemini API - 4방향 캐릭터 시트)
 - ✅ 캐릭터 관리 UI (EpisodeList 상단 버튼)
 
+#### 13. 대본to글콘티 기능
+- ✅ FileGrid에 "대본to글콘티" 버튼 추가
+- ✅ script-to-storyboard 페이지 생성 (Suspense 포함)
+- ✅ ScriptToStoryboard 컴포넌트 작성 (대본 리스트 관리, 정렬/삭제, 결과 카드 표시)
+- ✅ Gemini 3 Pro Preview API 연동
+- ✅ 컷별 글콘티 자동 생성 및 카드 형태 표시
+- ✅ 대본/글콘티 DB 저장 (episode_scripts, episode_script_storyboards)
+
 ---
 
 ### ⚠️ 부분 구현 / 미구현 기능

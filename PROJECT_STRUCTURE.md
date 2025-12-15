@@ -13,10 +13,14 @@ thegrim-CMS/
 │   │   ├── analyze-image/       # 이미지 분석 API
 │   │   ├── generate-character-sheet/  # 캐릭터 시트 AI 생성 API (Gemini)
 │   │   ├── generate-thumbnail/  # 썸네일 생성 API
-│   │   └── regenerate-image/    # 이미지 재생성 API (Gemini/Seedream)
+│   │   ├── regenerate-image/    # 이미지 재생성 API (Gemini/Seedream)
+│   │   ├── script-to-storyboard/  # 대본to글콘티 API (Gemini 3 Pro Preview)
+│   │   ├── episode-scripts/          # 회차별 대본 CRUD, 정렬 API
+│   │   └── episode-scripts/[scriptId]/storyboards/  # 대본별 글콘티 생성/조회 API
 │   ├── admin/                   # 관리자 페이지
 │   ├── login/                   # 로그인 페이지
 │   ├── signup/                  # 회원가입 페이지
+│   ├── script-to-storyboard/   # 대본to글콘티 페이지
 │   ├── favicon.ico              # 파비콘
 │   ├── globals.css              # 전역 스타일
 │   ├── layout.tsx               # 루트 레이아웃
@@ -57,7 +61,8 @@ thegrim-CMS/
 │   ├── ReferenceFileList.tsx    # 레퍼런스 파일 목록 표시
 │   ├── CharacterManagementDialog.tsx  # 캐릭터 관리 메인 다이얼로그
 │   ├── CharacterEditDialog.tsx        # 캐릭터 추가/수정 폼
-│   └── CharacterSheetDialog.tsx       # 캐릭터 시트 관리 (업로드/AI생성)
+│   ├── CharacterSheetDialog.tsx       # 캐릭터 시트 관리 (업로드/AI생성)
+│   └── ScriptToStoryboard.tsx        # 대본to글콘티 컴포넌트 (대본 리스트/정렬/삭제/글콘티 생성)
 │
 ├── lib/                          # 유틸리티 및 라이브러리
 │   ├── api/                     # API 함수들
@@ -160,6 +165,12 @@ thegrim-CMS/
 
 **generate-thumbnail/route.ts**
 - 썸네일 자동 생성 API
+
+**script-to-storyboard/route.ts**
+- 대본to글콘티 API
+- Gemini 3 Pro Preview 모델 사용
+- 대본 텍스트를 받아 컷별 글콘티 생성
+- JSON 형식 응답 반환 (컷 번호, 제목, 설명, 대사/내레이션)
 
 ### 컴포넌트 (\`components/\`)
 
@@ -281,6 +292,11 @@ thegrim-CMS/
 - Gemini API를 사용한 4방향 캐릭터 시트 자동 생성
 - 이미지 업로드 및 저장 기능
 
+**ScriptToStoryboard.tsx**
+- 대본to글콘티 컴포넌트
+- 대본 텍스트 입력 및 글콘티 생성
+- Gemini 3 Pro Preview API 호출
+- 컷별 카드 형태로 결과 표시 (컷 번호, 제목, 연출/구도, 대사/내레이션)
 
 **SearchResults.tsx**
 - 검색 결과 표시

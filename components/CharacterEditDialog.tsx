@@ -14,6 +14,8 @@ interface CharacterEditDialogProps {
   webtoonId: string;
   character: CharacterWithSheets | null;
   onSaved: () => void;
+  initialName?: string;
+  initialDescription?: string;
 }
 
 export function CharacterEditDialog({
@@ -22,6 +24,8 @@ export function CharacterEditDialog({
   webtoonId,
   character,
   onSaved,
+  initialName,
+  initialDescription,
 }: CharacterEditDialogProps) {
   const [formData, setFormData] = useState({
     name: '',
@@ -40,12 +44,12 @@ export function CharacterEditDialog({
         });
       } else {
         setFormData({
-          name: '',
-          description: '',
+          name: initialName || '',
+          description: initialDescription || '',
         });
       }
     }
-  }, [open, character]);
+  }, [open, character, initialName, initialDescription]);
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
@@ -55,18 +59,40 @@ export function CharacterEditDialog({
 
     try {
       setSaving(true);
+      let createdCharacterId: string | null = null;
+      
       if (isEditing) {
         await updateCharacter(character.id, {
           name: formData.name,
           description: formData.description || undefined,
         });
       } else {
-        await createCharacter({
+        const createdCharacter = await createCharacter({
           webtoon_id: webtoonId,
           name: formData.name,
           description: formData.description || undefined,
         });
+        createdCharacterId = createdCharacter.id;
       }
+
+      // 새 캐릭터 생성 시 이미지도 생성
+      if (!isEditing && createdCharacterId) {
+        try {
+          const imageRes = await fetch(`/api/characters/${createdCharacterId}/generate-image`, {
+            method: 'POST',
+          });
+          
+          if (!imageRes.ok) {
+            const errorData = await imageRes.json().catch(() => ({}));
+            console.warn('캐릭터 이미지 생성 실패 (계속 진행):', errorData.error || '알 수 없는 오류');
+            // 이미지 생성 실패해도 캐릭터는 저장되었으므로 계속 진행
+          }
+        } catch (imageError) {
+          console.warn('캐릭터 이미지 생성 중 오류 (계속 진행):', imageError);
+          // 이미지 생성 실패해도 캐릭터는 저장되었으므로 계속 진행
+        }
+      }
+
       onSaved();
     } catch (error) {
       console.error('캐릭터 저장 실패:', error);

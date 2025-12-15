@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, User, Edit, Trash2, Image, MoreVertical } from 'lucide-react';
+import { Plus, User, Edit, Trash2, Image, MoreVertical, Sparkles, Loader2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Webtoon, CharacterWithSheets } from '@/lib/supabase';
 import { getCharactersByWebtoon, deleteCharacter } from '@/lib/api/characters';
@@ -198,12 +198,39 @@ interface CharacterCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onManageSheets: () => void;
+  onImageGenerated: () => void;
   profile: { role: string } | null;
 }
 
-function CharacterCard({ character, onEdit, onDelete, onManageSheets, profile }: CharacterCardProps) {
+function CharacterCard({ character, onEdit, onDelete, onManageSheets, onImageGenerated, profile }: CharacterCardProps) {
   const sheetCount = character.character_sheets?.length || 0;
   const firstSheet = character.character_sheets?.[0];
+  const [generatingImage, setGeneratingImage] = useState(false);
+
+  const handleGenerateImage = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (generatingImage) return;
+
+    try {
+      setGeneratingImage(true);
+      const res = await fetch(`/api/characters/${character.id}/generate-image`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '이미지 생성에 실패했습니다.');
+      }
+
+      onImageGenerated();
+    } catch (error) {
+      console.error('캐릭터 이미지 생성 실패:', error);
+      alert(error instanceof Error ? error.message : '이미지 생성에 실패했습니다.');
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
 
   return (
     <div
@@ -241,6 +268,10 @@ function CharacterCard({ character, onEdit, onDelete, onManageSheets, profile }:
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onManageSheets(); }}>
                   <Image className="h-4 w-4 mr-2" />
                   캐릭터 시트 관리
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleGenerateImage(e); }} disabled={generatingImage}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {generatingImage ? '이미지 생성 중...' : '이미지 생성'}
                 </DropdownMenuItem>
                 {canEditContent(profile.role as 'admin' | 'manager' | 'staff' | 'viewer') && (
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
