@@ -210,6 +210,17 @@ export async function GET(request: NextRequest) {
         email: creatorData.email || '',
       } : undefined;
       
+      // cut이 배열인지 확인
+      const cutData = Array.isArray(file.cut) ? file.cut[0] : file.cut;
+      // episode가 배열인지 확인
+      const episodeData = cutData?.episode 
+        ? (Array.isArray(cutData.episode) ? cutData.episode[0] : cutData.episode)
+        : null;
+      // webtoon이 배열인지 확인
+      const webtoonData = episodeData?.webtoon
+        ? (Array.isArray(episodeData.webtoon) ? episodeData.webtoon[0] : episodeData.webtoon)
+        : null;
+      
       return {
         fileId: file.id,
         filePath: file.storage_path,
@@ -230,35 +241,19 @@ export async function GET(request: NextRequest) {
           metadata: sourceFile.metadata || {},
         } : undefined,
         creator,
-        webtoon: file.cut?.episode?.webtoon ? {
-          id: Array.isArray(file.cut.episode.webtoon) 
-            ? file.cut.episode.webtoon[0]?.id 
-            : file.cut.episode.webtoon.id,
-          title: Array.isArray(file.cut.episode.webtoon) 
-            ? file.cut.episode.webtoon[0]?.title 
-            : file.cut.episode.webtoon.title,
+        webtoon: webtoonData ? {
+          id: webtoonData.id,
+          title: webtoonData.title,
         } : undefined,
-        episode: file.cut?.episode ? {
-          id: Array.isArray(file.cut.episode) 
-            ? file.cut.episode[0]?.id 
-            : file.cut.episode.id,
-          episodeNumber: Array.isArray(file.cut.episode) 
-            ? file.cut.episode[0]?.episode_number 
-            : file.cut.episode.episode_number,
-          title: Array.isArray(file.cut.episode) 
-            ? file.cut.episode[0]?.title 
-            : file.cut.episode.title,
+        episode: episodeData ? {
+          id: episodeData.id,
+          episodeNumber: episodeData.episode_number,
+          title: episodeData.title,
         } : undefined,
-        cut: file.cut ? {
-          id: Array.isArray(file.cut) 
-            ? file.cut[0]?.id 
-            : file.cut.id,
-          cutNumber: Array.isArray(file.cut) 
-            ? file.cut[0]?.cut_number 
-            : file.cut.cut_number,
-          title: Array.isArray(file.cut) 
-            ? (file.cut[0]?.title || '') 
-            : (file.cut.title || ''),
+        cut: cutData ? {
+          id: cutData.id,
+          cutNumber: cutData.cut_number,
+          title: cutData.title || '',
         } : undefined,
         process: file.process ? {
           id: Array.isArray(file.process) 
