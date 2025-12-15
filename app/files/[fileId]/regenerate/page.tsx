@@ -20,6 +20,7 @@ function RegeneratePageContent() {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [generationCount, setGenerationCount] = useState<number>(2);
   const [remixPrompt, setRemixPrompt] = useState<string | null>(null);
+  const [remixStyleKey, setRemixStyleKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (fileId) {
@@ -32,9 +33,14 @@ function RegeneratePageContent() {
   useEffect(() => {
     const remix = searchParams.get('remix');
     const prompt = searchParams.get('prompt');
+    const styleKey = searchParams.get('styleKey');
     
     if (remix === 'true' && prompt) {
       setRemixPrompt(decodeURIComponent(prompt));
+    }
+    
+    if (styleKey) {
+      setRemixStyleKey(styleKey);
     }
   }, [searchParams]);
 
@@ -149,6 +155,7 @@ function RegeneratePageContent() {
               router.back();
             }}
             remixPrompt={remixPrompt}
+            remixStyleKey={remixStyleKey}
           />
         </div>
       </div>

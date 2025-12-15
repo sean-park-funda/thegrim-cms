@@ -64,6 +64,7 @@ interface ImageRegenerationWorkspaceProps {
   onBack?: () => void;
   onSaveComplete?: (processId: string) => void;
   remixPrompt?: string | null;
+  remixStyleKey?: string | null;
 }
 
 export function ImageRegenerationWorkspace({
@@ -88,6 +89,7 @@ export function ImageRegenerationWorkspace({
   onBack,
   onSaveComplete,
   remixPrompt,
+  remixStyleKey,
 }: ImageRegenerationWorkspaceProps) {
   const { profile } = useStore();
   
@@ -189,6 +191,21 @@ export function ImageRegenerationWorkspace({
       setEditedPrompt(remixPrompt);
     }
   }, [remixPrompt]);
+
+  // 리믹스 스타일 자동 선택
+  useEffect(() => {
+    if (remixStyleKey && styles.length > 0 && !selectedStyle) {
+      const style = styles.find(s => s.style_key === remixStyleKey);
+      if (style) {
+        setSelectedStyle(style);
+        // remixPrompt가 있으면 프롬프트는 이미 설정되어 있으므로 덮어쓰지 않음
+        // remixPrompt가 없으면 스타일의 기본 프롬프트 사용
+        if (!remixPrompt) {
+          setEditedPrompt(style.prompt);
+        }
+      }
+    }
+  }, [remixStyleKey, styles, selectedStyle, remixPrompt]);
 
   // 프롬프트 로드
   useEffect(() => {

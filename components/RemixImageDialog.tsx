@@ -139,7 +139,17 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
       setRemixing(true);
       // 원본 파일 ID로 재생성 페이지로 이동
       // 원본 파일이 속한 컷을 자동으로 사용
-      router.push(`/files/${sourceFileId}/regenerate?remix=true&prompt=${encodeURIComponent(prompt)}`);
+      const params = new URLSearchParams({
+        remix: 'true',
+        prompt: prompt,
+      });
+      
+      // 스타일 정보가 있으면 URL 파라미터에 추가
+      if (detectedStyle?.style_key) {
+        params.append('styleKey', detectedStyle.style_key);
+      }
+      
+      router.push(`/files/${sourceFileId}/regenerate?${params.toString()}`);
       onOpenChange(false);
     } catch (error) {
       console.error('리믹스 실행 실패:', error);
@@ -167,9 +177,9 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
           {/* 좌측 패널: 이미지들 */}
-          <ScrollArea className="w-[200px] flex-shrink-0 pr-4">
+          <ScrollArea className="w-full md:w-[300px] flex-shrink-0 pr-4">
             <div className="space-y-6">
               {/* 원본 이미지 */}
               <div className="space-y-2">
@@ -275,28 +285,29 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
                   {prompt || <span className="text-muted-foreground">프롬프트가 없습니다</span>}
                 </div>
               </div>
+
+              {/* 버튼들 */}
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={remixing}>
+                  취소
+                </Button>
+                <Button onClick={handleRemix} disabled={remixing || !hasSourceFile || !prompt.trim()}>
+                  {remixing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      리믹스 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      리믹스하기
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </ScrollArea>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={remixing}>
-            취소
-          </Button>
-          <Button onClick={handleRemix} disabled={remixing || !hasSourceFile || !prompt.trim()}>
-            {remixing ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                리믹스 중...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                리믹스하기
-              </>
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
