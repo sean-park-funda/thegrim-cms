@@ -102,9 +102,9 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
       let style: AiRegenerationStyle | null = null;
       
       if (image.metadata?.style_id) {
-        style = styles.find(s => s.id === image.metadata.style_id) || null;
+        style = styles.find(s => s.id === image.metadata?.style_id) || null;
       } else if (image.metadata?.style_key) {
-        style = styles.find(s => s.style_key === image.metadata.style_key) || null;
+        style = styles.find(s => s.style_key === image.metadata?.style_key) || null;
       }
       
       // metadata에 없으면 프롬프트에서 추론
