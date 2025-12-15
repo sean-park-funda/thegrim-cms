@@ -7,9 +7,9 @@ const GEMINI_API_TIMEOUT = 60000;
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { scriptId: string } }
+  context: { params: Promise<{ scriptId: string }> }
 ) {
-  const scriptId = params.scriptId;
+  const { scriptId } = await context.params;
   if (!scriptId) {
     return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
   }
@@ -30,13 +30,14 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { scriptId?: string } }
+  context: { params: Promise<{ scriptId?: string }> }
 ) {
   const body = await request.json().catch(() => null) as { model?: string; createdBy?: string; scriptId?: string; deleteExisting?: boolean } | null;
-  const scriptId = params.scriptId || body?.scriptId;
+  const { scriptId: paramScriptId } = await context.params;
+  const scriptId = paramScriptId || body?.scriptId;
 
   if (!scriptId) {
-    console.error('[storyboards][POST] scriptId 누락', { params, body });
+    console.error('[storyboards][POST] scriptId 누락', { paramScriptId, body });
     return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
   }
 
