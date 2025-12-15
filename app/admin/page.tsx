@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Shield, Settings } from 'lucide-react';
-import { Navigation } from '@/components/Navigation';
 import { getImageRegenerationSettings, updateImageRegenerationSetting, ImageRegenerationSetting } from '@/lib/api/settings';
 import { getStyles } from '@/lib/api/aiStyles';
 import { AiRegenerationStyle } from '@/lib/supabase';
@@ -222,10 +221,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <Navigation />
-      <div className="flex-1 overflow-auto">
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">관리자 페이지</h1>
         <p className="text-muted-foreground">사용자 초대 및 관리</p>
@@ -484,8 +480,6 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
-        </div>
-      </div>
     </div>
   );
 }
