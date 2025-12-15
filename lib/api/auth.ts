@@ -126,15 +126,17 @@ export async function signIn(email: string, password: string) {
           .order('used_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-          .then(({ data: usedInvitation }) => {
+          .then(async ({ data: usedInvitation }) => {
             if (usedInvitation && usedInvitation.role !== 'viewer') {
               console.log('초대된 역할로 업데이트:', usedInvitation.role);
-              supabase.rpc('update_user_role_on_signup', {
-                user_id: data.user.id,
-                new_role: usedInvitation.role,
-              }).catch((err) => {
+              try {
+                await supabase.rpc('update_user_role_on_signup', {
+                  user_id: data.user.id,
+                  new_role: usedInvitation.role,
+                });
+              } catch (err) {
                 console.warn('역할 업데이트 실패:', err);
-              });
+              }
             }
           })
           .catch((err) => {
