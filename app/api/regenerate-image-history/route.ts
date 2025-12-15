@@ -220,6 +220,10 @@ export async function GET(request: NextRequest) {
       const webtoonData = episodeData?.webtoon
         ? (Array.isArray(episodeData.webtoon) ? episodeData.webtoon[0] : episodeData.webtoon)
         : null;
+      // process가 배열인지 확인
+      const processData = file.process
+        ? (Array.isArray(file.process) ? file.process[0] : file.process)
+        : null;
       
       return {
         fileId: file.id,
@@ -255,16 +259,10 @@ export async function GET(request: NextRequest) {
           cutNumber: cutData.cut_number,
           title: cutData.title || '',
         } : undefined,
-        process: file.process ? {
-          id: Array.isArray(file.process) 
-            ? file.process[0]?.id 
-            : file.process.id,
-          name: Array.isArray(file.process) 
-            ? file.process[0]?.name 
-            : file.process.name,
-          color: Array.isArray(file.process) 
-            ? file.process[0]?.color 
-            : file.process.color,
+        process: processData ? {
+          id: processData.id,
+          name: processData.name,
+          color: processData.color,
         } : undefined,
       };
     });
