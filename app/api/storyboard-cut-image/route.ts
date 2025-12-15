@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     dialogue?: string;
     storyboardId?: string;
     cutIndex?: number;
+    selectedCharacterSheets?: Record<string, number>; // 캐릭터 이름 -> 선택된 시트 인덱스
   } | null;
 
   const description = body?.description?.trim();
@@ -144,20 +145,29 @@ export async function POST(request: NextRequest) {
 
         const characterId = characters[0].id;
 
-        // 캐릭터시트 조회 (첫 번째 시트)
+        // 캐릭터시트 조회 (선택된 시트 또는 첫 번째 시트)
         const { data: sheets } = await supabase
           .from('character_sheets')
           .select('file_path')
           .eq('character_id', characterId)
-          .order('created_at', { ascending: true })
-          .limit(1);
+          .order('created_at', { ascending: true });
 
         if (!sheets || sheets.length === 0) {
           console.log('[storyboard-cut-image] 캐릭터시트를 찾을 수 없음:', charName);
           continue;
         }
 
-        const sheet = sheets[0];
+        // 선택된 시트 인덱스 확인 (없으면 0 사용)
+        const selectedSheetIndex = body?.selectedCharacterSheets?.[charName] ?? 0;
+        const sheetIndex = Math.min(selectedSheetIndex, sheets.length - 1);
+        const sheet = sheets[sheetIndex];
+        
+        console.log('[storyboard-cut-image] 선택된 캐릭터시트 사용:', {
+          characterName: charName,
+          selectedIndex: selectedSheetIndex,
+          totalSheets: sheets.length,
+          usingIndex: sheetIndex,
+        });
         console.log('[storyboard-cut-image] 캐릭터시트 이미지 다운로드 시작...', { characterName: charName, filePath: sheet.file_path });
         const sheetResponse = await fetch(sheet.file_path);
 
