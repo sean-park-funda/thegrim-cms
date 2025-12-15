@@ -5,9 +5,9 @@ import { supabase } from '@/lib/supabase';
 // DELETE: 삭제
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { scriptId: string } }
+  context: { params: Promise<{ scriptId: string }> }
 ) {
-  const scriptId = params.scriptId;
+  const { scriptId } = await context.params;
   const body = await request.json().catch(() => null) as {
     title?: string;
     content?: string;
@@ -42,9 +42,9 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { scriptId: string } }
+  context: { params: Promise<{ scriptId: string }> }
 ) {
-  const scriptId = params.scriptId;
+  const { scriptId } = await context.params;
 
   if (!scriptId) {
     return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
