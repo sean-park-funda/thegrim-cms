@@ -52,7 +52,7 @@ interface ImageRegenerationWorkspaceProps {
   savingImages: boolean;
   generationCount: number;
   onGenerationCountChange: (count: number) => void;
-  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto') => void;
+  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto', styleId?: string, styleKey?: string, styleName?: string) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -63,6 +63,7 @@ interface ImageRegenerationWorkspaceProps {
   canUpload: boolean;
   onBack?: () => void;
   onSaveComplete?: (processId: string) => void;
+  remixPrompt?: string | null;
 }
 
 export function ImageRegenerationWorkspace({
@@ -86,6 +87,7 @@ export function ImageRegenerationWorkspace({
   canUpload,
   onBack,
   onSaveComplete,
+  remixPrompt,
 }: ImageRegenerationWorkspaceProps) {
   const { profile } = useStore();
   
@@ -181,10 +183,20 @@ export function ImageRegenerationWorkspace({
     loadReferenceFiles();
   }, [webtoonId, selectedStyle, styleSettings]);
 
+  // 리믹스 프롬프트 처리
+  useEffect(() => {
+    if (remixPrompt) {
+      setEditedPrompt(remixPrompt);
+    }
+  }, [remixPrompt]);
+
   // 프롬프트 로드
   useEffect(() => {
     const loadPrompts = async () => {
       if (!selectedStyle || !currentUserId) return;
+
+      // 리믹스 프롬프트가 있으면 스타일 프롬프트 로드 스킵
+      if (remixPrompt) return;
 
       setLoadingPrompts(true);
       try {
@@ -212,7 +224,7 @@ export function ImageRegenerationWorkspace({
     if (selectedStyle) {
       loadPrompts();
     }
-  }, [selectedStyle, currentUserId]);
+  }, [selectedStyle, currentUserId, remixPrompt]);
 
   // 선택된 프롬프트 변경 시 편집 프롬프트 업데이트
   useEffect(() => {
@@ -265,10 +277,21 @@ export function ImageRegenerationWorkspace({
 
     const count = selectedStyle.allow_multiple ? generationCount : selectedStyle.default_count;
 
-    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?)
+    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?, styleId?, styleKey?, styleName?)
     // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
     // apiProvider는 스타일의 api_provider 값 사용
-    onRegenerate(editedPrompt.trim() || selectedStyle.prompt, count, false, referenceImages, undefined, characterSheets, selectedStyle.api_provider);
+    onRegenerate(
+      editedPrompt.trim() || selectedStyle.prompt, 
+      count, 
+      false, 
+      referenceImages, 
+      undefined, 
+      characterSheets, 
+      selectedStyle.api_provider,
+      selectedStyle.id,
+      selectedStyle.style_key,
+      selectedStyle.name
+    );
   };
 
   // 레퍼런스 업로드 완료 핸들러

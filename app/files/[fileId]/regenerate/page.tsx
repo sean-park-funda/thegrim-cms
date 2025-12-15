@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getFileById } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
 import { FileWithRelations, Process } from '@/lib/supabase';
@@ -9,15 +9,17 @@ import { ImageRegenerationWorkspace } from '@/components/ImageRegenerationWorksp
 import { useImageRegeneration } from '@/lib/hooks/useImageRegeneration';
 import { useStore } from '@/lib/store/useStore';
 
-export default function RegeneratePage() {
+function RegeneratePageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile } = useStore();
   const fileId = params.fileId as string;
   const [file, setFile] = useState<FileWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
   const [processes, setProcesses] = useState<Process[]>([]);
   const [generationCount, setGenerationCount] = useState<number>(2);
+  const [remixPrompt, setRemixPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     if (fileId) {
@@ -25,6 +27,16 @@ export default function RegeneratePage() {
       loadProcesses();
     }
   }, [fileId]);
+
+  // 리믹스 파라미터 처리
+  useEffect(() => {
+    const remix = searchParams.get('remix');
+    const prompt = searchParams.get('prompt');
+    
+    if (remix === 'true' && prompt) {
+      setRemixPrompt(decodeURIComponent(prompt));
+    }
+  }, [searchParams]);
 
   const loadFile = async () => {
     try {
@@ -136,9 +148,24 @@ export default function RegeneratePage() {
             onSaveComplete={(processId) => {
               router.back();
             }}
+            remixPrompt={remixPrompt}
           />
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegeneratePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 overflow-hidden bg-background p-4">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-muted-foreground text-sm">로딩 중...</div>
+        </div>
+      </div>
+    }>
+      <RegeneratePageContent />
+    </Suspense>
   );
 }

@@ -16,6 +16,9 @@ interface RegeneratedImage {
   mimeType: string | null; // null이면 placeholder
   apiProvider: ApiProvider; // 이미지 생성에 사용된 API 제공자
   index?: number; // 생성 인덱스 (placeholder 매칭용)
+  styleId?: string; // 스타일 ID
+  styleKey?: string; // 스타일 키
+  styleName?: string; // 스타일 이름
 }
 
 interface ReferenceImageInfo {
@@ -41,6 +44,7 @@ export function useImageRegeneration({
   onFilesReload,
   currentUserId,
 }: UseImageRegenerationOptions) {
+  console.log('[useImageRegeneration] 초기화:', { currentUserId });
   const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
   const [regeneratedImages, setRegeneratedImages] = useState<RegeneratedImage[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
@@ -57,7 +61,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[], apiProvider: ApiProvider = 'auto') => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[], apiProvider: ApiProvider = 'auto', styleId?: string, styleKey?: string, styleName?: string) => {
     // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
     const actualFileId = targetFileId || (fileToView?.id);
     if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
@@ -143,11 +147,11 @@ export function useImageRegeneration({
       const finalApiProvider: ApiProvider = useCharacterSheets ? 'gemini' : apiProvider;
 
       // 생성할 이미지들을 provider별로 그룹화
-      const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream' }> = [];
+      const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream'; styleId?: string; styleKey?: string; styleName?: string }> = [];
       
       for (let i = 0; i < regenerateCount; i++) {
         const variedPrompt = regenerateCount > 1 
-          ? generateVariedPrompt(stylePrompt, styleId)
+          ? generateVariedPrompt(stylePrompt, styleId || '')
           : stylePrompt;
 
         let actualProvider: ApiProvider = finalApiProvider;
@@ -160,6 +164,9 @@ export function useImageRegeneration({
           stylePrompt: variedPrompt,
           index: i,
           apiProvider: actualProvider === 'auto' ? (i % 2 === 0 ? 'seedream' : 'gemini') : actualProvider,
+          ...(styleId && { styleId }),
+          ...(styleKey && { styleKey }),
+          ...(styleName && { styleName }),
         });
       }
 
@@ -352,6 +359,7 @@ export function useImageRegeneration({
             referenceFileIds: referenceFileIds || undefined,
             requests: batch,
             ...(useCharacterSheets && characterSheets ? { characterSheets } : {}),
+            ...(currentUserId && { createdBy: currentUserId }),
           };
           
           // 디버깅: 요청 본문 확인
@@ -362,6 +370,9 @@ export function useImageRegeneration({
             characterSheetsType: 'characterSheets' in batchRequestBody 
               ? (Array.isArray(batchRequestBody.characterSheets) ? 'array' : typeof batchRequestBody.characterSheets)
               : '없음',
+            hasCreatedBy: 'createdBy' in batchRequestBody,
+            createdBy: batchRequestBody.createdBy,
+            currentUserId: currentUserId,
             requestsCount: batch.length,
           });
 
@@ -392,6 +403,9 @@ export function useImageRegeneration({
               mimeType: string; 
               apiProvider: 'gemini' | 'seedream';
               stylePrompt?: string;
+              styleId?: string;
+              styleKey?: string;
+              styleName?: string;
             }) => {
               try {
                 const imageId = `${Date.now()}-${result.index}-${Math.random().toString(36).substring(2, 9)}`;
@@ -435,6 +449,9 @@ export function useImageRegeneration({
                   mimeType: result.mimeType || 'image/png',
                   apiProvider: result.apiProvider,
                   index: result.index,
+                  styleId: result.styleId || request?.styleId,
+                  styleKey: result.styleKey || request?.styleKey,
+                  styleName: result.styleName || request?.styleName,
                 };
 
                 setRegeneratedImages(prev => {
@@ -631,8 +648,8 @@ export function useImageRegeneration({
             // Blob을 File 객체로 변환
             const file = new File([blob], newFileName, { type: img.mimeType });
 
-            // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 전달)
-            await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt);
+            // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 및 스타일 정보 전달)
+            await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt, img.styleId, img.styleKey, img.styleName);
             successCount++;
           } else {
             throw new Error('이미지 데이터가 없습니다.');

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// 서버 사이드에서 사용할 Supabase 클라이언트 (Service Role Key 사용)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 interface GetRegenerateImageHistoryRequest {
   sourceFileId?: string; // 원본 파일 ID (선택적)
@@ -52,9 +57,42 @@ export async function GET(request: NextRequest) {
 
     // DB에서 AI로 생성된 파일 (prompt가 있는 파일)을 모두 조회
     // is_temp 여부와 관계없이 모든 AI 생성 파일 포함
+    // 관계 정보 포함: 웹툰/에피소드/컷, 공정
+    // created_by는 *에 포함되지만 명시적으로 확인
     let query = supabase
       .from('files')
-      .select('*')
+      .select(`
+        id,
+        file_name,
+        file_path,
+        storage_path,
+        created_at,
+        mime_type,
+        prompt,
+        description,
+        source_file_id,
+        created_by,
+        metadata,
+        cut:cuts (
+          id,
+          cut_number,
+          title,
+          episode:episodes (
+            id,
+            episode_number,
+            title,
+            webtoon:webtoons (
+              id,
+              title
+            )
+          )
+        ),
+        process:processes (
+          id,
+          name,
+          color
+        )
+      `)
       .not('prompt', 'is', null)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -91,17 +129,150 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // 디버깅: 첫 번째 파일의 created_by 확인
+    if (files.length > 0) {
+      console.log('[이미지 재생성 히스토리] 첫 번째 파일 created_by 확인:', {
+        fileId: files[0].id,
+        createdBy: files[0].created_by,
+        hasCreatedBy: 'created_by' in files[0],
+        fileKeys: Object.keys(files[0]).slice(0, 10),
+      });
+    }
+
+    // 원본 파일 정보 별도 조회 (자기 참조 관계는 Supabase에서 직접 조회가 어려움)
+    const sourceFileIds = files
+      .map(f => f.source_file_id)
+      .filter((id): id is string => id !== null && id !== undefined);
+    
+    let sourceFilesMap = new Map();
+    if (sourceFileIds.length > 0) {
+      const { data: sourceFiles, error: sourceFilesError } = await supabase
+        .from('files')
+        .select('id, file_name, file_path, storage_path, prompt, description, metadata')
+        .in('id', sourceFileIds);
+      
+      if (!sourceFilesError && sourceFiles) {
+        sourceFilesMap = new Map(sourceFiles.map(sf => [sf.id, sf]));
+      }
+    }
+
+    // 생성자 정보 별도 조회
+    const creatorIds = files
+      .map(f => f.created_by)
+      .filter((id): id is string => id !== null && id !== undefined);
+    
+    let creatorsMap = new Map();
+    if (creatorIds.length > 0) {
+      const { data: creators, error: creatorsError } = await supabase
+        .from('user_profiles')
+        .select('id, email, name')
+        .in('id', creatorIds);
+      
+      if (creatorsError) {
+        console.error('[이미지 재생성 히스토리] 생성자 정보 조회 실패:', creatorsError);
+      }
+      
+      if (!creatorsError && creators) {
+        creatorsMap = new Map(creators.map(c => [c.id, c]));
+        console.log('[이미지 재생성 히스토리] 생성자 정보 조회 완료:', {
+          creatorIdsCount: creatorIds.length,
+          creatorIds: creatorIds.slice(0, 5), // 처음 5개만 로그
+          creatorsCount: creators.length,
+          creatorsMapSize: creatorsMap.size,
+          creators: creators.slice(0, 3).map(c => ({ id: c.id, name: c.name })), // 처음 3개만 로그
+        });
+      } else {
+        console.log('[이미지 재생성 히스토리] 생성자 정보 조회 실패 또는 없음:', {
+          creatorIdsCount: creatorIds.length,
+          creatorIds: creatorIds.slice(0, 5),
+          creatorsError: creatorsError?.message,
+        });
+      }
+    }
+
     // 응답 형식 변환
-    const historyItems = files.map(file => ({
-      fileId: file.id,
-      filePath: file.storage_path,
-      fileUrl: file.file_path,
-      createdAt: file.created_at,
-      mimeType: file.mime_type || 'image/png',
-      prompt: file.prompt || '',
-      description: file.description || '',
-      sourceFileId: file.source_file_id,
-    }));
+    const historyItems = files.map(file => {
+      // source_file_id로 원본 파일 정보 조회
+      const sourceFile = file.source_file_id ? sourceFilesMap.get(file.source_file_id) : null;
+      
+      // 생성자 정보 조회
+      const creatorData = file.created_by ? creatorsMap.get(file.created_by) : null;
+      if (file.created_by && !creatorData && creatorsMap.size > 0) {
+        console.log('[이미지 재생성 히스토리] 생성자 정보 매칭 실패:', {
+          fileId: file.id,
+          createdBy: file.created_by,
+          creatorsMapKeys: Array.from(creatorsMap.keys()).slice(0, 5),
+        });
+      }
+      const creator = creatorData ? {
+        id: creatorData.id,
+        name: creatorData.name || '',
+        email: creatorData.email || '',
+      } : undefined;
+      
+      return {
+        fileId: file.id,
+        filePath: file.storage_path,
+        fileUrl: file.file_path,
+        createdAt: file.created_at,
+        mimeType: file.mime_type || 'image/png',
+        prompt: file.prompt || '',
+        description: file.description || '',
+        sourceFileId: file.source_file_id,
+        metadata: file.metadata || {},
+        sourceFile: sourceFile ? {
+          id: sourceFile.id,
+          filePath: sourceFile.storage_path,
+          fileUrl: sourceFile.file_path,
+          fileName: sourceFile.file_name,
+          prompt: sourceFile.prompt || null,
+          description: sourceFile.description || '',
+          metadata: sourceFile.metadata || {},
+        } : undefined,
+        creator,
+        webtoon: file.cut?.episode?.webtoon ? {
+          id: Array.isArray(file.cut.episode.webtoon) 
+            ? file.cut.episode.webtoon[0]?.id 
+            : file.cut.episode.webtoon.id,
+          title: Array.isArray(file.cut.episode.webtoon) 
+            ? file.cut.episode.webtoon[0]?.title 
+            : file.cut.episode.webtoon.title,
+        } : undefined,
+        episode: file.cut?.episode ? {
+          id: Array.isArray(file.cut.episode) 
+            ? file.cut.episode[0]?.id 
+            : file.cut.episode.id,
+          episodeNumber: Array.isArray(file.cut.episode) 
+            ? file.cut.episode[0]?.episode_number 
+            : file.cut.episode.episode_number,
+          title: Array.isArray(file.cut.episode) 
+            ? file.cut.episode[0]?.title 
+            : file.cut.episode.title,
+        } : undefined,
+        cut: file.cut ? {
+          id: Array.isArray(file.cut) 
+            ? file.cut[0]?.id 
+            : file.cut.id,
+          cutNumber: Array.isArray(file.cut) 
+            ? file.cut[0]?.cut_number 
+            : file.cut.cut_number,
+          title: Array.isArray(file.cut) 
+            ? (file.cut[0]?.title || '') 
+            : (file.cut.title || ''),
+        } : undefined,
+        process: file.process ? {
+          id: Array.isArray(file.process) 
+            ? file.process[0]?.id 
+            : file.process.id,
+          name: Array.isArray(file.process) 
+            ? file.process[0]?.name 
+            : file.process.name,
+          color: Array.isArray(file.process) 
+            ? file.process[0]?.color 
+            : file.process.color,
+        } : undefined,
+      };
+    });
 
     const totalTime = Date.now() - startTime;
     console.log('[이미지 재생성 히스토리] 히스토리 조회 완료:', {

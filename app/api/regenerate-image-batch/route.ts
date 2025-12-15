@@ -250,6 +250,9 @@ interface RegenerateImageRequest {
   stylePrompt: string;
   index: number;
   apiProvider: 'gemini' | 'seedream';
+  styleId?: string; // 스타일 ID (선택적)
+  styleKey?: string; // 스타일 키 (선택적)
+  styleName?: string; // 스타일 이름 (선택적)
 }
 
 interface RegenerateImageBatchRequest {
@@ -258,6 +261,7 @@ interface RegenerateImageBatchRequest {
   referenceFileId?: string; // 하위 호환성
   referenceFileIds?: string[]; // 레퍼런스 이미지 파일 ID 배열
   requests: RegenerateImageRequest[];
+  createdBy?: string; // 재생성을 요청한 사용자 ID (선택적, 없으면 원본 파일의 생성자 사용)
 }
 
 interface RegenerateImageBatchResponse {
@@ -270,6 +274,9 @@ interface RegenerateImageBatchResponse {
     apiProvider: 'gemini' | 'seedream';
     stylePrompt: string; // 프롬프트 (히스토리용)
     imageData?: string; // 하위 호환성을 위해 선택적으로 유지 (임시 파일 저장 실패 시에만 사용)
+    styleId?: string; // 스타일 ID
+    styleKey?: string; // 스타일 키
+    styleName?: string; // 스타일 이름
   }>;
 }
 
@@ -291,7 +298,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: RegenerateImageBatchRequest = await request.json();
-    const { fileId, referenceFileId, referenceFileIds, requests, characterSheets } = body;
+    const { fileId, referenceFileId, referenceFileIds, requests, characterSheets, createdBy } = body;
     
     // referenceFileIds가 있으면 사용, 없으면 referenceFileId를 배열로 변환 (하위 호환성)
     const finalReferenceFileIds = referenceFileIds || (referenceFileId ? [referenceFileId] : undefined);
@@ -325,6 +332,7 @@ export async function POST(request: NextRequest) {
       referenceFileIds: finalReferenceFileIds || '없음',
       referenceFileIdsCount: finalReferenceFileIds?.length || 0,
       requestCount: requests.length,
+      createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
     });
 
     // 파일 정보 조회 (한 번만)
@@ -937,6 +945,13 @@ export async function POST(request: NextRequest) {
                 console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
               }
               
+              const finalCreatedBy = createdBy || sourceFile.created_by;
+              console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Gemini fallback):`, {
+                createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+                sourceCreatedBy: sourceFile.created_by,
+                finalCreatedBy,
+              });
+              
               const { data: fileData, error: dbError } = await supabase
                 .from('files')
                 .insert({
@@ -950,12 +965,15 @@ export async function POST(request: NextRequest) {
                   mime_type: finalMimeType,
                   description: `AI 재생성: ${sourceFile.file_name}`,
                   prompt: req.stylePrompt,
-                  created_by: sourceFile.created_by,
+                  created_by: finalCreatedBy,
                   source_file_id: sourceFile.id,
                   is_temp: true,
                   metadata: {
                     width: imageWidth,
                     height: imageHeight,
+                    ...(req.styleId && { style_id: req.styleId }),
+                    ...(req.styleKey && { style_key: req.styleKey }),
+                    ...(req.styleName && { style_name: req.styleName }),
                   },
                 })
                 .select()
@@ -984,6 +1002,9 @@ export async function POST(request: NextRequest) {
                 mimeType: finalMimeType,
                 apiProvider: 'gemini' as const,
                 stylePrompt: req.stylePrompt,
+                ...(req.styleId && { styleId: req.styleId }),
+                ...(req.styleKey && { styleKey: req.styleKey }),
+                ...(req.styleName && { styleName: req.styleName }),
               };
             }
 
@@ -1005,6 +1026,13 @@ export async function POST(request: NextRequest) {
             }
 
             // DB에 임시 파일 정보 저장 (is_temp = true)
+            const finalCreatedBy = createdBy || sourceFile.created_by;
+            console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Gemini):`, {
+              createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+              sourceCreatedBy: sourceFile.created_by,
+              finalCreatedBy,
+            });
+            
             const { data: fileData, error: dbError } = await supabase
               .from('files')
               .insert({
@@ -1018,7 +1046,7 @@ export async function POST(request: NextRequest) {
                 mime_type: finalMimeType,
                 description: `AI 재생성: ${sourceFile.file_name}`,
                 prompt: req.stylePrompt,
-                created_by: sourceFile.created_by,
+                created_by: finalCreatedBy,
                 source_file_id: sourceFile.id,
                 is_temp: true,
                 metadata: {
@@ -1061,6 +1089,9 @@ export async function POST(request: NextRequest) {
               mimeType: finalMimeType,
               apiProvider: 'gemini' as const,
               stylePrompt: req.stylePrompt,
+              ...(req.styleId && { styleId: req.styleId }),
+              ...(req.styleKey && { styleKey: req.styleKey }),
+              ...(req.styleName && { styleName: req.styleName }),
             };
           } catch (error: unknown) {
             lastError = error;
@@ -1289,6 +1320,13 @@ export async function POST(request: NextRequest) {
                 console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
               }
               
+              const finalCreatedBy = createdBy || sourceFile.created_by;
+              console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Seedream fallback):`, {
+                createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+                sourceCreatedBy: sourceFile.created_by,
+                finalCreatedBy,
+              });
+              
               const { data: fileData, error: dbError } = await supabase
                 .from('files')
                 .insert({
@@ -1302,12 +1340,15 @@ export async function POST(request: NextRequest) {
                   mime_type: generatedImageMimeType || 'image/png',
                   description: `AI 재생성: ${sourceFile.file_name}`,
                   prompt: req.stylePrompt,
-                  created_by: sourceFile.created_by,
+                  created_by: finalCreatedBy,
                   source_file_id: sourceFile.id,
                   is_temp: true,
                   metadata: {
                     width: imageWidth,
                     height: imageHeight,
+                    ...(req.styleId && { style_id: req.styleId }),
+                    ...(req.styleKey && { style_key: req.styleKey }),
+                    ...(req.styleName && { style_name: req.styleName }),
                   },
                 })
                 .select()
@@ -1336,6 +1377,9 @@ export async function POST(request: NextRequest) {
                 mimeType: generatedImageMimeType || 'image/png',
                 apiProvider: 'seedream' as const,
                 stylePrompt: req.stylePrompt,
+                ...(req.styleId && { styleId: req.styleId }),
+                ...(req.styleKey && { styleKey: req.styleKey }),
+                ...(req.styleName && { styleName: req.styleName }),
               };
             }
 
@@ -1357,6 +1401,13 @@ export async function POST(request: NextRequest) {
             }
 
             // DB에 임시 파일 정보 저장 (is_temp = true)
+            const finalCreatedBy = createdBy || sourceFile.created_by;
+            console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Seedream):`, {
+              createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+              sourceCreatedBy: sourceFile.created_by,
+              finalCreatedBy,
+            });
+            
             const { data: fileData, error: dbError } = await supabase
               .from('files')
               .insert({
@@ -1370,7 +1421,7 @@ export async function POST(request: NextRequest) {
                 mime_type: generatedImageMimeType || 'image/png',
                 description: `AI 재생성: ${sourceFile.file_name}`,
                 prompt: req.stylePrompt,
-                created_by: sourceFile.created_by,
+                created_by: finalCreatedBy,
                 source_file_id: sourceFile.id,
                 is_temp: true,
                 metadata: {
@@ -1413,6 +1464,9 @@ export async function POST(request: NextRequest) {
               mimeType: generatedImageMimeType || 'image/png',
               apiProvider: 'seedream' as const,
               stylePrompt: req.stylePrompt,
+              ...(req.styleId && { styleId: req.styleId }),
+              ...(req.styleKey && { styleKey: req.styleKey }),
+              ...(req.styleName && { styleName: req.styleName }),
             };
           } catch (error: unknown) {
             lastError = error;

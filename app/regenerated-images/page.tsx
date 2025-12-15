@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, ChevronRight, ChevronLeft, Calendar } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Calendar, User, Sparkles } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { RemixImageDialog } from '@/components/RemixImageDialog';
 import { format } from 'date-fns';
 import { ImageViewer } from '@/components/ImageViewer';
 import { Input } from '@/components/ui/input';
@@ -19,6 +21,49 @@ interface HistoryItem {
   mimeType: string;
   prompt?: string;
   sourceFileId?: string;
+  description?: string;
+  metadata?: {
+    width?: number;
+    height?: number;
+    tags?: string[];
+    scene_summary?: string;
+    aspectRatio?: string;
+    source?: string;
+    [key: string]: any;
+  };
+  sourceFile?: {
+    id: string;
+    filePath: string;
+    fileUrl: string;
+    fileName: string;
+    prompt?: string | null;
+    description?: string;
+    metadata?: any;
+  };
+  creator?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  webtoon?: {
+    id: string;
+    title: string;
+  };
+  episode?: {
+    id: string;
+    episodeNumber: number;
+    title: string;
+  };
+  cut?: {
+    id: string;
+    cutNumber: number;
+    title: string;
+  };
+  process?: {
+    id: string;
+    name: string;
+    color: string;
+  };
 }
 
 const PAGE_SIZE = 10; // 페이지 사이즈는 10으로 고정
@@ -35,6 +80,8 @@ function RegeneratedImagesContent() {
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
   const [viewerImageTitle, setViewerImageTitle] = useState<string>('');
   const [imageCache, setImageCache] = useState<Map<number, HistoryItem[]>>(new Map());
+  const [remixDialogOpen, setRemixDialogOpen] = useState(false);
+  const [selectedImageForRemix, setSelectedImageForRemix] = useState<HistoryItem | null>(null);
 
   // 브라우저 이미지 프리로드
   const preloadImage = useCallback((url: string) => {
@@ -214,6 +261,12 @@ function RegeneratedImagesContent() {
     setViewerImageTitle(`생성된 이미지 - ${format(new Date(image.createdAt), 'yyyy-MM-dd HH:mm')}`);
   };
 
+  const handleRemixClick = (e: React.MouseEvent, image: HistoryItem) => {
+    e.stopPropagation();
+    setSelectedImageForRemix(image);
+    setRemixDialogOpen(true);
+  };
+
   return (
     <Fragment>
       <ScrollArea className="h-full">
@@ -235,10 +288,12 @@ function RegeneratedImagesContent() {
                 {images.map((image) => (
                   <Card
                     key={image.fileId}
-                    className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out cursor-pointer"
-                    onClick={() => handleImageClick(image)}
+                    className="overflow-hidden p-0 hover:shadow-md transition-all duration-200 ease-in-out"
                   >
-                    <div className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden">
+                    <div 
+                      className="relative w-full h-40 sm:h-48 bg-muted rounded-md overflow-hidden cursor-pointer"
+                      onClick={() => handleImageClick(image)}
+                    >
                       <Image
                         src={image.fileUrl}
                         alt="생성된 이미지"
@@ -254,17 +309,64 @@ function RegeneratedImagesContent() {
                         }}
                       />
                     </div>
-                    <div className="p-2 sm:p-3">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                        <Calendar className="h-3 w-3" />
-                        <span className="truncate">
-                          {format(new Date(image.createdAt), 'yyyy-MM-dd HH:mm')}
-                        </span>
+                    <div className="p-2 sm:p-3 space-y-2">
+                      {/* 첫 번째 줄: 작업자, 날짜 */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {image.creator && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium text-foreground truncate max-w-[100px]">{image.creator.name}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                          <Calendar className="h-3 w-3" />
+                          <span className="truncate">
+                            {format(new Date(image.createdAt), 'MM-dd HH:mm')}
+                          </span>
+                        </div>
                       </div>
+                      
+                      {/* 두 번째 줄: 웹툰/에피소드/컷 경로 */}
+                      {(image.webtoon || image.episode || image.cut) && (
+                        <div className="text-[10px] text-muted-foreground line-clamp-1">
+                          {image.webtoon?.title}
+                          {image.episode && ` > ${image.episode.episodeNumber}화`}
+                          {image.cut && ` > ${image.cut.cutNumber}${image.cut.title ? `: ${image.cut.title}` : ''}`}
+                        </div>
+                      )}
+                      
+                      {/* 세 번째 줄: 프롬프트 */}
                       {image.prompt && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
                           {image.prompt}
                         </p>
+                      )}
+                      
+                      {/* 네 번째 줄: 태그 */}
+                      {image.metadata?.tags && Array.isArray(image.metadata.tags) && image.metadata.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {image.metadata.tags.slice(0, 3).map((tag, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {image.metadata.tags.length > 3 && (
+                            <span className="text-[10px] text-muted-foreground">+{image.metadata.tags.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* 리믹스 버튼 */}
+                      {(image.sourceFileId || image.sourceFile?.id) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2 h-7 text-xs"
+                          onClick={(e) => handleRemixClick(e, image)}
+                        >
+                          <Sparkles className="h-3 w-3 mr-1.5" />
+                          리믹스
+                        </Button>
                       )}
                     </div>
                   </Card>
@@ -368,6 +470,18 @@ function RegeneratedImagesContent() {
           }}
         />
       )}
+
+      {/* 리믹스 Dialog */}
+      <RemixImageDialog
+        open={remixDialogOpen}
+        onOpenChange={(open) => {
+          setRemixDialogOpen(open);
+          if (!open) {
+            setSelectedImageForRemix(null);
+          }
+        }}
+        image={selectedImageForRemix}
+      />
     </Fragment>
   );
 }
