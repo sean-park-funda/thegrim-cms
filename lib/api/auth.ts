@@ -118,15 +118,17 @@ export async function signIn(email: string, password: string) {
       // 이 작업은 백그라운드에서 처리하여 로그인 속도에 영향 없도록 함
       if (profile && profile.role === 'viewer') {
         // 병렬로 초대 확인 (await 없이 백그라운드 처리)
-        supabase
-          .from('invitations')
-          .select('role')
-          .eq('email', email)
-          .not('used_at', 'is', null)
-          .order('used_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-          .then(async ({ data: usedInvitation }) => {
+        (async () => {
+          try {
+            const { data: usedInvitation } = await supabase
+              .from('invitations')
+              .select('role')
+              .eq('email', email)
+              .not('used_at', 'is', null)
+              .order('used_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
             if (usedInvitation && usedInvitation.role !== 'viewer') {
               console.log('초대된 역할로 업데이트:', usedInvitation.role);
               try {
@@ -138,10 +140,10 @@ export async function signIn(email: string, password: string) {
                 console.warn('역할 업데이트 실패:', err);
               }
             }
-          })
-          .catch((err) => {
+          } catch (err) {
             console.warn('초대 확인 실패:', err);
-          });
+          }
+        })();
       }
       
       // 프로필이 없어도 로그인은 성공 (프로필은 나중에 자동 생성됨)
