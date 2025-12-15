@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
           selectedIndex: selectedSheetIndex,
           totalSheets: sheets.length,
           usingIndex: sheetIndex,
+          receivedSelectedSheets: body?.selectedCharacterSheets,
         });
         console.log('[storyboard-cut-image] 캐릭터시트 이미지 다운로드 시작...', { characterName: charName, filePath: sheet.file_path });
         const sheetResponse = await fetch(sheet.file_path);

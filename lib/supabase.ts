@@ -8,8 +8,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: typeof window !== 'undefined',
     autoRefreshToken: true,
-    detectSessionInUrl: typeof window !== 'undefined'
-  }
+    detectSessionInUrl: typeof window !== 'undefined',
+    // 세션 새로고침 간격 최적화
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+  // 네트워크 요청 최적화
+  global: {
+    fetch: (url, options = {}) => {
+      // AbortController로 타임아웃 구현 (브라우저 호환성)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      return fetch(url, {
+        ...options,
+        // Keep-Alive로 연결 재사용
+        keepalive: true,
+        // 타임아웃 설정 (5초)
+        signal: options.signal || controller.signal,
+      }).finally(() => {
+        clearTimeout(timeoutId);
+      });
+    },
+  },
 });
 
 // 타입 정의

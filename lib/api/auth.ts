@@ -32,10 +32,20 @@ export interface Invitation {
 // 로그인
 export async function signIn(email: string, password: string) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    // 타임아웃 설정 (5초)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('로그인 요청이 시간 초과되었습니다. 네트워크 연결을 확인해주세요.')), 5000);
+    });
+    
+    const signInPromise = supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
+    const { data, error } = await Promise.race([
+      signInPromise,
+      timeoutPromise
+    ]) as Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
 
     // 이메일 미확인 오류인 경우 자동으로 확인 처리
     if (error && (error.message?.includes('Email not confirmed') || error.message?.includes('email_not_confirmed'))) {
@@ -49,12 +59,23 @@ export async function signIn(email: string, password: string) {
           console.warn('이메일 확인 RPC 실패, 직접 SQL 시도:', confirmError);
         }
         
-        // 잠시 대기 후 다시 로그인 시도
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+        // 잠시 대기 후 다시 로그인 시도 (대기 시간 단축)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        
+        // 재시도에도 타임아웃 설정 (5초)
+        const retryTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('로그인 재시도가 시간 초과되었습니다. 네트워크 연결을 확인해주세요.')), 5000);
+        });
+        
+        const retrySignInPromise = supabase.auth.signInWithPassword({
           email,
           password,
         });
+        
+        const { data: retryData, error: retryError } = await Promise.race([
+          retrySignInPromise,
+          retryTimeoutPromise
+        ]) as Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
         
         if (retryError) {
           // 여전히 실패하면 원래 에러를 던지되, 사용자에게는 더 친절한 메시지
@@ -77,55 +98,74 @@ export async function signIn(email: string, password: string) {
 
     if (error) throw error;
 
-    // 사용자 프로필 가져오기
+    // 사용자 프로필 가져오기 (세션을 전달하여 중복 조회 방지)
     if (data.user) {
-      let profile = await getUserProfile(data.user.id);
+      // 세션을 전달하여 getUserProfile에서 세션 조회를 건너뛰도록 함
+      const session = data.session;
+      let profile = await getUserProfile(data.user.id, session);
       
-      // 프로필이 없으면 생성 대기
+      // 프로필이 없으면 빠르게 재시도 (간격 단축, 재시도 감소)
       if (!profile) {
-        let retries = 10;
+        let retries = 3; // 10번 → 3번으로 감소
         while (retries > 0 && !profile) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          profile = await getUserProfile(data.user.id);
+          await new Promise((resolve) => setTimeout(resolve, 200)); // 500ms → 200ms로 단축
+          profile = await getUserProfile(data.user.id, session);
           retries--;
         }
       }
       
       // 프로필이 있지만 역할이 viewer이고, 사용된 초대가 있으면 역할 업데이트
+      // 이 작업은 백그라운드에서 처리하여 로그인 속도에 영향 없도록 함
       if (profile && profile.role === 'viewer') {
-        const { data: usedInvitation } = await supabase
+        // 병렬로 초대 확인 (await 없이 백그라운드 처리)
+        supabase
           .from('invitations')
           .select('role')
           .eq('email', email)
           .not('used_at', 'is', null)
           .order('used_at', { ascending: false })
           .limit(1)
-          .maybeSingle();
-        
-        if (usedInvitation && usedInvitation.role !== 'viewer') {
-          console.log('초대된 역할로 업데이트:', usedInvitation.role);
-          try {
-            const { error: roleError } = await supabase.rpc('update_user_role_on_signup', {
-              user_id: data.user.id,
-              new_role: usedInvitation.role,
-            });
-            if (!roleError) {
-              // 업데이트된 프로필 다시 가져오기
-              profile = await getUserProfile(data.user.id);
+          .maybeSingle()
+          .then(({ data: usedInvitation }) => {
+            if (usedInvitation && usedInvitation.role !== 'viewer') {
+              console.log('초대된 역할로 업데이트:', usedInvitation.role);
+              supabase.rpc('update_user_role_on_signup', {
+                user_id: data.user.id,
+                new_role: usedInvitation.role,
+              }).catch((err) => {
+                console.warn('역할 업데이트 실패:', err);
+              });
             }
-          } catch (err: any) {
-            console.warn('역할 업데이트 실패:', err);
-          }
-        }
+          })
+          .catch((err) => {
+            console.warn('초대 확인 실패:', err);
+          });
       }
       
+      // 프로필이 없어도 로그인은 성공 (프로필은 나중에 자동 생성됨)
       return { user: data.user, profile };
     }
 
     return { user: data.user, profile: null };
   } catch (error: any) {
     console.error('로그인 오류:', error);
-    throw error;
+    
+    // 타임아웃 에러인 경우 명확한 메시지 제공
+    if (error.message?.includes('시간 초과') || error.message?.includes('timeout')) {
+      throw new Error('로그인 요청이 시간 초과되었습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
+    }
+    
+    // 네트워크 에러인 경우
+    if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인하고 다시 시도해주세요.');
+    }
+    
+    // 기존 에러 메시지가 있으면 그대로 사용, 없으면 기본 메시지
+    if (error.message) {
+      throw error;
+    }
+    
+    throw new Error('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
   }
 }
 

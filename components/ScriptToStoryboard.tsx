@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Sparkles, Check } from 'lucide-react';
+import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Sparkles, Check, Edit, Scissors } from 'lucide-react';
 import { ImageViewer } from '@/components/ImageViewer';
 import { CharacterManagementDialog } from '@/components/CharacterManagementDialog';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
@@ -65,6 +66,7 @@ interface ScriptToStoryboardProps {
 }
 
 export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStoryboardProps) {
+  const router = useRouter();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +122,18 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
   // 대본 추가 폼 표시 상태
   const [showAddScriptForm, setShowAddScriptForm] = useState(false);
   
-  // 선택된 캐릭터시트 인덱스 관리 (scriptId:characterIndex -> sheetIndex)
+  // 선택된 캐릭터시트 인덱스 관리 (scriptId:characterName -> sheetIndex)
+  // 캐릭터 이름을 키로 사용하여 인덱스 변경에 영향받지 않도록 함
   const [selectedCharacterSheet, setSelectedCharacterSheet] = useState<Record<string, number>>({});
+
+  // 컷 수정 관련 상태
+  const [editingCut, setEditingCut] = useState<{ storyboardId: string; cutIndex: number; cut: Cut } | null>(null);
+  const [modificationPrompt, setModificationPrompt] = useState('');
+  const [modifyingCut, setModifyingCut] = useState(false);
+  const [cutEditDialogOpen, setCutEditDialogOpen] = useState(false);
+
+  // 컷 분할 관련 상태
+  const [splittingCut, setSplittingCut] = useState<string | null>(null); // "storyboardId:cutIndex"
 
   const canLoad = useMemo(() => !!episodeId, [episodeId]);
 
@@ -130,9 +142,16 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/episode-scripts?episodeId=${episodeId}`);
+      const res = await fetch(`/api/episode-scripts?episodeId=${episodeId}`, {
+        credentials: 'include', // 쿠키 포함
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        // 401 Unauthorized인 경우 로그인 페이지로 리다이렉트 (전체 페이지 리로드 방지)
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
         throw new Error(data.error || '스크립트 목록을 불러오지 못했습니다.');
       }
       const data = (await res.json()) as Script[];
@@ -593,13 +612,23 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
           cut.charactersInCut.forEach((charName) => {
             const charIndex = analysis.characters.findIndex((c) => c.name === charName);
             if (charIndex !== -1) {
-              const sheetKey = `${selectedScriptId}:${charIndex}`;
+              // 캐릭터 이름을 키로 사용하여 인덱스 변경에 영향받지 않도록 함
+              const sheetKey = `${selectedScriptId}:${charName}`;
               const selectedSheetIndex = selectedCharacterSheet[sheetKey] ?? 0;
               selectedSheets[charName] = selectedSheetIndex;
+              console.log('[handleDrawCut] 캐릭터시트 선택 정보:', {
+                characterName: charName,
+                charIndex,
+                sheetKey,
+                selectedSheetIndex,
+                allSelectedSheets: selectedCharacterSheet,
+              });
             }
           });
         }
       }
+
+      console.log('[handleDrawCut] 전송할 selectedCharacterSheets:', selectedSheets);
 
       const res = await fetch('/api/storyboard-cut-image', {
         method: 'POST',
@@ -633,6 +662,116 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  const handleEditCut = (storyboardId: string, cutIndex: number, cut: Cut) => {
+    setEditingCut({ storyboardId, cutIndex, cut });
+    setModificationPrompt('');
+    setCutEditDialogOpen(true);
+  };
+
+  const handleModifyCut = async () => {
+    if (!editingCut || !selectedScriptId || !modificationPrompt.trim()) {
+      setError('수정 지시를 입력해주세요.');
+      return;
+    }
+
+    setModifyingCut(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(selectedScriptId)}/storyboards/cuts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId: editingCut.storyboardId,
+          cutIndex: editingCut.cutIndex,
+          modificationPrompt: modificationPrompt.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '컷 수정에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      const updatedStoryboard = data.storyboard;
+
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === selectedScriptId
+            ? {
+                ...s,
+                storyboards: s.storyboards?.map((sb) =>
+                  sb.id === editingCut.storyboardId ? updatedStoryboard : sb
+                ) ?? [updatedStoryboard],
+              }
+            : s
+        )
+      );
+
+      // 다이얼로그 닫기
+      setCutEditDialogOpen(false);
+      setEditingCut(null);
+      setModificationPrompt('');
+    } catch (err) {
+      console.error('컷 수정 실패:', err);
+      setError(err instanceof Error ? err.message : '컷 수정에 실패했습니다.');
+    } finally {
+      setModifyingCut(false);
+    }
+  };
+
+  const handleSplitCut = async (storyboardId: string, cutIndex: number) => {
+    if (!selectedScriptId) {
+      setError('대본을 선택해주세요.');
+      return;
+    }
+
+    const key = `${storyboardId}:${cutIndex}`;
+    setSplittingCut(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(selectedScriptId)}/storyboards/cuts/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId,
+          cutIndex,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '컷 분할에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      const updatedStoryboard = data.storyboard;
+
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === selectedScriptId
+            ? {
+                ...s,
+                storyboards: s.storyboards?.map((sb) =>
+                  sb.id === storyboardId ? updatedStoryboard : sb
+                ) ?? [updatedStoryboard],
+              }
+            : s
+        )
+      );
+
+      // 스크립트 다시 로드하여 최신 상태 반영 (이미지 포함)
+      await loadScripts();
+    } catch (err) {
+      console.error('컷 분할 실패:', err);
+      setError(err instanceof Error ? err.message : '컷 분할에 실패했습니다.');
+    } finally {
+      setSplittingCut(null);
     }
   };
 
@@ -943,7 +1082,8 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                                     </div>
                                     <div className="flex gap-2 overflow-x-auto py-2 px-1">
                                       {char.characterSheets.map((sheet, sheetIdx) => {
-                                        const key = `${selectedScript.id}:${charIdx}`;
+                                        // 캐릭터 이름을 키로 사용하여 인덱스 변경에 영향받지 않도록 함
+                                        const key = `${selectedScript.id}:${char.name}`;
                                         const isSelected = (selectedCharacterSheet[key] ?? 0) === sheetIdx;
                                         return (
                                           <div
@@ -1118,13 +1258,41 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                                           </p>
                                         </div>
                                       )}
-                                      <div className="mt-auto pt-2">
+                                      <div className="mt-auto pt-2 flex gap-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleEditCut(sb.id, i, cut)}
+                                          className="flex-1"
+                                        >
+                                          <Edit className="mr-2 h-4 w-4" />
+                                          수정
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleSplitCut(sb.id, i)}
+                                          disabled={splittingCut === `${sb.id}:${i}`}
+                                          className="flex-1"
+                                        >
+                                          {splittingCut === `${sb.id}:${i}` ? (
+                                            <>
+                                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                              분할 중...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Scissors className="mr-2 h-4 w-4" />
+                                              분할
+                                            </>
+                                          )}
+                                        </Button>
                                         <Button
                                           variant="outline"
                                           size="sm"
                                           onClick={() => handleDrawCut(sb.id, i, cut)}
                                           disabled={cutDrawingIds.has(`${sb.id}-${i}`)}
-                                          className="w-full"
+                                          className="flex-1"
                                         >
                                           {cutDrawingIds.has(`${sb.id}-${i}`) ? (
                                             <>
@@ -1252,6 +1420,94 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                     <>
                       <Check className="h-4 w-4 mr-2" />
                       채택
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 컷 수정 다이얼로그 */}
+      <Dialog open={cutEditDialogOpen} onOpenChange={setCutEditDialogOpen}>
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>컷 수정</DialogTitle>
+            <DialogDescription>
+              전체 대본과 현재 컷 내용을 바탕으로 수정 지시를 입력하세요.
+            </DialogDescription>
+          </DialogHeader>
+          {editingCut && (
+            <div className="space-y-4">
+              {/* 현재 컷 내용 표시 */}
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">현재 컷 내용 (컷 {editingCut.cut.cutNumber})</h4>
+                  <div className="bg-muted/50 p-3 rounded space-y-2 text-sm">
+                    {editingCut.cut.title && (
+                      <div>
+                        <span className="font-semibold">제목:</span> {editingCut.cut.title}
+                      </div>
+                    )}
+                    {editingCut.cut.background && (
+                      <div>
+                        <span className="font-semibold">배경:</span> {editingCut.cut.background}
+                      </div>
+                    )}
+                    {editingCut.cut.description && (
+                      <div>
+                        <span className="font-semibold">연출/구도:</span> {editingCut.cut.description}
+                      </div>
+                    )}
+                    {editingCut.cut.dialogue && (
+                      <div>
+                        <span className="font-semibold">대사/내레이션:</span> {editingCut.cut.dialogue}
+                      </div>
+                    )}
+                    {Array.isArray(editingCut.cut.charactersInCut) && editingCut.cut.charactersInCut.length > 0 && (
+                      <div>
+                        <span className="font-semibold">등장인물:</span> {editingCut.cut.charactersInCut.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">수정 지시</h4>
+                  <Textarea
+                    value={modificationPrompt}
+                    onChange={(e) => setModificationPrompt(e.target.value)}
+                    placeholder="예: 배경을 실내로 변경하고, 클로즈업으로 변경해주세요"
+                    className="min-h-[120px]"
+                    disabled={modifyingCut}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCutEditDialogOpen(false);
+                    setEditingCut(null);
+                    setModificationPrompt('');
+                  }}
+                  disabled={modifyingCut}
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={handleModifyCut}
+                  disabled={modifyingCut || !modificationPrompt.trim()}
+                >
+                  {modifyingCut ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      수정 중...
+                    </>
+                  ) : (
+                    <>
+                      <Edit className="h-4 w-4 mr-2" />
+                      수정
                     </>
                   )}
                 </Button>
