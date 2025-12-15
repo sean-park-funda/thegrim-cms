@@ -137,6 +137,9 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
   
   // 이미지 로드 추적 (중복 로드 방지)
   const [loadedStoryboardImages, setLoadedStoryboardImages] = useState<Set<string>>(new Set());
+  
+  // 이미지 로딩 중인 storyboard ID 추적
+  const [loadingStoryboardImages, setLoadingStoryboardImages] = useState<Set<string>>(new Set());
 
   const canLoad = useMemo(() => !!episodeId, [episodeId]);
 
@@ -238,6 +241,8 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
 
   // 선택된 대본의 storyboards 이미지 lazy-load
   const loadStoryboardImages = useCallback(async (storyboardId: string) => {
+    // 로딩 시작
+    setLoadingStoryboardImages((prev) => new Set(prev).add(storyboardId));
     try {
       const res = await fetch(`/api/episode-scripts/storyboards/${encodeURIComponent(storyboardId)}/images`, {
         credentials: 'include',
@@ -264,6 +269,13 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     } catch (err) {
       console.error('이미지 로드 실패:', err);
       // 이미지 로드 실패는 에러로 표시하지 않음 (선택적)
+    } finally {
+      // 로딩 완료
+      setLoadingStoryboardImages((prev) => {
+        const next = new Set(prev);
+        next.delete(storyboardId);
+        return next;
+      });
     }
   }, []);
 
@@ -1400,6 +1412,13 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                                             setImageViewerOpen(true);
                                           }}
                                         />
+                                      ) : loadingStoryboardImages.has(sb.id) || cutDrawingIds.has(`${sb.id}-${i}`) ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                          <p className="text-sm text-muted-foreground">
+                                            {cutDrawingIds.has(`${sb.id}-${i}`) ? '이미지 생성 중...' : '이미지 불러오는 중...'}
+                                          </p>
+                                        </div>
                                       ) : (
                                         <p className="text-sm text-muted-foreground">
                                           콘티 이미지가 생성되면 여기에 표시됩니다.
