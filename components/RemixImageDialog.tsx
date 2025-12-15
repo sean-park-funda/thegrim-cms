@@ -212,7 +212,7 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
                     <p className="truncate">{image.sourceFile.fileName}</p>
                     {image.sourceFile.metadata?.tags && Array.isArray(image.sourceFile.metadata.tags) && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {image.sourceFile.metadata.tags.slice(0, 5).map((tag, idx) => (
+                        {image.sourceFile.metadata.tags.slice(0, 5).map((tag: string, idx: number) => (
                           <Badge key={idx} variant="secondary" className="text-[10px] px-1 py-0">
                             {tag}
                           </Badge>
@@ -240,7 +240,7 @@ export function RemixImageDialog({ open, onOpenChange, image }: RemixImageDialog
                 </div>
                 {image.metadata?.tags && Array.isArray(image.metadata.tags) && (
                   <div className="flex flex-wrap gap-1">
-                    {image.metadata.tags.slice(0, 5).map((tag, idx) => (
+                    {image.metadata.tags.slice(0, 5).map((tag: string, idx: number) => (
                       <Badge key={idx} variant="secondary" className="text-[10px] px-1 py-0">
                         {tag}
                       </Badge>
