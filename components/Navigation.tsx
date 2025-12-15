@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2 } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -200,6 +200,13 @@ export function Navigation() {
                       <span className="text-xs text-muted-foreground font-normal">{profile.role}</span>
                     </div>
                   </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="text-xs">
+                    <Link href="/manual">
+                      <BookOpen className="h-3.5 w-3.5 mr-2" />
+                      사용자 매뉴얼
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-xs">
                     <LogOut className="h-3.5 w-3.5 mr-2" />
