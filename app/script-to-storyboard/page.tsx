@@ -14,29 +14,25 @@ function ScriptToStoryboardForm() {
 
   if (!cutId) {
     return (
-      <div className="bg-background">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-          <Card>
-            <CardContent className="p-8">
-              <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                <p className="text-sm text-destructive">cutId가 필요합니다. FileGrid에서 접근해주세요.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="h-full flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8">
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+              <p className="text-sm text-destructive">cutId가 필요합니다. FileGrid에서 접근해주세요.</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="bg-background">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <ScriptToStoryboard
-          cutId={cutId}
-          episodeId={episodeId}
-          webtoonId={webtoonId}
-        />
-      </div>
+    <div className="h-full">
+      <ScriptToStoryboard
+        cutId={cutId}
+        episodeId={episodeId}
+        webtoonId={webtoonId}
+      />
     </div>
   );
 }
@@ -44,17 +40,15 @@ function ScriptToStoryboardForm() {
 export default function ScriptToStoryboardPage() {
   return (
     <Suspense fallback={
-      <div className="bg-background">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-          <Card>
-            <CardContent className="p-8">
-              <div className="flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">로딩 중...</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="h-full flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8">
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">로딩 중...</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     }>
       <ScriptToStoryboardForm />

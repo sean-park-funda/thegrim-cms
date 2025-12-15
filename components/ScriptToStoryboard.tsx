@@ -113,6 +113,12 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
 
   // 대본 전체 보기 상태 관리
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
+  
+  // 선택된 대본 ID 상태 관리
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
+  
+  // 대본 추가 폼 표시 상태
+  const [showAddScriptForm, setShowAddScriptForm] = useState(false);
 
   const canLoad = useMemo(() => !!episodeId, [episodeId]);
 
@@ -173,6 +179,16 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     loadScripts();
   }, [loadScripts]);
 
+  // scripts가 변경될 때 첫 번째 대본을 기본 선택
+  useEffect(() => {
+    if (scripts.length > 0 && !selectedScriptId) {
+      const sorted = [...scripts].sort((a, b) => a.order_index - b.order_index);
+      setSelectedScriptId(sorted[0].id);
+    } else if (scripts.length === 0) {
+      setSelectedScriptId(null);
+    }
+  }, [scripts, selectedScriptId]);
+
   const handleAddScript = async () => {
     if (!episodeId) return;
     if (!newContent.trim()) {
@@ -196,9 +212,13 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         throw new Error(data.error || '스크립트 생성에 실패했습니다.');
       }
       const created = (await res.json()) as Script;
-      setScripts((prev) => [...prev, created].sort((a, b) => a.order_index - b.order_index));
+      const updatedScripts = [...scripts, created].sort((a, b) => a.order_index - b.order_index);
+      setScripts(updatedScripts);
       setNewTitle('');
       setNewContent('');
+      setShowAddScriptForm(false);
+      // 새로 생성된 대본을 선택
+      setSelectedScriptId(created.id);
     } catch (err) {
       console.error('스크립트 생성 실패:', err);
       setError(err instanceof Error ? err.message : '스크립트 생성에 실패했습니다.');
@@ -215,7 +235,17 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제에 실패했습니다.');
       }
-      setScripts((prev) => prev.filter((s) => s.id !== id));
+      setScripts((prev) => {
+        const filtered = prev.filter((s) => s.id !== id);
+        // 삭제된 대본이 선택되어 있었다면 첫 번째 대본 선택
+        if (selectedScriptId === id && filtered.length > 0) {
+          const sorted = [...filtered].sort((a, b) => a.order_index - b.order_index);
+          setSelectedScriptId(sorted[0].id);
+        } else if (filtered.length === 0) {
+          setSelectedScriptId(null);
+        }
+        return filtered;
+      });
     } catch (err) {
       console.error('스크립트 삭제 실패:', err);
       setError(err instanceof Error ? err.message : '스크립트 삭제에 실패했습니다.');
@@ -582,396 +612,514 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     }
   };
 
+  // 선택된 대본 찾기
+  const selectedScript = scripts.find((s) => s.id === selectedScriptId);
+  const sortedScripts = useMemo(() => {
+    return [...scripts].sort((a, b) => a.order_index - b.order_index);
+  }, [scripts]);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
+    <div className="h-full flex flex-col">
+      {/* 헤더 */}
+      <div className="flex items-center gap-2 p-4 border-b flex-shrink-0">
         <FileText className="h-6 w-6" />
         <h1 className="text-2xl font-bold">대본to글콘티</h1>
       </div>
 
       {!canLoad && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">episodeId가 필요합니다.</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>대본 추가</CardTitle>
-          <CardDescription>여러 대본을 저장하고 각 대본마다 글콘티를 생성하세요.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <input
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            placeholder="대본 제목 (선택)"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            disabled={!canLoad || savingNew}
-          />
-          <Textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="대본을 입력하세요..."
-            className="min-h-[180px]"
-            disabled={!canLoad || savingNew}
-          />
-          <Button onClick={handleAddScript} disabled={!canLoad || savingNew || !newContent.trim()}>
-            {savingNew ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                저장 중...
-              </>
-            ) : (
-              <>
-                <Plus className="mr-2 h-4 w-4" />
-                대본 저장
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-              <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">대본 목록</h2>
-          <Button variant="ghost" size="sm" onClick={loadScripts} disabled={loading}>
-            <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+        <div className="flex-1 flex items-center justify-center">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">episodeId가 필요합니다.</p>
+            </CardContent>
+          </Card>
         </div>
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            불러오는 중...
-          </div>
-        )}
-        {scripts.length === 0 && !loading && (
-          <p className="text-sm text-muted-foreground">저장된 대본이 없습니다.</p>
-        )}
+      )}
 
-        <div className="space-y-4">
-          {scripts
-            .slice()
-            .sort((a, b) => a.order_index - b.order_index)
-            .map((script, idx) => (
-              <Card key={script.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <span className="text-sm text-muted-foreground">#{idx + 1}</span>
-                        {script.title || '제목 없음'}
-                      </CardTitle>
-                      <CardDescription className="mt-1 whitespace-pre-wrap">
-                        {expandedScripts.has(script.id) || script.content.length <= 120
-                          ? script.content
-                          : (
-                            <>
-                              {script.content.slice(0, 120)}
-                              {' '}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedScripts((prev) => {
-                                    const next = new Set(prev);
-                                    next.add(script.id);
-                                    return next;
-                                  });
-                                }}
-                                className="text-primary hover:underline text-sm font-medium"
-                              >
-                                전체 보기
-                              </button>
-                            </>
-                          )}
-                        {expandedScripts.has(script.id) && script.content.length > 120 && (
+      {canLoad && (
+        <div className="flex-1 flex overflow-hidden">
+          {/* 왼쪽 패널: 500px 고정 */}
+          <div className="w-[500px] border-r flex flex-col overflow-hidden">
+            {/* 대본 추가 버튼 */}
+            <div className="p-4 border-b">
+              <Button
+                onClick={() => setShowAddScriptForm(!showAddScriptForm)}
+                className="w-full"
+                disabled={!canLoad}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                대본 추가
+              </Button>
+              
+              {/* 대본 추가 폼 */}
+              {showAddScriptForm && (
+                <Card className="mt-3">
+                  <CardContent className="pt-4 space-y-3">
+                    <input
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="대본 제목 (선택)"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      disabled={savingNew}
+                    />
+                    <Textarea
+                      value={newContent}
+                      onChange={(e) => setNewContent(e.target.value)}
+                      placeholder="대본을 입력하세요..."
+                      className="min-h-[120px]"
+                      disabled={savingNew}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleAddScript}
+                        disabled={savingNew || !newContent.trim()}
+                        className="flex-1"
+                      >
+                        {savingNew ? (
                           <>
-                            {' '}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedScripts((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(script.id);
-                                  return next;
-                                });
-                              }}
-                              className="text-primary hover:underline text-sm font-medium"
-                            >
-                              접기
-                            </button>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            저장 중...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            저장
                           </>
                         )}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleMove(script.id, 'up')}
-                        disabled={idx === 0}
-                        title="위로"
-                      >
-                        <ArrowUp className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"
-                        size="icon"
-                        onClick={() => handleMove(script.id, 'down')}
-                        disabled={idx === scripts.length - 1}
-                        title="아래로"
+                        onClick={() => {
+                          setShowAddScriptForm(false);
+                          setNewTitle('');
+                          setNewContent('');
+                        }}
+                        disabled={savingNew}
                       >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleDeleteScript(script.id)}
-                        title="삭제"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        취소
                       </Button>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleAnalyzeCharacters(script)}
-                      disabled={analyzingId === script.id}
-                    >
-                      {analyzingId === script.id ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          분석 중...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          캐릭터 분석
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleGenerate(script)}
-                      disabled={generatingId === script.id}
-                    >
-                      {generatingId === script.id ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          생성 중...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          글콘티 생성
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
-                  {/* 캐릭터 분석 결과 표시 */}
-                  {characterAnalysis[script.id] && characterAnalysis[script.id].characters.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <h4 className="text-sm font-semibold flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        등장인물 ({characterAnalysis[script.id].characters.length}명)
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {characterAnalysis[script.id].characters.map((char, charIdx) => (
-                          <Card key={charIdx} className="p-3">
-                            <div className="flex items-start gap-3">
-                              {char.existsInDb && char.characterSheets.length > 0 ? (
-                                <img
-                                  src={char.characterSheets[0].file_path}
-                                  alt={char.name}
-                                  className="w-16 h-16 rounded object-cover flex-shrink-0"
-                                />
-                              ) : (
-                                <div className="w-16 h-16 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                                  <User className="h-8 w-8 text-muted-foreground/40" />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h5 className="font-semibold text-sm truncate">{char.name}</h5>
-                                {char.description && (
-                                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                                    {char.description}
-                                  </p>
+            {/* 대본 목록 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-lg font-semibold">대본 목록</h2>
+                <Button variant="ghost" size="sm" onClick={loadScripts} disabled={loading}>
+                  <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+
+              {loading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  불러오는 중...
+                </div>
+              )}
+
+              {sortedScripts.length === 0 && !loading && (
+                <p className="text-sm text-muted-foreground">저장된 대본이 없습니다.</p>
+              )}
+
+              <div className="space-y-2">
+                {sortedScripts.map((script, idx) => (
+                  <Card
+                    key={script.id}
+                    className={`cursor-pointer transition-colors ${
+                      selectedScriptId === script.id
+                        ? 'border-primary bg-primary/5'
+                        : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => setSelectedScriptId(script.id)}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">#{idx + 1}</span>
+                            <span className="truncate">{script.title || '제목 없음'}</span>
+                          </CardTitle>
+                          <CardDescription className="mt-1 text-xs">
+                            {expandedScripts.has(script.id) || script.content.length <= 240 ? (
+                              <span className="whitespace-pre-wrap">{script.content}</span>
+                            ) : (
+                              <>
+                                {script.content.slice(0, 240)}
+                                {' '}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedScripts((prev) => {
+                                      const next = new Set(prev);
+                                      next.add(script.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="text-primary hover:underline text-xs font-medium"
+                                >
+                                  전체 보기
+                                </button>
+                              </>
+                            )}
+                            {expandedScripts.has(script.id) && script.content.length > 240 && (
+                              <>
+                                {' '}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedScripts((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(script.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="text-primary hover:underline text-xs font-medium"
+                                >
+                                  접기
+                                </button>
+                              </>
+                            )}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMove(script.id, 'up');
+                            }}
+                            disabled={idx === 0}
+                            title="위로"
+                          >
+                            <ArrowUp className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMove(script.id, 'down');
+                            }}
+                            disabled={idx === sortedScripts.length - 1}
+                            title="아래로"
+                          >
+                            <ArrowDown className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteScript(script.id);
+                            }}
+                            title="삭제"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 우측 패널: 선택된 대본의 등장인물과 글콘티 */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {error && (
+              <Card className="border-destructive mb-4">
+                <CardContent className="pt-6">
+                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!selectedScript && sortedScripts.length === 0 && !loading && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">대본을 추가해주세요.</p>
+              </div>
+            )}
+
+            {!selectedScript && sortedScripts.length > 0 && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">대본을 선택해주세요.</p>
+              </div>
+            )}
+
+            {selectedScript && (
+              <div className="space-y-6 max-w-full">
+                {/* 등장인물 */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <User className="h-5 w-5" />
+                        등장인물
+                        {characterAnalysis[selectedScript.id] &&
+                          characterAnalysis[selectedScript.id].characters.length > 0 && (
+                            <span className="text-sm font-normal text-muted-foreground">
+                              ({characterAnalysis[selectedScript.id].characters.length}명)
+                            </span>
+                          )}
+                      </CardTitle>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAnalyzeCharacters(selectedScript)}
+                        disabled={analyzingId === selectedScript.id}
+                      >
+                        {analyzingId === selectedScript.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            분석 중...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            캐릭터 분석
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {characterAnalysis[selectedScript.id] &&
+                    characterAnalysis[selectedScript.id].characters.length > 0 ? (
+                      <div className="space-y-3">
+                        {characterAnalysis[selectedScript.id].characters.map((char, charIdx) => (
+                            <Card key={charIdx} className="p-3">
+                              <div className="flex items-start gap-3">
+                                {char.existsInDb && char.characterSheets.length > 0 ? (
+                                  <img
+                                    src={char.characterSheets[0].file_path}
+                                    alt={char.name}
+                                    className="w-16 h-16 rounded object-cover flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-16 h-16 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                                    <User className="h-8 w-8 text-muted-foreground/40" />
+                                  </div>
                                 )}
-                                <div className="flex items-center gap-2 mt-2">
-                                  {char.existsInDb && (
-                                    <p className="text-xs text-muted-foreground">
-                                      캐릭터시트 {char.characterSheets.length}개
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="font-semibold text-sm truncate">{char.name}</h5>
+                                  {char.description && (
+                                    <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+                                      {char.description}
                                     </p>
                                   )}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-xs h-7"
-                                    onClick={() => handleGenerateCharacterImage(script.id, charIdx, char.name, char.description)}
-                                    disabled={generatingCharacterImage === `${script.id}:${charIdx}`}
-                                  >
-                                    {generatingCharacterImage === `${script.id}:${charIdx}` ? (
-                                      <>
-                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                        생성 중...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Sparkles className="h-3 w-3 mr-1" />
-                                        이미지 생성
-                                      </>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    {char.existsInDb && (
+                                      <p className="text-xs text-muted-foreground">
+                                        캐릭터시트 {char.characterSheets.length}개
+                                      </p>
                                     )}
-                                  </Button>
-                                  {!char.existsInDb && (
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       className="text-xs h-7"
                                       onClick={() =>
-                                        handleCreateCharacterFromAnalysis(
-                                          script.id,
+                                        handleGenerateCharacterImage(
+                                          selectedScript.id,
+                                          charIdx,
                                           char.name,
-                                          char.description,
-                                          characterAnalysis[script.id].webtoonId
+                                          char.description
                                         )
                                       }
+                                      disabled={generatingCharacterImage === `${selectedScript.id}:${charIdx}`}
                                     >
-                                      <Plus className="h-3 w-3 mr-1" />
-                                      캐릭터 생성
+                                      {generatingCharacterImage === `${selectedScript.id}:${charIdx}` ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                          생성 중...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Sparkles className="h-3 w-3 mr-1" />
+                                          이미지 생성
+                                        </>
+                                      )}
                                     </Button>
-                                  )}
+                                    {!char.existsInDb && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7"
+                                        onClick={() =>
+                                          handleCreateCharacterFromAnalysis(
+                                            selectedScript.id,
+                                            char.name,
+                                            char.description,
+                                            characterAnalysis[selectedScript.id].webtoonId
+                                          )
+                                        }
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        캐릭터 생성
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </Card>
-                        ))}
+                            </Card>
+                          ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-sm text-muted-foreground">캐릭터 분석을 실행하면 등장인물이 표시됩니다.</p>
+                    )}
+                  </CardContent>
+                </Card>
 
-                  {(script.storyboards ?? []).length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold">생성된 글콘티</h4>
-                      <div className="space-y-3">
-                        {script.storyboards?.map((sb) => {
+                {/* 생성된 글콘티 */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>생성된 글콘티</CardTitle>
+                      <Button
+                        size="sm"
+                        onClick={() => handleGenerate(selectedScript)}
+                        disabled={generatingId === selectedScript.id}
+                      >
+                        {generatingId === selectedScript.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            생성 중...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 h-4 w-4" />
+                            글콘티 생성
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {(selectedScript.storyboards ?? []).length > 0 ? (
+                        selectedScript.storyboards?.map((sb) => {
                           const cuts = sb.response_json?.cuts ?? [];
-                          return (
-                            <Card key={sb.id}>
-                              <CardHeader>
-                                <CardTitle className="text-base">컷 {cuts.length}개</CardTitle>
-                                <CardDescription>{new Date(sb.created_at).toLocaleString()}</CardDescription>
+                          return cuts.map((cut, i) => (
+                            <Card key={`${sb.id}-${i}`}>
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <CardTitle className="text-base">
+                                      컷 {cut.cutNumber ?? i + 1}
+                                      {cut.title && <span className="ml-2">{cut.title}</span>}
+                                    </CardTitle>
+                                  </div>
+                                  {i === 0 && (
+                                    <CardDescription className="text-xs text-muted-foreground">
+                                      {cuts.length}개 컷 · {new Date(sb.created_at).toLocaleString()}
+                                    </CardDescription>
+                                  )}
+                                </div>
                               </CardHeader>
                               <CardContent className="space-y-3">
-                                {cuts.length === 0 && (
-                                  <p className="text-sm text-muted-foreground">컷 정보가 없습니다.</p>
-                                )}
-                                {cuts.map((cut, i) => (
-                                  <div key={`${sb.id}-${i}`} className="rounded-lg border p-3 space-y-3">
-                                    <div className="flex items-center gap-2 text-sm font-semibold">
-                                      <span className="text-muted-foreground">컷 {cut.cutNumber ?? i + 1}</span>
-                                      {cut.title && <span>{cut.title}</span>}
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {/* 왼쪽 패널: 컷 내용 + 콘티 그리기 버튼 */}
-                                      <div className="flex flex-col space-y-3">
-                                        {cut.background && (
-                                          <div>
-                                            <h5 className="text-xs font-semibold text-muted-foreground mb-1">배경</h5>
-                                            <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{cut.background}</p>
-                                          </div>
-                                        )}
-                                        {cut.description && (
-                                          <div>
-                                            <h5 className="text-xs font-semibold text-muted-foreground mb-1">연출/구도</h5>
-                                            <p className="text-sm whitespace-pre-wrap">{cut.description}</p>
-                                          </div>
-                                        )}
-                                        {cut.dialogue && (
-                                          <div>
-                                            <h5 className="text-xs font-semibold text-muted-foreground mb-1">대사/내레이션</h5>
-                                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                              {cut.dialogue}
-                                            </p>
-                                          </div>
-                                        )}
-                                        {Array.isArray(cut.charactersInCut) && cut.charactersInCut.length > 0 && (
-                                          <div>
-                                            <h5 className="text-xs font-semibold text-muted-foreground mb-1">등장인물</h5>
-                                            <p className="text-sm text-muted-foreground">
-                                              {cut.charactersInCut.join(', ')}
-                                            </p>
-                                          </div>
-                                        )}
-                                        <div className="mt-auto pt-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleDrawCut(sb.id, i, cut)}
-                                            disabled={cutDrawingId === `${sb.id}-${i}`}
-                                            className="w-full"
-                                          >
-                                            {cutDrawingId === `${sb.id}-${i}` ? (
-                                              <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                생성 중...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <PenLine className="mr-2 h-4 w-4" />
-                                                콘티 그리기
-                                              </>
-                                            )}
-                                          </Button>
+                                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    {/* 왼쪽 패널: 컷 내용 + 콘티 그리기 버튼 */}
+                                    <div className="flex flex-col space-y-3 lg:col-span-2">
+                                      {cut.background && (
+                                        <div>
+                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">배경</h5>
+                                          <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
+                                            {cut.background}
+                                          </p>
                                         </div>
+                                      )}
+                                      {cut.description && (
+                                        <div>
+                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                            연출/구도
+                                          </h5>
+                                          <p className="text-sm whitespace-pre-wrap">{cut.description}</p>
+                                        </div>
+                                      )}
+                                      {cut.dialogue && (
+                                        <div>
+                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                            대사/내레이션
+                                          </h5>
+                                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                            {cut.dialogue}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {Array.isArray(cut.charactersInCut) && cut.charactersInCut.length > 0 && (
+                                        <div>
+                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                            등장인물
+                                          </h5>
+                                          <p className="text-sm text-muted-foreground">
+                                            {cut.charactersInCut.join(', ')}
+                                          </p>
+                                        </div>
+                                      )}
+                                      <div className="mt-auto pt-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleDrawCut(sb.id, i, cut)}
+                                          disabled={cutDrawingId === `${sb.id}-${i}`}
+                                          className="w-full"
+                                        >
+                                          {cutDrawingId === `${sb.id}-${i}` ? (
+                                            <>
+                                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                              생성 중...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <PenLine className="mr-2 h-4 w-4" />
+                                              콘티 그리기
+                                            </>
+                                          )}
+                                        </Button>
                                       </div>
-                                      {/* 오른쪽 패널: 이미지 */}
-                                      <div className="flex items-center justify-center min-h-[200px] bg-muted/20 rounded border">
-                                        {cutImages[`${sb.id}-${i}`] ? (
-                                          <img
-                                            src={cutImages[`${sb.id}-${i}`]}
-                                            alt={cut.title || `cut-${i + 1}`}
-                                            className="max-w-full max-h-[400px] rounded cursor-pointer hover:opacity-80 transition-opacity"
-                                            onClick={() => {
-                                              setViewingImageUrl(cutImages[`${sb.id}-${i}`]);
-                                              setViewingImageName(cut.title || `컷 ${cut.cutNumber ?? i + 1}`);
-                                              setImageViewerOpen(true);
-                                            }}
-                                          />
-                                        ) : (
-                                          <p className="text-sm text-muted-foreground">콘티 이미지가 생성되면 여기에 표시됩니다.</p>
-                                        )}
-                                      </div>
+                                    </div>
+                                    {/* 오른쪽 패널: 이미지 */}
+                                    <div className="flex items-center justify-center min-h-[200px] bg-muted/20 rounded border lg:col-span-1">
+                                      {cutImages[`${sb.id}-${i}`] ? (
+                                        <img
+                                          src={cutImages[`${sb.id}-${i}`]}
+                                          alt={cut.title || `cut-${i + 1}`}
+                                          className="max-w-full max-h-[400px] rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                          onClick={() => {
+                                            setViewingImageUrl(cutImages[`${sb.id}-${i}`]);
+                                            setViewingImageName(cut.title || `컷 ${cut.cutNumber ?? i + 1}`);
+                                            setImageViewerOpen(true);
+                                          }}
+                                        />
+                                      ) : (
+                                        <p className="text-sm text-muted-foreground">
+                                          콘티 이미지가 생성되면 여기에 표시됩니다.
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
-                                ))}
                               </CardContent>
                             </Card>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                          ));
+                        }).flat()
+                      ) : (
+                        <p className="text-sm text-muted-foreground">글콘티 생성 버튼을 클릭하면 글콘티가 생성됩니다.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 이미지 뷰어 */}
       {viewingImageUrl && (
