@@ -161,6 +161,7 @@ export function CharacterManagementDialog({
                       onEdit={() => handleEditCharacter(character)}
                       onDelete={() => handleDeleteCharacter(character)}
                       onManageSheets={() => handleManageSheets(character)}
+                      onImageGenerated={loadCharacters}
                       profile={profile}
                     />
                   ))}
