@@ -51,6 +51,15 @@ export async function uploadCharacterSheet(
   const fileName = `${baseName}-${uniqueId}.${fileExt}`;
   const storagePath = `characters/${characterId}/${fileName}`;
 
+  console.log('[uploadCharacterSheet] 업로드 시작', {
+    characterId,
+    originalFileName: file.name,
+    sanitizedFileName: fileName,
+    storagePath,
+    fileSize: file.size,
+    fileType: file.type,
+  });
+
   // Supabase Storage에 업로드
   const { error: uploadError } = await supabase.storage
     .from('webtoon-files')
@@ -60,7 +69,11 @@ export async function uploadCharacterSheet(
     });
 
   if (uploadError) {
-    console.error('캐릭터 시트 파일 업로드 실패:', uploadError);
+    console.error('[uploadCharacterSheet] 캐릭터 시트 파일 업로드 실패', {
+      error: uploadError,
+      characterId,
+      storagePath,
+    });
     throw uploadError;
   }
 
@@ -68,6 +81,12 @@ export async function uploadCharacterSheet(
   const { data: { publicUrl } } = supabase.storage
     .from('webtoon-files')
     .getPublicUrl(storagePath);
+
+  console.log('[uploadCharacterSheet] Storage 업로드 성공, DB 저장 시도', {
+    characterId,
+    storagePath,
+    publicUrl,
+  });
 
   // DB에 메타데이터 저장
   const { data: sheet, error: dbError } = await supabase
@@ -86,9 +105,26 @@ export async function uploadCharacterSheet(
   if (dbError) {
     // DB 저장 실패 시 업로드된 파일 삭제
     await supabase.storage.from('webtoon-files').remove([storagePath]);
-    console.error('캐릭터 시트 DB 저장 실패:', dbError);
+    console.error('[uploadCharacterSheet] 캐릭터 시트 DB 저장 실패', {
+      error: dbError,
+      characterId,
+      storagePath,
+      payload: {
+        character_id: characterId,
+        file_name: file.name,
+        file_path: publicUrl,
+        storage_path: storagePath,
+        file_size: file.size,
+        description: description || null,
+      },
+    });
     throw dbError;
   }
+
+  console.log('[uploadCharacterSheet] 캐릭터 시트 업로드 및 DB 저장 성공', {
+    characterId,
+    sheetId: sheet.id,
+  });
 
   return sheet;
 }

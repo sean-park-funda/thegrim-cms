@@ -100,7 +100,17 @@ export function CharacterSheetDialog({
 
   // 직접 업로드 핸들러
   const handleFileSelect = useCallback(async (file: File) => {
+    console.log('[CharacterSheetDialog][handleFileSelect] 업로드 시도 시작', {
+      characterId: character.id,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
+
     if (!file.type.startsWith('image/')) {
+      console.warn('[CharacterSheetDialog][handleFileSelect] 이미지가 아닌 파일 업로드 시도 차단', {
+        fileType: file.type,
+      });
       alert('이미지 파일만 업로드 가능합니다.');
       return;
     }
@@ -109,6 +119,7 @@ export function CharacterSheetDialog({
       setUploading(true);
       await uploadCharacterSheet(file, character.id, uploadDescription || undefined);
       if (isMountedRef.current) {
+        console.log('[CharacterSheetDialog][handleFileSelect] 업로드 성공, 시트 목록 재로딩');
         await loadSheets();
         setUploadDescription('');
         setActiveTab('list');
@@ -116,7 +127,11 @@ export function CharacterSheetDialog({
       }
     } catch (error) {
       if (isMountedRef.current) {
-        console.error('캐릭터 시트 업로드 실패:', error);
+        console.error('[CharacterSheetDialog][handleFileSelect] 캐릭터 시트 업로드 실패', {
+          error,
+          characterId: character.id,
+          fileName: file.name,
+        });
         alert('캐릭터 시트 업로드에 실패했습니다.');
       }
     } finally {
@@ -246,19 +261,86 @@ export function CharacterSheetDialog({
       // Blob으로 변환
       const blob = imageItem.getAsFile();
       if (!blob) {
+        console.warn('[CharacterSheetDialog][handlePasteFromClipboard] 클립보드에서 Blob을 가져올 수 없음');
         return;
       }
 
-      // File 객체로 변환 (파일명은 타임스탬프 기반)
+      console.log('[CharacterSheetDialog][handlePasteFromClipboard] 클립보드 이미지 처리 시작', {
+        blobType: blob.type,
+        blobSize: blob.size,
+      });
+
+      // Blob을 ArrayBuffer로 읽어서 완전히 새로운 File 객체 생성
+      const arrayBuffer = await blob.arrayBuffer();
       const timestamp = Date.now();
       const fileExtension = blob.type.split('/')[1] || 'png';
       const fileName = `clipboard-${timestamp}.${fileExtension}`;
-      const file = new File([blob], fileName, { type: blob.type });
+      const file = new File([arrayBuffer], fileName, { type: blob.type });
+
+      console.log('[CharacterSheetDialog][handlePasteFromClipboard] File 객체 생성 완료', {
+        fileName,
+        fileSize: file.size,
+        fileType: file.type,
+      });
 
       // 탭에 따라 다른 처리
       if (activeTab === 'upload') {
-        // 직접 업로드 탭: 즉시 업로드
-        await handleFileSelect(file);
+        // 직접 업로드 탭: 서버 API를 통해 저장 (Supabase Storage 네트워크 이슈 회피)
+        console.log('[CharacterSheetDialog][handlePasteFromClipboard] 업로드 탭 - save-sheet API로 업로드 시도', {
+          characterId: character.id,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+        });
+
+        // File -> base64 데이터 URL 변환
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (e) => reject(e);
+          reader.readAsDataURL(file);
+        });
+
+        const [header, base64] = dataUrl.split(',');
+        const mimeMatch = header.match(/^data:(.*);base64$/);
+        const mimeType = mimeMatch?.[1] || file.type || 'image/png';
+
+        try {
+          const response = await fetch(`/api/characters/${character.id}/save-sheet`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              imageData: base64,
+              mimeType,
+              fileName: file.name,
+              description: uploadDescription || undefined,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            console.error('[CharacterSheetDialog][handlePasteFromClipboard] save-sheet API 업로드 실패', {
+              status: response.status,
+              error: errorData,
+            });
+            alert('클립보드 이미지 업로드에 실패했습니다.');
+            return;
+          }
+
+          console.log('[CharacterSheetDialog][handlePasteFromClipboard] save-sheet API 업로드 성공');
+
+          if (isMountedRef.current) {
+            await loadSheets();
+            setUploadDescription('');
+            setActiveTab('list');
+            alert('캐릭터 시트가 업로드되었습니다.');
+          }
+        } catch (apiError) {
+          console.error('[CharacterSheetDialog][handlePasteFromClipboard] save-sheet API 호출 중 오류', apiError);
+          alert('클립보드 이미지 업로드 중 오류가 발생했습니다.');
+        }
       } else if (activeTab === 'generate') {
         // AI 생성 탭: 소스 이미지로 설정
         handleSourceImageSelect(file);
