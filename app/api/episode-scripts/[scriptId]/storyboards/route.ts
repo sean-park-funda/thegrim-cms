@@ -14,9 +14,10 @@ export async function GET(
     return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
   }
 
+  // 이미지 제외하고 글콘티 정보만 조회 (이미지는 별도 엔드포인트로 분리)
   const { data, error } = await supabase
     .from('episode_script_storyboards')
-    .select('*, images:episode_script_storyboard_images(*)')
+    .select('id, script_id, model, prompt, response_json, cuts_count, created_at, created_by')
     .eq('script_id', scriptId)
     .order('created_at', { ascending: false });
 

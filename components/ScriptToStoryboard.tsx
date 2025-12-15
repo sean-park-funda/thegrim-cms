@@ -134,6 +134,9 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
 
   // 컷 분할 관련 상태
   const [splittingCut, setSplittingCut] = useState<string | null>(null); // "storyboardId:cutIndex"
+  
+  // 이미지 로드 추적 (중복 로드 방지)
+  const [loadedStoryboardImages, setLoadedStoryboardImages] = useState<Set<string>>(new Set());
 
   const canLoad = useMemo(() => !!episodeId, [episodeId]);
 
@@ -155,21 +158,10 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         throw new Error(data.error || '스크립트 목록을 불러오지 못했습니다.');
       }
       const data = (await res.json()) as Script[];
+      // storyboards는 초기 로딩에서 제외 (선택된 대본에서만 lazy-load)
       setScripts(data ?? []);
 
-      // 이미 생성된 컷 이미지 매핑
-      const imageMap: Record<string, string> = {};
-      (data ?? []).forEach((s) => {
-        s.storyboards?.forEach((sb) => {
-          sb.images?.forEach((img) => {
-            const key = `${sb.id}-${img.cut_index}`;
-            imageMap[key] = `data:${img.mime_type};base64,${img.image_base64}`;
-          });
-        });
-      });
-      setCutImages(imageMap);
-
-      // DB에서 가져온 캐릭터 분석 결과를 상태에 설정
+      // DB에서 가져온 캐릭터 분석 결과를 상태에 설정 (characterSheets는 analyze-characters 호출 시 갱신)
       const analysisMap: Record<string, {
         characters: Array<{
           name: string;
@@ -183,7 +175,7 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
       (data ?? []).forEach((s) => {
         if (s.character_analysis) {
           analysisMap[s.id] = {
-            characters: s.character_analysis.characters,
+            characters: s.character_analysis.characters || [],
             webtoonId: s.character_analysis.webtoonId,
           };
         }
@@ -211,6 +203,86 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     }
   }, [scripts, selectedScriptId]);
 
+  // 선택된 대본의 storyboards lazy-load
+  const loadStoryboards = useCallback(async (scriptId: string) => {
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(scriptId)}/storyboards`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '글콘티 조회에 실패했습니다.');
+      }
+      const storyboards = (await res.json()) as Storyboard[];
+      
+      // 스크립트 목록에 storyboards 추가
+      setScripts((prev) =>
+        prev.map((s) => (s.id === scriptId ? { ...s, storyboards } : s))
+      );
+    } catch (err) {
+      console.error('글콘티 로드 실패:', err);
+      setError(err instanceof Error ? err.message : '글콘티 로드에 실패했습니다.');
+    }
+  }, []);
+
+  // 선택된 대본이 변경될 때 storyboards 로드
+  useEffect(() => {
+    if (selectedScriptId) {
+      const selectedScript = scripts.find((s) => s.id === selectedScriptId);
+      // storyboards가 아직 로드되지 않았으면 로드
+      if (selectedScript && !selectedScript.storyboards) {
+        loadStoryboards(selectedScriptId);
+      }
+    }
+  }, [selectedScriptId, scripts, loadStoryboards]);
+
+  // 선택된 대본의 storyboards 이미지 lazy-load
+  const loadStoryboardImages = useCallback(async (storyboardId: string) => {
+    try {
+      const res = await fetch(`/api/episode-scripts/storyboards/${encodeURIComponent(storyboardId)}/images`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '이미지 조회에 실패했습니다.');
+      }
+      const images = (await res.json()) as Array<{
+        id: string;
+        storyboardId: string;
+        cutIndex: number;
+        mimeType: string;
+        imageUrl: string;
+      }>;
+
+      // 이미지 매핑 업데이트
+      const imageMap: Record<string, string> = {};
+      images.forEach((img) => {
+        const key = `${img.storyboardId}-${img.cutIndex}`;
+        imageMap[key] = img.imageUrl;
+      });
+      setCutImages((prev) => ({ ...prev, ...imageMap }));
+    } catch (err) {
+      console.error('이미지 로드 실패:', err);
+      // 이미지 로드 실패는 에러로 표시하지 않음 (선택적)
+    }
+  }, []);
+
+  // 선택된 대본의 storyboards가 로드되면 이미지도 로드
+  useEffect(() => {
+    if (selectedScriptId) {
+      const selectedScript = scripts.find((s) => s.id === selectedScriptId);
+      if (selectedScript?.storyboards) {
+        selectedScript.storyboards.forEach((sb) => {
+          // 이미지가 아직 로드되지 않았으면 로드
+          if (!loadedStoryboardImages.has(sb.id)) {
+            loadStoryboardImages(sb.id);
+            setLoadedStoryboardImages((prev) => new Set(prev).add(sb.id));
+          }
+        });
+      }
+    }
+  }, [selectedScriptId, scripts, loadedStoryboardImages, loadStoryboardImages]);
+
   const handleAddScript = async () => {
     if (!episodeId) return;
     if (!newContent.trim()) {
@@ -234,12 +306,14 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         throw new Error(data.error || '스크립트 생성에 실패했습니다.');
       }
       const created = (await res.json()) as Script;
-      const updatedScripts = [...scripts, created].sort((a, b) => a.order_index - b.order_index);
+      // POST 응답에는 storyboards가 없으므로 빈 배열로 설정
+      const createdWithEmptyStoryboards = { ...created, storyboards: [] };
+      const updatedScripts = [...scripts, createdWithEmptyStoryboards].sort((a, b) => a.order_index - b.order_index);
       setScripts(updatedScripts);
       setNewTitle('');
       setNewContent('');
       setShowAddScriptForm(false);
-      // 새로 생성된 대본을 선택
+      // 새로 생성된 대본을 선택 (자동으로 storyboards 로드됨)
       setSelectedScriptId(created.id);
     } catch (err) {
       console.error('스크립트 생성 실패:', err);
@@ -344,6 +418,7 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
             : s
         )
       );
+      // 새로 생성된 storyboard의 이미지는 아직 없으므로 로드하지 않음 (사용자가 "콘티 그리기" 버튼을 눌러야 생성됨)
     } catch (err) {
       console.error('글콘티 생성 실패:', err);
       setError(err instanceof Error ? err.message : '글콘티 생성에 실패했습니다.');
@@ -650,6 +725,8 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
       const data = await res.json();
       if (data.imageUrl) {
         setCutImages((prev) => ({ ...prev, [key]: data.imageUrl }));
+        // 이미지가 생성되었으므로 해당 storyboard의 이미지 목록을 다시 로드 (최신 상태 유지)
+        await loadStoryboardImages(sbId);
       } else {
         throw new Error('이미지 URL이 응답에 없습니다.');
       }
@@ -765,8 +842,10 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
         )
       );
 
-      // 스크립트 다시 로드하여 최신 상태 반영 (이미지 포함)
-      await loadScripts();
+      // 선택된 대본의 storyboards만 다시 로드 (이미지는 자동으로 lazy-load됨)
+      if (selectedScriptId) {
+        await loadStoryboards(selectedScriptId);
+      }
     } catch (err) {
       console.error('컷 분할 실패:', err);
       setError(err instanceof Error ? err.message : '컷 분할에 실패했습니다.');
