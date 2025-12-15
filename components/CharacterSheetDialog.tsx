@@ -254,9 +254,6 @@ export function CharacterSheetDialog({
     e.stopPropagation();
     e.stopImmediatePropagation();
 
-    // 처리 중 플래그 설정
-    isProcessingPaste.current = true;
-
     try {
       // Blob으로 변환
       const blob = imageItem.getAsFile();
@@ -285,6 +282,11 @@ export function CharacterSheetDialog({
 
       // 탭에 따라 다른 처리
       if (activeTab === 'upload') {
+        // 업로드 중 상태 표시
+        if (isMountedRef.current) {
+          setUploading(true);
+        }
+
         // 직접 업로드 탭: 서버 API를 통해 저장 (Supabase Storage 네트워크 이슈 회피)
         console.log('[CharacterSheetDialog][handlePasteFromClipboard] 업로드 탭 - save-sheet API로 업로드 시도', {
           characterId: character.id,
@@ -349,9 +351,12 @@ export function CharacterSheetDialog({
       console.error('클립보드 이미지 붙여넣기 실패:', error);
       alert('클립보드 이미지 붙여넣기에 실패했습니다.');
     } finally {
-      // 처리 완료 후 플래그 해제
+      // 처리 완료 후 플래그/로딩 상태 해제
       setTimeout(() => {
         isProcessingPaste.current = false;
+        if (isMountedRef.current && activeTab === 'upload') {
+          setUploading(false);
+        }
       }, 500);
     }
   }, [open, activeTab, profile, handleFileSelect, handleSourceImageSelect]);
