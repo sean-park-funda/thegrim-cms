@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Upload, Sparkles, Trash2, Download, X, Loader2, Image as ImageIcon } from 'lucide-react';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
-import { getSheetsByCharacter, uploadCharacterSheet, saveCharacterSheetFromBase64, deleteCharacterSheet } from '@/lib/api/characterSheets';
+import { getSheetsByCharacter, uploadCharacterSheet, deleteCharacterSheet } from '@/lib/api/characterSheets';
 import { useStore } from '@/lib/store/useStore';
 import { canCreateContent, canDeleteContent } from '@/lib/utils/permissions';
 import { ImageViewer } from './ImageViewer';
@@ -416,14 +416,37 @@ export function CharacterSheetDialog({
 
     try {
       setUploading(true);
-      const fileName = `${character.name}-character-sheet`;
-      await saveCharacterSheetFromBase64(
-        generatedImage.base64,
-        generatedImage.mimeType,
-        character.id,
-        fileName,
-        generatedDescription || 'AI 생성 캐릭터 시트'
-      );
+
+      console.log('[CharacterSheetDialog][handleSaveGenerated] AI 생성 캐릭터 시트 저장 시도', {
+        characterId: character.id,
+        mimeType: generatedImage.mimeType,
+      });
+
+      const response = await fetch(`/api/characters/${character.id}/save-sheet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: generatedImage.base64,
+          mimeType: generatedImage.mimeType,
+          fileName: `${character.name}-character-sheet`,
+          description: generatedDescription || 'AI 생성 캐릭터 시트',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('[CharacterSheetDialog][handleSaveGenerated] save-sheet API 오류', {
+          status: response.status,
+          error: errorData,
+        });
+        alert('캐릭터 시트 저장에 실패했습니다.');
+        return;
+      }
+
+      console.log('[CharacterSheetDialog][handleSaveGenerated] save-sheet API 성공');
+
       if (isMountedRef.current) {
         await loadSheets();
         setSourceImage(null);
