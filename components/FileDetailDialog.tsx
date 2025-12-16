@@ -1070,23 +1070,36 @@ export function FileDetailDialog({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {regeneratedImages.map((img) => {
                   const isPlaceholder = img.url === null;
+                  const hasError = !!img.error;
                   
                   return (
                     <div key={img.id} className="relative space-y-2">
                       <div 
                         className={cn(
                           "relative w-full aspect-square rounded-md overflow-hidden",
-                          isPlaceholder 
+                          isPlaceholder && !hasError
                             ? "overflow-hidden bg-gradient-to-r from-violet-500/20 via-purple-400/40 to-indigo-500/20 bg-[length:200%_100%] animate-shimmer cursor-wait"
+                            : hasError
+                            ? "bg-destructive/10 border-2 border-destructive/30"
                             : "bg-muted group cursor-pointer"
                         )}
                         onClick={() => {
-                          if (!isPlaceholder && img.url) {
+                          if (!isPlaceholder && !hasError && img.url) {
                             onImageViewerOpen(img.url, `재생성된 이미지 - ${file?.file_name || '이미지'}`);
                           }
                         }}
                       >
-                        {!isPlaceholder && (
+                        {hasError ? (
+                          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                            <div className="text-destructive mb-2">
+                              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </div>
+                            <p className="text-sm font-medium text-destructive mb-1">생성 실패</p>
+                            <p className="text-xs text-muted-foreground">{img.error.message}</p>
+                          </div>
+                        ) : !isPlaceholder && (
                           <>
                             <input
                               type="checkbox"
@@ -1129,11 +1142,11 @@ export function FileDetailDialog({
                             </div>
                           </>
                         )}
-                        {isPlaceholder ? (
+                        {isPlaceholder && !hasError ? (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <Wand2 className="h-8 w-8 text-primary/50 animate-pulse" />
                           </div>
-                        ) : img.url ? (
+                        ) : !hasError && img.url ? (
                           <Image
                             src={img.url}
                             alt="재생성된 이미지"
@@ -1153,9 +1166,14 @@ export function FileDetailDialog({
                           />
                         ) : null}
                       </div>
-                      {!isPlaceholder && (
+                      {!isPlaceholder && !hasError && (
                         <Badge variant="secondary" className="text-xs w-full justify-center">
                           {getModelName(img.apiProvider)}
+                        </Badge>
+                      )}
+                      {hasError && (
+                        <Badge variant="destructive" className="text-xs w-full justify-center">
+                          에러
                         </Badge>
                       )}
                     </div>

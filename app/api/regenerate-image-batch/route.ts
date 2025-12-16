@@ -11,7 +11,6 @@ const SEEDREAM_API_ENDPOINT = `${SEEDREAM_API_BASE_URL}/images/generations`;
 
 const SEEDREAM_API_TIMEOUT = 60000; // 60초
 const GEMINI_API_TIMEOUT = 120000; // 120초 (이미지 생성이 더 오래 걸릴 수 있음)
-const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
 const SEEDREAM_MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const SEEDREAM_MAX_PIXELS = 36000000; // 36,000,000 픽셀
 
@@ -34,37 +33,115 @@ const SEEDREAM_ASPECT_RATIOS = [
   '9:16', '3:4', '2:3',
 ] as const;
 
-function isRetryableError(error: unknown): boolean {
+// 에러 객체의 상세 정보를 추출하는 헬퍼 함수
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+
   if (error instanceof Error) {
-    // 타임아웃 에러는 재시도 가능 (일시적인 네트워크 문제일 수 있음)
-    if (error.message.includes('타임아웃') || error.message.includes('timeout')) {
-      return true;
-    }
-    if (error.message === 'terminated' || error.message.includes('ECONNRESET')) {
-      return true;
-    }
-    if (error.cause && typeof error.cause === 'object' && 'code' in error.cause) {
-      const code = error.cause.code as string;
-      return RETRYABLE_ERROR_CODES.includes(code);
-    }
-    if ('status' in error && typeof error.status === 'number') {
-      const status = error.status as number;
-      if ([500, 502, 503, 504].includes(status)) {
-        return true;
+    details.name = error.name;
+    
+    // message가 JSON 문자열인 경우 파싱 시도
+    let parsedMessage: unknown = error.message;
+    if (typeof error.message === 'string') {
+      try {
+        // JSON 문자열인지 확인하고 파싱 시도
+        const trimmed = error.message.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          parsedMessage = JSON.parse(error.message);
+        }
+      } catch {
+        // 파싱 실패 시 원본 메시지 사용
+        parsedMessage = error.message;
       }
     }
-    if ('errorMessage' in error && typeof error.errorMessage === 'string') {
-      const errorMessage = error.errorMessage as string;
-      if (errorMessage.includes('"code":500') || errorMessage.includes('"status":"INTERNAL"')) {
-        return true;
+    details.message = parsedMessage;
+    details.stack = error.stack;
+
+    // cause 속성이 있으면 재귀적으로 추출
+    if (error.cause) {
+      details.cause = extractErrorDetails(error.cause);
+    }
+
+    // Error 객체의 추가 속성들 추출 (타입 단언을 통해 접근)
+    const errorObj = error as unknown as Record<string, unknown>;
+    Object.keys(errorObj).forEach(key => {
+      if (!['name', 'message', 'stack', 'cause'].includes(key)) {
+        try {
+          // 직렬화 가능한 값만 포함
+          JSON.stringify(errorObj[key]);
+          details[key] = errorObj[key];
+        } catch {
+          // 직렬화 불가능한 값은 문자열로 변환
+          details[key] = String(errorObj[key]);
+        }
+      }
+    });
+  } else if (typeof error === 'object' && error !== null) {
+    // Error 객체가 아닌 경우 모든 속성 추출
+    const errorObj = error as Record<string, unknown>;
+    Object.keys(errorObj).forEach(key => {
+      try {
+        JSON.stringify(errorObj[key]);
+        details[key] = errorObj[key];
+      } catch {
+        details[key] = String(errorObj[key]);
+      }
+    });
+  } else {
+    details.value = String(error);
+  }
+
+  return details;
+}
+
+// 에러 타입과 사용자 메시지를 구분하는 함수
+function categorizeError(error: unknown, provider: 'gemini' | 'seedream'): { code: string; message: string } {
+  if (error instanceof Error) {
+    // 타임아웃 에러
+    if (error.message.includes('타임아웃') || error.message.includes('timeout') || error.message.includes('Timeout')) {
+      return {
+        code: provider === 'gemini' ? 'GEMINI_TIMEOUT' : 'SEEDREAM_TIMEOUT',
+        message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} API 요청이 시간 초과되었습니다. 잠시 후 다시 시도해주세요.`,
+      };
+    }
+
+    // ApiError인 경우 status 확인
+    const errorObj = error as unknown as Record<string, unknown>;
+    if ('status' in errorObj && typeof errorObj.status === 'number') {
+      const status = errorObj.status;
+      
+      // 503 Service Unavailable (오버로드)
+      if (status === 503) {
+        // 메시지에 "overloaded" 포함 여부 확인
+        const errorMessage = String(error.message || '');
+        if (errorMessage.toLowerCase().includes('overload') || errorMessage.toLowerCase().includes('overloaded')) {
+          return {
+            code: provider === 'gemini' ? 'GEMINI_OVERLOAD' : 'SEEDREAM_OVERLOAD',
+            message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} 서비스가 현재 과부하 상태입니다. 잠시 후 다시 시도해주세요.`,
+          };
+        }
+        return {
+          code: provider === 'gemini' ? 'GEMINI_SERVICE_UNAVAILABLE' : 'SEEDREAM_SERVICE_UNAVAILABLE',
+          message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.`,
+        };
+      }
+
+      // 429 Too Many Requests
+      if (status === 429) {
+        return {
+          code: provider === 'gemini' ? 'GEMINI_RATE_LIMIT' : 'SEEDREAM_RATE_LIMIT',
+          message: `요청이 너무 많습니다. 잠시 후 다시 시도해주세요.`,
+        };
       }
     }
   }
-  return false;
-}
 
-function getRetryDelay(attempt: number): number {
-  return Math.min(1000 * Math.pow(2, attempt), 10000);
+  // 기타 에러
+  return {
+    code: provider === 'gemini' ? 'GEMINI_ERROR' : 'SEEDREAM_ERROR',
+    message: `이미지 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`,
+  };
 }
 
 async function fetchWithTimeout(
@@ -267,16 +344,22 @@ interface RegenerateImageBatchRequest {
 interface RegenerateImageBatchResponse {
   images: Array<{
     index: number;
-    fileId: string; // 파일 ID (DB에 저장된)
-    filePath: string; // 파일 경로 (Storage 경로)
-    fileUrl: string; // 파일 URL (미리보기용)
-    mimeType: string;
+    fileId?: string; // 파일 ID (DB에 저장된, 성공 시에만 존재)
+    filePath?: string; // 파일 경로 (Storage 경로, 성공 시에만 존재)
+    fileUrl?: string; // 파일 URL (미리보기용, 성공 시에만 존재)
+    mimeType?: string; // 성공 시에만 존재
     apiProvider: 'gemini' | 'seedream';
     stylePrompt: string; // 프롬프트 (히스토리용)
     imageData?: string; // 하위 호환성을 위해 선택적으로 유지 (임시 파일 저장 실패 시에만 사용)
     styleId?: string; // 스타일 ID
     styleKey?: string; // 스타일 키
     styleName?: string; // 스타일 이름
+    // 에러 정보 (실패 시에만 존재)
+    error?: {
+      code: string; // 에러 코드 ('GEMINI_OVERLOAD', 'GEMINI_TIMEOUT', 'GEMINI_ERROR', 'SEEDREAM_ERROR' 등)
+      message: string; // 사용자에게 표시할 메시지
+      details?: unknown; // 상세 에러 정보 (디버깅용)
+    };
   }>;
 }
 
@@ -704,24 +787,12 @@ export async function POST(request: NextRequest) {
 
         const geminiPromises = chunk.map(async (req) => {
         const requestStartTime = Date.now();
-        const maxRetries = 3;
-        let lastError: unknown = null;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            if (attempt > 0) {
-              const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Gemini API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-              await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-              console.log(`[이미지 재생성 배치] Gemini API 호출 시작 (인덱스 ${req.index}):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-            }
+        try {
+            console.log(`[이미지 재생성 배치] Gemini API 호출 시작 (인덱스 ${req.index}):`, {
+              prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              promptLength: req.stylePrompt.length,
+            });
 
             const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
             
@@ -817,6 +888,26 @@ export async function POST(request: NextRequest) {
                     throw new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`);
                   }
 
+                  // Gemini API 응답에서 에러 정보 확인
+                  if (chunk.candidates && chunk.candidates[0]) {
+                    const candidate = chunk.candidates[0];
+                    // finishReason이 STOP이 아닌 경우는 실패로 간주
+                    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+                      const candidateAny = candidate as unknown as Record<string, unknown>;
+                      const errorInfo: Record<string, unknown> = {
+                        finishReason: candidate.finishReason,
+                      };
+                      if (candidate.safetyRatings) {
+                        errorInfo.safetyRatings = candidate.safetyRatings;
+                      }
+                      if ('blockReason' in candidateAny && candidateAny.blockReason) {
+                        errorInfo.blockReason = candidateAny.blockReason;
+                      }
+                      console.error(`[이미지 재생성 배치] Gemini API 응답에서 생성 실패 감지 (인덱스 ${req.index}):`, errorInfo);
+                      throw new Error(`Gemini API 생성 실패: finishReason=${candidate.finishReason}`);
+                    }
+                  }
+
                   if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
                     continue;
                   }
@@ -857,6 +948,10 @@ export async function POST(request: NextRequest) {
             }
 
             if (!generatedImageData) {
+              console.error(`[이미지 재생성 배치] Gemini API 응답에 이미지 데이터 없음 (인덱스 ${req.index}):`, {
+                requestIndex: req.index,
+                promptLength: req.stylePrompt.length,
+              });
               throw new Error('생성된 이미지를 받을 수 없습니다.');
             }
 
@@ -1094,34 +1189,67 @@ export async function POST(request: NextRequest) {
               ...(req.styleName && { styleName: req.styleName }),
             };
           } catch (error: unknown) {
-            lastError = error;
-            const isRetryable = isRetryableError(error);
-
-            if (!isRetryable || attempt >= maxRetries) {
-              console.error(`[이미지 재생성 배치] Gemini API 호출 실패 (인덱스 ${req.index}):`, {
-                error: error instanceof Error ? error.message : String(error),
-                attempt: attempt + 1,
-              });
-              throw error;
-            }
+            const errorDetails = extractErrorDetails(error);
+            const isTimeout = error instanceof Error && (
+              error.message.includes('타임아웃') || 
+              error.message.includes('timeout') ||
+              error.message.includes('Timeout')
+            );
+            const errorType = isTimeout ? '타임아웃' : '일반 에러';
+            
+            console.error(`[이미지 재생성 배치] Gemini API 호출 실패 (인덱스 ${req.index}, ${errorType}):`, {
+              errorDetails,
+              requestIndex: req.index,
+              promptLength: req.stylePrompt.length,
+              promptPreview: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              errorType,
+            });
+            throw error;
           }
-        }
-
-          throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
         });
 
         const chunkResults = await Promise.allSettled(geminiPromises);
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             geminiGroupResults.push(result.value);
           } else {
             console.error(`[이미지 재생성 배치] Gemini 요청 실패:`, result.reason);
+            // 실패한 요청도 결과에 포함 (에러 정보와 함께)
+            const failedRequest = chunk[index];
+            if (failedRequest) {
+              const errorInfo = categorizeError(result.reason, 'gemini');
+              // 에러 정보 검증
+              if (!errorInfo || !errorInfo.code || !errorInfo.message) {
+                console.error(`[이미지 재생성 배치] categorizeError 반환값이 유효하지 않음 (인덱스 ${failedRequest.index}):`, errorInfo);
+                errorInfo.code = 'GEMINI_ERROR';
+                errorInfo.message = '이미지 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+              }
+              const errorResult: RegenerateImageBatchResponse['images'][0] = {
+                index: failedRequest.index,
+                apiProvider: 'gemini',
+                stylePrompt: failedRequest.stylePrompt,
+                ...(failedRequest.styleId && { styleId: failedRequest.styleId }),
+                ...(failedRequest.styleKey && { styleKey: failedRequest.styleKey }),
+                ...(failedRequest.styleName && { styleName: failedRequest.styleName }),
+                error: {
+                  code: errorInfo.code,
+                  message: errorInfo.message,
+                },
+              };
+              console.log(`[이미지 재생성 배치] Gemini 에러 결과 생성 (인덱스 ${failedRequest.index}):`, {
+                errorCode: errorResult.error?.code,
+                errorMessage: errorResult.error?.message,
+                fullResult: JSON.stringify(errorResult, null, 2),
+              });
+              geminiGroupResults.push(errorResult);
+            }
           }
         });
       }
 
-      const geminiSuccessCount = geminiGroupResults.length;
-      const geminiFailCount = geminiRequests.length - geminiSuccessCount;
+      // 성공한 것만 카운트 (error가 없는 것만)
+      const geminiSuccessCount = geminiGroupResults.filter(r => !r.error).length;
+      const geminiFailCount = geminiGroupResults.filter(r => !!r.error).length;
       console.log(`[이미지 재생성 배치] Gemini 그룹 처리 완료: ${geminiSuccessCount}개 성공, ${geminiFailCount}개 실패`);
       
       return geminiGroupResults;
@@ -1151,24 +1279,12 @@ export async function POST(request: NextRequest) {
 
         const seedreamPromises = chunk.map(async (req) => {
         const requestStartTime = Date.now();
-        const maxRetries = 3;
-        let lastError: unknown = null;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            if (attempt > 0) {
-              const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Seedream API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-              await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-              console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-            }
+        try {
+            console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
+              prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              promptLength: req.stylePrompt.length,
+            });
 
             const seedreamRequestBody: Record<string, unknown> = {
               model: 'seedream-4-0-250828',
@@ -1469,34 +1585,59 @@ export async function POST(request: NextRequest) {
               ...(req.styleName && { styleName: req.styleName }),
             };
           } catch (error: unknown) {
-            lastError = error;
-            const isRetryable = isRetryableError(error);
-
-            if (!isRetryable || attempt >= maxRetries) {
-              console.error(`[이미지 재생성 배치] Seedream API 호출 실패 (인덱스 ${req.index}):`, {
-                error: error instanceof Error ? error.message : String(error),
-                attempt: attempt + 1,
-              });
-                throw error;
-            }
+            const errorDetails = extractErrorDetails(error);
+            console.error(`[이미지 재생성 배치] Seedream API 호출 실패 (인덱스 ${req.index}):`, {
+              errorDetails,
+              requestIndex: req.index,
+              promptLength: req.stylePrompt.length,
+              promptPreview: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+            });
+            throw error;
           }
-        }
-
-        throw lastError || new Error('Seedream API 응답을 받을 수 없습니다.');
-      });
+        });
 
         const chunkResults = await Promise.allSettled(seedreamPromises);
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             seedreamGroupResults.push(result.value);
           } else {
             console.error(`[이미지 재생성 배치] Seedream 요청 실패:`, result.reason);
+            // 실패한 요청도 결과에 포함 (에러 정보와 함께)
+            const failedRequest = chunk[index];
+            if (failedRequest) {
+              const errorInfo = categorizeError(result.reason, 'seedream');
+              // 에러 정보 검증
+              if (!errorInfo || !errorInfo.code || !errorInfo.message) {
+                console.error(`[이미지 재생성 배치] categorizeError 반환값이 유효하지 않음 (인덱스 ${failedRequest.index}):`, errorInfo);
+                errorInfo.code = 'SEEDREAM_ERROR';
+                errorInfo.message = '이미지 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+              }
+              const errorResult: RegenerateImageBatchResponse['images'][0] = {
+                index: failedRequest.index,
+                apiProvider: 'seedream',
+                stylePrompt: failedRequest.stylePrompt,
+                ...(failedRequest.styleId && { styleId: failedRequest.styleId }),
+                ...(failedRequest.styleKey && { styleKey: failedRequest.styleKey }),
+                ...(failedRequest.styleName && { styleName: failedRequest.styleName }),
+                error: {
+                  code: errorInfo.code,
+                  message: errorInfo.message,
+                },
+              };
+              console.log(`[이미지 재생성 배치] Seedream 에러 결과 생성 (인덱스 ${failedRequest.index}):`, {
+                errorCode: errorResult.error?.code,
+                errorMessage: errorResult.error?.message,
+                fullResult: JSON.stringify(errorResult, null, 2),
+              });
+              seedreamGroupResults.push(errorResult);
+            }
           }
         });
       }
 
-      const seedreamSuccessCount = seedreamGroupResults.length;
-      const seedreamFailCount = seedreamRequests.length - seedreamSuccessCount;
+      // 성공한 것만 카운트 (error가 없는 것만)
+      const seedreamSuccessCount = seedreamGroupResults.filter(r => !r.error).length;
+      const seedreamFailCount = seedreamGroupResults.filter(r => !!r.error).length;
       console.log(`[이미지 재생성 배치] Seedream 그룹 처리 완료: ${seedreamSuccessCount}개 성공, ${seedreamFailCount}개 실패`);
       
       return seedreamGroupResults;
@@ -1527,6 +1668,12 @@ export async function POST(request: NextRequest) {
       geminiCount: geminiRequests.length,
       seedreamCount: seedreamRequests.length,
     });
+    
+    // 최종 결과 로깅 (에러 확인용)
+    const resultsWithErrors = results.filter(r => r.error);
+    if (resultsWithErrors.length > 0) {
+      console.log('[이미지 재생성 배치] 에러가 포함된 결과:', JSON.stringify(resultsWithErrors, null, 2));
+    }
 
     return NextResponse.json({
       images: results,

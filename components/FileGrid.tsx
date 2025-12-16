@@ -322,8 +322,103 @@ export function FileGrid({ cutId }: FileGridProps) {
       const fileName = `clipboard-${timestamp}.${fileExtension}`;
       const file = new File([blob], fileName, { type: blob.type });
 
-      // handleFileUpload 직접 호출 (상태 업데이트는 handleFileUpload 내부에서 처리)
-      await handleFileUpload([file], selectedProcess.id);
+      // File -> base64 데이터 URL 변환
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
+
+      const [header, base64] = dataUrl.split(',');
+      const mimeMatch = header.match(/^data:(.*);base64$/);
+      const mimeType = mimeMatch?.[1] || file.type || 'image/png';
+
+      console.log('[FileGrid][handlePasteFromClipboard] 클립보드 이미지 처리 시작 - API로 업로드', {
+        cutId,
+        processId: selectedProcess.id,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      });
+
+      // 업로드 진행률 업데이트 (50%로 설정 - API 업로드 중)
+      setUploadProgress(prev => ({
+        ...prev,
+        [selectedProcess.id]: { ...prev[selectedProcess.id], [file.name]: 50 }
+      }));
+
+      // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+      const response = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: base64,
+          mimeType,
+          fileName: file.name,
+          cutId,
+          processId: selectedProcess.id,
+          description: '',
+          createdBy: profile?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('[FileGrid][handlePasteFromClipboard] 파일 업로드 API 실패', {
+          status: response.status,
+          error: errorData,
+        });
+        alert('클립보드 이미지 업로드에 실패했습니다.');
+        return;
+      }
+
+      const result = await response.json();
+      console.log('[FileGrid][handlePasteFromClipboard] 파일 업로드 API 성공', {
+        fileId: result.file?.id,
+      });
+
+      // 업로드 완료 (100%)
+      setUploadProgress(prev => ({
+        ...prev,
+        [selectedProcess.id]: { ...prev[selectedProcess.id], [file.name]: 100 }
+      }));
+
+      // 이미지 파일인 경우 메타데이터 생성 대기 목록에 추가
+      if (result.file?.file_type === 'image') {
+        setPendingAnalysisFiles(prev => new Set(prev).add(result.file.id));
+      }
+
+      // 파일 목록 다시 로드
+      await loadFiles();
+
+      // 업로드 완료 후 상태 정리
+      setTimeout(() => {
+        setUploadingFiles(prev => {
+          const newState = { ...prev };
+          if (newState[selectedProcess.id]) {
+            const filtered = newState[selectedProcess.id].filter(f => f.name !== file.name);
+            if (filtered.length === 0) {
+              delete newState[selectedProcess.id];
+            } else {
+              newState[selectedProcess.id] = filtered;
+            }
+          }
+          return newState;
+        });
+        setUploadProgress(prev => {
+          const newState = { ...prev };
+          if (newState[selectedProcess.id]) {
+            delete newState[selectedProcess.id][file.name];
+            if (Object.keys(newState[selectedProcess.id]).length === 0) {
+              delete newState[selectedProcess.id];
+            }
+          }
+          return newState;
+        });
+      }, 500);
     } catch (error) {
       console.error('클립보드 이미지 붙여넣기 실패:', error);
       alert('클립보드 이미지 붙여넣기에 실패했습니다.');
@@ -333,7 +428,7 @@ export function FileGrid({ cutId }: FileGridProps) {
         isProcessingPaste.current = false;
       }, 500);
     }
-  }, [profile, cutId, selectedProcess, handleFileUpload, detailDialogOpen, editDialogOpen, deleteDialogOpen]);
+  }, [profile, cutId, selectedProcess, loadFiles, setPendingAnalysisFiles, detailDialogOpen, editDialogOpen, deleteDialogOpen]);
 
   // 클립보드 붙여넣기 이벤트 리스너 등록 (한 번만)
   useEffect(() => {

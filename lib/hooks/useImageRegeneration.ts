@@ -19,6 +19,10 @@ interface RegeneratedImage {
   styleId?: string; // 스타일 ID
   styleKey?: string; // 스타일 키
   styleName?: string; // 스타일 이름
+  error?: {
+    code: string; // 에러 코드 ('GEMINI_OVERLOAD', 'GEMINI_TIMEOUT' 등)
+    message: string; // 사용자에게 표시할 메시지
+  };
 }
 
 interface ReferenceImageInfo {
@@ -326,6 +330,7 @@ export function useImageRegeneration({
         const BATCH_SIZE = 4;
         let totalSuccessCount = 0;
         let totalFailCount = 0;
+        const errorMessages: string[] = []; // 에러 메시지 수집
 
         console.log('[이미지 재생성] 배치 API 호출 시작 (4개씩 배치 처리)...', {
           fileId,
@@ -392,6 +397,14 @@ export function useImageRegeneration({
 
             const batchData = await batchResponse.json();
             const { images } = batchData;
+            console.log('[이미지 재생성] 배치 응답 받음:', {
+              imagesCount: images?.length,
+              images: images?.map((img: { index: number; error?: unknown }) => ({
+                index: img.index,
+                hasError: !!img.error,
+                error: img.error,
+              })),
+            });
 
             // 배치 응답을 개별 이미지로 변환하고 즉시 UI 업데이트
             images.forEach((result: { 
@@ -400,16 +413,78 @@ export function useImageRegeneration({
               filePath?: string;
               fileUrl?: string;
               imageData?: string; 
-              mimeType: string; 
+              mimeType?: string; 
               apiProvider: 'gemini' | 'seedream';
               stylePrompt?: string;
               styleId?: string;
               styleKey?: string;
               styleName?: string;
+              error?: {
+                code: string;
+                message: string;
+              };
             }) => {
               try {
                 const imageId = `${Date.now()}-${result.index}-${Math.random().toString(36).substring(2, 9)}`;
                 const request = batch.find(r => r.index === result.index);
+                
+                // 에러가 있는 경우
+                if (result.error && typeof result.error === 'object') {
+                  // result.error의 속성에 직접 접근
+                  const errorAny = result.error as any;
+                  const errorCode = errorAny?.code;
+                  const errorMessage = errorAny?.message;
+                  
+                  // code와 message가 모두 있고 문자열인지 확인
+                  if (errorCode && errorMessage && typeof errorCode === 'string' && typeof errorMessage === 'string') {
+                    // 정보성 로그로만 남기기 (브라우저 콘솔 에러로 표시되지 않도록)
+                    console.log(`[이미지 재생성] 이미지 생성 실패 (인덱스 ${result.index}):`, {
+                      code: errorCode,
+                      message: errorMessage,
+                    });
+                    const errorImage: RegeneratedImage = {
+                      id: imageId,
+                      url: null,
+                      prompt: result.stylePrompt || request?.stylePrompt || stylePrompt,
+                      originalPrompt: stylePrompt,
+                      selected: false,
+                      fileId: null,
+                      filePath: null,
+                      fileUrl: null,
+                      base64Data: null,
+                      mimeType: null,
+                      apiProvider: result.apiProvider,
+                      index: result.index,
+                      styleId: result.styleId || request?.styleId,
+                      styleKey: result.styleKey || request?.styleKey,
+                      styleName: result.styleName || request?.styleName,
+                      error: {
+                        code: errorCode,
+                        message: errorMessage,
+                      },
+                    };
+                    setRegeneratedImages(prev => {
+                      const newImages = [...prev];
+                      const placeholderIndex = newImages.findIndex(
+                        img => img.url === null && img.index === result.index
+                      );
+                      if (placeholderIndex !== -1) {
+                        newImages[placeholderIndex] = errorImage;
+                      } else {
+                        const fallbackIndex = newImages.findIndex(img => img.url === null);
+                        if (fallbackIndex !== -1) {
+                          newImages[fallbackIndex] = errorImage;
+                        } else {
+                          newImages.push(errorImage);
+                        }
+                      }
+                      return newImages;
+                    });
+                    totalFailCount++; // 에러가 있으면 실패 카운트 증가
+                    errorMessages.push(errorMessage); // 에러 메시지 수집
+                    return; // 에러가 있으면 여기서 종료
+                  }
+                }
                 
                 let imageUrl_new: string | null = null;
                 let base64Data: string | null = null;
@@ -510,7 +585,10 @@ export function useImageRegeneration({
               }
             });
 
-            console.log(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 완료: ${images.length}개 성공`);
+            // 실제 성공한 개수만 카운트 (에러가 없는 것만)
+            const actualSuccessCount = images.filter((img: { error?: unknown }) => !img.error).length;
+            const actualFailCount = images.filter((img: { error?: unknown }) => !!img.error).length;
+            console.log(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 완료: ${actualSuccessCount}개 성공${actualFailCount > 0 ? `, ${actualFailCount}개 실패` : ''}`);
           } catch (error) {
             console.error(`[이미지 재생성] 배치 ${batchNumber}/${totalBatches} 실패:`, error);
             // 실패한 배치의 모든 요청을 실패로 처리
@@ -532,10 +610,16 @@ export function useImageRegeneration({
 
         if (totalFailCount > 0) {
           console.log(`이미지 재생성 완료: ${totalSuccessCount}개 성공, ${totalFailCount}개 실패`);
+          // 중복 제거한 에러 메시지
+          const uniqueErrorMessages = Array.from(new Set(errorMessages));
+          const errorMessageText = uniqueErrorMessages.length > 0 
+            ? `\n\n오류 내용:\n${uniqueErrorMessages.join('\n')}`
+            : '';
+          
           if (totalSuccessCount === 0) {
-            alert('모든 이미지 재생성에 실패했습니다.');
+            alert(`모든 이미지 재생성에 실패했습니다.${errorMessageText}`);
           } else {
-            alert(`${totalSuccessCount}개의 이미지가 생성되었습니다. ${totalFailCount}개의 이미지 생성에 실패했습니다.`);
+            alert(`${totalSuccessCount}개의 이미지가 생성되었습니다. ${totalFailCount}개의 이미지 생성에 실패했습니다.${errorMessageText}`);
           }
         }
       }
