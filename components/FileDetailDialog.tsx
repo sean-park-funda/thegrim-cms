@@ -35,6 +35,10 @@ interface RegeneratedImage {
   mimeType: string | null; // null이면 placeholder
   apiProvider: 'gemini' | 'seedream' | 'auto';
   index?: number; // 생성 인덱스 (placeholder 매칭용)
+  error?: {
+    code: string; // 에러 코드 ('GEMINI_OVERLOAD', 'GEMINI_TIMEOUT' 등)
+    message: string; // 사용자에게 표시할 메시지
+  };
 }
 
 interface FileDetailDialogProps {
