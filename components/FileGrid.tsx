@@ -179,13 +179,64 @@ export function FileGrid({ cutId }: FileGridProps) {
 
       for (const file of acceptedFiles) {
         try {
-          // 업로드 진행률 업데이트 (50%로 설정 - Storage 업로드 중)
+          // 업로드 진행률 업데이트 (50%로 설정 - API 업로드 중)
           setUploadProgress(prev => ({
             ...prev,
             [processId]: { ...prev[processId], [file.name]: 50 }
           }));
 
-          const uploadedFile = await uploadFile(file, cutId, processId, '', profile?.id);
+          // File -> base64 데이터 URL 변환
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (e) => reject(e);
+            reader.readAsDataURL(file);
+          });
+
+          const [header, base64] = dataUrl.split(',');
+          const mimeMatch = header.match(/^data:(.*);base64$/);
+          const mimeType = mimeMatch?.[1] || file.type || 'application/octet-stream';
+
+          console.log('[FileGrid][handleFileUpload] 파일 업로드 시작 - API로 업로드', {
+            cutId,
+            processId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+          });
+
+          // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+          const response = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              imageData: base64,
+              mimeType,
+              fileName: file.name,
+              cutId,
+              processId,
+              description: '',
+              createdBy: profile?.id,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            console.error('[FileGrid][handleFileUpload] 파일 업로드 API 실패', {
+              status: response.status,
+              error: errorData,
+              fileName: file.name,
+            });
+            throw new Error(errorData?.error || `${file.name} 업로드에 실패했습니다.`);
+          }
+
+          const result = await response.json();
+          console.log('[FileGrid][handleFileUpload] 파일 업로드 API 성공', {
+            fileId: result.file?.id,
+            fileName: file.name,
+          });
 
           // 업로드 완료 (100%)
           setUploadProgress(prev => ({
@@ -194,12 +245,12 @@ export function FileGrid({ cutId }: FileGridProps) {
           }));
 
           // 이미지 파일인 경우 메타데이터 생성 대기 목록에 추가
-          if (uploadedFile.file_type === 'image') {
-            uploadedImageIds.push(uploadedFile.id);
+          if (result.file?.file_type === 'image') {
+            uploadedImageIds.push(result.file.id);
           }
         } catch (error) {
           console.error(`파일 업로드 실패 (${file.name}):`, error);
-          alert(`${file.name} 업로드에 실패했습니다.`);
+          alert(error instanceof Error ? error.message : `${file.name} 업로드에 실패했습니다.`);
         }
       }
 

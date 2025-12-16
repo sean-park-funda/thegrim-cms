@@ -717,23 +717,36 @@ export function useImageRegeneration({
 
             successCount++;
           } else if (img.base64Data) {
-            // 하위 호환성: base64 데이터가 있으면 기존 방식으로 업로드
-            console.log(`[이미지 저장] base64 데이터로 업로드 (인덱스 ${i}, fallback)`);
+            // 하위 호환성: base64 데이터가 있으면 API 방식으로 업로드
+            console.log(`[이미지 저장] base64 데이터로 API 업로드 (인덱스 ${i}, fallback)`);
             
-            // base64 데이터를 Blob으로 변환
-            const byteCharacters = atob(img.base64Data);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let j = 0; j < byteCharacters.length; j++) {
-              byteNumbers[j] = byteCharacters.charCodeAt(j);
+            // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+            const response = await fetch('/api/files/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                imageData: img.base64Data,
+                mimeType: img.mimeType,
+                fileName: newFileName,
+                cutId: selectedCutId,
+                processId: targetProcessId,
+                description: `AI 재생성: ${fileToView.file_name}`,
+                createdBy: currentUserId,
+                sourceFileId: fileToView.id,
+                prompt: img.prompt,
+                styleId: img.styleId,
+                styleKey: img.styleKey,
+                styleName: img.styleName,
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || '이미지 저장에 실패했습니다.');
             }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: img.mimeType });
 
-            // Blob을 File 객체로 변환
-            const file = new File([blob], newFileName, { type: img.mimeType });
-
-            // 선택된 공정에 업로드 (원본 파일 ID와 생성자 ID 포함, 프롬프트 및 스타일 정보 전달)
-            await uploadFile(file, selectedCutId, targetProcessId, `AI 재생성: ${fileToView.file_name}`, currentUserId, fileToView.id, img.prompt, img.styleId, img.styleKey, img.styleName);
             successCount++;
           } else {
             throw new Error('이미지 데이터가 없습니다.');

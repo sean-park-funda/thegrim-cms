@@ -70,7 +70,57 @@ export function ReferenceFileUpload({
 
         try {
             setUploading(true);
-            const uploadedFile = await uploadReferenceFile(selectedFile, webtoonId, selectedProcessId, description);
+
+            // File -> base64 데이터 URL 변환
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = (e) => reject(e);
+                reader.readAsDataURL(selectedFile);
+            });
+
+            const [header, base64] = dataUrl.split(',');
+            const mimeMatch = header.match(/^data:(.*);base64$/);
+            const mimeType = mimeMatch?.[1] || selectedFile.type || 'application/octet-stream';
+
+            console.log('[ReferenceFileUpload][handleUpload] 레퍼런스 파일 업로드 시작 - API로 업로드', {
+                webtoonId,
+                processId: selectedProcessId,
+                fileName: selectedFile.name,
+                fileSize: selectedFile.size,
+                fileType: selectedFile.type,
+            });
+
+            // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+            const response = await fetch('/api/reference-files/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    imageData: base64,
+                    mimeType,
+                    fileName: selectedFile.name,
+                    webtoonId,
+                    processId: selectedProcessId,
+                    description: description || undefined,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                console.error('[ReferenceFileUpload][handleUpload] 레퍼런스 파일 업로드 API 실패', {
+                    status: response.status,
+                    error: errorData,
+                });
+                throw new Error(errorData?.error || '레퍼런스 파일 업로드에 실패했습니다.');
+            }
+
+            const result = await response.json();
+            console.log('[ReferenceFileUpload][handleUpload] 레퍼런스 파일 업로드 API 성공', {
+                fileId: result.file?.id,
+            });
+
             alert('레퍼런스 파일이 업로드되었습니다.');
 
             // 초기화
@@ -78,10 +128,10 @@ export function ReferenceFileUpload({
             setSelectedProcessId('');
             setDescription('');
             onOpenChange(false);
-            onUploadComplete?.(uploadedFile);
+            onUploadComplete?.(result.file);
         } catch (error) {
             console.error('레퍼런스 파일 업로드 실패:', error);
-            alert('레퍼런스 파일 업로드에 실패했습니다.');
+            alert(error instanceof Error ? error.message : '레퍼런스 파일 업로드에 실패했습니다.');
         } finally {
             setUploading(false);
         }
