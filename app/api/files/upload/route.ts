@@ -96,8 +96,8 @@ export async function POST(request: NextRequest) {
         ...(body.styleName && { style_name: body.styleName }),
       },
       prompt: body.prompt || null,
-      created_by: body.createdBy || null,
-      source_file_id: body.sourceFileId || null,
+      created_by: body.createdBy,
+      source_file_id: body.sourceFileId,
     });
 
     console.log('[files/upload][POST] 파일 업로드 및 DB 저장 성공', {
