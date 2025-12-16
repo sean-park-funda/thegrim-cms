@@ -1101,7 +1101,7 @@ export function FileDetailDialog({
                               </svg>
                             </div>
                             <p className="text-sm font-medium text-destructive mb-1">생성 실패</p>
-                            <p className="text-xs text-muted-foreground">{img.error.message}</p>
+                            <p className="text-xs text-muted-foreground">{img.error?.message || '알 수 없는 오류'}</p>
                           </div>
                         ) : !isPlaceholder && (
                           <>
