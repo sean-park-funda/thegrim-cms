@@ -5,13 +5,27 @@ import { supabase } from '@/lib/supabase';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_TIMEOUT = 60000;
 
+interface ManualCharacter {
+  name: string;
+  description: string;
+  existsInDb: boolean;
+  characterId: string | null;
+  characterSheets: Array<{ id: string; file_path: string; thumbnail_path?: string | null }>;
+}
+
+interface RequestBody {
+  scriptId?: string;
+  manual?: boolean;
+  characters?: ManualCharacter[];
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ scriptId?: string }> | { scriptId?: string } }
 ) {
   // Next.js 15+에서는 params가 Promise일 수 있음
   const resolvedParams = await Promise.resolve(params);
-  const body = await request.json().catch(() => null) as { scriptId?: string } | null;
+  const body = await request.json().catch(() => null) as RequestBody | null;
   const scriptId = resolvedParams.scriptId || body?.scriptId;
   
   if (!scriptId) {
@@ -19,11 +33,7 @@ export async function POST(
     return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
   }
 
-  if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
-  // 스크립트 조회
+  // 스크립트 조회 (웹툰 ID 확인을 위해)
   const { data: script, error: scriptError } = await supabase
     .from('episode_scripts')
     .select('content, title, episode_id')
@@ -48,6 +58,39 @@ export async function POST(
   }
 
   const webtoonId = episode.webtoon_id;
+
+  // 수동입력 처리
+  if (body?.manual && body?.characters) {
+    console.log('[analyze-characters][POST] 수동입력 모드:', body.characters.length, '명');
+    
+    // 전달받은 캐릭터 목록을 그대로 저장
+    const analysisData = {
+      characters: body.characters,
+      webtoonId,
+      analyzedAt: new Date().toISOString(),
+      isManual: true,
+    };
+
+    const { error: updateError } = await supabase
+      .from('episode_scripts')
+      .update({ character_analysis: analysisData })
+      .eq('id', scriptId);
+
+    if (updateError) {
+      console.error('[analyze-characters][POST] 수동입력 저장 실패:', updateError);
+      return NextResponse.json({ error: '캐릭터 저장에 실패했습니다.' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      characters: body.characters,
+      webtoonId,
+    });
+  }
+
+  // LLM 분석 처리
+  if (!GEMINI_API_KEY) {
+    return NextResponse.json({ error: 'GEMINI_API_KEY가 설정되지 않았습니다.' }, { status: 500 });
+  }
 
   const prompt = `당신은 웹툰 제작회사의 프로 작가입니다. 대본을 분석하여 등장하는 모든 캐릭터의 이름과 기본 형상(외모, 복장, 특징)을 추출해주세요.
 

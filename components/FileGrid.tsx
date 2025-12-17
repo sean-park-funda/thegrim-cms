@@ -9,8 +9,7 @@ import { getProcesses } from '@/lib/api/processes';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Sparkles, Box, FileText } from 'lucide-react';
-import Link from 'next/link';
+import { FileIcon } from 'lucide-react';
 import { File as FileType, FileWithRelations, Process } from '@/lib/supabase';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
 import { useFileGrid } from '@/lib/hooks/useFileGrid';
@@ -798,28 +797,6 @@ export function FileGrid({ cutId }: FileGridProps) {
                 );
               })}
             </TabsList>
-          </div>
-
-          {/* 괴수 생성기 및 3D 뷰어 버튼 */}
-          <div className="px-3 sm:px-4 pb-2 flex-shrink-0 flex gap-2">
-            <Link href={`/monster-generator?cutId=${cutId}${selectedEpisode?.id ? `&episodeId=${selectedEpisode.id}` : ''}${selectedWebtoon?.id ? `&webtoonId=${selectedWebtoon.id}` : ''}`}>
-              <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
-                <Sparkles className="h-4 w-4" />
-                랜덤 괴수 생성기
-              </Button>
-            </Link>
-            <Link href={`/3d-viewer?cutId=${cutId}${selectedEpisode?.id ? `&episodeId=${selectedEpisode.id}` : ''}${selectedWebtoon?.id ? `&webtoonId=${selectedWebtoon.id}` : ''}`}>
-              <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
-                <Box className="h-4 w-4" />
-                캐릭터 자세 만들기
-              </Button>
-            </Link>
-            <Link href={`/script-to-storyboard?cutId=${cutId}${selectedEpisode?.id ? `&episodeId=${selectedEpisode.id}` : ''}${selectedWebtoon?.id ? `&webtoonId=${selectedWebtoon.id}` : ''}`}>
-              <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
-                <FileText className="h-4 w-4" />
-                대본to글콘티
-              </Button>
-            </Link>
           </div>
 
           {/* TabsContent 대신 직접 렌더링하여 높이 제약 문제 해결 */}

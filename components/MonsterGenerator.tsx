@@ -6,12 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { generateMonsterPrompt, generateMonsterImage } from '@/lib/api/monsterGenerator';
 import { Copy, Loader2, Sparkles, Image as ImageIcon, Save, CheckSquare2, X } from 'lucide-react';
-import { Process } from '@/lib/supabase';
+import { Process, Episode, Cut } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile } from '@/lib/api/files';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
+import { getEpisodes } from '@/lib/api/episodes';
+import { getCuts } from '@/lib/api/cuts';
 
 interface MonsterImage {
   id: string;
@@ -24,12 +27,13 @@ interface MonsterImage {
 }
 
 interface MonsterGeneratorProps {
-  cutId: string;
+  cutId?: string;
+  webtoonId?: string;
   processes: Process[];
   onFilesReload: () => Promise<void>;
 }
 
-export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGeneratorProps) {
+export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }: MonsterGeneratorProps) {
   const { profile } = useStore();
   const { model: globalModel } = useImageModel();
   const [imagePrompt, setImagePrompt] = useState<string>('');
@@ -45,11 +49,59 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
   const [generationCount, setGenerationCount] = useState<number>(4);
   const [generatingImages, setGeneratingImages] = useState<Array<{ id: string; status: 'loading' | 'success' | 'error' }>>([]);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
+  
+  // 저장 다이얼로그용 회차/컷 선택 상태
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [episodesForSave, setEpisodesForSave] = useState<Episode[]>([]);
+  const [cutsForSave, setCutsForSave] = useState<Cut[]>([]);
+  const [selectedEpisodeIdForSave, setSelectedEpisodeIdForSave] = useState<string>('');
+  const [selectedCutIdForSave, setSelectedCutIdForSave] = useState<string>('');
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [loadingCuts, setLoadingCuts] = useState(false);
 
   // 생성 히스토리 로드
   useEffect(() => {
     loadHistory();
   }, [cutId]);
+
+  // 저장 다이얼로그가 열릴 때 회차 목록 로드 (cutId가 없는 경우에만)
+  useEffect(() => {
+    if (saveDialogOpen && webtoonId && !cutId) {
+      setLoadingEpisodes(true);
+      getEpisodes(webtoonId)
+        .then((data) => {
+          // episode_number 순으로 정렬 (0번 "기타"는 맨 위)
+          const sorted = [...data].sort((a, b) => {
+            if (a.episode_number === 0) return -1;
+            if (b.episode_number === 0) return 1;
+            return a.episode_number - b.episode_number;
+          });
+          setEpisodesForSave(sorted);
+        })
+        .catch((err) => console.error('회차 목록 로드 실패:', err))
+        .finally(() => setLoadingEpisodes(false));
+    }
+  }, [saveDialogOpen, webtoonId, cutId]);
+
+  // 회차가 선택되면 컷 목록 로드
+  useEffect(() => {
+    if (selectedEpisodeIdForSave) {
+      setLoadingCuts(true);
+      setCutsForSave([]);
+      setSelectedCutIdForSave('');
+      getCuts(selectedEpisodeIdForSave)
+        .then((data) => {
+          // cut_number 순으로 정렬
+          const sorted = [...data].sort((a, b) => a.cut_number - b.cut_number);
+          setCutsForSave(sorted);
+        })
+        .catch((err) => console.error('컷 목록 로드 실패:', err))
+        .finally(() => setLoadingCuts(false));
+    } else {
+      setCutsForSave([]);
+      setSelectedCutIdForSave('');
+    }
+  }, [selectedEpisodeIdForSave]);
 
   const loadHistory = async () => {
     try {
@@ -391,6 +443,17 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
       return;
     }
 
+    // cutId가 없으면 다이얼로그 열기
+    if (!cutId) {
+      setSaveDialogOpen(true);
+      return;
+    }
+
+    // cutId가 있으면 바로 저장
+    await saveImagesToProcess(cutId);
+  };
+
+  const saveImagesToProcess = async (targetCutId: string) => {
     const selectedImages = generatedImages.filter(img => selectedImageIds.has(img.id) && img.fileId);
     if (selectedImages.length === 0) {
       alert('선택된 이미지를 찾을 수 없습니다.');
@@ -415,6 +478,7 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
             body: JSON.stringify({
               fileId: img.fileId,
               processId: selectedProcessId,
+              cutId: targetCutId,
               description: '괴수 생성기로 생성된 이미지',
             }),
           });
@@ -439,6 +503,11 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
 
       // 히스토리 새로고침
       await loadHistory();
+
+      // 다이얼로그 닫기 및 상태 초기화
+      setSaveDialogOpen(false);
+      setSelectedEpisodeIdForSave('');
+      setSelectedCutIdForSave('');
 
       if (failCount > 0 && successCount === 0) {
         alert(`모든 이미지 저장에 실패했습니다.`);
@@ -639,6 +708,126 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
           </div>
         )}
       </CardContent>
+
+      {/* 저장 위치 선택 다이얼로그 (cutId가 없을 때) */}
+      <Dialog open={saveDialogOpen} onOpenChange={(open) => {
+        setSaveDialogOpen(open);
+        if (!open) {
+          setSelectedEpisodeIdForSave('');
+          setSelectedCutIdForSave('');
+          setEpisodesForSave([]);
+          setCutsForSave([]);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>저장 위치 선택</DialogTitle>
+            <DialogDescription>
+              이미지를 저장할 위치를 선택해주세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            {/* 회차 선택 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">회차 선택</label>
+              <Select
+                value={selectedEpisodeIdForSave}
+                onValueChange={setSelectedEpisodeIdForSave}
+                disabled={loadingEpisodes}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingEpisodes ? "로딩 중..." : "회차를 선택하세요"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {episodesForSave.map((ep) => (
+                    <SelectItem key={ep.id} value={ep.id}>
+                      {ep.episode_number === 0 ? '기타' : `${ep.episode_number}화`} - {ep.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 컷/페이지 선택 */}
+            {selectedEpisodeIdForSave && (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">컷/페이지 선택</label>
+                <Select
+                  value={selectedCutIdForSave}
+                  onValueChange={setSelectedCutIdForSave}
+                  disabled={loadingCuts}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingCuts ? "로딩 중..." : "컷/페이지를 선택하세요"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cutsForSave.map((cut) => (
+                      <SelectItem key={cut.id} value={cut.id}>
+                        {cut.cut_number}번 {cut.title ? `- ${cut.title}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {cutsForSave.length === 0 && !loadingCuts && (
+                  <p className="text-xs text-muted-foreground">
+                    선택한 회차에 컷/페이지가 없습니다. 먼저 컷/페이지를 추가해주세요.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 선택된 공정 표시 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">선택된 공정</label>
+              <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                {processes.find(p => p.id === selectedProcessId) && (
+                  <>
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: processes.find(p => p.id === selectedProcessId)?.color }}
+                    />
+                    <span className="text-sm">{processes.find(p => p.id === selectedProcessId)?.name}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSaveDialogOpen(false);
+                setSelectedEpisodeIdForSave('');
+                setSelectedCutIdForSave('');
+              }}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedCutIdForSave) {
+                  alert('컷/페이지를 선택해주세요.');
+                  return;
+                }
+                saveImagesToProcess(selectedCutIdForSave);
+              }}
+              disabled={savingImages || !selectedCutIdForSave}
+            >
+              {savingImages ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  저장 중...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  저장하기 ({selectedImageIds.size}개)
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

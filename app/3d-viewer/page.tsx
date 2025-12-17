@@ -16,7 +16,9 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { SAM3DService } from '@/lib/api/sam3d';
 import { getCharactersByWebtoon } from '@/lib/api/characters';
 import { getProcesses } from '@/lib/api/processes';
-import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
+import { getEpisodes } from '@/lib/api/episodes';
+import { getCuts } from '@/lib/api/cuts';
+import { CharacterWithSheets, CharacterSheet, Episode, Cut } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
 import { Save } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -223,6 +225,14 @@ function Viewer3DPage() {
   const { profile, selectedCut, selectedEpisode, processes, setProcesses } = useStore();
   const [processSelectDialogOpen, setProcessSelectDialogOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
+  
+  // 저장 다이얼로그용 회차/컷 선택 상태
+  const [episodesForSave, setEpisodesForSave] = useState<Episode[]>([]);
+  const [cutsForSave, setCutsForSave] = useState<Cut[]>([]);
+  const [selectedEpisodeIdForSave, setSelectedEpisodeIdForSave] = useState<string>('');
+  const [selectedCutIdForSave, setSelectedCutIdForSave] = useState<string>('');
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [loadingCuts, setLoadingCuts] = useState(false);
 
   // URL 파라미터에서 webtoonId, episodeId, cutId 가져오기 (우선순위: URL > store)
   const webtoonId = searchParams.get('webtoonId') || selectedWebtoon?.id;
@@ -268,6 +278,45 @@ function Viewer3DPage() {
     };
     loadProcesses();
   }, [setProcesses]);
+
+  // 저장 다이얼로그가 열릴 때 회차 목록 로드 (cutId가 없는 경우에만)
+  useEffect(() => {
+    if (processSelectDialogOpen && webtoonId && !cutIdFromUrl) {
+      setLoadingEpisodes(true);
+      getEpisodes(webtoonId)
+        .then((data) => {
+          // episode_number 순으로 정렬 (0번 "기타"는 맨 위)
+          const sorted = [...data].sort((a, b) => {
+            if (a.episode_number === 0) return -1;
+            if (b.episode_number === 0) return 1;
+            return a.episode_number - b.episode_number;
+          });
+          setEpisodesForSave(sorted);
+        })
+        .catch((err) => console.error('회차 목록 로드 실패:', err))
+        .finally(() => setLoadingEpisodes(false));
+    }
+  }, [processSelectDialogOpen, webtoonId, cutIdFromUrl]);
+
+  // 회차가 선택되면 컷 목록 로드
+  useEffect(() => {
+    if (selectedEpisodeIdForSave) {
+      setLoadingCuts(true);
+      setCutsForSave([]);
+      setSelectedCutIdForSave('');
+      getCuts(selectedEpisodeIdForSave)
+        .then((data) => {
+          // cut_number 순으로 정렬
+          const sorted = [...data].sort((a, b) => a.cut_number - b.cut_number);
+          setCutsForSave(sorted);
+        })
+        .catch((err) => console.error('컷 목록 로드 실패:', err))
+        .finally(() => setLoadingCuts(false));
+    } else {
+      setCutsForSave([]);
+      setSelectedCutIdForSave('');
+    }
+  }, [selectedEpisodeIdForSave]);
 
   // 캐릭터 목록 로드 (URL 파라미터의 webtoonId 또는 store의 selectedWebtoon 사용)
   useEffect(() => {
@@ -873,17 +922,81 @@ function Viewer3DPage() {
               </Dialog>
 
               {/* 공정 선택 다이얼로그 */}
-              <Dialog open={processSelectDialogOpen} onOpenChange={setProcessSelectDialogOpen}>
-                <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+              <Dialog open={processSelectDialogOpen} onOpenChange={(open) => {
+                setProcessSelectDialogOpen(open);
+                if (!open) {
+                  // 다이얼로그가 닫힐 때 상태 초기화
+                  setSelectedProcessId('');
+                  setSelectedEpisodeIdForSave('');
+                  setSelectedCutIdForSave('');
+                  setEpisodesForSave([]);
+                  setCutsForSave([]);
+                }
+              }}>
+                <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>공정 선택</DialogTitle>
+                    <DialogTitle>저장 위치 선택</DialogTitle>
                     <DialogDescription>
-                      이미지를 저장할 공정을 선택해주세요.
+                      이미지를 저장할 위치를 선택해주세요.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="flex flex-col gap-4 py-4">
+                    {/* 회차 선택 (cutId가 없는 경우에만 표시) */}
+                    {!cutIdFromUrl && (
+                      <>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium">회차 선택</label>
+                          <Select
+                            value={selectedEpisodeIdForSave}
+                            onValueChange={setSelectedEpisodeIdForSave}
+                            disabled={loadingEpisodes}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={loadingEpisodes ? "로딩 중..." : "회차를 선택하세요"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {episodesForSave.map((ep) => (
+                                <SelectItem key={ep.id} value={ep.id}>
+                                  {ep.episode_number === 0 ? '기타' : `${ep.episode_number}화`} - {ep.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* 컷/페이지 선택 (회차가 선택된 경우에만 표시) */}
+                        {selectedEpisodeIdForSave && (
+                          <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium">컷/페이지 선택</label>
+                            <Select
+                              value={selectedCutIdForSave}
+                              onValueChange={setSelectedCutIdForSave}
+                              disabled={loadingCuts}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder={loadingCuts ? "로딩 중..." : "컷/페이지를 선택하세요"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {cutsForSave.map((cut) => (
+                                  <SelectItem key={cut.id} value={cut.id}>
+                                    {cut.cut_number}번 {cut.title ? `- ${cut.title}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {cutsForSave.length === 0 && !loadingCuts && (
+                              <p className="text-xs text-muted-foreground">
+                                선택한 회차에 컷/페이지가 없습니다. 먼저 컷/페이지를 추가해주세요.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* 공정 선택 */}
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium">공정</label>
+                      <label className="text-sm font-medium">공정 선택</label>
                       <Select
                         value={selectedProcessId}
                         onValueChange={setSelectedProcessId}
@@ -913,23 +1026,30 @@ function Viewer3DPage() {
                       onClick={() => {
                         setProcessSelectDialogOpen(false);
                         setSelectedProcessId('');
+                        setSelectedEpisodeIdForSave('');
+                        setSelectedCutIdForSave('');
                       }}
                     >
                       취소
                     </Button>
                     <Button
                       onClick={async () => {
+                        // cutId 결정: URL에서 가져오거나 다이얼로그에서 선택한 값 사용
+                        const finalCutId = cutIdFromUrl || selectedCutIdForSave;
+                        const finalEpisodeId = episodeId || selectedEpisodeIdForSave;
+                        
                         if (!selectedProcessId || !convertedFileId) {
                           alert('공정을 선택해주세요.');
+                          return;
+                        }
+                        
+                        if (!finalCutId) {
+                          alert('컷/페이지를 선택해주세요.');
                           return;
                         }
 
                         setSavingImage(true);
                         try {
-                          // URL 파라미터에서 cutId, episodeId 가져오기
-                          const cutIdFromUrl = searchParams.get('cutId');
-                          const episodeIdFromUrl = searchParams.get('episodeId');
-                          
                           const response = await fetch('/api/regenerate-image-save', {
                             method: 'POST',
                             headers: {
@@ -938,8 +1058,8 @@ function Viewer3DPage() {
                             body: JSON.stringify({
                               fileId: convertedFileId,
                               processId: selectedProcessId,
-                              cutId: cutIdFromUrl || selectedCut?.id,
-                              episodeId: episodeIdFromUrl || episodeId,
+                              cutId: finalCutId,
+                              episodeId: finalEpisodeId,
                             }),
                           });
 
@@ -952,6 +1072,8 @@ function Viewer3DPage() {
                           setConvertedFileId(null); // 저장 완료 후 버튼 숨김
                           setProcessSelectDialogOpen(false);
                           setSelectedProcessId('');
+                          setSelectedEpisodeIdForSave('');
+                          setSelectedCutIdForSave('');
                         } catch (err) {
                           console.error('이미지 저장 실패:', err);
                           const errorMessage = err instanceof Error ? err.message : '이미지 저장에 실패했습니다.';
@@ -960,7 +1082,7 @@ function Viewer3DPage() {
                           setSavingImage(false);
                         }
                       }}
-                      disabled={savingImage || !selectedProcessId}
+                      disabled={savingImage || !selectedProcessId || (!cutIdFromUrl && !selectedCutIdForSave)}
                     >
                       {savingImage ? (
                         <>

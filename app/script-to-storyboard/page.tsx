@@ -8,17 +8,18 @@ import { Card, CardContent } from '@/components/ui/card';
 
 function ScriptToStoryboardForm() {
   const searchParams = useSearchParams();
-  const cutId = searchParams.get('cutId') || '';
-  const episodeId = searchParams.get('episodeId') || '';
+  const cutId = searchParams.get('cutId') || undefined;
+  const episodeIdFromUrl = searchParams.get('episodeId') || undefined;
   const webtoonId = searchParams.get('webtoonId') || '';
 
-  if (!cutId) {
+  // webtoonId가 없으면 안내 메시지
+  if (!webtoonId && !episodeIdFromUrl) {
     return (
       <div className="h-full flex items-center justify-center">
         <Card>
           <CardContent className="p-8">
             <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-              <p className="text-sm text-destructive">cutId가 필요합니다. FileGrid에서 접근해주세요.</p>
+              <p className="text-sm text-destructive">웹툰 정보가 필요합니다. 웹툰에서 접근해주세요.</p>
             </div>
           </CardContent>
         </Card>
@@ -30,7 +31,7 @@ function ScriptToStoryboardForm() {
     <div className="h-full">
       <ScriptToStoryboard
         cutId={cutId}
-        episodeId={episodeId}
+        episodeId={episodeIdFromUrl}
         webtoonId={webtoonId}
       />
     </div>

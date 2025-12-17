@@ -43,11 +43,11 @@ const SYSTEM_PROMPT = `당신은 웹툰 제작회사의 프로 작가입니다. 
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  console.log('[대본to글콘티] 요청 시작');
+  console.log('[대본to콘티] 요청 시작');
 
   try {
     if (!GEMINI_API_KEY) {
-      console.error('[대본to글콘티] GEMINI_API_KEY가 설정되지 않음');
+      console.error('[대본to콘티] GEMINI_API_KEY가 설정되지 않음');
       return NextResponse.json(
         { error: 'GEMINI_API_KEY가 설정되지 않았습니다.' },
         { status: 500 }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Gemini API 호출
-    console.log('[대본to글콘티] Gemini API 호출 시작...');
+    console.log('[대본to콘티] Gemini API 호출 시작...');
     const geminiRequestStart = Date.now();
 
     const ai = new GoogleGenAI({
@@ -107,11 +107,11 @@ ${script}`;
       try {
         if (attempt > 0) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-          console.log(`[대본to글콘티] Gemini API 재시도 ${attempt}/${maxRetries} (${delay}ms 대기 후)...`);
+          console.log(`[대본to콘티] Gemini API 재시도 ${attempt}/${maxRetries} (${delay}ms 대기 후)...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
 
-        console.log('[대본to글콘티] Gemini API 호출:', {
+        console.log('[대본to콘티] Gemini API 호출:', {
           model,
           attempt: attempt + 1,
           maxRetries: maxRetries + 1,
@@ -136,7 +136,7 @@ ${script}`;
         break;
       } catch (error: unknown) {
         lastError = error;
-        console.error(`[대본to글콘티] Gemini API 호출 실패 (시도 ${attempt + 1}/${maxRetries + 1}):`, error);
+        console.error(`[대본to콘티] Gemini API 호출 실패 (시도 ${attempt + 1}/${maxRetries + 1}):`, error);
 
         if (attempt >= maxRetries) {
           throw error;
@@ -165,7 +165,7 @@ ${script}`;
     }
 
     const geminiRequestTime = Date.now() - geminiRequestStart;
-    console.log('[대본to글콘티] Gemini API 응답 수신 완료:', {
+    console.log('[대본to콘티] Gemini API 응답 수신 완료:', {
       responseLength: responseText.length,
       time: `${geminiRequestTime}ms`,
     });
@@ -195,13 +195,13 @@ ${script}`;
         cleanedText = cleanedText.substring(jsonStart, jsonEnd + 1);
       } else {
         // JSON 객체를 찾을 수 없으면 원본 텍스트 사용
-        console.warn('[대본to글콘티] JSON 객체를 찾을 수 없어 원본 텍스트 사용');
+        console.warn('[대본to콘티] JSON 객체를 찾을 수 없어 원본 텍스트 사용');
       }
 
       parsedResponse = JSON.parse(cleanedText);
     } catch (parseError) {
-      console.error('[대본to글콘티] JSON 파싱 실패:', parseError);
-      console.error('[대본to글콘티] 원본 응답:', responseText);
+      console.error('[대본to콘티] JSON 파싱 실패:', parseError);
+      console.error('[대본to콘티] 원본 응답:', responseText);
       return NextResponse.json(
         { error: 'Gemini API 응답을 파싱할 수 없습니다. 응답 형식을 확인해주세요.' },
         { status: 500 }
@@ -210,7 +210,7 @@ ${script}`;
 
     // 응답 검증
     if (!parsedResponse.cuts || !Array.isArray(parsedResponse.cuts)) {
-      console.error('[대본to글콘티] 잘못된 응답 형식:', parsedResponse);
+      console.error('[대본to콘티] 잘못된 응답 형식:', parsedResponse);
       return NextResponse.json(
         { error: 'Gemini API 응답 형식이 올바르지 않습니다. cuts 배열이 필요합니다.' },
         { status: 500 }
@@ -218,7 +218,7 @@ ${script}`;
     }
 
     const totalTime = Date.now() - startTime;
-    console.log('[대본to글콘티] 요청 완료:', {
+    console.log('[대본to콘티] 요청 완료:', {
       cutsCount: parsedResponse.cuts.length,
       totalTime: `${totalTime}ms`,
     });
@@ -226,7 +226,7 @@ ${script}`;
     return NextResponse.json(parsedResponse);
   } catch (error) {
     const totalTime = Date.now() - startTime;
-    console.error('[대본to글콘티] 오류 발생:', error);
+    console.error('[대본to콘티] 오류 발생:', error);
     const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
     return NextResponse.json(
       { error: errorMessage },

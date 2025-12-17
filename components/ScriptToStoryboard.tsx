@@ -5,13 +5,17 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Sparkles, Check, Edit, Scissors } from 'lucide-react';
+import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Users, Sparkles, Check, Edit, Scissors } from 'lucide-react';
 import { ImageViewer } from '@/components/ImageViewer';
 import { CharacterManagementDialog } from '@/components/CharacterManagementDialog';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
-import { Webtoon } from '@/lib/supabase';
-import { createCharacter } from '@/lib/api/characters';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Webtoon, Episode } from '@/lib/supabase';
+import { createCharacter, getCharactersByWebtoon } from '@/lib/api/characters';
+import { CharacterWithSheets } from '@/lib/supabase';
+import { getEpisodes } from '@/lib/api/episodes';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
 interface Cut {
@@ -61,17 +65,22 @@ interface Script {
 }
 
 interface ScriptToStoryboardProps {
-  cutId: string;
+  cutId?: string;
   episodeId?: string;
   webtoonId?: string;
 }
 
-export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStoryboardProps) {
+export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoonId }: ScriptToStoryboardProps) {
   const router = useRouter();
   const { model: imageModel } = useImageModel();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 회차 선택 상태
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>(initialEpisodeId || '');
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
 
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -142,6 +151,60 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
   
   // 이미지 로딩 중인 storyboard ID 추적
   const [loadingStoryboardImages, setLoadingStoryboardImages] = useState<Set<string>>(new Set());
+
+  // 수동입력 관련 상태
+  const [webtoonCharacters, setWebtoonCharacters] = useState<CharacterWithSheets[]>([]);
+  const [loadingWebtoonCharacters, setLoadingWebtoonCharacters] = useState(false);
+  const [manualSelectOpen, setManualSelectOpen] = useState(false);
+  const [selectedManualCharacters, setSelectedManualCharacters] = useState<Set<string>>(new Set());
+  const [savingManualCharacters, setSavingManualCharacters] = useState(false);
+
+  // 대본 수정 관련 상태
+  const [editingScript, setEditingScript] = useState<Script | null>(null);
+  const [editScriptTitle, setEditScriptTitle] = useState('');
+  const [editScriptContent, setEditScriptContent] = useState('');
+  const [savingEditScript, setSavingEditScript] = useState(false);
+  const [editScriptDialogOpen, setEditScriptDialogOpen] = useState(false);
+
+  // 회차 목록 로드
+  useEffect(() => {
+    if (webtoonId) {
+      setLoadingEpisodes(true);
+      getEpisodes(webtoonId)
+        .then((data) => {
+          // episode_number 순으로 정렬 (0번 "기타"는 맨 위)
+          const sorted = [...data].sort((a, b) => {
+            if (a.episode_number === 0) return -1;
+            if (b.episode_number === 0) return 1;
+            return a.episode_number - b.episode_number;
+          });
+          setEpisodes(sorted);
+          
+          // initialEpisodeId가 없으면 첫 번째 회차 자동 선택
+          if (!initialEpisodeId && sorted.length > 0) {
+            setSelectedEpisodeId(sorted[0].id);
+          }
+        })
+        .catch((err) => console.error('회차 목록 로드 실패:', err))
+        .finally(() => setLoadingEpisodes(false));
+    }
+  }, [webtoonId, initialEpisodeId]);
+
+  // 웹툰 캐릭터 목록 로드
+  useEffect(() => {
+    if (webtoonId) {
+      setLoadingWebtoonCharacters(true);
+      getCharactersByWebtoon(webtoonId)
+        .then((data) => {
+          setWebtoonCharacters(data);
+        })
+        .catch((err) => console.error('웹툰 캐릭터 목록 로드 실패:', err))
+        .finally(() => setLoadingWebtoonCharacters(false));
+    }
+  }, [webtoonId]);
+
+  // 현재 선택된 episodeId (props로 받은 것 또는 선택한 것)
+  const episodeId = initialEpisodeId || selectedEpisodeId;
 
   const canLoad = useMemo(() => !!episodeId, [episodeId]);
 
@@ -362,6 +425,56 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
     }
   };
 
+  const handleEditScriptOpen = (script: Script) => {
+    setEditingScript(script);
+    setEditScriptTitle(script.title || '');
+    setEditScriptContent(script.content);
+    setEditScriptDialogOpen(true);
+  };
+
+  const handleEditScriptSave = async () => {
+    if (!editingScript) return;
+    if (!editScriptContent.trim()) {
+      setError('대본 내용을 입력해주세요.');
+      return;
+    }
+
+    setSavingEditScript(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${editingScript.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editScriptTitle.trim() || null,
+          content: editScriptContent.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '대본 수정에 실패했습니다.');
+      }
+      const updated = await res.json();
+      
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === editingScript.id
+            ? { ...s, title: updated.title, content: updated.content }
+            : s
+        )
+      );
+      
+      setEditScriptDialogOpen(false);
+      setEditingScript(null);
+    } catch (err) {
+      console.error('대본 수정 실패:', err);
+      setError(err instanceof Error ? err.message : '대본 수정에 실패했습니다.');
+    } finally {
+      setSavingEditScript(false);
+    }
+  };
+
   const reorder = async (ids: string[]) => {
     await fetch('/api/episode-scripts/reorder', {
       method: 'POST',
@@ -470,6 +583,90 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
       setError(err instanceof Error ? err.message : '캐릭터 분석에 실패했습니다.');
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  // 수동입력 다이얼로그 열기
+  const handleManualSelectOpen = () => {
+    // 이미 선택된 캐릭터가 있으면 미리 체크
+    if (selectedScriptId && characterAnalysis[selectedScriptId]) {
+      const existingCharacterIds = new Set(
+        characterAnalysis[selectedScriptId].characters
+          .filter((c) => c.characterId)
+          .map((c) => c.characterId as string)
+      );
+      setSelectedManualCharacters(existingCharacterIds);
+    } else {
+      setSelectedManualCharacters(new Set());
+    }
+    setManualSelectOpen(true);
+  };
+
+  // 수동입력 캐릭터 선택 토글
+  const handleManualCharacterToggle = (characterId: string) => {
+    setSelectedManualCharacters((prev) => {
+      const next = new Set(prev);
+      if (next.has(characterId)) {
+        next.delete(characterId);
+      } else {
+        next.add(characterId);
+      }
+      return next;
+    });
+  };
+
+  // 수동입력 확인
+  const handleManualSelectConfirm = async () => {
+    if (!selectedScriptId || !webtoonId) return;
+
+    setSavingManualCharacters(true);
+    setError(null);
+    try {
+      // 선택된 캐릭터들의 정보 구성
+      const selectedCharacters = webtoonCharacters
+        .filter((c) => selectedManualCharacters.has(c.id))
+        .map((c) => ({
+          name: c.name,
+          description: c.description || '',
+          existsInDb: true,
+          characterId: c.id,
+          characterSheets: (c.character_sheets || []).map((sheet) => ({
+            id: sheet.id,
+            file_path: sheet.file_path,
+            thumbnail_path: sheet.thumbnail_path || null,
+          })),
+        }));
+
+      // API로 저장 (analyze-characters API에 manual 플래그 추가)
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(selectedScriptId)}/analyze-characters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          manual: true,
+          characters: selectedCharacters,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '캐릭터 저장에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      setCharacterAnalysis((prev) => ({
+        ...prev,
+        [selectedScriptId]: {
+          characters: data.characters || [],
+          webtoonId: data.webtoonId,
+        },
+      }));
+
+      setManualSelectOpen(false);
+    } catch (err) {
+      console.error('수동입력 캐릭터 저장 실패:', err);
+      setError(err instanceof Error ? err.message : '캐릭터 저장에 실패했습니다.');
+    } finally {
+      setSavingManualCharacters(false);
     }
   };
 
@@ -878,9 +1075,34 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
-      <div className="flex items-center gap-2 p-4 border-b flex-shrink-0">
-        <FileText className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">대본to글콘티</h1>
+      <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <FileText className="h-6 w-6" />
+          <h1 className="text-2xl font-bold">대본to콘티</h1>
+        </div>
+        
+        {/* 회차 선택 (webtoonId가 있을 때만 표시) */}
+        {webtoonId && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">회차:</span>
+            <Select
+              value={selectedEpisodeId}
+              onValueChange={setSelectedEpisodeId}
+              disabled={loadingEpisodes}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder={loadingEpisodes ? "로딩 중..." : "회차 선택"} />
+              </SelectTrigger>
+              <SelectContent>
+                {episodes.map((ep) => (
+                  <SelectItem key={ep.id} value={ep.id}>
+                    {ep.episode_number === 0 ? '기타' : `${ep.episode_number}화`} - {ep.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {!canLoad && (
@@ -1028,6 +1250,18 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditScriptOpen(script);
+                            }}
+                            title="수정"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1132,23 +1366,34 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
                             </span>
                           )}
                       </CardTitle>
-                      <Button
-                        size="sm"
-                        onClick={() => handleAnalyzeCharacters(selectedScript)}
-                        disabled={analyzingId === selectedScript.id}
-                      >
-                        {analyzingId === selectedScript.id ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            분석 중...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="mr-2 h-4 w-4" />
-                            캐릭터 분석
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleManualSelectOpen}
+                          disabled={loadingWebtoonCharacters || webtoonCharacters.length === 0}
+                        >
+                          <Users className="mr-2 h-4 w-4" />
+                          수동입력
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleAnalyzeCharacters(selectedScript)}
+                          disabled={analyzingId === selectedScript.id}
+                        >
+                          {analyzingId === selectedScript.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              분석 중...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="mr-2 h-4 w-4" />
+                              캐릭터 분석
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -1527,6 +1772,168 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 수동입력 캐릭터 선택 다이얼로그 */}
+      <Dialog open={manualSelectOpen} onOpenChange={setManualSelectOpen}>
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              캐릭터 수동 선택
+            </DialogTitle>
+            <DialogDescription>
+              이 웹툰에 등록된 캐릭터 중에서 대본에 등장하는 캐릭터를 선택하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {loadingWebtoonCharacters ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">캐릭터 목록 로딩 중...</span>
+              </div>
+            ) : webtoonCharacters.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <User className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">등록된 캐릭터가 없습니다.</p>
+                <p className="text-xs mt-1">먼저 웹툰에 캐릭터를 등록해주세요.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {webtoonCharacters.map((character) => {
+                  const isSelected = selectedManualCharacters.has(character.id);
+                  const sheetCount = character.character_sheets?.length || 0;
+                  const firstSheet = character.character_sheets?.[0];
+                  return (
+                    <div
+                      key={character.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                      }`}
+                      onClick={() => handleManualCharacterToggle(character.id)}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onClick={(e) => e.stopPropagation()}
+                        onCheckedChange={() => handleManualCharacterToggle(character.id)}
+                      />
+                      {firstSheet ? (
+                        <img
+                          src={firstSheet.file_path}
+                          alt={character.name}
+                          className="w-12 h-12 rounded object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                          <User className="h-6 w-6 text-muted-foreground/40" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-sm truncate">{character.name}</h4>
+                        {sheetCount > 0 && (
+                          <p className="text-xs text-muted-foreground">캐릭터시트 {sheetCount}개</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setManualSelectOpen(false)}
+              disabled={savingManualCharacters}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleManualSelectConfirm}
+              disabled={savingManualCharacters || selectedManualCharacters.size === 0}
+            >
+              {savingManualCharacters ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  저장 중...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  선택 완료 ({selectedManualCharacters.size}명)
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 대본 수정 다이얼로그 */}
+      <Dialog open={editScriptDialogOpen} onOpenChange={(open) => {
+        setEditScriptDialogOpen(open);
+        if (!open) setEditingScript(null);
+      }}>
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              대본 수정
+            </DialogTitle>
+            <DialogDescription>
+              대본의 제목과 내용을 수정할 수 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">제목 (선택)</label>
+              <input
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="대본 제목"
+                value={editScriptTitle}
+                onChange={(e) => setEditScriptTitle(e.target.value)}
+                disabled={savingEditScript}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">대본 내용</label>
+              <Textarea
+                value={editScriptContent}
+                onChange={(e) => setEditScriptContent(e.target.value)}
+                placeholder="대본 내용을 입력하세요..."
+                className="min-h-[300px]"
+                disabled={savingEditScript}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditScriptDialogOpen(false);
+                setEditingScript(null);
+              }}
+              disabled={savingEditScript}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleEditScriptSave}
+              disabled={savingEditScript || !editScriptContent.trim()}
+            >
+              {savingEditScript ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  저장 중...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  저장
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

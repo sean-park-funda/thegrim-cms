@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sparkles, Box } from 'lucide-react';
+import Link from 'next/link';
 import { Episode, WebtoonWithEpisodes } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
 import { CharacterManagementDialog } from './CharacterManagementDialog';
@@ -396,6 +397,37 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* AI 도구 카드 */}
+        <div className="mb-4">
+          <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-medium text-muted-foreground">AI 도구</span>
+                <div className="flex gap-2 flex-wrap">
+                  <Link href={`/monster-generator?webtoonId=${webtoon.id}`}>
+                    <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
+                      <Sparkles className="h-4 w-4" />
+                      랜덤 괴수 생성기
+                    </Button>
+                  </Link>
+                  <Link href={`/3d-viewer?webtoonId=${webtoon.id}`}>
+                    <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
+                      <Box className="h-4 w-4" />
+                      캐릭터 자세 만들기
+                    </Button>
+                  </Link>
+                  <Link href={`/script-to-storyboard?webtoonId=${webtoon.id}`}>
+                    <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
+                      <FileText className="h-4 w-4" />
+                      대본to콘티
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* 빈 상태 */}
