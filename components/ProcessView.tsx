@@ -51,7 +51,10 @@ export function ProcessView({ initialProcesses, processId }: ProcessViewProps = 
   const selectedProcess = processes.find(p => p.id === currentProcessId) || null;
   const [files, setFiles] = useState<FileWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
-  const [processesLoading, setProcessesLoading] = useState(true);
+  // processes가 이미 있거나 initialProcesses가 있으면 로딩 완료 상태로 시작
+  const [processesLoading, setProcessesLoading] = useState(
+    () => processes.length === 0 && (!initialProcesses || initialProcesses.length === 0)
+  );
   const [processesError, setProcessesError] = useState<string | null>(null);
   const [processFileCounts, setProcessFileCounts] = useState<Record<string, number>>({});
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
@@ -70,16 +73,22 @@ export function ProcessView({ initialProcesses, processId }: ProcessViewProps = 
 
   // 초기 공정 데이터 설정
   useEffect(() => {
-    if (initialProcesses && initialProcesses.length > 0 && processes.length === 0) {
-      setProcesses(initialProcesses);
+    if (initialProcesses && initialProcesses.length > 0) {
+      if (processes.length === 0) {
+        setProcesses(initialProcesses);
+      }
+      // 초기 데이터가 있으면 로딩 완료
+      setProcessesLoading(false);
     }
   }, [initialProcesses, setProcesses, processes.length]);
 
   const loadProcesses = useCallback(async () => {
     try {
+      console.log('[ProcessView] loadProcesses 호출됨');
       setProcessesLoading(true);
       setProcessesError(null);
       const data = await getProcesses();
+      console.log('[ProcessView] getProcesses 결과:', data);
       setProcesses(data);
       
       // 각 공정별 파일 개수 조회
@@ -105,10 +114,49 @@ export function ProcessView({ initialProcesses, processId }: ProcessViewProps = 
   }, [setProcesses]);
 
   useEffect(() => {
-    if (processes.length === 0 && !initialProcesses) {
+    console.log('[ProcessView] useEffect 실행:', {
+      processesLength: processes.length,
+      initialProcesses: initialProcesses,
+      initialProcessesLength: initialProcesses?.length
+    });
+    // 이미 전역 상태에 데이터가 있으면 로딩 완료
+    if (processes.length > 0) {
+      setProcessesLoading(false);
+      return;
+    }
+    // initialProcesses가 없거나 빈 배열이면 클라이언트에서 다시 로드
+    if (!initialProcesses || initialProcesses.length === 0) {
+      console.log('[ProcessView] loadProcesses 호출 조건 충족');
       loadProcesses();
     }
   }, [loadProcesses, processes.length, initialProcesses]);
+
+  // 파일 개수 조회 (processes가 있고 counts가 비어있을 때)
+  useEffect(() => {
+    const loadFileCounts = async () => {
+      if (processes.length === 0) return;
+      // 이미 조회된 경우 스킵
+      if (Object.keys(processFileCounts).length > 0) return;
+      
+      console.log('[ProcessView] 파일 개수 조회 시작');
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        processes.map(async (process) => {
+          try {
+            const count = await getFileCountByProcess(process.id);
+            counts[process.id] = count;
+          } catch (error) {
+            console.error(`공정 ${process.id} 파일 개수 조회 실패:`, error);
+            counts[process.id] = 0;
+          }
+        })
+      );
+      console.log('[ProcessView] 파일 개수 조회 완료:', counts);
+      setProcessFileCounts(counts);
+    };
+
+    loadFileCounts();
+  }, [processes, processFileCounts]);
 
   const loadFiles = useCallback(async () => {
     if (!selectedProcess) return;
