@@ -142,6 +142,17 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   const [modificationPrompt, setModificationPrompt] = useState('');
   const [modifyingCut, setModifyingCut] = useState(false);
   const [cutEditDialogOpen, setCutEditDialogOpen] = useState(false);
+  
+  // 컷 직접 수정 관련 상태
+  const [directEditMode, setDirectEditMode] = useState(false);
+  const [directEditValues, setDirectEditValues] = useState<{
+    title: string;
+    background: string;
+    description: string;
+    dialogue: string;
+    charactersInCut: string;
+  }>({ title: '', background: '', description: '', dialogue: '', charactersInCut: '' });
+  const [savingDirectEdit, setSavingDirectEdit] = useState(false);
 
   // 컷 분할 관련 상태
   const [splittingCut, setSplittingCut] = useState<string | null>(null); // "storyboardId:cutIndex"
@@ -1010,6 +1021,82 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       setError(err instanceof Error ? err.message : '컷 수정에 실패했습니다.');
     } finally {
       setModifyingCut(false);
+    }
+  };
+
+  // 직접 수정 모드로 전환
+  const handleDirectEditOpen = () => {
+    if (!editingCut) return;
+    setDirectEditValues({
+      title: editingCut.cut.title || '',
+      background: editingCut.cut.background || '',
+      description: editingCut.cut.description || '',
+      dialogue: editingCut.cut.dialogue || '',
+      charactersInCut: Array.isArray(editingCut.cut.charactersInCut) 
+        ? editingCut.cut.charactersInCut.join(', ') 
+        : '',
+    });
+    setDirectEditMode(true);
+  };
+
+  // 직접 수정 저장
+  const handleDirectEditSave = async () => {
+    if (!editingCut || !selectedScriptId) return;
+
+    setSavingDirectEdit(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(selectedScriptId)}/storyboards/cuts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId: editingCut.storyboardId,
+          cutIndex: editingCut.cutIndex,
+          cut: {
+            cutNumber: editingCut.cut.cutNumber,
+            title: directEditValues.title.trim(),
+            background: directEditValues.background.trim(),
+            description: directEditValues.description.trim(),
+            dialogue: directEditValues.dialogue.trim(),
+            charactersInCut: directEditValues.charactersInCut
+              .split(',')
+              .map((s) => s.trim())
+              .filter((s) => s),
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '컷 직접 수정에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      const updatedStoryboard = data.storyboard;
+
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === selectedScriptId
+            ? {
+                ...s,
+                storyboards: s.storyboards?.map((sb) =>
+                  sb.id === editingCut.storyboardId ? updatedStoryboard : sb
+                ) ?? [updatedStoryboard],
+              }
+            : s
+        )
+      );
+
+      // 다이얼로그 닫기
+      setCutEditDialogOpen(false);
+      setEditingCut(null);
+      setDirectEditMode(false);
+    } catch (err) {
+      console.error('컷 직접 수정 실패:', err);
+      setError(err instanceof Error ? err.message : '컷 직접 수정에 실패했습니다.');
+    } finally {
+      setSavingDirectEdit(false);
     }
   };
 
@@ -1948,49 +2035,124 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
           </DialogHeader>
           {editingCut && (
             <div className="space-y-4">
-              {/* 현재 컷 내용 표시 */}
+              {/* 현재 컷 내용 표시 또는 직접 수정 폼 */}
               <div className="space-y-3">
                 <div>
-                  <h4 className="text-sm font-semibold mb-2">현재 컷 내용 (컷 {editingCut.cut.cutNumber})</h4>
-                  <div className="bg-muted/50 p-3 rounded space-y-2 text-sm">
-                    {editingCut.cut.title && (
-                      <div>
-                        <span className="font-semibold">제목:</span> {editingCut.cut.title}
-                      </div>
-                    )}
-                    {editingCut.cut.background && (
-                      <div>
-                        <span className="font-semibold">배경:</span> {editingCut.cut.background}
-                      </div>
-                    )}
-                    {editingCut.cut.description && (
-                      <div>
-                        <span className="font-semibold">연출/구도:</span> {editingCut.cut.description}
-                      </div>
-                    )}
-                    {editingCut.cut.dialogue && (
-                      <div>
-                        <span className="font-semibold">대사/내레이션:</span> {editingCut.cut.dialogue}
-                      </div>
-                    )}
-                    {Array.isArray(editingCut.cut.charactersInCut) && editingCut.cut.charactersInCut.length > 0 && (
-                      <div>
-                        <span className="font-semibold">등장인물:</span> {editingCut.cut.charactersInCut.join(', ')}
-                      </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold">현재 컷 내용 (컷 {editingCut.cut.cutNumber})</h4>
+                    {!directEditMode && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDirectEditOpen}
+                      >
+                        <PenLine className="h-3 w-3 mr-1" />
+                        직접 수정
+                      </Button>
                     )}
                   </div>
+                  
+                  {directEditMode ? (
+                    // 직접 수정 폼
+                    <div className="space-y-3 border rounded-lg p-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">제목</label>
+                        <input
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="컷 제목"
+                          value={directEditValues.title}
+                          onChange={(e) => setDirectEditValues((prev) => ({ ...prev, title: e.target.value }))}
+                          disabled={savingDirectEdit}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">배경</label>
+                        <Textarea
+                          placeholder="배경 설명"
+                          value={directEditValues.background}
+                          onChange={(e) => setDirectEditValues((prev) => ({ ...prev, background: e.target.value }))}
+                          disabled={savingDirectEdit}
+                          className="min-h-[60px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">연출/구도</label>
+                        <Textarea
+                          placeholder="연출 및 구도 설명"
+                          value={directEditValues.description}
+                          onChange={(e) => setDirectEditValues((prev) => ({ ...prev, description: e.target.value }))}
+                          disabled={savingDirectEdit}
+                          className="min-h-[80px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">대사/내레이션</label>
+                        <Textarea
+                          placeholder="대사 또는 내레이션"
+                          value={directEditValues.dialogue}
+                          onChange={(e) => setDirectEditValues((prev) => ({ ...prev, dialogue: e.target.value }))}
+                          disabled={savingDirectEdit}
+                          className="min-h-[60px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">등장인물 (쉼표로 구분)</label>
+                        <input
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="예: 철수, 영희, 민수"
+                          value={directEditValues.charactersInCut}
+                          onChange={(e) => setDirectEditValues((prev) => ({ ...prev, charactersInCut: e.target.value }))}
+                          disabled={savingDirectEdit}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    // 읽기 전용 표시
+                    <div className="bg-muted/50 p-3 rounded space-y-2 text-sm">
+                      {editingCut.cut.title && (
+                        <div>
+                          <span className="font-semibold">제목:</span> {editingCut.cut.title}
+                        </div>
+                      )}
+                      {editingCut.cut.background && (
+                        <div>
+                          <span className="font-semibold">배경:</span> {editingCut.cut.background}
+                        </div>
+                      )}
+                      {editingCut.cut.description && (
+                        <div>
+                          <span className="font-semibold">연출/구도:</span> {editingCut.cut.description}
+                        </div>
+                      )}
+                      {editingCut.cut.dialogue && (
+                        <div>
+                          <span className="font-semibold">대사/내레이션:</span> {editingCut.cut.dialogue}
+                        </div>
+                      )}
+                      {Array.isArray(editingCut.cut.charactersInCut) && editingCut.cut.charactersInCut.length > 0 && (
+                        <div>
+                          <span className="font-semibold">등장인물:</span> {editingCut.cut.charactersInCut.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">수정 지시</h4>
-                  <Textarea
-                    value={modificationPrompt}
-                    onChange={(e) => setModificationPrompt(e.target.value)}
-                    placeholder="예: 배경을 실내로 변경하고, 클로즈업으로 변경해주세요"
-                    className="min-h-[120px]"
-                    disabled={modifyingCut}
-                  />
-                </div>
+                
+                {/* LLM 수정 지시 (직접 수정 모드가 아닐 때만 표시) */}
+                {!directEditMode && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">수정 지시 (AI)</h4>
+                    <Textarea
+                      value={modificationPrompt}
+                      onChange={(e) => setModificationPrompt(e.target.value)}
+                      placeholder="예: 배경을 실내로 변경하고, 클로즈업으로 변경해주세요"
+                      className="min-h-[120px]"
+                      disabled={modifyingCut}
+                    />
+                  </div>
+                )}
               </div>
+              
               <div className="flex items-center justify-end gap-2">
                 <Button
                   variant="outline"
@@ -1998,27 +2160,57 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                     setCutEditDialogOpen(false);
                     setEditingCut(null);
                     setModificationPrompt('');
+                    setDirectEditMode(false);
                   }}
-                  disabled={modifyingCut}
+                  disabled={modifyingCut || savingDirectEdit}
                 >
                   취소
                 </Button>
-                <Button
-                  onClick={handleModifyCut}
-                  disabled={modifyingCut || !modificationPrompt.trim()}
-                >
-                  {modifyingCut ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      수정 중...
-                    </>
-                  ) : (
-                    <>
-                      <Edit className="h-4 w-4 mr-2" />
-                      수정
-                    </>
-                  )}
-                </Button>
+                
+                {directEditMode ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setDirectEditMode(false)}
+                      disabled={savingDirectEdit}
+                    >
+                      AI 수정으로 돌아가기
+                    </Button>
+                    <Button
+                      onClick={handleDirectEditSave}
+                      disabled={savingDirectEdit}
+                    >
+                      {savingDirectEdit ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          저장 중...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          저장
+                        </>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    onClick={handleModifyCut}
+                    disabled={modifyingCut || !modificationPrompt.trim()}
+                  >
+                    {modifyingCut ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        수정 중...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        AI로 수정
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           )}

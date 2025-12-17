@@ -263,5 +263,88 @@ ${modificationPrompt}
   }
 }
 
+// PUT: 컷 직접 수정 (LLM 없이)
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ scriptId: string }> }
+) {
+  console.log('[컷 직접 수정] 요청 시작');
 
+  try {
+    const { scriptId } = await context.params;
+    if (!scriptId) {
+      return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
+    }
+
+    const body = await request.json().catch(() => null) as {
+      storyboardId: string;
+      cutIndex: number;
+      cut: Cut;
+    } | null;
+
+    if (!body || !body.storyboardId || body.cutIndex === undefined || !body.cut) {
+      return NextResponse.json(
+        { error: 'storyboardId, cutIndex, cut이 필요합니다.' },
+        { status: 400 }
+      );
+    }
+
+    const { storyboardId, cutIndex, cut } = body;
+
+    // 스토리보드 조회
+    const { data: storyboard, error: storyboardError } = await supabase
+      .from('episode_script_storyboards')
+      .select('response_json')
+      .eq('id', storyboardId)
+      .single();
+
+    if (storyboardError || !storyboard) {
+      console.error('[컷 직접 수정] 스토리보드 조회 실패:', storyboardError);
+      return NextResponse.json({ error: '스토리보드를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const responseJson = storyboard.response_json as { cuts?: Cut[] };
+    const cuts = responseJson?.cuts || [];
+
+    if (cutIndex < 0 || cutIndex >= cuts.length) {
+      return NextResponse.json({ error: '유효하지 않은 컷 인덱스입니다.' }, { status: 400 });
+    }
+
+    // 스토리보드의 해당 컷 업데이트
+    const updatedCuts = [...cuts];
+    updatedCuts[cutIndex] = {
+      cutNumber: cut.cutNumber,
+      title: cut.title || '',
+      background: cut.background || '',
+      description: cut.description || '',
+      dialogue: cut.dialogue || '',
+      charactersInCut: Array.isArray(cut.charactersInCut) ? cut.charactersInCut : [],
+    };
+
+    const updatedResponseJson = {
+      ...responseJson,
+      cuts: updatedCuts,
+    };
+
+    const { data: updatedStoryboard, error: updateError } = await supabase
+      .from('episode_script_storyboards')
+      .update({ response_json: updatedResponseJson })
+      .eq('id', storyboardId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('[컷 직접 수정] 스토리보드 업데이트 실패:', updateError);
+      return NextResponse.json({ error: '컷 수정 저장에 실패했습니다.' }, { status: 500 });
+    }
+
+    console.log('[컷 직접 수정] 완료:', { cutIndex });
+
+    return NextResponse.json({ cut: updatedCuts[cutIndex], storyboard: updatedStoryboard });
+  } catch (error) {
+    console.error('[컷 직접 수정] 오류 발생:', error);
+    const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}
 
