@@ -79,7 +79,7 @@ export default function AnnouncementEditor({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const insertIndex = activeBlockIndex !== undefined ? activeBlockIndex + 1 : content.length;
+    const insertIndex = activeBlockIndex !== null ? activeBlockIndex + 1 : content.length;
     
     // 임시 로딩 상태 추가
     setContent(prev => {
