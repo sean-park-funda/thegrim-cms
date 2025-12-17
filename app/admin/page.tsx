@@ -10,11 +10,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Shield, Settings } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Copy, Mail, UserPlus, CheckCircle2, XCircle, Clock, Users, Settings, Megaphone, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react';
 import { getImageRegenerationSettings, updateImageRegenerationSetting, ImageRegenerationSetting } from '@/lib/api/settings';
 import { getStyles } from '@/lib/api/aiStyles';
 import { AiRegenerationStyle } from '@/lib/supabase';
 import { Checkbox } from '@/components/ui/checkbox';
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, Announcement, ContentBlock } from '@/lib/api/announcements';
+import AnnouncementEditor from '@/components/AnnouncementEditor';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -36,6 +39,13 @@ export default function AdminPage() {
   const [updatingSettings, setUpdatingSettings] = useState<Set<string>>(new Set());
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
 
+  // 공지사항 관련 상태
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+
   useEffect(() => {
     if (!isLoading && (!user || profile?.role !== 'admin')) {
       router.push('/');
@@ -47,6 +57,7 @@ export default function AdminPage() {
       loadInvitations();
       loadUsers();
       loadRegenerationSettings();
+      loadAnnouncements();
     }
   }, [profile]);
 
@@ -73,6 +84,19 @@ export default function AdminPage() {
       setError('유저 목록을 불러오는데 실패했습니다.');
     } finally {
       setIsLoadingUsers(false);
+    }
+  };
+
+  const loadAnnouncements = async () => {
+    try {
+      setIsLoadingAnnouncements(true);
+      const data = await getAnnouncements();
+      setAnnouncements(data);
+    } catch (err: any) {
+      console.error('공지사항 로드 오류:', err);
+      setError('공지사항을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoadingAnnouncements(false);
     }
   };
 
@@ -198,6 +222,70 @@ export default function AdminPage() {
     return setting?.use_reference ?? false;
   };
 
+  // 공지사항 관련 핸들러
+  const handleCreateAnnouncement = () => {
+    setEditingAnnouncement(null);
+    setIsEditorOpen(true);
+  };
+
+  const handleEditAnnouncement = (announcement: Announcement) => {
+    setEditingAnnouncement(announcement);
+    setIsEditorOpen(true);
+  };
+
+  const handleSaveAnnouncement = async (title: string, content: ContentBlock[]) => {
+    if (!user) return;
+
+    try {
+      setIsSavingAnnouncement(true);
+      if (editingAnnouncement) {
+        await updateAnnouncement(editingAnnouncement.id, { title, content });
+        setSuccess('공지사항이 수정되었습니다.');
+      } else {
+        await createAnnouncement({ title, content, created_by: user.id });
+        setSuccess('공지사항이 생성되었습니다.');
+      }
+      setIsEditorOpen(false);
+      setEditingAnnouncement(null);
+      await loadAnnouncements();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      console.error('공지사항 저장 오류:', err);
+      setError(err.message || '공지사항 저장에 실패했습니다.');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
+  };
+
+  const handleToggleAnnouncementActive = async (announcement: Announcement) => {
+    try {
+      await updateAnnouncement(announcement.id, { is_active: !announcement.is_active });
+      setSuccess(announcement.is_active ? '공지사항이 비활성화되었습니다.' : '공지사항이 활성화되었습니다.');
+      await loadAnnouncements();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      console.error('공지사항 상태 변경 오류:', err);
+      setError(err.message || '공지사항 상태 변경에 실패했습니다.');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (announcement: Announcement) => {
+    if (!confirm('정말 이 공지사항을 삭제하시겠습니까?')) return;
+
+    try {
+      await deleteAnnouncement(announcement.id);
+      setSuccess('공지사항이 삭제되었습니다.');
+      await loadAnnouncements();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      console.error('공지사항 삭제 오류:', err);
+      setError(err.message || '공지사항 삭제에 실패했습니다.');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -239,7 +327,7 @@ export default function AdminPage() {
       )}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="users">
             <Users className="h-4 w-4 mr-2" />
             사용자 관리
@@ -248,9 +336,13 @@ export default function AdminPage() {
             <Mail className="h-4 w-4 mr-2" />
             초대 관리
           </TabsTrigger>
+          <TabsTrigger value="announcements">
+            <Megaphone className="h-4 w-4 mr-2" />
+            공지사항
+          </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-2" />
-            이미지 재생성 설정
+            설정
           </TabsTrigger>
         </TabsList>
 
@@ -317,103 +409,215 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="invitations" className="mt-6">
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* 초대 생성 폼 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              새 초대 생성
-            </CardTitle>
-            <CardDescription>사용자를 초대하여 시스템에 추가하세요</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateInvitation} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium">
-                  이메일
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="user@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={isCreating}
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="role" className="text-sm font-medium">
-                  역할
-                </label>
-                <Select value={role} onValueChange={(value: any) => setRole(value)} disabled={isCreating}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">관리자</SelectItem>
-                    <SelectItem value="manager">매니저</SelectItem>
-                    <SelectItem value="staff">스태프</SelectItem>
-                    <SelectItem value="viewer">조회자</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full" disabled={isCreating}>
-                {isCreating ? '생성 중...' : '초대 생성'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* 초대 생성 폼 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserPlus className="h-5 w-5" />
+                  새 초대 생성
+                </CardTitle>
+                <CardDescription>사용자를 초대하여 시스템에 추가하세요</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateInvitation} className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="email" className="text-sm font-medium">
+                      이메일
+                    </label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="user@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isCreating}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="role" className="text-sm font-medium">
+                      역할
+                    </label>
+                    <Select value={role} onValueChange={(value: any) => setRole(value)} disabled={isCreating}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">관리자</SelectItem>
+                        <SelectItem value="manager">매니저</SelectItem>
+                        <SelectItem value="staff">스태프</SelectItem>
+                        <SelectItem value="viewer">조회자</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="submit" className="w-full" disabled={isCreating}>
+                    {isCreating ? '생성 중...' : '초대 생성'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
-        {/* 초대 목록 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              초대 목록
-            </CardTitle>
-            <CardDescription>생성된 초대 목록을 확인하고 관리하세요</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingInvitations ? (
-              <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
-            ) : invitations.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">초대가 없습니다</div>
-            ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                {invitations.map((invitation) => (
-                  <div key={invitation.id} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-medium">{invitation.email}</div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          역할: <Badge variant="outline">{invitation.role}</Badge>
+            {/* 초대 목록 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  초대 목록
+                </CardTitle>
+                <CardDescription>생성된 초대 목록을 확인하고 관리하세요</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingInvitations ? (
+                  <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
+                ) : invitations.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">초대가 없습니다</div>
+                ) : (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                    {invitations.map((invitation) => (
+                      <div key={invitation.id} className="border rounded-lg p-4 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium">{invitation.email}</div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              역할: <Badge variant="outline">{invitation.role}</Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              만료일: {new Date(invitation.expires_at).toLocaleDateString('ko-KR')}
+                            </div>
+                          </div>
+                          {getStatusBadge(invitation)}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          만료일: {new Date(invitation.expires_at).toLocaleDateString('ko-KR')}
+                        {!invitation.used_at && new Date(invitation.expires_at) >= new Date() && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => copyInvitationLink(invitation.token)}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            {copiedToken === invitation.token ? '복사됨!' : '초대 링크 복사'}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="announcements" className="mt-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Megaphone className="h-5 w-5" />
+                    공지사항 관리
+                  </CardTitle>
+                  <CardDescription>공지사항을 작성하고 관리할 수 있습니다</CardDescription>
+                </div>
+                <Button onClick={handleCreateAnnouncement}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  새 공지사항
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingAnnouncements ? (
+                <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
+              ) : announcements.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">공지사항이 없습니다</div>
+              ) : (
+                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                  {announcements.map((announcement) => (
+                    <div key={announcement.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">{announcement.title}</div>
+                            {announcement.is_active ? (
+                              <Badge variant="default" className="bg-green-500">활성</Badge>
+                            ) : (
+                              <Badge variant="secondary">비활성</Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            작성일: {new Date(announcement.created_at).toLocaleDateString('ko-KR')}
+                            {announcement.creator && (
+                              <span className="ml-2">
+                                | 작성자: {announcement.creator.name || announcement.creator.email}
+                              </span>
+                            )}
+                          </div>
+                          {/* 내용 미리보기 */}
+                          <div className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                            {announcement.content.map((block, idx) => 
+                              block.type === 'text' ? block.value : '[이미지]'
+                            ).join(' ')}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleToggleAnnouncementActive(announcement)}
+                            title={announcement.is_active ? '비활성화' : '활성화'}
+                          >
+                            {announcement.is_active ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditAnnouncement(announcement)}
+                            title="수정"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteAnnouncement(announcement)}
+                            title="삭제"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
-                      {getStatusBadge(invitation)}
                     </div>
-                    {!invitation.used_at && new Date(invitation.expires_at) >= new Date() && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => copyInvitationLink(invitation.token)}
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        {copiedToken === invitation.token ? '복사됨!' : '초대 링크 복사'}
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 공지사항 에디터 다이얼로그 */}
+          <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+            <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingAnnouncement ? '공지사항 수정' : '새 공지사항 작성'}
+                </DialogTitle>
+              </DialogHeader>
+              <AnnouncementEditor
+                initialTitle={editingAnnouncement?.title}
+                initialContent={editingAnnouncement?.content}
+                onSave={handleSaveAnnouncement}
+                onCancel={() => {
+                  setIsEditorOpen(false);
+                  setEditingAnnouncement(null);
+                }}
+                isLoading={isSavingAnnouncement}
+              />
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
@@ -483,4 +687,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
