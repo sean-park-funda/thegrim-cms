@@ -263,6 +263,20 @@ ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
   const saveAndRespond = async (base64: string, mimeType: string) => {
     const safeMime = mimeType || 'image/png';
 
+    // 기존 이미지 삭제 (같은 storyboard_id와 cut_index의 이미지)
+    const { error: deleteError } = await supabase
+      .from('episode_script_storyboard_images')
+      .delete()
+      .eq('storyboard_id', storyboardId)
+      .eq('cut_index', cutIndex);
+
+    if (deleteError) {
+      console.warn('[storyboard-cut-image] 기존 이미지 삭제 실패 (무시):', deleteError);
+      // 삭제 실패해도 새 이미지 저장은 시도
+    } else {
+      console.log('[storyboard-cut-image] 기존 이미지 삭제 완료', { storyboardId, cutIndex });
+    }
+
     const { error: insertError } = await supabase
       .from('episode_script_storyboard_images')
       .insert({
