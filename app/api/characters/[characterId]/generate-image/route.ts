@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { generateGeminiImage } from '@/lib/image-generation';
 import { supabase } from '@/lib/supabase';
 import { saveCharacterSheetFromBase64 } from '@/lib/api/characterSheets';
 
@@ -47,94 +47,31 @@ ${character.description ? `캐릭터 설명: ${character.description}` : ''}
 - 깔끔한 배경 또는 투명 배경
 - 캐릭터의 특징을 잘 드러내는 디자인`;
 
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-  const config = {
-    responseModalities: ['IMAGE'],
-    imageConfig: {
-      imageSize: '1K',
-    },
-    temperature: 0.8,
-    topP: 0.95,
-    topK: 40,
-    maxOutputTokens: 32768,
-  };
-
-  const contents = [
-    {
-      role: 'user' as const,
-      parts: [{ text: prompt }],
-    },
-  ];
-
-  // 타임아웃과 재시도
-  const maxRetries = 3;
-  let lastError: unknown = null;
-  let response: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`)), GEMINI_API_TIMEOUT);
-      });
-
-      const apiPromise = ai.models.generateContentStream({
-        model: 'gemini-3-pro-image-preview',
-        config,
-        contents,
-      });
-
-      response = await Promise.race([apiPromise, timeoutPromise]);
-      break;
-    } catch (error: unknown) {
-      lastError = error;
-      if (attempt >= maxRetries) {
-        console.error('[generate-character-image][POST] Gemini 호출 실패:', error);
-        return NextResponse.json({ error: '캐릭터 이미지 생성에 실패했습니다.' }, { status: 500 });
-      }
-    }
-  }
-
-  if (!response) {
-    console.error('[generate-character-image][POST] Gemini 응답 없음:', lastError);
-    return NextResponse.json({ error: '캐릭터 이미지 생성에 실패했습니다.' }, { status: 500 });
-  }
-
-  // 이미지 데이터 추출
-  let generatedImageData: string | null = null;
-  let generatedImageMimeType: string | null = null;
-
-  for await (const chunk of response) {
-    const parts = chunk.candidates?.[0]?.content?.parts;
-    if (!parts) continue;
-    for (const part of parts) {
-      if (part.inlineData) {
-        const { data, mimeType } = part.inlineData;
-        if (data && typeof data === 'string' && data.length > 0) {
-          generatedImageData = data;
-          generatedImageMimeType = mimeType || 'image/png';
-          break;
-        }
-      }
-    }
-    if (generatedImageData) break;
-  }
-
-  if (!generatedImageData) {
-    console.error('[generate-character-image][POST] 이미지 데이터 없음');
-    return NextResponse.json({ error: '이미지 생성에 실패했습니다.' }, { status: 500 });
-  }
-
-  // 캐릭터시트로 저장
   try {
+    const { base64, mimeType } = await generateGeminiImage({
+      provider: 'gemini',
+      model: 'gemini-3-pro-image-preview',
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }],
+        },
+      ],
+      config: {
+        responseModalities: ['IMAGE'],
+        imageConfig: { imageSize: '1K' },
+        temperature: 0.8,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 32768,
+      },
+      timeoutMs: GEMINI_API_TIMEOUT,
+      retries: 3,
+    });
+
     const sheet = await saveCharacterSheetFromBase64(
-      generatedImageData,
-      generatedImageMimeType || 'image/png',
+      base64,
+      mimeType || 'image/png',
       characterId,
       `${character.name}-generated`,
       `AI로 생성된 캐릭터 이미지`
@@ -148,8 +85,10 @@ ${character.description ? `캐릭터 설명: ${character.description}` : ''}
       imageUrl: sheet.file_path,
     });
   } catch (error) {
-    console.error('[generate-character-image][POST] 캐릭터시트 저장 실패:', error);
-    return NextResponse.json({ error: '이미지 저장에 실패했습니다.' }, { status: 500 });
+    console.error('[generate-character-image][POST] 이미지 생성/저장 실패:', error);
+    return NextResponse.json({ error: '캐릭터 이미지 생성에 실패했습니다.' }, { status: 500 });
   }
 }
+
+
 

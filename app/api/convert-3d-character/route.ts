@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { generateGeminiImage } from '@/lib/image-generation';
 import { supabase } from '@/lib/supabase';
 import sharp from 'sharp';
 import crypto from 'crypto';
@@ -131,11 +131,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Gemini API 호출
-    const ai = new GoogleGenAI({
-      apiKey: GEMINI_API_KEY,
-    });
-
-    const model = 'gemini-3-pro-image-preview';
     let prompt = '이미지2의 더미캐릭터에 이미지1의 실제 캐릭터를 입혀주세요. ** 캐릭터의 세밀한 자세, 방향, 시선처리와 전체 구도는 이미지2를 엄격하게 따릅니다.**  ** 캐릭터의 외모와 체형, 의상, 화풍은 이미지1을 따릅니다.**';
     // let prompt = '이미지1의 캐릭터를 이미지2의 자세와 구도로 그려주세요. 1) 캐릭터의 생김새, 체형, 옷차림, 그림체는 이미지1을 정확히 따릅니다. 2) 캐릭터의 자세와 시선, 팔과 다리의 각도, 카메라의 방향과 전체 구도는 이미지2와 동일하게 해주세요.';
     
@@ -175,86 +170,30 @@ export async function POST(request: NextRequest) {
       imageAspectRatio = '9:16';
     }
 
-    const config: any = {
-      responseModalities: ['IMAGE', 'TEXT'],
-      imageConfig: {
-        imageSize: '1K',
-      },
-      temperature: 1.0,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 32768,
-    };
-
-    // aspectRatio가 있으면 imageConfig에 추가
-    if (imageAspectRatio) {
-      config.imageConfig.aspectRatio = imageAspectRatio;
-    }
-
     console.log('[3D 캐릭터 변환] Gemini API 호출 시작...');
     const startTime = Date.now();
 
-    const response = await Promise.race([
-      ai.models.generateContentStream({
-        model,
-        config,
-        contents,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout')), GEMINI_API_TIMEOUT)
-      ),
-    ]);
-
-    // 스트림에서 이미지 데이터 수집
-    let generatedImageData: string | null = null;
-    let generatedImageMimeType: string = 'image/png';
-
-    try {
-      for await (const chunk of response) {
-        if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-          continue;
-        }
-
-        const parts = chunk.candidates[0].content.parts;
-        
-        for (const part of parts) {
-          if (part.inlineData) {
-            const inlineData = part.inlineData;
-            if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-              generatedImageData = inlineData.data;
-              generatedImageMimeType = inlineData.mimeType || 'image/png';
-              console.log('[3D 캐릭터 변환] 이미지 데이터를 찾음:', {
-                dataLength: generatedImageData.length,
-                mimeType: generatedImageMimeType
-              });
-              break;
-            }
-          }
-        }
-
-        // 이미지 데이터를 찾았으면 더 이상 처리하지 않음
-        if (generatedImageData) {
-          break;
-        }
-      }
-    } catch (streamError) {
-      console.error('[3D 캐릭터 변환] 스트림 읽기 오류:', streamError);
-      throw streamError;
-    }
+    const { base64: imageBase64, mimeType } = await generateGeminiImage({
+      provider: 'gemini',
+      model: 'gemini-3-pro-image-preview',
+      contents,
+      config: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        imageConfig: {
+          imageSize: '1K',
+          ...(imageAspectRatio ? { aspectRatio: imageAspectRatio } : {}),
+        },
+        temperature: 1.0,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 32768,
+      },
+      timeoutMs: GEMINI_API_TIMEOUT,
+      retries: 3,
+    });
 
     const elapsedTime = Date.now() - startTime;
     console.log(`[3D 캐릭터 변환] Gemini API 호출 완료 (${elapsedTime}ms)`);
-
-    if (!generatedImageData) {
-      console.error('[3D 캐릭터 변환] 생성된 이미지 데이터가 없습니다.');
-      return NextResponse.json(
-        { error: '이미지 생성에 실패했습니다.' },
-        { status: 500 }
-      );
-    }
-
-    const imageBase64 = generatedImageData;
-    const mimeType = generatedImageMimeType;
 
     // cutId와 processId가 있으면 임시 파일로 저장
     let fileId: string | null = null;

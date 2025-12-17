@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import crypto from 'crypto';
+import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
 import { supabase } from '@/lib/supabase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -205,6 +205,7 @@ async function resizeImageIfNeeded(
 function calculateSeedreamSize(width: number, height: number): string {
   const originalRatio = width / height;
   const baseSize = 2048;
+  const minPixels = 3686400; // Seedream 요구 최소 픽셀 (약 1920x1920)
   
   let targetWidth: number;
   let targetHeight: number;
@@ -240,8 +241,20 @@ function calculateSeedreamSize(width: number, height: number): string {
     targetWidth = Math.round(maxHeight * originalRatio);
   }
   
+  // 8의 배수로 반올림
   targetWidth = Math.round(targetWidth / 8) * 8;
   targetHeight = Math.round(targetHeight / 8) * 8;
+  
+  // 최소 픽셀 수 보장 (3686400px 이상) - 8의 배수 반올림 후 최종 확인
+  let area = targetWidth * targetHeight;
+  if (area < minPixels) {
+    const scale = Math.sqrt(minPixels / area);
+    targetWidth = Math.ceil((targetWidth * scale) / 8) * 8;
+    targetHeight = Math.ceil((targetHeight * scale) / 8) * 8;
+    // 스케일업 후에도 max 제한 확인
+    if (targetWidth > maxWidth) targetWidth = maxWidth;
+    if (targetHeight > maxHeight) targetHeight = maxHeight;
+  }
   
   return `${targetWidth}x${targetHeight}`;
 }
@@ -305,13 +318,13 @@ export async function POST(request: NextRequest) {
     
     const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
     
-    // 캐릭터시트가 있으면 모든 요청을 Gemini로 변경
-    if (hasCharacterSheets) {
-      console.log('[이미지 재생성 배치] 캐릭터 바꾸기 모드: 모든 요청을 Gemini로 변경');
-      requests.forEach(req => {
-        req.apiProvider = 'gemini';
-      });
-    }
+    // apiProvider가 비어있는 요청에 대해 기본값 설정 (전역 기본: Seedream, 단 캐릭터시트 모드 제외)
+    const defaultProvider: 'gemini' | 'seedream' = 'seedream';
+    requests.forEach(req => {
+      if (!req.apiProvider) {
+        req.apiProvider = defaultProvider;
+      }
+    });
 
     if (!fileId) {
       return NextResponse.json(
@@ -577,7 +590,7 @@ export async function POST(request: NextRequest) {
       success: refImages.length,
     });
 
-    // Provider별로 그룹화
+    // Provider별로 그룹화 (전달된 apiProvider를 그대로 사용)
     console.log('[이미지 재생성 배치] Provider별 그룹화 시작...');
     const geminiRequests = requests.filter(r => r.apiProvider === 'gemini');
     const seedreamRequests = requests.filter(r => r.apiProvider === 'seedream');
@@ -654,6 +667,47 @@ export async function POST(request: NextRequest) {
         console.log('[이미지 재생성 배치] Seedream API에 레퍼런스 이미지 포함', { count: refImages.length });
       }
 
+      // 캐릭터시트 이미지 추가 (캐릭터 바꾸기용)
+      if (characterSheetImagesCache && characterSheetImagesCache.length > 0) {
+        console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 시작 (Seedream용)...', { count: characterSheetImagesCache.length });
+        
+        for (const sheetImage of characterSheetImagesCache) {
+          const sheetResizeStartTime = Date.now();
+          const cacheKey = `sheet:${crypto.createHash('sha256').update(sheetImage.base64).digest('hex')}`;
+          
+          let sheetResizeResult: { base64: string; mimeType: string; resized: boolean };
+          if (referenceImageResizeCache.has(cacheKey)) {
+            sheetResizeResult = referenceImageResizeCache.get(cacheKey)!;
+            console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 결과 캐시에서 재사용');
+          } else {
+            const sheetBuffer = Buffer.from(sheetImage.base64, 'base64');
+            sheetResizeResult = await resizeImageIfNeeded(sheetBuffer);
+            const sheetResizeTime = Date.now() - sheetResizeStartTime;
+            console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 완료:', {
+              resized: sheetResizeResult.resized,
+              resizeTime: `${sheetResizeTime}ms`,
+              originalBase64Length: sheetImage.base64.length,
+              resizedBase64Length: sheetResizeResult.base64.length,
+            });
+            
+            if (referenceImageResizeCache.size >= MAX_CACHE_SIZE) {
+              const firstKey = referenceImageResizeCache.keys().next().value;
+              if (firstKey) {
+                referenceImageResizeCache.delete(firstKey);
+              }
+            }
+            referenceImageResizeCache.set(cacheKey, sheetResizeResult);
+          }
+          
+          const finalSheetBase64 = sheetResizeResult.resized ? sheetResizeResult.base64 : sheetImage.base64;
+          const finalSheetMimeType = sheetResizeResult.resized ? sheetResizeResult.mimeType : sheetImage.mimeType;
+          const sheetDataUrl = `data:${finalSheetMimeType};base64,${finalSheetBase64}`;
+          seedreamImages.push(sheetDataUrl);
+        }
+        
+        console.log('[이미지 재생성 배치] Seedream API에 캐릭터시트 이미지 포함', { count: characterSheetImagesCache.length });
+      }
+
       seedreamSize = calculateSeedreamSize(originalWidth, originalHeight);
       console.log('[이미지 재생성 배치] Seedream size 계산:', seedreamSize);
     }
@@ -675,7 +729,6 @@ export async function POST(request: NextRequest) {
 
       const aspectRatio = getClosestAspectRatio(originalWidth, originalHeight, 'gemini');
       console.log('[이미지 재생성 배치] Gemini aspectRatio 계산:', aspectRatio);
-      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
       const model = 'gemini-3-pro-image-preview';
 
       const imageConfig: { imageSize: string; aspectRatio?: string } = {
@@ -686,7 +739,7 @@ export async function POST(request: NextRequest) {
       }
 
       const config = {
-        responseModalities: ['IMAGE', 'TEXT'],
+        responseModalities: ['IMAGE', 'TEXT'] as Array<'IMAGE' | 'TEXT'>,
         imageConfig,
         temperature: 1.0,
         topP: 0.95,
@@ -786,83 +839,14 @@ export async function POST(request: NextRequest) {
               timeout: `${GEMINI_API_TIMEOUT}ms`,
             });
 
-            // 타임아웃과 함께 API 호출
-            const apiPromise = ai.models.generateContentStream({
+            const { base64: finalImageData, mimeType: finalMimeType } = await generateGeminiImage({
+              provider: 'gemini',
               model,
-              config,
               contents,
+              config,
+              timeoutMs: GEMINI_API_TIMEOUT,
+              retries: 3,
             });
-
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              setTimeout(() => {
-                reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`));
-              }, GEMINI_API_TIMEOUT);
-            });
-
-            const response = await Promise.race([apiPromise, timeoutPromise]);
-
-            let generatedImageData: string | null = null;
-            let generatedImageMimeType: string | null = null;
-
-            // 스트림 읽기 타임아웃 설정
-            const streamReadStartTime = Date.now();
-            const STREAM_READ_TIMEOUT = GEMINI_API_TIMEOUT;
-
-            try {
-              const readStreamWithTimeout = async () => {
-                for await (const chunk of response) {
-                  // 타임아웃 체크
-                  const elapsed = Date.now() - streamReadStartTime;
-                  if (elapsed > STREAM_READ_TIMEOUT) {
-                    throw new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`);
-                  }
-
-                  if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-                    continue;
-                  }
-
-                  const parts = chunk.candidates[0].content.parts;
-                  
-                  for (const part of parts) {
-                    if (part.inlineData) {
-                      const inlineData = part.inlineData;
-                      if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-                        generatedImageData = inlineData.data;
-                        generatedImageMimeType = inlineData.mimeType || 'image/png';
-                        break;
-                      }
-                    }
-                  }
-
-                  if (generatedImageData) {
-                    break;
-                  }
-                }
-              };
-
-              await Promise.race([
-                readStreamWithTimeout(),
-                new Promise<never>((_, reject) => {
-                  setTimeout(() => {
-                    reject(new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`));
-                  }, STREAM_READ_TIMEOUT);
-                }),
-              ]);
-            } catch (streamError) {
-              if (streamError instanceof Error && streamError.message.includes('타임아웃')) {
-                console.error(`[이미지 재생성 배치] 스트림 읽기 타임아웃 (인덱스 ${req.index}):`, streamError.message);
-                throw streamError;
-              }
-              throw streamError;
-            }
-
-            if (!generatedImageData) {
-              throw new Error('생성된 이미지를 받을 수 없습니다.');
-            }
-
-            // TypeScript 타입 가드: null 체크 후에는 string으로 확정
-            const finalImageData: string = generatedImageData;
-            const finalMimeType: string = generatedImageMimeType || 'image/png';
 
             const requestTime = Date.now() - requestStartTime;
             console.log(`[이미지 재생성 배치] Gemini API 호출 완료 (인덱스 ${req.index}):`, {
@@ -1150,94 +1134,29 @@ export async function POST(request: NextRequest) {
         console.log(`[이미지 재생성 배치] Seedream 청크 처리 시작 (${chunk.length}개, 인덱스 ${i}~${i + chunk.length - 1})...`);
 
         const seedreamPromises = chunk.map(async (req) => {
-        const requestStartTime = Date.now();
-        const maxRetries = 3;
-        let lastError: unknown = null;
+          const maxRetries = 3;
+          let lastError: unknown;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            if (attempt > 0) {
-              const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Seedream API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-              await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              const requestStartTime = Date.now();
               console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
                 prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
                 promptLength: req.stylePrompt.length,
               });
-            }
 
-            const seedreamRequestBody: Record<string, unknown> = {
-              model: 'seedream-4-0-250828',
-              prompt: req.stylePrompt,
-              image: seedreamImages,
-              sequential_image_generation: 'disabled',
-              response_format: 'url',
-              size: seedreamSize,
-              stream: false,
-              watermark: true,
-            };
-
-            const seedreamResponse = await fetchWithTimeout(
-              SEEDREAM_API_ENDPOINT,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${SEEDREAM_API_KEY}`,
-                },
-                body: JSON.stringify(seedreamRequestBody),
-              },
-              SEEDREAM_API_TIMEOUT
-            );
-
-            if (!seedreamResponse.ok) {
-              const errorText = await seedreamResponse.text().catch(() => '응답 본문을 읽을 수 없음');
-              throw new Error(`Seedream API 오류: ${seedreamResponse.status} ${seedreamResponse.statusText}. ${errorText}`);
-            }
-
-            const seedreamData = await seedreamResponse.json();
-            console.log(`[이미지 재생성 배치] Seedream API 응답 수신 (인덱스 ${req.index}):`, {
-              hasData: !!seedreamData.data,
-              dataLength: seedreamData.data?.length || 0,
-            });
-
-            let generatedImageData: string | null = null;
-            let generatedImageMimeType: string | null = null;
-
-            if (seedreamData.data && Array.isArray(seedreamData.data) && seedreamData.data[0]) {
-              const imageResult = seedreamData.data[0];
-              
-              if (imageResult.url) {
-                console.log(`[이미지 재생성 배치] Seedream 이미지 URL 받음 (인덱스 ${req.index}), 다운로드 시작...`);
-                const imageResponse = await fetch(imageResult.url);
-                if (imageResponse.ok) {
-                  const imageBuffer = await imageResponse.arrayBuffer();
-                  generatedImageData = Buffer.from(imageBuffer).toString('base64');
-                  generatedImageMimeType = imageResponse.headers.get('content-type') || 'image/png';
-                  console.log(`[이미지 재생성 배치] Seedream 이미지 다운로드 완료 (인덱스 ${req.index}):`, {
-                    size: imageBuffer.byteLength,
-                    mimeType: generatedImageMimeType,
-                  });
-                } else {
-                  console.error(`[이미지 재생성 배치] Seedream 이미지 URL 다운로드 실패 (인덱스 ${req.index}):`, {
-                    status: imageResponse.status,
-                    statusText: imageResponse.statusText,
-                  });
-                }
-              } else if (imageResult.b64_json) {
-                console.log(`[이미지 재생성 배치] Seedream base64 이미지 받음 (인덱스 ${req.index})`);
-                generatedImageData = imageResult.b64_json;
-                generatedImageMimeType = 'image/png';
-              }
-            }
-
-            if (!generatedImageData) {
-              throw new Error('Seedream에서 생성된 이미지를 받을 수 없습니다.');
-            }
+              const { base64: generatedImageData, mimeType: generatedImageMimeType } = await generateSeedreamImage({
+                provider: 'seedream',
+                model: 'seedream-4-5-251128',
+                prompt: req.stylePrompt,
+                images: seedreamImages,
+                responseFormat: 'url',
+                size: seedreamSize,
+                stream: false,
+                watermark: true,
+                timeoutMs: SEEDREAM_API_TIMEOUT,
+                retries: 3,
+              });
 
             const requestTime = Date.now() - requestStartTime;
             console.log(`[이미지 재생성 배치] Seedream API 호출 완료 (인덱스 ${req.index}):`, {
@@ -1468,22 +1387,18 @@ export async function POST(request: NextRequest) {
               ...(req.styleKey && { styleKey: req.styleKey }),
               ...(req.styleName && { styleName: req.styleName }),
             };
-          } catch (error: unknown) {
-            lastError = error;
-            const isRetryable = isRetryableError(error);
+            } catch (error: unknown) {
+              lastError = error;
+              const isRetryable = isRetryableError(error);
 
-            if (!isRetryable || attempt >= maxRetries) {
-              console.error(`[이미지 재생성 배치] Seedream API 호출 실패 (인덱스 ${req.index}):`, {
-                error: error instanceof Error ? error.message : String(error),
-                attempt: attempt + 1,
-              });
+              if (!isRetryable || attempt >= maxRetries) {
                 throw error;
+              }
             }
           }
-        }
 
-        throw lastError || new Error('Seedream API 응답을 받을 수 없습니다.');
-      });
+          throw lastError || new Error('Seedream API 응답을 받을 수 없습니다.');
+        });
 
         const chunkResults = await Promise.allSettled(seedreamPromises);
         chunkResults.forEach((result) => {

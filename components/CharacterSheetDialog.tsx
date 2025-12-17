@@ -13,6 +13,7 @@ import { getSheetsByCharacter, uploadCharacterSheet, deleteCharacterSheet } from
 import { useStore } from '@/lib/store/useStore';
 import { canCreateContent, canDeleteContent } from '@/lib/utils/permissions';
 import { ImageViewer } from './ImageViewer';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
 interface CharacterSheetDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ export function CharacterSheetDialog({
   character,
 }: CharacterSheetDialogProps) {
   const { profile } = useStore();
+  const { model: globalModel } = useImageModel();
   const [sheets, setSheets] = useState<CharacterSheet[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
@@ -389,6 +391,7 @@ export function CharacterSheetDialog({
         body: JSON.stringify({
           imageBase64: sourceImage.base64,
           imageMimeType: sourceImage.mimeType,
+          apiProvider: globalModel,
         }),
       });
 

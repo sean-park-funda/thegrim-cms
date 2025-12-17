@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import crypto from 'crypto';
-import { supabase } from '@/lib/supabase';
+import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
+import { supabase, ApiProvider } from '@/lib/supabase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
 const GEMINI_API_TIMEOUT = 120000; // 120초 (이미지 생성이 더 오래 걸릴 수 있음)
+const SEEDREAM_API_TIMEOUT = 60000; // 60초
 
 interface GenerateMonsterImageRequest {
   prompt: string;
   aspectRatio?: string;
   cutId: string; // 컷 ID (필수)
   userId?: string; // 사용자 ID (선택적)
+  apiProvider?: ApiProvider; // API 제공자 (gemini, seedream, auto)
 }
 
 export async function POST(request: NextRequest) {
@@ -19,16 +22,8 @@ export async function POST(request: NextRequest) {
   console.log('[괴수 이미지 생성] 요청 시작');
 
   try {
-    if (!GEMINI_API_KEY) {
-      console.error('[괴수 이미지 생성] GEMINI_API_KEY가 설정되지 않음');
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY가 설정되지 않았습니다.' },
-        { status: 500 }
-      );
-    }
-
     const body: GenerateMonsterImageRequest = await request.json();
-    const { prompt, aspectRatio, cutId, userId } = body;
+    const { prompt, aspectRatio, cutId, userId, apiProvider = 'auto' } = body;
 
     if (!prompt || !prompt.trim()) {
       console.error('[괴수 이미지 생성] 프롬프트가 없음');
@@ -38,146 +33,85 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // cutId가 없으면 임시 파일 저장 없이 base64만 반환
-    console.log('[괴수 이미지 생성] Gemini API 호출 시작...');
-    const geminiRequestStart = Date.now();
+    // API 제공자 결정 (auto면 gemini 사용)
+    const useSeedream = apiProvider === 'seedream';
+    const providerName = useSeedream ? 'Seedream' : 'Gemini';
 
-    const ai = new GoogleGenAI({
-      apiKey: GEMINI_API_KEY,
-    });
-
-    // 이미지 비율 설정
-    const imageConfig: { imageSize: string; aspectRatio?: string } = {
-      imageSize: '1K',
-    };
-    
-    if (aspectRatio) {
-      imageConfig.aspectRatio = aspectRatio;
-      console.log('[괴수 이미지 생성] 이미지 비율 설정:', aspectRatio);
+    // API 키 확인
+    if (useSeedream && !SEEDREAM_API_KEY) {
+      console.error('[괴수 이미지 생성] SEEDREAM_API_KEY가 설정되지 않음');
+      return NextResponse.json(
+        { error: 'SEEDREAM_API_KEY가 설정되지 않았습니다.' },
+        { status: 500 }
+      );
     }
 
-    const config = {
-      responseModalities: ['IMAGE', 'TEXT'],
-      imageConfig,
-      temperature: 1.0,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 32768,
-    };
+    if (!useSeedream && !GEMINI_API_KEY) {
+      console.error('[괴수 이미지 생성] GEMINI_API_KEY가 설정되지 않음');
+      return NextResponse.json(
+        { error: 'GEMINI_API_KEY가 설정되지 않았습니다.' },
+        { status: 500 }
+      );
+    }
 
-    const model = 'gemini-3-pro-image-preview';
+    console.log(`[괴수 이미지 생성] ${providerName} API 호출 시작...`);
+    const apiRequestStart = Date.now();
 
-    const contents = [
-      {
-        role: 'user' as const,
-        parts: [
+    let generatedImageData: string;
+    let generatedImageMimeType: string;
+
+    if (useSeedream) {
+      // Seedream API 사용 (최소 3686400 픽셀 충족)
+      // 1:1 -> 1920x1920 (3,686,400 픽셀)
+      // 16:9 -> 2560x1440 (3,686,400 픽셀)
+      // 9:16 -> 1440x2560 (3,686,400 픽셀)
+      const seedreamSize = aspectRatio === '16:9' ? '2560x1440' 
+        : aspectRatio === '9:16' ? '1440x2560' 
+        : '1920x1920';
+      const result = await generateSeedreamImage({
+        provider: 'seedream',
+        model: 'seedream-4-5-251128',
+        prompt: prompt.trim(),
+        size: seedreamSize,
+        responseFormat: 'url',
+        watermark: true,
+        timeoutMs: SEEDREAM_API_TIMEOUT,
+        retries: 3,
+      });
+      generatedImageData = result.base64;
+      generatedImageMimeType = result.mimeType;
+    } else {
+      // Gemini API 사용
+      const result = await generateGeminiImage({
+        provider: 'gemini',
+        model: 'gemini-3-pro-image-preview',
+        contents: [
           {
-            text: prompt.trim(),
+            role: 'user',
+            parts: [{ text: prompt.trim() }],
           },
         ],
-      },
-    ];
-
-    // 재시도 로직
-    const maxRetries = 3;
-    let lastError: unknown = null;
-    let response: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-          console.log(`[괴수 이미지 생성] Gemini API 재시도 ${attempt}/${maxRetries} (${delay}ms 대기 후)...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-
-        console.log('[괴수 이미지 생성] Gemini API 호출:', {
-          model,
-          promptLength: prompt.length,
-          attempt: attempt + 1,
-          maxRetries: maxRetries + 1,
-        });
-
-        const apiPromise = ai.models.generateContentStream({
-          model,
-          config,
-          contents,
-        });
-
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`));
-          }, GEMINI_API_TIMEOUT);
-        });
-
-        response = await Promise.race([apiPromise, timeoutPromise]);
-        break;
-      } catch (error: unknown) {
-        lastError = error;
-        console.error(`[괴수 이미지 생성] Gemini API 호출 실패 (시도 ${attempt + 1}/${maxRetries + 1}):`, {
-          error: error instanceof Error ? error.message : String(error),
-        });
-
-        if (attempt >= maxRetries) {
-          throw error;
-        }
-      }
+        config: {
+          responseModalities: ['IMAGE', 'TEXT'],
+          imageConfig: {
+            imageSize: '1K',
+            ...(aspectRatio ? { aspectRatio } : {}),
+          },
+          temperature: 1.0,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 32768,
+        },
+        timeoutMs: GEMINI_API_TIMEOUT,
+        retries: 3,
+      });
+      generatedImageData = result.base64;
+      generatedImageMimeType = result.mimeType;
     }
 
-    if (!response) {
-      throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
-    }
-
-    // 스트림에서 이미지 데이터 수집
-    let generatedImageData: string | null = null;
-    let generatedImageMimeType: string | null = null;
-
-    const streamReadStartTime = Date.now();
-    const STREAM_READ_TIMEOUT = GEMINI_API_TIMEOUT;
-
-    try {
-      for await (const chunk of response) {
-        const elapsed = Date.now() - streamReadStartTime;
-        if (elapsed > STREAM_READ_TIMEOUT) {
-          throw new Error(`스트림 읽기 타임아웃: ${STREAM_READ_TIMEOUT}ms 초과`);
-        }
-
-        if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-          continue;
-        }
-
-        const parts = chunk.candidates[0].content.parts;
-
-        for (const part of parts) {
-          if (part.inlineData) {
-            const inlineData = part.inlineData;
-            if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-              generatedImageData = inlineData.data;
-              generatedImageMimeType = inlineData.mimeType || 'image/png';
-              console.log('[괴수 이미지 생성] 이미지 데이터를 찾음:', {
-                dataLength: generatedImageData.length,
-                mimeType: generatedImageMimeType,
-              });
-              break;
-            }
-          }
-        }
-
-        if (generatedImageData) {
-          break;
-        }
-      }
-    } catch (streamError) {
-      if (streamError instanceof Error && streamError.message.includes('타임아웃')) {
-        console.error('[괴수 이미지 생성] 스트림 읽기 타임아웃:', streamError.message);
-        throw streamError;
-      }
-      throw streamError;
-    }
-
-    const geminiRequestTime = Date.now() - geminiRequestStart;
-    console.log('[괴수 이미지 생성] Gemini API 응답:', {
-      requestTime: `${geminiRequestTime}ms`,
+    const apiRequestTime = Date.now() - apiRequestStart;
+    console.log(`[괴수 이미지 생성] ${providerName} API 응답:`, {
+      requestTime: `${apiRequestTime}ms`,
       hasImageData: !!generatedImageData,
       mimeType: generatedImageMimeType,
     });

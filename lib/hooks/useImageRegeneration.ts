@@ -132,9 +132,10 @@ export function useImageRegeneration({
           : [referenceImages.id]
         : undefined;
 
-      // 캐릭터시트가 있으면 Gemini만 사용
       const useCharacterSheets = characterSheets && characterSheets.length > 0;
-      
+      // 헤더 전역 모델 설정을 그대로 사용 (캐릭터시트 여부와 무관하게)
+      const finalApiProvider: ApiProvider = apiProvider;
+
       // 디버깅: fileId 확인
       console.log('[이미지 재생성] 배치 API 준비:', {
         fileId,
@@ -144,8 +145,6 @@ export function useImageRegeneration({
         characterSheetsCount: characterSheets?.length || 0,
         useCharacterSheets,
       });
-      const finalApiProvider: ApiProvider = useCharacterSheets ? 'gemini' : apiProvider;
-
       // 생성할 이미지들을 provider별로 그룹화
       const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream'; styleId?: string; styleKey?: string; styleName?: string }> = [];
       

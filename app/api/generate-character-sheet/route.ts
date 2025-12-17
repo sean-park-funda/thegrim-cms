@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
 
 // 캐릭터 시트 생성 프롬프트
 const CHARACTER_SHEET_PROMPT = `Use the uploaded image as the main reference for the character. Recreate the character exactly — same face, hair, clothing style, colors, and details.
@@ -26,6 +27,7 @@ Final output: a single combined image with all four views arranged horizontally 
 interface GenerateCharacterSheetRequest {
   imageBase64: string;
   imageMimeType: string;
+  apiProvider?: 'gemini' | 'seedream' | 'auto';
 }
 
 export async function POST(request: NextRequest) {
@@ -33,16 +35,8 @@ export async function POST(request: NextRequest) {
   console.log('[캐릭터 시트 생성] 요청 시작');
 
   try {
-    if (!GEMINI_API_KEY) {
-      console.error('[캐릭터 시트 생성] GEMINI_API_KEY가 설정되지 않음');
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY가 설정되지 않았습니다.' },
-        { status: 500 }
-      );
-    }
-
     const body: GenerateCharacterSheetRequest = await request.json();
-    const { imageBase64, imageMimeType } = body;
+    const { imageBase64, imageMimeType, apiProvider = 'gemini' } = body;
 
     if (!imageBase64) {
       console.error('[캐릭터 시트 생성] 이미지 데이터가 없음');
@@ -52,141 +46,105 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[캐릭터 시트 생성] Gemini API 호출 시작...');
-    const geminiRequestStart = Date.now();
+    // API Provider 결정 (auto면 gemini 사용)
+    const useSeedream = apiProvider === 'seedream';
+    console.log('[캐릭터 시트 생성] API Provider:', useSeedream ? 'Seedream' : 'Gemini');
 
-    const ai = new GoogleGenAI({
-      apiKey: GEMINI_API_KEY,
-    });
+    let base64: string;
+    let mimeType: string;
+    const apiRequestStart = Date.now();
 
-    const config = {
-      responseModalities: ['IMAGE', 'TEXT'],
-      imageConfig: {
-        imageSize: '1K',
-        aspectRatio: '21:9', // 4개 캐릭터 가로 배열을 위한 와이드 비율
-      },
-      temperature: 1.0,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 32768,
-    };
+    if (useSeedream) {
+      // Seedream API 사용
+      if (!SEEDREAM_API_KEY) {
+        console.error('[캐릭터 시트 생성] SEEDREAM_API_KEY가 설정되지 않음');
+        return NextResponse.json(
+          { error: 'SEEDREAM_API_KEY가 설정되지 않았습니다.' },
+          { status: 500 }
+        );
+      }
 
-    const model = 'gemini-3-pro-image-preview';
+      console.log('[캐릭터 시트 생성] Seedream API 호출 시작...');
+      
+      const imageDataUrl = `data:${imageMimeType || 'image/png'};base64,${imageBase64}`;
+      
+      const result = await generateSeedreamImage({
+        provider: 'seedream',
+        model: 'seedream-4-5-251128',
+        prompt: CHARACTER_SHEET_PROMPT,
+        images: [imageDataUrl],
+        responseFormat: 'url',
+        size: '2944x1280', // 21:9 비율에 가깝게, 최소 3686400 픽셀 충족
+        stream: false,
+        watermark: true,
+        timeoutMs: 120000,
+        retries: 3,
+      });
+      
+      base64 = result.base64;
+      mimeType = result.mimeType;
+    } else {
+      // Gemini API 사용
+      if (!GEMINI_API_KEY) {
+        console.error('[캐릭터 시트 생성] GEMINI_API_KEY가 설정되지 않음');
+        return NextResponse.json(
+          { error: 'GEMINI_API_KEY가 설정되지 않았습니다.' },
+          { status: 500 }
+        );
+      }
 
-    const contents = [
-      {
-        role: 'user' as const,
-        parts: [
+      console.log('[캐릭터 시트 생성] Gemini API 호출 시작...');
+
+      const result = await generateGeminiImage({
+        provider: 'gemini',
+        model: 'gemini-3-pro-image-preview',
+        contents: [
           {
-            text: CHARACTER_SHEET_PROMPT,
-          },
-          {
-            inlineData: {
-              mimeType: imageMimeType || 'image/png',
-              data: imageBase64,
-            },
+            role: 'user',
+            parts: [
+              { text: CHARACTER_SHEET_PROMPT },
+              {
+                inlineData: {
+                  mimeType: imageMimeType || 'image/png',
+                  data: imageBase64,
+                },
+              },
+            ],
           },
         ],
-      },
-    ];
-
-    // 재시도 로직
-    const maxRetries = 3;
-    let lastError: unknown = null;
-    let response: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-          console.log(`[캐릭터 시트 생성] Gemini API 재시도 ${attempt}/${maxRetries} (${delay}ms 대기 후)...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-
-        console.log('[캐릭터 시트 생성] Gemini API 호출:', {
-          model,
-          attempt: attempt + 1,
-          maxRetries: maxRetries + 1,
-        });
-
-        response = await ai.models.generateContentStream({
-          model,
-          config,
-          contents,
-        });
-
-        break;
-      } catch (error: unknown) {
-        lastError = error;
-        console.error(`[캐릭터 시트 생성] Gemini API 호출 실패 (시도 ${attempt + 1}/${maxRetries + 1}):`, {
-          error: error instanceof Error ? error.message : String(error),
-        });
-
-        if (attempt >= maxRetries) {
-          throw error;
-        }
-      }
+        config: {
+          responseModalities: ['IMAGE', 'TEXT'],
+          imageConfig: { imageSize: '1K', aspectRatio: '21:9' },
+          temperature: 1.0,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 32768,
+        },
+        retries: 3,
+        timeoutMs: 120000,
+      });
+      
+      base64 = result.base64;
+      mimeType = result.mimeType;
     }
 
-    if (!response) {
-      throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
-    }
-
-    let generatedImageData: string | null = null;
-    let generatedImageMimeType: string | null = null;
-
-    // 스트림에서 모든 chunk 수집
-    for await (const chunk of response) {
-      if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-        continue;
-      }
-
-      const parts = chunk.candidates[0].content.parts;
-
-      for (const part of parts) {
-        if (part.inlineData) {
-          const inlineData = part.inlineData;
-          if (inlineData.data && typeof inlineData.data === 'string' && inlineData.data.length > 0) {
-            generatedImageData = inlineData.data;
-            generatedImageMimeType = inlineData.mimeType || 'image/png';
-            console.log('[캐릭터 시트 생성] 이미지 데이터를 찾음:', {
-              dataLength: generatedImageData.length,
-              mimeType: generatedImageMimeType
-            });
-            break;
-          }
-        }
-      }
-
-      if (generatedImageData) {
-        break;
-      }
-    }
-
-    const geminiRequestTime = Date.now() - geminiRequestStart;
-    console.log('[캐릭터 시트 생성] Gemini API 응답:', {
-      requestTime: `${geminiRequestTime}ms`,
-      hasImageData: !!generatedImageData,
-      mimeType: generatedImageMimeType
+    const apiRequestTime = Date.now() - apiRequestStart;
+    console.log('[캐릭터 시트 생성] API 응답:', {
+      provider: useSeedream ? 'Seedream' : 'Gemini',
+      requestTime: `${apiRequestTime}ms`,
+      hasImageData: !!base64,
+      mimeType,
     });
-
-    if (!generatedImageData) {
-      console.error('[캐릭터 시트 생성] 생성된 이미지 데이터가 없음');
-      return NextResponse.json(
-        { error: '캐릭터 시트 생성에 실패했습니다. 다시 시도해주세요.' },
-        { status: 500 }
-      );
-    }
 
     const totalTime = Date.now() - startTime;
     console.log('[캐릭터 시트 생성] 생성 완료:', {
       totalTime: `${totalTime}ms`,
-      mimeType: generatedImageMimeType
+      mimeType,
     });
 
     return NextResponse.json({
-      imageData: generatedImageData,
-      mimeType: generatedImageMimeType || 'image/png'
+      imageData: base64,
+      mimeType: mimeType || 'image/png'
     });
   } catch (error: unknown) {
     const totalTime = Date.now() - startTime;

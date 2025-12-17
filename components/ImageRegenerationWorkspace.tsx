@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useStore } from '@/lib/store/useStore';
 import { canDeleteContent } from '@/lib/utils/permissions';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
 interface RegeneratedImage {
   id: string;
@@ -92,6 +93,7 @@ export function ImageRegenerationWorkspace({
   remixStyleKey,
 }: ImageRegenerationWorkspaceProps) {
   const { profile } = useStore();
+  const { model: globalModel } = useImageModel();
   
   // 스타일 관련 상태
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
@@ -132,7 +134,7 @@ export function ImageRegenerationWorkspace({
   // API Provider에 따른 모델명 반환
   const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
     if (apiProvider === 'gemini') return 'gemini-3-pro';
-    if (apiProvider === 'seedream') return 'seedream-4';
+    if (apiProvider === 'seedream') return 'seedream-4-5-251128';
     return 'auto';
   };
 
@@ -296,7 +298,7 @@ export function ImageRegenerationWorkspace({
 
     // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?, styleId?, styleKey?, styleName?)
     // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
-    // apiProvider는 스타일의 api_provider 값 사용
+    // apiProvider는 전역 설정의 model 값 사용 (헤더에서 선택한 모델)
     onRegenerate(
       editedPrompt.trim() || selectedStyle.prompt, 
       count, 
@@ -304,7 +306,7 @@ export function ImageRegenerationWorkspace({
       referenceImages, 
       undefined, 
       characterSheets, 
-      selectedStyle.api_provider,
+      globalModel,
       selectedStyle.id,
       selectedStyle.style_key,
       selectedStyle.name
@@ -1051,7 +1053,8 @@ export function ImageRegenerationWorkspace({
                                       )}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        onRegenerateSingle(img.prompt, img.apiProvider, img.id);
+                                        // 전역에서 선택한 모델을 사용해 다시 생성
+                                        onRegenerateSingle(img.prompt, globalModel, img.id);
                                       }}
                                       disabled={regeneratingImage === img.id}
                                       title="다시 생성"

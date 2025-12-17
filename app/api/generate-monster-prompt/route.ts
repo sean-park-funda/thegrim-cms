@@ -231,13 +231,13 @@ const FACIAL_PARTS = [
   '이빨 (Teeth)',
 ];
 
-// 인간 신체 요소 선택 함수 (얼굴 관련 요소에 가중치 부여)
+// 인간 신체 요소 선택 함수 (다양성을 위해 가중치 완화)
 function selectHumanBodyPart(): string {
-  // 70% 확률로 얼굴 관련 요소 선택
-  if (Math.random() < 0.7) {
+  // 40% 확률로 얼굴 관련 요소 선택
+  if (Math.random() < 0.4) {
     return getRandomItem(FACIAL_PARTS);
   }
-  // 30% 확률로 나머지 요소 선택
+  // 60% 확률로 나머지 요소 선택
   return getRandomItem(HUMAN_BODY_PARTS);
 }
 
@@ -282,36 +282,84 @@ function createMonsterPromptGenerator(selectedCreatures: Array<{ category: strin
   
   const humanPartText = includeHuman && humanPart ? `\n${selectedCreatures.length + 1}. **인간의 신체 요소:** ${humanPart}` : '';
   
+  // 다양한 기괴함 유형 중 랜덤 선택 (매번 다른 방향 제시)
+  const horrorTypes = [
+    {
+      name: '형태 변형',
+      description: '신체 비율이 극단적으로 왜곡됨 (거대한 머리에 작은 몸, 비정상적으로 긴 팔다리, 비대칭적 크기)',
+      examples: 'grotesquely elongated limbs, disproportionate body parts, asymmetrical growth'
+    },
+    {
+      name: '다중/증식',
+      description: '신체 부위가 비정상적으로 많음 (여러 개의 팔, 수십 개의 눈, 무수한 이빨)',
+      examples: 'countless eyes scattered across body, too many limbs, multiple mouths'
+    },
+    {
+      name: '융합/합성',
+      description: '여러 생물이 불완전하게 융합됨 (몸 곳곳에서 다른 생물이 튀어나옴, 기생 형태)',
+      examples: 'creatures fused together, parasitic growths, organisms emerging from flesh'
+    },
+    {
+      name: '부패/노출',
+      description: '내부 구조가 드러남 (뼈, 근육, 내장이 노출, 썩어가는 조직)',
+      examples: 'exposed muscles and tendons, visible bone structure, decaying tissue'
+    },
+    {
+      name: '질감 공포',
+      description: '불쾌한 표면 질감 (구멍 숭숭, 벌레가 기어다니는 피부, 점액질)',
+      examples: 'trypophobic skin texture, slime-covered surface, writhing masses'
+    },
+    {
+      name: '신체 재배치',
+      description: '신체 부위가 잘못된 위치에 있음 (등에 손, 무릎에 눈 등)',
+      examples: 'misplaced body parts, organs in wrong positions, inverted anatomy'
+    },
+    {
+      name: '크기 왜곡',
+      description: '일부 부위만 거대하거나 미세함 (거대한 손, 아주 작은 머리)',
+      examples: 'oversized hands, tiny head on massive body, enlarged specific features'
+    },
+    {
+      name: '동작/자세 공포',
+      description: '불가능한 자세나 뒤틀린 관절 (역관절, 180도 회전한 목)',
+      examples: 'impossible joint angles, contorted posture, spine bent backwards'
+    }
+  ];
+  
+  // 2-3개의 기괴함 유형을 랜덤 선택
+  const shuffled = horrorTypes.sort(() => Math.random() - 0.5);
+  const selectedHorrorTypes = shuffled.slice(0, 2 + Math.floor(Math.random() * 2));
+  const horrorTypesList = selectedHorrorTypes.map((ht, idx) => 
+    `   ${idx + 1}. **${ht.name}:** ${ht.description} (예: ${ht.examples})`
+  ).join('\n');
+
   return `당신은 '다크 판타지 크리처 컨셉 아티스트'이자 '전문 프롬프트 엔지니어'입니다.
 아래에 **이미 선택된 생물들**을 사용하여 괴수 디자인을 생성하세요:
 
 **선택된 생물:**
 ${creaturesList}${humanPartText}
 
-선택된 생물들의 특징(턱, 다리, 피부 질감, 눈, 기생 여부 등)을 가장 기괴하고 공포스러운 방식으로 결합하여, 정교한 흑백 펜화 일러스트를 생성하기 위한 **영어 이미지 프롬프트**를 작성해 주세요.
+선택된 생물들의 특징을 창의적으로 결합하여, 정교한 흑백 펜화 일러스트를 생성하기 위한 **영어 이미지 프롬프트**를 작성해 주세요.
 
 ### 작성 규칙:
 1. **화풍:** 정교한 펜 선, **라인드로잉(line drawing)만 사용**, 톤(tone)이나 해칭(hatching) 없음, 압도적인 디테일, 흑백(Monochrome), 글씨 금지(Textless). 선의 굵기 변화와 선의 밀도로 명암과 디테일을 표현하되, 크로스 해칭이나 톤 작업은 절대 사용하지 말 것.
-2. **표현:** '단순한 결합'을 넘어 생물학적으로 불쾌한 변형(Body Horror), 점액, 근육 조직의 노출, 기생 등을 묘사할 것. 모든 디테일은 선으로만 표현.
-3. **비정상적인 기괴함 강조 (매우 중요):**
-   - **다중 신체 부위:** 머리, 눈, 손, 발, 팔, 다리 등이 여러 개 있는 비정상적인 형태를 적극적으로 포함하세요. 예: "multiple heads", "extra eyes", "too many hands", "multiple limbs", "extra arms", "too many fingers", "multiple mouths" 등.
-   - **예상치 못한 위치의 신체 부위 배치 (극도로 중요):** 신체 부위가 완전히 잘못된 위치에 있는 비정상적인 조합을 적극적으로 포함하세요. 예를 들어:
-     * 배나 가슴, 등, 어깨, 무릎 등에 얼굴이나 눈이 있음 ("face on stomach", "eyes on back", "mouth on chest", "face on knee")
-     * 손바닥이나 손가락에 눈이나 입이 있음 ("eyes on palms", "mouth on fingers", "eyes on fingertips")
-     * 팔이나 다리에 얼굴이 있음 ("face on arm", "face on leg")
-     * 등이나 꼬리에 손이나 팔이 있음 ("hands on back", "arms growing from spine")
-     * 머리나 목에 손이나 발이 있음 ("hands on head", "feet on neck")
-     * 이런 비정상적인 배치는 기괴함의 핵심이므로 반드시 포함하세요.
-   - **비대칭성:** 신체 부위가 비대칭적으로 배치되거나, 예상치 못한 위치에 추가 부위가 있는 형태를 강조하세요.
-   - **인간 신체 요소의 변형:** 인간의 얼굴, 눈, 입, 손 등이 비정상적으로 많거나, 잘못된 위치에 있거나, 크기가 비정상적인 형태를 포함하세요.
-3. **구도:**
+
+2. **표현:** '단순한 결합'을 넘어 생물학적으로 불쾌한 변형(Body Horror)을 묘사할 것. 모든 디테일은 선으로만 표현.
+
+3. **이번에 강조할 기괴함 유형 (아래 중에서 선택하여 적용):**
+${horrorTypesList}
+   
+   **주의:** 위 유형들을 참고하되, 매번 새롭고 독창적인 조합을 만들어주세요. 이전에 만든 디자인을 반복하지 마세요.
+
+4. **구도:**
    - **배경 없음:** 단색 배경(흰색 또는 검은색)만 사용, 배경 디테일 없음
    - **전신 표시:** 괴수의 머리부터 발끝까지 전체가 보이도록 전신 샷(full body shot)
    - **중앙 배치:** 괴수가 이미지 중앙에 위치하도록 구성
-4. **이미지 비율:** 괴수의 형태에 맞는 적절한 비율을 선택하세요:
-   - 세로형(portrait): 9:16 또는 2:3 - 키가 크거나 세로로 긴 괴수
+
+5. **이미지 비율:** 괴수의 형태에 맞는 적절한 비율을 선택하세요:
+   - 세로형(portrait): 9:16 - 키가 크거나 세로로 긴 괴수
    - 정사각형(square): 1:1 - 균형잡힌 형태의 괴수
-   - 가로형(landscape): 16:9 또는 3:2 - 넓게 퍼진 형태의 괴수
+   - 가로형(landscape): 16:9 - 넓게 퍼진 형태나 다리가 많은 괴수
 
 **중요:** 응답은 반드시 유효한 JSON 형식으로 작성해주세요:
 \`\`\`json
@@ -324,7 +372,7 @@ ${creaturesList}${humanPartText}
 - imagePrompt: 실제 이미지 생성에 사용할 영어 프롬프트만 포함 (선택된 모티프나 디자인 컨셉 설명 없이 프롬프트만)
 - aspectRatio: "9:16", "1:1", "16:9" 중 하나만 사용
 
-지금 바로 1개의 괴수 디자인을 생성하고 JSON 형식으로 응답해 주세요.`;
+지금 바로 1개의 **독창적인** 괴수 디자인을 생성하고 JSON 형식으로 응답해 주세요.`;
 }
 
 export async function POST(request: NextRequest) {

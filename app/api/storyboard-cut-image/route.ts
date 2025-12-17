@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
 import { supabase } from '@/lib/supabase';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_TIMEOUT = 60000;
+const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
+const SEEDREAM_API_BASE_URL = process.env.SEEDREAM_API_BASE_URL || 'https://ark.ap-southeast.bytepluses.com/api/v3';
+const SEEDREAM_API_ENDPOINT = `${SEEDREAM_API_BASE_URL}/images/generations`;
+const SEEDREAM_API_TIMEOUT = 120000; // 120초 (Seedream 4.5 기본 생성 시간 대비 여유)
 
 export async function POST(request: NextRequest) {
-  if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
   const body = await request.json().catch(() => null) as {
     title?: string;
     background?: string;
@@ -18,6 +17,7 @@ export async function POST(request: NextRequest) {
     storyboardId?: string;
     cutIndex?: number;
     selectedCharacterSheets?: Record<string, number>; // 캐릭터 이름 -> 선택된 시트 인덱스
+    apiProvider?: 'gemini' | 'seedream';
   } | null;
 
   const description = body?.description?.trim();
@@ -232,19 +232,6 @@ ${background ? `배경: ${background}\n` : ''}등장인물: ${characterNamesList
 연출/구도: ${description}
 ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
 
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-  const config = {
-    responseModalities: ['IMAGE'],
-    imageConfig: {
-      imageSize: '1K',
-    },
-    temperature: 0.6,
-    topP: 0.95,
-    topK: 40,
-    maxOutputTokens: 32768,
-  };
-
   // 캐릭터시트 이미지가 있으면 contentParts에 추가
   // 각 이미지 앞에 해당 캐릭터 이름을 명시하는 텍스트를 추가
   const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
@@ -273,75 +260,83 @@ ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
     },
   ];
 
-  const maxRetries = 2;
-  let lastError: unknown = null;
-  let response: Awaited<ReturnType<typeof ai.models.generateContentStream>> | null = null;
+  const saveAndRespond = async (base64: string, mimeType: string) => {
+    const safeMime = mimeType || 'image/png';
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const { error: insertError } = await supabase
+      .from('episode_script_storyboard_images')
+      .insert({
+        storyboard_id: storyboardId,
+        cut_index: cutIndex,
+        mime_type: safeMime,
+        image_base64: base64,
+      });
+
+    if (insertError) {
+      console.error('[storyboard-cut-image] DB 저장 실패:', insertError);
+      return NextResponse.json({ error: '이미지 저장에 실패했습니다.' }, { status: 500 });
+    }
+
+    const dataUrl = `data:${safeMime};base64,${base64}`;
+    console.log('[storyboard-cut-image] 생성 및 저장 완료', { storyboardId, cutIndex });
+    return NextResponse.json({ imageUrl: dataUrl, mimeType: safeMime });
+  };
+
+  const apiProvider = body?.apiProvider === 'seedream' ? 'seedream' : 'gemini';
+
+  if (apiProvider === 'gemini') {
     try {
-      if (attempt > 0) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Gemini API 타임아웃: ${GEMINI_API_TIMEOUT}ms 초과`)), GEMINI_API_TIMEOUT);
-      });
-
-      const apiPromise = ai.models.generateContentStream({
+      const { base64, mimeType } = await generateGeminiImage({
+        provider: 'gemini',
         model: 'gemini-3-pro-image-preview',
-        config,
         contents,
+        config: {
+          responseModalities: ['IMAGE'],
+          imageConfig: { imageSize: '1K' },
+          temperature: 0.6,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 32768,
+        },
+        timeoutMs: GEMINI_API_TIMEOUT,
+        retries: 1,
       });
 
-      console.log('[storyboard-cut-image] Gemini 호출', { attempt, model: 'gemini-3-pro-image-preview' });
-      response = await Promise.race([apiPromise, timeoutPromise]);
-      break;
+      return await saveAndRespond(base64, mimeType);
     } catch (error) {
-      lastError = error;
-      if (attempt >= maxRetries) {
-        console.error('[storyboard-cut-image] Gemini 호출 실패:', error);
-        return NextResponse.json({ error: '콘티 생성에 실패했습니다.' }, { status: 500 });
-      }
+      const geminiErrorMessage = error instanceof Error ? error.message : 'Gemini 이미지 생성 실패';
+      console.error('[storyboard-cut-image] Gemini 이미지 생성 실패', { reason: geminiErrorMessage });
+      return NextResponse.json({ error: '이미지 생성에 실패했습니다.' }, { status: 500 });
     }
   }
 
-  if (!response) {
-    console.error('[storyboard-cut-image] 응답 없음:', lastError);
+  // Seedream 분기
+  if (!SEEDREAM_API_KEY) {
+    console.error('[storyboard-cut-image] SEEDREAM_API_KEY가 설정되지 않았습니다.');
     return NextResponse.json({ error: '콘티 생성에 실패했습니다.' }, { status: 500 });
   }
 
-  for await (const chunk of response) {
-    const parts = chunk.candidates?.[0]?.content?.parts;
-    if (!parts) continue;
-    for (const part of parts) {
-      if (part.inlineData) {
-        const { data, mimeType } = part.inlineData;
-        const safeMime = mimeType || 'image/png';
+  const seedreamImages = characterSheetImages.map((sheetImage) => `data:${sheetImage.mimeType};base64,${sheetImage.base64}`);
 
-        // DB 저장
-        const { error: insertError } = await supabase
-          .from('episode_script_storyboard_images')
-          .insert({
-            storyboard_id: storyboardId,
-            cut_index: cutIndex,
-            mime_type: safeMime,
-            image_base64: data,
-          });
+  try {
+    console.log('[storyboard-cut-image] Seedream API 호출 시작...', { model: 'seedream-4-5-251128' });
+    const { base64, mimeType } = await generateSeedreamImage({
+      provider: 'seedream',
+      model: 'seedream-4-5-251128',
+      prompt,
+      images: seedreamImages,
+      responseFormat: 'url',
+      size: '2048x2048',
+      stream: false,
+      watermark: true,
+      timeoutMs: SEEDREAM_API_TIMEOUT,
+      retries: 1,
+    });
 
-        if (insertError) {
-          console.error('[storyboard-cut-image] DB 저장 실패:', insertError);
-          return NextResponse.json({ error: '이미지 저장에 실패했습니다.' }, { status: 500 });
-        }
-
-        const dataUrl = `data:${safeMime};base64,${data}`;
-        console.log('[storyboard-cut-image] 생성 및 저장 완료', { storyboardId, cutIndex });
-        return NextResponse.json({ imageUrl: dataUrl, mimeType: safeMime });
-      }
-    }
+    return await saveAndRespond(base64, mimeType);
+  } catch (error) {
+    console.error('[storyboard-cut-image] Seedream 이미지 생성 실패:', error);
+    return NextResponse.json({ error: '콘티 생성에 실패했습니다.' }, { status: 500 });
   }
-
-  console.error('[storyboard-cut-image] 이미지 파트 없음');
-  return NextResponse.json({ error: '이미지 생성에 실패했습니다.' }, { status: 500 });
 }
 

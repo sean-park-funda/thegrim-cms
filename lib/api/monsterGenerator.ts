@@ -13,6 +13,8 @@ export interface GenerateMonsterImageResponse {
   error?: string;
 }
 
+export type ApiProvider = 'gemini' | 'seedream' | 'auto';
+
 export async function generateMonsterPrompt(): Promise<GenerateMonsterPromptResponse> {
   try {
     const response = await fetch('/api/generate-monster-prompt', {
@@ -47,7 +49,8 @@ export async function generateMonsterImage(
   prompt: string,
   aspectRatio?: string,
   cutId?: string,
-  userId?: string
+  userId?: string,
+  apiProvider: ApiProvider = 'auto'
 ): Promise<GenerateMonsterImageResponse> {
   try {
     const response = await fetch('/api/generate-monster-image', {
@@ -55,7 +58,7 @@ export async function generateMonsterImage(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, aspectRatio, cutId, userId }),
+      body: JSON.stringify({ prompt, aspectRatio, cutId, userId, apiProvider }),
     });
 
     if (!response.ok) {

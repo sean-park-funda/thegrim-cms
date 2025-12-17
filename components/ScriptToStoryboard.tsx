@@ -12,6 +12,7 @@ import { CharacterEditDialog } from '@/components/CharacterEditDialog';
 import { Webtoon } from '@/lib/supabase';
 import { createCharacter } from '@/lib/api/characters';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
 interface Cut {
   cutNumber: number;
@@ -67,6 +68,7 @@ interface ScriptToStoryboardProps {
 
 export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStoryboardProps) {
   const router = useRouter();
+  const { model: imageModel } = useImageModel();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -728,6 +730,7 @@ export function ScriptToStoryboard({ cutId, episodeId, webtoonId }: ScriptToStor
           storyboardId: sbId,
           cutIndex: cutIdx,
           selectedCharacterSheets: selectedSheets,
+          apiProvider: imageModel,
         }),
       });
       if (!res.ok) {

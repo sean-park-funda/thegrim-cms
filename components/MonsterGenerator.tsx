@@ -11,6 +11,7 @@ import { Copy, Loader2, Sparkles, Image as ImageIcon, Save, CheckSquare2, X } fr
 import { Process } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile } from '@/lib/api/files';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
 interface MonsterImage {
   id: string;
@@ -30,6 +31,7 @@ interface MonsterGeneratorProps {
 
 export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGeneratorProps) {
   const { profile } = useStore();
+  const { model: globalModel } = useImageModel();
   const [imagePrompt, setImagePrompt] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<string>('1:1');
   const [loading, setLoading] = useState(false);
@@ -127,7 +129,7 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
               // 프롬프트는 UI에 표시하지 않음 (여러 개 생성 시 혼란 방지)
 
               // 2. 이미지 생성
-              const imageResult = await generateMonsterImage(promptText, ratio, cutId, profile?.id);
+              const imageResult = await generateMonsterImage(promptText, ratio, cutId, profile?.id, globalModel);
               
               if (imageResult.error) {
                 setGeneratingImages(prev => prev.map(img => 
@@ -255,7 +257,7 @@ export function MonsterGenerator({ cutId, processes, onFilesReload }: MonsterGen
 
         for (let i = batchStart; i < batchEnd; i++) {
           const placeholderId = placeholderIds[i].id;
-          const promise = generateMonsterImage(promptText, ratio, cutId, profile?.id)
+          const promise = generateMonsterImage(promptText, ratio, cutId, profile?.id, globalModel)
             .then((result) => {
               if (result.error) {
                 setGeneratingImages(prev => prev.map(img => 

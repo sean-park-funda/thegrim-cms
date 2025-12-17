@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
 import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2, FileSearch } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
@@ -46,7 +47,15 @@ interface FileDetailDialogProps {
   onAnalyze?: (file: FileType, e: React.MouseEvent) => void;
   onDelete: (file: FileType, e: React.MouseEvent) => void;
   onRegenerateClick: () => void;
-  onRegenerate?: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: { id: string }, targetFileId?: string) => void;
+  onRegenerate?: (
+    stylePrompt: string,
+    count?: number,
+    useLatestImageAsInput?: boolean,
+    referenceImage?: { id: string },
+    targetFileId?: string,
+    characterSheets?: Array<{ sheetId: string }>,
+    apiProvider?: 'gemini' | 'seedream' | 'auto'
+  ) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -98,12 +107,13 @@ export function FileDetailDialog({
   currentUserId,
   webtoonId,
 }: FileDetailDialogProps) {
+  const { model: globalModel } = useImageModel();
   // API Provider에 따른 모델명 반환
   const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
     if (apiProvider === 'gemini') {
       return 'gemini-3-pro-image-preview';
     } else if (apiProvider === 'seedream') {
-      return 'seedream-4-0-250828';
+      return 'seedream-4-5-251128';
     }
     return 'auto';
   };
@@ -388,7 +398,9 @@ export function FileDetailDialog({
         4, // 4장 생성
         false, // useLatestImageAsInput
         { id: file.id }, // 현재 파일(수정사항이 표시된 빨간펜 레퍼런스)을 레퍼런스로 사용
-        originalFileId // 원본 이미지 ID를 직접 전달하여 확실하게 원본 이미지를 입력으로 사용
+        originalFileId, // 원본 이미지 ID를 직접 전달하여 확실하게 원본 이미지를 입력으로 사용
+        undefined, // characterSheets
+        globalModel // 헤더에서 선택한 전역 이미지 모델 사용
       );
 
       // 수정사항 분석 다이얼로그는 닫지 않고 열어둠 (결과를 다이얼로그 내부에서 확인하기 위해)
@@ -1155,7 +1167,7 @@ export function FileDetailDialog({
                       </div>
                       {!isPlaceholder && (
                         <Badge variant="secondary" className="text-xs w-full justify-center">
-                          {getModelName(img.apiProvider)}
+                          {getModelName(globalModel)}
                         </Badge>
                       )}
                     </div>

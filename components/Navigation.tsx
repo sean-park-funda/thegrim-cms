@@ -7,7 +7,9 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown } from 'lucide-react';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
+import { type ApiProvider } from '@/lib/supabase';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,12 +24,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+const MODEL_LABELS: Record<ApiProvider, string> = {
+  gemini: 'Gemini',
+  seedream: 'Seedream',
+  auto: 'Auto',
+};
+
 export function Navigation() {
   const router = useRouter();
   const pathname = usePathname();
   const { searchQuery, setSearchQuery, user, profile } = useStore();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { model, setModel } = useImageModel();
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -159,6 +168,39 @@ export function Navigation() {
 
           {/* 오른쪽 액션 - Linear 스타일: 미니멀한 버튼 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* 이미지 모델 선택 드롭다운 */}
+            {user && profile && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs font-medium text-background/70 hover:text-background hover:bg-background/10 gap-1"
+                    title="이미지 생성 모델 선택"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{MODEL_LABELS[model]}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuLabel className="text-xs">이미지 생성 모델</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setModel('gemini')}
+                    className={`text-xs ${model === 'gemini' ? 'bg-accent' : ''}`}
+                  >
+                    Gemini
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setModel('seedream')}
+                    className={`text-xs ${model === 'seedream' ? 'bg-accent' : ''}`}
+                  >
+                    Seedream
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {user && profile && (
               <Button
                 variant="ghost"
