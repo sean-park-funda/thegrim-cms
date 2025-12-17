@@ -130,6 +130,32 @@ supabase-schema.sql        # 데이터베이스 스키마 (메타데이터 검�
 3. **API 엔드포인트 권한 검증**
    - 서버 사이드 권한 검증 추가 (현재는 클라이언트 사이드만)
 
+### 2025-12 인증 구현 현황 요약
+
+- **클라이언트 세션 관리**: `lib/supabase.ts`에서 익명 키 기반 Supabase 클라이언트를 생성하고, 브라우저에서는 `localStorage`로 세션을 유지하며 `autoRefreshToken`을 사용합니다.
+- **전역 상태 동기화**: `lib/hooks/useAuth.ts`가 마운트 시 `getSession`→`getUserProfile`로 `useStore`(Zustand)에 `user/profile/isLoading`을 채우고, `supabase.auth.onAuthStateChange`로 `SIGNED_IN`/`TOKEN_REFRESHED`/`SIGNED_OUT` 이벤트를 받아 상태를 일치시킵니다.
+- **라우팅 가드**: `app/page.tsx`와 `components/AppLayout.tsx`가 `useAuth`를 호출해 전역 상태를 보장하고, `/`에서 로그인 여부로 `/login` 또는 `/webtoons`로 리다이렉트합니다. `/admin/page.tsx`는 클라이언트에서 `profile.role !== 'admin'`이면 `/`로 돌려보냅니다.
+- **로그인/회원가입 흐름**: `lib/api/auth.ts`의 `signIn`은 이메일 미확인 시 `confirm_user_email_by_email` RPC를 호출해 자동 확인 후 재시도합니다. `signUp`은 초대 토큰 검증(`verifyInvitationToken`), 첫 사용자 자동 관리자 승격(`is_first_user_excluding`), 이메일 확인(`confirm_user_email`), 프로필 생성 폴링, 역할 보정(`update_user_role_on_signup`), 초대 사용 처리까지 포함합니다.
+- **권한/역할 적용**: `lib/utils/permissions.ts`와 `ROLES_GUIDE.md`를 기반으로 UI 단 권한 표시/숨김을 수행하며, `/admin`에서 초대·역할 변경은 전부 클라이언트에서 Supabase JS로 호출합니다(세션은 로컬 저장소 토큰을 사용).
+- **데이터/스토리지 접근**: `supabase-rls-policies.sql`이 웹툰/회차/컷/공정/파일 테이블과 `webtoon-files` 스토리지 버킷을 `FOR ALL USING (true)`로 개방(개발용). `app/api/**/route.ts`도 동일한 익명 키 클라이언트를 사용하며 요청 세션을 바인딩하지 않습니다.
+
+### 장점
+- Supabase Auth + RLS 조합을 전제로 한 단순한 클라이언트 세션 관리와 자동 토큰 갱신.
+- 초대 기반 온보딩과 역할 매핑(최초 사용자 자동 관리자 승격, 초대 이메일 발송 Edge Function 포함).
+- Zustand를 통한 단일 전역 소스로 UI 권한 제어를 일관되게 수행.
+
+### 현재 문제점 / 위험도 높은 항목
+- **RLS 완전 개방(치명)**: `supabase-rls-policies.sql`이 핵심 테이블과 스토리지 버킷을 누구나 읽기/쓰기 가능하게 열어둠. 프로덕션 반영 시 인증 없이 데이터·파일 탈취·변조 가능.
+- **서버 API 무인증(높음)**: `app/api/**` 라우트가 `Authorization` 헤더나 Supabase 세션을 검사하지 않음. 익명 키로 동작해 RLS가 열린 현 상태에서는 외부인이 이미지 재생성/업로드 등 모든 기능을 호출 가능하며, RLS를 조이면 `auth.uid()`가 null이라 바로 권한 오류가 날 것임.
+- **클라이언트 전적 의존(중간)**: `/admin`을 포함한 관리자 작업이 클라이언트 검증 + Supabase JS 호출에 의존. RLS가 느슨하면 우회 가능, 강화하면 서버 검증 부재로 동작 실패.
+- **세션 전달 부재(중간)**: 서버 라우트가 사용자 액세스 토큰을 Supabase 클라이언트에 바인딩하지 않아, RLS 강화 시 즉시 대부분 기능이 막힐 것임. 헤더의 Bearer 토큰 또는 쿠키 기반 `createServerSupabaseClient` 사용 필요.
+
+### 개선 제안 (우선순위)
+1. **RLS 재정비**: 개발용 공개 정책을 제거하고 역할별 정책으로 재구성(스토리지 포함). `supabase-auth-schema.sql`의 역할 정의와 일치하도록 테이블별 정책을 명시.
+2. **서버 라우트 인증 추가**: `app/api/**`에서 JWT를 받아 Supabase 서버 클라이언트에 주입하거나, Next Middleware로 사전 검증 후 요청 컨텍스트에 사용자 정보를 넣어 사용.
+3. **관리자 액션 서버 검증**: 초대 생성/역할 변경 등 민감 액션을 서버 라우트에서 역할 재검증 후 수행하도록 이전.
+4. **보조 과제**: 비밀번호 재설정/이메일 변경 플로우 추가, 외부 API 키가 쓰이는 엔드포인트에 요청 속도 제한과 감사 로그 남기기.
+
 ---
 
 ## 🤖 이미지 메타데이터 자동 생성 시스템 (✅ 구현 완료)
