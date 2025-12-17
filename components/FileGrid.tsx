@@ -775,14 +775,14 @@ export function FileGrid({ cutId }: FileGridProps) {
       <div className="flex flex-col h-full" style={{ flex: '1 1 0', minHeight: 0, height: '100%' }}>
         <Tabs value={activeProcessId} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0 h-full">
           <div className="px-3 sm:px-4 pt-2 pb-3 flex-shrink-0" style={{ flexShrink: 0 }}>
-            <TabsList className="w-full overflow-x-auto">
+            <TabsList className="w-full h-auto flex-wrap gap-1">
               {sortedProcesses.map((process) => {
                 const processFiles = getFilesByProcess(process.id);
                 return (
                   <TabsTrigger
                     key={process.id}
                     value={process.id}
-                    className={`flex items-center gap-1.5 transition-colors ${
+                    className={`flex items-center gap-1.5 transition-colors flex-none ${
                       draggedOverProcessId === process.id ? 'bg-primary/20 ring-2 ring-primary' : ''
                     }`}
                     onDragOver={(e) => handleDragOver(e, process.id)}
