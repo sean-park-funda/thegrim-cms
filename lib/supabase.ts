@@ -17,13 +17,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     fetch: (url, options = {}) => {
       // AbortController로 타임아웃 구현 (브라우저 호환성)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      // 타임아웃 30초로 완화 (5초는 너무 짧아서 세션 불안정 유발)
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       
       return fetch(url, {
         ...options,
         // Keep-Alive로 연결 재사용
         keepalive: true,
-        // 타임아웃 설정 (5초)
+        // 타임아웃 설정 (30초)
         signal: options.signal || controller.signal,
       }).finally(() => {
         clearTimeout(timeoutId);

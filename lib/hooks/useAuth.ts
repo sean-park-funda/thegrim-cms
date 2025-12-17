@@ -5,9 +5,12 @@ import { getSession, getUserProfile } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
 import { supabase } from '@/lib/supabase';
 
+// 전역 싱글톤으로 리스너 중복 방지
+let globalSubscription: { unsubscribe: () => void } | null = null;
+let isListenerRegistered = false;
+
 export function useAuth() {
   const { user, profile, isLoading, setUser, setProfile, setLoading } = useStore();
-  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const isCheckingAuthRef = useRef(false);
 
   // 세션 상태를 동기화하는 헬퍼 함수
@@ -44,9 +47,9 @@ export function useAuth() {
       isCheckingAuthRef.current = true;
       setLoading(true);
       
-      // 타임아웃 설정 (10초)
+      // 타임아웃 설정 (30초로 완화)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('인증 확인 타임아웃')), 10000);
+        setTimeout(() => reject(new Error('인증 확인 타임아웃')), 30000);
       });
       
       const sessionPromise = getSession();
@@ -55,7 +58,7 @@ export function useAuth() {
       if (session?.user) {
         // 이미 가져온 세션을 재사용하여 중복 조회 방지
         const profileTimeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 5000);
+          setTimeout(() => reject(new Error('프로필 조회 타임아웃')), 15000);
         });
         
         try {
@@ -86,19 +89,27 @@ export function useAuth() {
     // 초기 인증 상태 확인
     checkAuth();
 
-    // 기존 리스너가 있으면 정리
-    if (subscriptionRef.current) {
-      subscriptionRef.current.unsubscribe();
+    // 이미 리스너가 등록되어 있으면 중복 등록하지 않음 (싱글톤)
+    if (isListenerRegistered) {
+      return;
     }
 
-    // 인증 상태 변경 감지
+    isListenerRegistered = true;
+
+    // 인증 상태 변경 감지 (전역 싱글톤)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('인증 상태 변경:', event, session?.user?.id);
       
-      // INITIAL_SESSION 이벤트는 checkAuth에서 이미 처리하므로 무시
+      // INITIAL_SESSION: 세션이 있으면 동기화, 없으면 로그아웃 처리
       if (event === 'INITIAL_SESSION') {
+        if (session?.user) {
+          await syncSessionState(session);
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
         return;
       }
       
@@ -106,6 +117,13 @@ export function useAuth() {
       if (session?.user) {
         // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED 등 세션이 있는 경우
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          // 이미 같은 사용자로 로그인되어 있으면 불필요한 상태 업데이트 건너뛰기
+          // (리렌더링으로 인한 데이터 로딩 중단 방지)
+          const currentUser = useStore.getState().user;
+          if (currentUser?.id === session.user.id && event !== 'USER_UPDATED') {
+            console.log('이미 동일 사용자로 로그인됨, 상태 업데이트 건너뜀:', event);
+            return;
+          }
           await syncSessionState(session);
         }
       } else if (event === 'SIGNED_OUT') {
@@ -115,17 +133,25 @@ export function useAuth() {
       }
     });
 
-    subscriptionRef.current = subscription;
+    globalSubscription = subscription;
+
+    // 컴포넌트 언마운트 시에도 전역 리스너는 유지 (싱글톤)
+    // 페이지 언로드 시에만 정리
+    const handleBeforeUnload = () => {
+      if (globalSubscription) {
+        globalSubscription.unsubscribe();
+        globalSubscription = null;
+        isListenerRegistered = false;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe();
-        subscriptionRef.current = null;
-      }
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 의존성 배열을 비워서 한 번만 실행되도록 함
 
   return { user, profile, isLoading };
 }
-

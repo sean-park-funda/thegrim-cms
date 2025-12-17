@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
-import { useAuth } from '@/lib/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoading: authLoading } = useAuth();
+  // useAuth()는 AppLayout에서 호출되므로 여기서는 useStore()만 사용
+  const { user, isLoading: authLoading } = useStore();
   const { setUser, setProfile } = useStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +22,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.push('/');
+      router.push('/webtoons');
     }
   }, [authLoading, user, router]);
 
@@ -50,7 +50,7 @@ function LoginForm() {
       if (user && profile) {
         setUser(user);
         setProfile(profile);
-        router.push('/');
+        router.push('/webtoons');
       }
     } catch (err: any) {
       setError(err.message || '로그인에 실패했습니다.');

@@ -18,7 +18,6 @@ import { getCharactersByWebtoon } from '@/lib/api/characters';
 import { getProcesses } from '@/lib/api/processes';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
-import { useAuth } from '@/lib/hooks/useAuth';
 import { Save } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 
@@ -220,8 +219,8 @@ function Viewer3DPage() {
   const [convertedFileId, setConvertedFileId] = useState<string | null>(null);
   const [savingImage, setSavingImage] = useState(false);
   const [additionalPrompt, setAdditionalPrompt] = useState<string>('');
-  const { profile } = useAuth();
-  const { selectedCut, selectedEpisode, processes, setProcesses } = useStore();
+  // useAuth()는 AppLayout에서 호출되므로 여기서는 useStore()만 사용
+  const { profile, selectedCut, selectedEpisode, processes, setProcesses } = useStore();
   const [processSelectDialogOpen, setProcessSelectDialogOpen] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
 

@@ -3,14 +3,13 @@
 import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
-import { useAuth } from '@/lib/hooks/useAuth';
 
 export default function Home() {
   const router = useRouter();
   const pathname = usePathname();
   const { isLoading, user } = useStore();
   const hasRedirected = useRef(false);
-  useAuth();
+  // useAuth()는 AppLayout에서 호출되므로 여기서는 useStore()만 사용
 
   useEffect(() => {
     // 현재 경로가 '/'가 아니면 리다이렉트하지 않음

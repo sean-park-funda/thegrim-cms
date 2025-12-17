@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
-import { useAuth } from '@/lib/hooks/useAuth';
 import { createInvitation, getInvitations, getUsers, updateUserRole, UserProfile } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +18,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 export default function AdminPage() {
   const router = useRouter();
-  const { user, profile, isLoading } = useAuth();
+  // useAuth()는 AppLayout에서 호출되므로 여기서는 useStore()만 사용
+  const { user, profile, isLoading } = useStore();
   const [invitations, setInvitations] = useState<any[]>([]);
   const [isLoadingInvitations, setIsLoadingInvitations] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
