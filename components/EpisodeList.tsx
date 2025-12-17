@@ -152,8 +152,10 @@ function EpisodeCard({ episode, isSelected, onClick, onEdit, onDelete, profile }
 export function EpisodeList({ webtoon }: EpisodeListProps) {
   const router = useRouter();
   const { profile, setWebtoons, setSelectedWebtoon } = useStore();
+  // 서버에서 가져온 데이터를 즉시 표시 (SSR 데이터 활용)
   const [episodes, setEpisodes] = useState<Episode[]>(webtoon.episodes || []);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false); // 추가 정보 갱신 중 표시
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
@@ -163,28 +165,47 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
   const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
   const [currentWebtoon, setCurrentWebtoon] = useState(webtoon);
 
-  const loadEpisodes = async () => {
+  const loadEpisodes = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       const data = await getEpisodes(webtoon.id);
       setEpisodes(data);
     } catch (error) {
       console.error('회차 목록 로드 실패:', error);
-      alert('회차 목록을 불러오는데 실패했습니다.');
+      // 서버 데이터가 있으면 에러 시에도 기존 데이터 유지
+      if (episodes.length === 0) {
+        alert('회차 목록을 불러오는데 실패했습니다.');
+      }
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
-  // 컴포넌트 마운트 시 회차 목록 로드 (thumbnail_url과 files_count 포함)
+  // webtoon prop이 변경되면 즉시 반영 (Next.js 네비게이션 시 새 데이터)
   useEffect(() => {
-    loadEpisodes();
+    if (webtoon.episodes && webtoon.episodes.length > 0) {
+      setEpisodes(webtoon.episodes);
+    }
+    setCurrentWebtoon(webtoon);
+  }, [webtoon]);
+
+  // 컴포넌트 마운트 시 추가 정보 로드 (thumbnail_url, files_count 등)
+  // 서버 데이터가 있어도 클라이언트에서 최신 데이터로 갱신
+  useEffect(() => {
+    // 서버에서 가져온 데이터가 있으면 로딩 없이 백그라운드 갱신
+    const hasServerData = webtoon.episodes && webtoon.episodes.length > 0;
+    loadEpisodes(!hasServerData);
   }, [webtoon.id]);
 
   // 웹툰이 로드되면 브레드크럼 네비게이션을 위해 store에 설정
   useEffect(() => {
-    setSelectedWebtoon(webtoon);
-  }, [webtoon.id, setSelectedWebtoon]);
+    setSelectedWebtoon(currentWebtoon);
+  }, [currentWebtoon, setSelectedWebtoon]);
 
   // 정렬된 회차 목록 ("기타" 회차는 맨 위, 나머지는 회차순)
   const sortedEpisodes = [...episodes].sort((a, b) => {

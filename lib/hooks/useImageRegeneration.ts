@@ -48,8 +48,12 @@ export function useImageRegeneration({
   onFilesReload,
   currentUserId,
 }: UseImageRegenerationOptions) {
-  console.log('[useImageRegeneration] 초기화:', { currentUserId });
   const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
+
+  // 마운트 시에만 로그 출력
+  useEffect(() => {
+    console.log('[useImageRegeneration] 마운트됨:', { currentUserId });
+  }, []);
   const [regeneratedImages, setRegeneratedImages] = useState<RegeneratedImage[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [savingImages, setSavingImages] = useState(false);
