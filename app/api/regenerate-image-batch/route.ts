@@ -9,17 +9,16 @@ const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
 const SEEDREAM_API_BASE_URL = process.env.SEEDREAM_API_BASE_URL || 'https://ark.ap-southeast.bytepluses.com/api/v3';
 const SEEDREAM_API_ENDPOINT = `${SEEDREAM_API_BASE_URL}/images/generations`;
 
-const SEEDREAM_API_TIMEOUT = 60000; // 60초
-const GEMINI_API_TIMEOUT = 120000; // 120초 (이미지 생성이 더 오래 걸릴 수 있음)
-const RETRYABLE_ERROR_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN'];
+const SEEDREAM_API_TIMEOUT = 60000; // 60珥?
+const GEMINI_API_TIMEOUT = 120000; // 120珥?(?대?吏 ?앹꽦?????ㅻ옒 嫄몃┫ ???덉쓬)
 const SEEDREAM_MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const SEEDREAM_MAX_PIXELS = 36000000; // 36,000,000 픽셀
+const SEEDREAM_MAX_PIXELS = 36000000; // 36,000,000 ?쎌?
 
-// 레퍼런스 이미지 리사이징 결과 캐시
+// ?덊띁?곗뒪 ?대?吏 由ъ궗?댁쭠 寃곌낵 罹먯떆
 const referenceImageResizeCache = new Map<string, { base64: string; mimeType: string; resized: boolean }>();
 const MAX_CACHE_SIZE = 100;
 
-// Gemini API에서 지원하는 이미지 비율 목록
+// Gemini API?먯꽌 吏?먰븯???대?吏 鍮꾩쑉 紐⑸줉
 const GEMINI_ASPECT_RATIOS = [
   '21:9', '16:9', '4:3', '3:2',
   '1:1',
@@ -27,44 +26,122 @@ const GEMINI_ASPECT_RATIOS = [
   '5:4', '4:5',
 ] as const;
 
-// Seedream API에서 지원하는 이미지 비율 목록
+// Seedream API?먯꽌 吏?먰븯???대?吏 鍮꾩쑉 紐⑸줉
 const SEEDREAM_ASPECT_RATIOS = [
   '21:9', '16:9', '4:3', '3:2',
   '1:1',
   '9:16', '3:4', '2:3',
 ] as const;
 
-function isRetryableError(error: unknown): boolean {
+// ?먮윭 媛앹껜???곸꽭 ?뺣낫瑜?異붿텧?섎뒗 ?ы띁 ?⑥닔
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+
   if (error instanceof Error) {
-    // 타임아웃 에러는 재시도 가능 (일시적인 네트워크 문제일 수 있음)
-    if (error.message.includes('타임아웃') || error.message.includes('timeout')) {
-      return true;
-    }
-    if (error.message === 'terminated' || error.message.includes('ECONNRESET')) {
-      return true;
-    }
-    if (error.cause && typeof error.cause === 'object' && 'code' in error.cause) {
-      const code = error.cause.code as string;
-      return RETRYABLE_ERROR_CODES.includes(code);
-    }
-    if ('status' in error && typeof error.status === 'number') {
-      const status = error.status as number;
-      if ([500, 502, 503, 504].includes(status)) {
-        return true;
+    details.name = error.name;
+    
+    // message媛 JSON 臾몄옄?댁씤 寃쎌슦 ?뚯떛 ?쒕룄
+    let parsedMessage: unknown = error.message;
+    if (typeof error.message === 'string') {
+      try {
+        // JSON 臾몄옄?댁씤吏 ?뺤씤?섍퀬 ?뚯떛 ?쒕룄
+        const trimmed = error.message.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          parsedMessage = JSON.parse(error.message);
+        }
+      } catch {
+        // ?뚯떛 ?ㅽ뙣 ???먮낯 硫붿떆吏 ?ъ슜
+        parsedMessage = error.message;
       }
     }
-    if ('errorMessage' in error && typeof error.errorMessage === 'string') {
-      const errorMessage = error.errorMessage as string;
-      if (errorMessage.includes('"code":500') || errorMessage.includes('"status":"INTERNAL"')) {
-        return true;
+    details.message = parsedMessage;
+    details.stack = error.stack;
+
+    // cause ?띿꽦???덉쑝硫??ш??곸쑝濡?異붿텧
+    if (error.cause) {
+      details.cause = extractErrorDetails(error.cause);
+    }
+
+    // Error 媛앹껜??異붽? ?띿꽦??異붿텧 (????⑥뼵???듯빐 ?묎렐)
+    const errorObj = error as unknown as Record<string, unknown>;
+    Object.keys(errorObj).forEach(key => {
+      if (!['name', 'message', 'stack', 'cause'].includes(key)) {
+        try {
+          // 吏곷젹??媛?ν븳 媛믩쭔 ?ы븿
+          JSON.stringify(errorObj[key]);
+          details[key] = errorObj[key];
+        } catch {
+          // 吏곷젹??遺덇??ν븳 媛믪? 臾몄옄?대줈 蹂??
+          details[key] = String(errorObj[key]);
+        }
+      }
+    });
+  } else if (typeof error === 'object' && error !== null) {
+    // Error 媛앹껜媛 ?꾨땶 寃쎌슦 紐⑤뱺 ?띿꽦 異붿텧
+    const errorObj = error as Record<string, unknown>;
+    Object.keys(errorObj).forEach(key => {
+      try {
+        JSON.stringify(errorObj[key]);
+        details[key] = errorObj[key];
+      } catch {
+        details[key] = String(errorObj[key]);
+      }
+    });
+  } else {
+    details.value = String(error);
+  }
+
+  return details;
+}
+
+// ?먮윭 ??낃낵 ?ъ슜??硫붿떆吏瑜?援щ텇?섎뒗 ?⑥닔
+function categorizeError(error: unknown, provider: 'gemini' | 'seedream'): { code: string; message: string } {
+  if (error instanceof Error) {
+    // ??꾩븘???먮윭
+    if (error.message.toLowerCase().includes('timeout')) {
+      return {
+        code: provider === 'gemini' ? 'GEMINI_TIMEOUT' : 'SEEDREAM_TIMEOUT',
+        message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} API ?붿껌???쒓컙 珥덇낵?섏뿀?듬땲?? ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.`,
+      };
+    }
+
+    // ApiError??寃쎌슦 status ?뺤씤
+    const errorObj = error as unknown as Record<string, unknown>;
+    if ('status' in errorObj && typeof errorObj.status === 'number') {
+      const status = errorObj.status;
+      
+      // 503 Service Unavailable (?ㅻ쾭濡쒕뱶)
+      if (status === 503) {
+        // 硫붿떆吏??"overloaded" ?ы븿 ?щ? ?뺤씤
+        const errorMessage = String(error.message || '');
+        if (errorMessage.toLowerCase().includes('overload') || errorMessage.toLowerCase().includes('overloaded')) {
+          return {
+            code: provider === 'gemini' ? 'GEMINI_OVERLOAD' : 'SEEDREAM_OVERLOAD',
+            message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} ?쒕퉬?ㅺ? ?꾩옱 怨쇰????곹깭?낅땲?? ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.`,
+          };
+        }
+        return {
+          code: provider === 'gemini' ? 'GEMINI_SERVICE_UNAVAILABLE' : 'SEEDREAM_SERVICE_UNAVAILABLE',
+          message: `${provider === 'gemini' ? 'Gemini' : 'Seedream'} ?쒕퉬?ㅻ? ?ъ슜?????놁뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.`,
+        };
+      }
+
+      // 429 Too Many Requests
+      if (status === 429) {
+        return {
+          code: provider === 'gemini' ? 'GEMINI_RATE_LIMIT' : 'SEEDREAM_RATE_LIMIT',
+          message: `?붿껌???덈Т 留롮뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.`,
+        };
       }
     }
   }
-  return false;
-}
 
-function getRetryDelay(attempt: number): number {
-  return Math.min(1000 * Math.pow(2, attempt), 10000);
+  // 湲고? ?먮윭
+  return {
+    code: provider === 'gemini' ? 'GEMINI_ERROR' : 'SEEDREAM_ERROR',
+    message: `?대?吏 ?앹꽦 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.`,
+  };
 }
 
 async function fetchWithTimeout(
@@ -205,7 +282,7 @@ async function resizeImageIfNeeded(
 function calculateSeedreamSize(width: number, height: number): string {
   const originalRatio = width / height;
   const baseSize = 2048;
-  const minPixels = 3686400; // Seedream 요구 최소 픽셀 (약 1920x1920)
+  const minPixels = 3686400; // Seedream ?붽뎄 理쒖냼 ?쎌? (??1920x1920)
   
   let targetWidth: number;
   let targetHeight: number;
@@ -241,17 +318,17 @@ function calculateSeedreamSize(width: number, height: number): string {
     targetWidth = Math.round(maxHeight * originalRatio);
   }
   
-  // 8의 배수로 반올림
+  // 8??諛곗닔濡?諛섏삱由?
   targetWidth = Math.round(targetWidth / 8) * 8;
   targetHeight = Math.round(targetHeight / 8) * 8;
   
-  // 최소 픽셀 수 보장 (3686400px 이상) - 8의 배수 반올림 후 최종 확인
+  // 理쒖냼 ?쎌? ??蹂댁옣 (3686400px ?댁긽) - 8??諛곗닔 諛섏삱由???理쒖쥌 ?뺤씤
   let area = targetWidth * targetHeight;
   if (area < minPixels) {
     const scale = Math.sqrt(minPixels / area);
     targetWidth = Math.ceil((targetWidth * scale) / 8) * 8;
     targetHeight = Math.ceil((targetHeight * scale) / 8) * 8;
-    // 스케일업 후에도 max 제한 확인
+    // ?ㅼ??쇱뾽 ?꾩뿉??max ?쒗븳 ?뺤씤
     if (targetWidth > maxWidth) targetWidth = maxWidth;
     if (targetHeight > maxHeight) targetHeight = maxHeight;
   }
@@ -263,37 +340,43 @@ interface RegenerateImageRequest {
   stylePrompt: string;
   index: number;
   apiProvider: 'gemini' | 'seedream';
-  styleId?: string; // 스타일 ID (선택적)
-  styleKey?: string; // 스타일 키 (선택적)
-  styleName?: string; // 스타일 이름 (선택적)
+  styleId?: string; // ?ㅽ???ID (?좏깮??
+  styleKey?: string; // ?ㅽ?????(?좏깮??
+  styleName?: string; // ?ㅽ????대쫫 (?좏깮??
 }
 
 interface RegenerateImageBatchRequest {
-  characterSheets?: Array<{ sheetId: string }>; // 캐릭터시트 정보 (sheetId만 필요, file_path는 DB에서 조회)
+  characterSheets?: Array<{ sheetId: string }>; // 罹먮┃?곗떆???뺣낫 (sheetId留??꾩슂, file_path??DB?먯꽌 議고쉶)
   fileId: string;
-  referenceFileId?: string; // 하위 호환성
-  referenceFileIds?: string[]; // 레퍼런스 이미지 파일 ID 배열
+  referenceFileId?: string; // ?섏쐞 ?명솚??
+  referenceFileIds?: string[]; // ?덊띁?곗뒪 ?대?吏 ?뚯씪 ID 諛곗뿴
   requests: RegenerateImageRequest[];
-  createdBy?: string; // 재생성을 요청한 사용자 ID (선택적, 없으면 원본 파일의 생성자 사용)
+  createdBy?: string; // ?ъ깮?깆쓣 ?붿껌???ъ슜??ID (?좏깮?? ?놁쑝硫??먮낯 ?뚯씪???앹꽦???ъ슜)
 }
 
 interface RegenerateImageBatchResponse {
   images: Array<{
     index: number;
-    fileId: string; // 파일 ID (DB에 저장된)
-    filePath: string; // 파일 경로 (Storage 경로)
-    fileUrl: string; // 파일 URL (미리보기용)
-    mimeType: string;
+    fileId?: string; // ?뚯씪 ID (DB????λ맂, ?깃났 ?쒖뿉留?議댁옱)
+    filePath?: string; // ?뚯씪 寃쎈줈 (Storage 寃쎈줈, ?깃났 ?쒖뿉留?議댁옱)
+    fileUrl?: string; // ?뚯씪 URL (誘몃━蹂닿린?? ?깃났 ?쒖뿉留?議댁옱)
+    mimeType?: string; // ?깃났 ?쒖뿉留?議댁옱
     apiProvider: 'gemini' | 'seedream';
-    stylePrompt: string; // 프롬프트 (히스토리용)
-    imageData?: string; // 하위 호환성을 위해 선택적으로 유지 (임시 파일 저장 실패 시에만 사용)
-    styleId?: string; // 스타일 ID
-    styleKey?: string; // 스타일 키
-    styleName?: string; // 스타일 이름
+    stylePrompt: string; // ?꾨＼?꾪듃 (?덉뒪?좊━??
+    imageData?: string; // ?섏쐞 ?명솚?깆쓣 ?꾪빐 ?좏깮?곸쑝濡??좎? (?꾩떆 ?뚯씪 ????ㅽ뙣 ?쒖뿉留??ъ슜)
+    styleId?: string; // ?ㅽ???ID
+    styleKey?: string; // ?ㅽ?????
+    styleName?: string; // ?ㅽ????대쫫
+    // ?먮윭 ?뺣낫 (?ㅽ뙣 ?쒖뿉留?議댁옱)
+    error?: {
+      code: string; // ?먮윭 肄붾뱶 ('GEMINI_OVERLOAD', 'GEMINI_TIMEOUT', 'GEMINI_ERROR', 'SEEDREAM_ERROR' ??
+      message: string; // ?ъ슜?먯뿉寃??쒖떆??硫붿떆吏
+      details?: unknown; // ?곸꽭 ?먮윭 ?뺣낫 (?붾쾭源낆슜)
+    };
   }>;
 }
 
-// MIME 타입에서 확장자 추출
+// MIME ??낆뿉???뺤옣??異붿텧
 function getExtensionFromMimeType(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
     'image/png': '.png',
@@ -307,18 +390,18 @@ function getExtensionFromMimeType(mimeType: string): string {
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  console.log('[이미지 재생성 배치] 배치 재생성 요청 시작');
+  console.log('[?대?吏 ?ъ깮??諛곗튂] 諛곗튂 ?ъ깮???붿껌 ?쒖옉');
 
   try {
     const body: RegenerateImageBatchRequest = await request.json();
     const { fileId, referenceFileId, referenceFileIds, requests, characterSheets, createdBy } = body;
     
-    // referenceFileIds가 있으면 사용, 없으면 referenceFileId를 배열로 변환 (하위 호환성)
+    // referenceFileIds媛 ?덉쑝硫??ъ슜, ?놁쑝硫?referenceFileId瑜?諛곗뿴濡?蹂??(?섏쐞 ?명솚??
     const finalReferenceFileIds = referenceFileIds || (referenceFileId ? [referenceFileId] : undefined);
     
     const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
     
-    // apiProvider가 비어있는 요청에 대해 기본값 설정 (전역 기본: Seedream, 단 캐릭터시트 모드 제외)
+    // apiProvider媛 鍮꾩뼱?덈뒗 ?붿껌?????湲곕낯媛??ㅼ젙 (?꾩뿭 湲곕낯: Seedream, ??罹먮┃?곗떆??紐⑤뱶 ?쒖쇅)
     const defaultProvider: 'gemini' | 'seedream' = 'seedream';
     requests.forEach(req => {
       if (!req.apiProvider) {
@@ -328,28 +411,28 @@ export async function POST(request: NextRequest) {
 
     if (!fileId) {
       return NextResponse.json(
-        { error: 'fileId가 필요합니다.' },
+        { error: 'fileId媛 ?꾩슂?⑸땲??' },
         { status: 400 }
       );
     }
 
     if (!requests || requests.length === 0) {
       return NextResponse.json(
-        { error: '생성 요청이 필요합니다.' },
+        { error: '?앹꽦 ?붿껌???꾩슂?⑸땲??' },
         { status: 400 }
       );
     }
 
-    console.log('[이미지 재생성 배치] 요청 파라미터:', {
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?붿껌 ?뚮씪誘명꽣:', {
       fileId,
-      referenceFileIds: finalReferenceFileIds || '없음',
+      referenceFileIds: finalReferenceFileIds || '?놁쓬',
       referenceFileIdsCount: finalReferenceFileIds?.length || 0,
       requestCount: requests.length,
-      createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+      createdBy: createdBy || '?놁쓬 (?먮낯 ?뚯씪 ?앹꽦???ъ슜)',
     });
 
-    // 파일 정보 조회 (한 번만)
-    console.log('[이미지 재생성 배치] 파일 정보 조회 시작...');
+    // ?뚯씪 ?뺣낫 議고쉶 (??踰덈쭔)
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 ?뺣낫 議고쉶 ?쒖옉...');
     const { data: file, error: fileError } = await supabase
       .from('files')
       .select('*')
@@ -357,27 +440,27 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (fileError || !file) {
-      console.error('[이미지 재생성 배치] 파일 조회 실패:', fileError);
+      console.error('[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 議고쉶 ?ㅽ뙣:', fileError);
       return NextResponse.json(
-        { error: '파일을 찾을 수 없습니다.' },
+        { error: '?뚯씪??李얠쓣 ???놁뒿?덈떎.' },
         { status: 404 }
       );
     }
 
     if (file.file_type !== 'image') {
       return NextResponse.json(
-        { error: '이미지 파일만 재생성할 수 있습니다.' },
+        { error: '?대?吏 ?뚯씪留??ъ깮?깊븷 ???덉뒿?덈떎.' },
         { status: 400 }
       );
     }
 
-    // 레퍼런스 파일 정보 조회 (있는 경우)
+    // ?덊띁?곗뒪 ?뚯씪 ?뺣낫 議고쉶 (?덈뒗 寃쎌슦)
     const referenceFiles: Array<{ file_path: string }> = [];
     if (finalReferenceFileIds && finalReferenceFileIds.length > 0) {
-      console.log('[이미지 재생성 배치] 레퍼런스 파일 정보 조회 시작...', { count: finalReferenceFileIds.length });
+      console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?뚯씪 ?뺣낫 議고쉶 ?쒖옉...', { count: finalReferenceFileIds.length });
       
       for (const refFileId of finalReferenceFileIds) {
-        // 먼저 reference_files 테이블에서 조회 시도
+        // 癒쇱? reference_files ?뚯씠釉붿뿉??議고쉶 ?쒕룄
         const { data: refFile, error: refFileError } = await supabase
           .from('reference_files')
           .select('file_path')
@@ -385,8 +468,8 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (refFileError || !refFile) {
-          // reference_files에서 찾지 못하면 files 테이블에서 조회 시도
-          console.log('[이미지 재생성 배치] reference_files에서 찾지 못함, files 테이블에서 조회 시도...', { refFileId });
+          // reference_files?먯꽌 李얠? 紐삵븯硫?files ?뚯씠釉붿뿉??議고쉶 ?쒕룄
+          console.log('[?대?吏 ?ъ깮??諛곗튂] reference_files?먯꽌 李얠? 紐삵븿, files ?뚯씠釉붿뿉??議고쉶 ?쒕룄...', { refFileId });
           const { data: regularFile, error: regularFileError } = await supabase
             .from('files')
             .select('file_path')
@@ -394,42 +477,42 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (regularFileError || !regularFile) {
-            console.error('[이미지 재생성 배치] 레퍼런스 파일 조회 실패:', { refFileId, error: refFileError || regularFileError });
-            continue; // 개별 실패해도 계속 진행
+            console.error('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?뚯씪 議고쉶 ?ㅽ뙣:', { refFileId, error: refFileError || regularFileError });
+            continue; // 媛쒕퀎 ?ㅽ뙣?대룄 怨꾩냽 吏꾪뻾
           }
           referenceFiles.push(regularFile);
-          console.log('[이미지 재생성 배치] files 테이블에서 레퍼런스 파일 찾음', { refFileId });
+          console.log('[?대?吏 ?ъ깮??諛곗튂] files ?뚯씠釉붿뿉???덊띁?곗뒪 ?뚯씪 李얠쓬', { refFileId });
         } else {
           referenceFiles.push(refFile);
-          console.log('[이미지 재생성 배치] reference_files 테이블에서 레퍼런스 파일 찾음', { refFileId });
+          console.log('[?대?吏 ?ъ깮??諛곗튂] reference_files ?뚯씠釉붿뿉???덊띁?곗뒪 ?뚯씪 李얠쓬', { refFileId });
         }
       }
       
       if (referenceFiles.length === 0) {
-        console.error('[이미지 재생성 배치] 모든 레퍼런스 파일 조회 실패');
+        console.error('[?대?吏 ?ъ깮??諛곗튂] 紐⑤뱺 ?덊띁?곗뒪 ?뚯씪 議고쉶 ?ㅽ뙣');
         return NextResponse.json(
-          { error: '레퍼런스 파일을 찾을 수 없습니다.' },
+          { error: '?덊띁?곗뒪 ?뚯씪??李얠쓣 ???놁뒿?덈떎.' },
           { status: 404 }
         );
       }
       
-      console.log('[이미지 재생성 배치] 레퍼런스 파일 조회 완료:', {
+      console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?뚯씪 議고쉶 ?꾨즺:', {
         total: finalReferenceFileIds.length,
         success: referenceFiles.length,
       });
     }
 
-    // 캐릭터시트 이미지 캐시 (한 번만 다운로드)
+    // 罹먮┃?곗떆???대?吏 罹먯떆 (??踰덈쭔 ?ㅼ슫濡쒕뱶)
     let characterSheetImagesCache: Array<{ base64: string; mimeType: string }> | null = null;
     
     if (hasCharacterSheets && characterSheets) {
-      console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 시작...', { count: characterSheets.length });
+      console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 ?쒖옉...', { count: characterSheets.length });
       characterSheetImagesCache = [];
       
       for (const sheet of characterSheets) {
         try {
-          // 레퍼런스 파일처럼 DB에서 file_path 조회
-          console.log('[이미지 재생성 배치] 캐릭터시트 파일 ID로 파일 정보 조회 시작...', { sheetId: sheet.sheetId });
+          // ?덊띁?곗뒪 ?뚯씪泥섎읆 DB?먯꽌 file_path 議고쉶
+          console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???뚯씪 ID濡??뚯씪 ?뺣낫 議고쉶 ?쒖옉...', { sheetId: sheet.sheetId });
           const { data: sheetFile, error: sheetFileError } = await supabase
             .from('character_sheets')
             .select('file_path')
@@ -437,18 +520,18 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (sheetFileError || !sheetFile) {
-            console.error('[이미지 재생성 배치] 캐릭터시트 파일 조회 실패:', {
+            console.error('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???뚯씪 議고쉶 ?ㅽ뙣:', {
               sheetId: sheet.sheetId,
               error: sheetFileError,
             });
             continue;
           }
 
-          console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 시작...', { sheetId: sheet.sheetId, filePath: sheetFile.file_path });
+          console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 ?쒖옉...', { sheetId: sheet.sheetId, filePath: sheetFile.file_path });
           const sheetResponse = await fetch(sheetFile.file_path);
           
           if (!sheetResponse.ok) {
-            console.error('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 실패:', {
+            console.error('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣:', {
               sheetId: sheet.sheetId,
               status: sheetResponse.status,
               filePath: sheetFile.file_path,
@@ -466,7 +549,7 @@ export async function POST(request: NextRequest) {
             mimeType: sheetMimeType,
           });
         } catch (error) {
-          console.error('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 중 오류:', {
+          console.error('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 以??ㅻ쪟:', {
             sheetId: sheet.sheetId,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -474,32 +557,32 @@ export async function POST(request: NextRequest) {
       }
       
       if (characterSheetImagesCache.length === 0) {
-        console.error('[이미지 재생성 배치] 모든 캐릭터시트 이미지 다운로드 실패');
+        console.error('[?대?吏 ?ъ깮??諛곗튂] 紐⑤뱺 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣');
         return NextResponse.json(
-          { error: '캐릭터시트 이미지를 가져올 수 없습니다.' },
+          { error: '罹먮┃?곗떆???대?吏瑜?媛?몄삱 ???놁뒿?덈떎.' },
           { status: 400 }
         );
       }
       
-      console.log('[이미지 재생성 배치] 캐릭터시트 이미지 다운로드 완료:', {
+      console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 ?ㅼ슫濡쒕뱶 ?꾨즺:', {
         total: characterSheets.length,
         success: characterSheetImagesCache.length,
       });
     }
 
-    // 이미지 다운로드 (원본과 레퍼런스를 병렬로, 타임아웃 설정)
-    console.log('[이미지 재생성 배치] 이미지 다운로드 시작...');
-    const IMAGE_DOWNLOAD_TIMEOUT = 30000; // 30초
+    // ?대?吏 ?ㅼ슫濡쒕뱶 (?먮낯怨??덊띁?곗뒪瑜?蹂묐젹濡? ??꾩븘???ㅼ젙)
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?대?吏 ?ㅼ슫濡쒕뱶 ?쒖옉...');
+    const IMAGE_DOWNLOAD_TIMEOUT = 30000; // 30珥?
     
-    // 원본 이미지 다운로드
+    // ?먮낯 ?대?吏 ?ㅼ슫濡쒕뱶
     const imageDownloadPromise = fetchWithTimeout(file.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`이미지 다운로드 실패: ${response.status} ${response.statusText}`);
+          throw new Error(`?대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣: ${response.status} ${response.statusText}`);
         }
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        console.log('[이미지 재생성 배치] 원본 이미지 다운로드 완료:', {
+        console.log('[?대?吏 ?ъ깮??諛곗튂] ?먮낯 ?대?吏 ?ㅼ슫濡쒕뱶 ?꾨즺:', {
           size: buffer.length,
           mimeType: response.headers.get('content-type') || 'image/jpeg',
         });
@@ -509,16 +592,16 @@ export async function POST(request: NextRequest) {
         };
       });
 
-    // 레퍼런스 이미지들 다운로드 (병렬)
+    // ?덊띁?곗뒪 ?대?吏???ㅼ슫濡쒕뱶 (蹂묐젹)
     const referenceDownloadPromises = referenceFiles.map((refFile, index) =>
       fetchWithTimeout(refFile.file_path, {}, IMAGE_DOWNLOAD_TIMEOUT)
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error(`레퍼런스 이미지 다운로드 실패: ${response.status} ${response.statusText}`);
+            throw new Error(`?덊띁?곗뒪 ?대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣: ${response.status} ${response.statusText}`);
           }
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-          console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 완료:', {
+          console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?대?吏 ?ㅼ슫濡쒕뱶 ?꾨즺:', {
             index: index + 1,
             total: referenceFiles.length,
             size: buffer.length,
@@ -531,17 +614,17 @@ export async function POST(request: NextRequest) {
         })
     );
 
-    // 원본과 레퍼런스 이미지들을 병렬로 다운로드
+    // ?먮낯怨??덊띁?곗뒪 ?대?吏?ㅼ쓣 蹂묐젹濡??ㅼ슫濡쒕뱶
     const [imageResult, ...referenceResults] = await Promise.allSettled([
       imageDownloadPromise,
       ...referenceDownloadPromises,
     ]);
 
-    // 원본 이미지 처리
+    // ?먮낯 ?대?吏 泥섎━
     if (imageResult.status === 'rejected') {
-      console.error('[이미지 재생성 배치] 이미지 다운로드 실패:', imageResult.reason);
+      console.error('[?대?吏 ?ъ깮??諛곗튂] ?대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣:', imageResult.reason);
       return NextResponse.json(
-        { error: '이미지를 가져올 수 없습니다.' },
+        { error: '?대?吏瑜?媛?몄삱 ???놁뒿?덈떎.' },
         { status: 400 }
       );
     }
@@ -550,18 +633,18 @@ export async function POST(request: NextRequest) {
     const imageBase64 = imageBuffer.toString('base64');
     const mimeType = imageResult.value.mimeType;
 
-    // 이미지 메타데이터 가져오기
-    console.log('[이미지 재생성 배치] 이미지 메타데이터 추출 시작...');
+    // ?대?吏 硫뷀??곗씠??媛?몄삤湲?
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?대?吏 硫뷀??곗씠??異붿텧 ?쒖옉...');
     const imageMetadata = await sharp(imageBuffer).metadata();
     const originalWidth = imageMetadata.width || 1920;
     const originalHeight = imageMetadata.height || 1080;
-    console.log('[이미지 재생성 배치] 이미지 메타데이터 추출 완료:', {
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?대?吏 硫뷀??곗씠??異붿텧 ?꾨즺:', {
       width: originalWidth,
       height: originalHeight,
       format: imageMetadata.format,
     });
 
-    // 레퍼런스 이미지 처리
+    // ?덊띁?곗뒪 ?대?吏 泥섎━
     const refImages: Array<{ base64: string; mimeType: string }> = [];
     referenceResults.forEach((result, index) => {
       if (result.status === 'fulfilled') {
@@ -570,7 +653,7 @@ export async function POST(request: NextRequest) {
           mimeType: result.value.mimeType,
         });
       } else {
-        console.error('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 실패:', {
+        console.error('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣:', {
           index: index + 1,
           error: result.reason,
         });
@@ -578,23 +661,23 @@ export async function POST(request: NextRequest) {
     });
     
     if (referenceFiles.length > 0 && refImages.length === 0) {
-      console.error('[이미지 재생성 배치] 모든 레퍼런스 이미지 다운로드 실패');
+      console.error('[?대?吏 ?ъ깮??諛곗튂] 紐⑤뱺 ?덊띁?곗뒪 ?대?吏 ?ㅼ슫濡쒕뱶 ?ㅽ뙣');
       return NextResponse.json(
-        { error: '레퍼런스 이미지를 가져올 수 없습니다.' },
+        { error: '?덊띁?곗뒪 ?대?吏瑜?媛?몄삱 ???놁뒿?덈떎.' },
         { status: 400 }
       );
     }
     
-    console.log('[이미지 재생성 배치] 레퍼런스 이미지 다운로드 완료:', {
+    console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?대?吏 ?ㅼ슫濡쒕뱶 ?꾨즺:', {
       total: referenceFiles.length,
       success: refImages.length,
     });
 
-    // Provider별로 그룹화 (전달된 apiProvider를 그대로 사용)
-    console.log('[이미지 재생성 배치] Provider별 그룹화 시작...');
+    // Provider蹂꾨줈 洹몃９??(?꾨떖??apiProvider瑜?洹몃?濡??ъ슜)
+    console.log('[?대?吏 ?ъ깮??諛곗튂] Provider蹂?洹몃９???쒖옉...');
     const geminiRequests = requests.filter(r => r.apiProvider === 'gemini');
     const seedreamRequests = requests.filter(r => r.apiProvider === 'seedream');
-    console.log('[이미지 재생성 배치] Provider별 그룹화 완료:', {
+    console.log('[?대?吏 ?ъ깮??諛곗튂] Provider蹂?洹몃９???꾨즺:', {
       geminiCount: geminiRequests.length,
       seedreamCount: seedreamRequests.length,
       totalCount: requests.length,
@@ -602,20 +685,20 @@ export async function POST(request: NextRequest) {
 
     const results: RegenerateImageBatchResponse['images'] = [];
 
-    // Seedream용 이미지 리사이징 (병렬 처리 전에 미리 준비)
+    // Seedream???대?吏 由ъ궗?댁쭠 (蹂묐젹 泥섎━ ?꾩뿉 誘몃━ 以鍮?
     let seedreamImageBase64: string | undefined;
     let seedreamMimeType: string | undefined;
     let seedreamImages: string[] | undefined;
     let seedreamSize: string | undefined;
 
     if (seedreamRequests.length > 0) {
-      console.log('[이미지 재생성 배치] Seedream용 이미지 리사이징 준비 시작...');
-      // 이미지 리사이징 (한 번만)
-      console.log('[이미지 재생성 배치] 원본 이미지 리사이징 시작 (Seedream용)...');
+      console.log('[?대?吏 ?ъ깮??諛곗튂] Seedream???대?吏 由ъ궗?댁쭠 以鍮??쒖옉...');
+      // ?대?吏 由ъ궗?댁쭠 (??踰덈쭔)
+      console.log('[?대?吏 ?ъ깮??諛곗튂] ?먮낯 ?대?吏 由ъ궗?댁쭠 ?쒖옉 (Seedream??...');
       const resizeStartTime = Date.now();
       const resizeResult = await resizeImageIfNeeded(imageBuffer);
       const resizeTime = Date.now() - resizeStartTime;
-      console.log('[이미지 재생성 배치] 원본 이미지 리사이징 완료:', {
+      console.log('[?대?吏 ?ъ깮??諛곗튂] ?먮낯 ?대?吏 由ъ궗?댁쭠 ?꾨즺:', {
         resized: resizeResult.resized,
         resizeTime: `${resizeTime}ms`,
         originalSize: imageBuffer.length,
@@ -628,7 +711,7 @@ export async function POST(request: NextRequest) {
 
       seedreamImages = [seedreamImageInput];
       if (refImages.length > 0) {
-        console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 시작 (Seedream용)...', { count: refImages.length });
+        console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?대?吏 由ъ궗?댁쭠 ?쒖옉 (Seedream??...', { count: refImages.length });
         
         for (const refImage of refImages) {
           const refResizeStartTime = Date.now();
@@ -637,12 +720,12 @@ export async function POST(request: NextRequest) {
           let refResizeResult: { base64: string; mimeType: string; resized: boolean };
           if (referenceImageResizeCache.has(cacheKey)) {
             refResizeResult = referenceImageResizeCache.get(cacheKey)!;
-            console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 결과 캐시에서 재사용');
+            console.log('[image-regeneration-batch] reference image resize cache hit');
           } else {
             const refBuffer = Buffer.from(refImage.base64, 'base64');
             refResizeResult = await resizeImageIfNeeded(refBuffer);
             const refResizeTime = Date.now() - refResizeStartTime;
-            console.log('[이미지 재생성 배치] 레퍼런스 이미지 리사이징 완료:', {
+            console.log('[?대?吏 ?ъ깮??諛곗튂] ?덊띁?곗뒪 ?대?吏 由ъ궗?댁쭠 ?꾨즺:', {
               resized: refResizeResult.resized,
               resizeTime: `${refResizeTime}ms`,
               originalBase64Length: refImage.base64.length,
@@ -664,12 +747,12 @@ export async function POST(request: NextRequest) {
           seedreamImages.push(refDataUrl);
         }
         
-        console.log('[이미지 재생성 배치] Seedream API에 레퍼런스 이미지 포함', { count: refImages.length });
+        console.log('[?대?吏 ?ъ깮??諛곗튂] Seedream API???덊띁?곗뒪 ?대?吏 ?ы븿', { count: refImages.length });
       }
 
-      // 캐릭터시트 이미지 추가 (캐릭터 바꾸기용)
+      // 罹먮┃?곗떆???대?吏 異붽? (罹먮┃??諛붽씀湲곗슜)
       if (characterSheetImagesCache && characterSheetImagesCache.length > 0) {
-        console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 시작 (Seedream용)...', { count: characterSheetImagesCache.length });
+        console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 由ъ궗?댁쭠 ?쒖옉 (Seedream??...', { count: characterSheetImagesCache.length });
         
         for (const sheetImage of characterSheetImagesCache) {
           const sheetResizeStartTime = Date.now();
@@ -678,12 +761,12 @@ export async function POST(request: NextRequest) {
           let sheetResizeResult: { base64: string; mimeType: string; resized: boolean };
           if (referenceImageResizeCache.has(cacheKey)) {
             sheetResizeResult = referenceImageResizeCache.get(cacheKey)!;
-            console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 결과 캐시에서 재사용');
+            console.log('[image-regeneration-batch] character sheet resize cache hit');
           } else {
             const sheetBuffer = Buffer.from(sheetImage.base64, 'base64');
             sheetResizeResult = await resizeImageIfNeeded(sheetBuffer);
             const sheetResizeTime = Date.now() - sheetResizeStartTime;
-            console.log('[이미지 재생성 배치] 캐릭터시트 이미지 리사이징 완료:', {
+            console.log('[?대?吏 ?ъ깮??諛곗튂] 罹먮┃?곗떆???대?吏 由ъ궗?댁쭠 ?꾨즺:', {
               resized: sheetResizeResult.resized,
               resizeTime: `${sheetResizeTime}ms`,
               originalBase64Length: sheetImage.base64.length,
@@ -705,30 +788,30 @@ export async function POST(request: NextRequest) {
           seedreamImages.push(sheetDataUrl);
         }
         
-        console.log('[이미지 재생성 배치] Seedream API에 캐릭터시트 이미지 포함', { count: characterSheetImagesCache.length });
+        console.log('[?대?吏 ?ъ깮??諛곗튂] Seedream API??罹먮┃?곗떆???대?吏 ?ы븿', { count: characterSheetImagesCache.length });
       }
 
       seedreamSize = calculateSeedreamSize(originalWidth, originalHeight);
-      console.log('[이미지 재생성 배치] Seedream size 계산:', seedreamSize);
+      console.log('[?대?吏 ?ъ깮??諛곗튂] Seedream size 怨꾩궛:', seedreamSize);
     }
 
-    // Gemini와 Seedream 그룹을 병렬 처리
+    // Gemini? Seedream 洹몃９??蹂묐젹 泥섎━
     const processGeminiGroup = async (): Promise<RegenerateImageBatchResponse['images']> => {
       if (geminiRequests.length === 0) {
         return [];
       }
       
-      // 원본 파일 정보를 클로저로 전달
+      // ?먮낯 ?뚯씪 ?뺣낫瑜??대줈?濡??꾨떖
       const sourceFile = file;
       
-      console.log(`[이미지 재생성 배치] Gemini 그룹 처리 시작 (${geminiRequests.length}개 요청)...`);
+      console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini 洹몃９ 泥섎━ ?쒖옉 (${geminiRequests.length}媛??붿껌)...`);
       if (!GEMINI_API_KEY) {
-        console.error('[이미지 재생성 배치] GEMINI_API_KEY가 설정되지 않음');
-        throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
+        console.error('[?대?吏 ?ъ깮??諛곗튂] GEMINI_API_KEY媛 ?ㅼ젙?섏? ?딆쓬');
+        throw new Error('GEMINI_API_KEY媛 ?ㅼ젙?섏? ?딆븯?듬땲??');
       }
 
       const aspectRatio = getClosestAspectRatio(originalWidth, originalHeight, 'gemini');
-      console.log('[이미지 재생성 배치] Gemini aspectRatio 계산:', aspectRatio);
+      console.log('[?대?吏 ?ъ깮??諛곗튂] Gemini aspectRatio 怨꾩궛:', aspectRatio);
       const model = 'gemini-3-pro-image-preview';
 
       const imageConfig: { imageSize: string; aspectRatio?: string } = {
@@ -747,51 +830,39 @@ export async function POST(request: NextRequest) {
         maxOutputTokens: 32768,
       };
 
-      // Gemini 요청들을 2개씩 청크로 나누어 처리
+      // Gemini ?붿껌?ㅼ쓣 2媛쒖뵫 泥?겕濡??섎늻??泥섎━
       const GEMINI_CONCURRENT_LIMIT = 2;
       const geminiGroupResults: RegenerateImageBatchResponse['images'] = [];
 
       for (let i = 0; i < geminiRequests.length; i += GEMINI_CONCURRENT_LIMIT) {
         const chunk = geminiRequests.slice(i, i + GEMINI_CONCURRENT_LIMIT);
-        console.log(`[이미지 재생성 배치] Gemini 청크 처리 시작 (${chunk.length}개, 인덱스 ${i}~${i + chunk.length - 1})...`);
+        console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini 泥?겕 泥섎━ ?쒖옉 (${chunk.length}媛? ?몃뜳??${i}~${i + chunk.length - 1})...`);
 
         const geminiPromises = chunk.map(async (req) => {
         const requestStartTime = Date.now();
-        const maxRetries = 3;
-        let lastError: unknown = null;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            if (attempt > 0) {
-              const delay = getRetryDelay(attempt - 1);
-              console.log(`[이미지 재생성 배치] Gemini API 재시도 (인덱스 ${req.index}, 시도 ${attempt}/${maxRetries}, ${delay}ms 대기 후):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-              await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-              console.log(`[이미지 재생성 배치] Gemini API 호출 시작 (인덱스 ${req.index}):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
-            }
+        try {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini API ?몄텧 ?쒖옉 (?몃뜳??${req.index}):`, {
+              prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              promptLength: req.stylePrompt.length,
+            });
 
             const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
             
             if (hasCharacterSheets && characterSheets) {
-              // 캐릭터 바꾸기: DB에서 가져온 프롬프트 사용 + 원본 이미지(1번) + 캐릭터시트 이미지들(2번 이후)
-              // req.stylePrompt는 DB의 스타일 프롬프트 또는 사용자가 수정한 프롬프트
+              // 罹먮┃??諛붽씀湲? DB?먯꽌 媛?몄삩 ?꾨＼?꾪듃 ?ъ슜 + ?먮낯 ?대?吏(1踰? + 罹먮┃?곗떆???대?吏??2踰??댄썑)
+              // req.stylePrompt??DB???ㅽ????꾨＼?꾪듃 ?먮뒗 ?ъ슜?먭? ?섏젙???꾨＼?꾪듃
               contentParts.push({
                 text: req.stylePrompt,
               });
-              // 1번 이미지: 원본 이미지
+              // 1踰??대?吏: ?먮낯 ?대?吏
               contentParts.push({
                 inlineData: {
                   mimeType: mimeType,
                   data: imageBase64,
                 },
               });
-              // 2번 이후: 캐릭터시트 이미지들 (캐시에서 재사용)
+              // 2踰??댄썑: 罹먮┃?곗떆???대?吏??(罹먯떆?먯꽌 ?ъ궗??
               if (characterSheetImagesCache) {
                 for (const sheetImage of characterSheetImagesCache) {
                   contentParts.push({
@@ -810,7 +881,7 @@ export async function POST(request: NextRequest) {
                   data: imageBase64,
                 },
               });
-              // 여러 레퍼런스 이미지 추가
+              // ?щ윭 ?덊띁?곗뒪 ?대?吏 異붽?
               for (const refImage of refImages) {
                 contentParts.push({
                   inlineData: {
@@ -819,7 +890,7 @@ export async function POST(request: NextRequest) {
                   },
                 });
               }
-              console.log(`[이미지 재생성 배치] Gemini API 호출 (인덱스 ${req.index}): 레퍼런스 이미지 포함`, { count: refImages.length });
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini API ?몄텧 (?몃뜳??${req.index}): ?덊띁?곗뒪 ?대?吏 ?ы븿`, { count: refImages.length });
             } else {
               contentParts.push({ text: req.stylePrompt });
               contentParts.push({
@@ -835,7 +906,7 @@ export async function POST(request: NextRequest) {
               parts: contentParts,
             }];
 
-            console.log(`[이미지 재생성 배치] Gemini API 호출 (인덱스 ${req.index}):`, {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini API ?몄텧 (?몃뜳??${req.index}):`, {
               timeout: `${GEMINI_API_TIMEOUT}ms`,
             });
 
@@ -849,27 +920,27 @@ export async function POST(request: NextRequest) {
             });
 
             const requestTime = Date.now() - requestStartTime;
-            console.log(`[이미지 재생성 배치] Gemini API 호출 완료 (인덱스 ${req.index}):`, {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini API ?몄텧 ?꾨즺 (?몃뜳??${req.index}):`, {
               requestTime: `${requestTime}ms`,
               imageDataLength: finalImageData.length,
               mimeType: finalMimeType,
             });
 
-            // base64 데이터를 Buffer로 변환
+            // base64 ?곗씠?곕? Buffer濡?蹂??
             const imageBuffer = Buffer.from(finalImageData, 'base64');
             
-            // 영구 파일과 같은 경로에 임시 파일 저장
+            // ?곴뎄 ?뚯씪怨?媛숈? 寃쎈줈???꾩떆 ?뚯씪 ???
             const extension = getExtensionFromMimeType(finalMimeType);
             const uuid = crypto.randomUUID().substring(0, 8);
             const baseFileName = sourceFile.file_name.replace(/\.[^/.]+$/, '') || 'regenerated';
-            // 파일명 sanitize (한글 및 특수문자 처리)
+            // ?뚯씪紐?sanitize (?쒓? 諛??뱀닔臾몄옄 泥섎━)
             const sanitizedBaseFileName = baseFileName
-              .replace(/[^a-zA-Z0-9._-]/g, '_') // 한글 및 특수문자를 언더스코어로 변환
-              .substring(0, 100); // 파일명 길이 제한
+              .replace(/[^a-zA-Z0-9._-]/g, '_') // ?쒓? 諛??뱀닔臾몄옄瑜??몃뜑?ㅼ퐫?대줈 蹂??
+              .substring(0, 100); // ?뚯씪紐?湲몄씠 ?쒗븳
             const fileName = `${sanitizedBaseFileName}-${uuid}${extension}`;
             const storagePath = `${sourceFile.cut_id}/${sourceFile.process_id}/${fileName}`;
             
-            console.log(`[이미지 재생성 배치] 임시 파일 저장 시작 (인덱스 ${req.index}):`, storagePath);
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????쒖옉 (?몃뜳??${req.index}):`, storagePath);
             const { error: uploadError } = await supabase.storage
               .from('webtoon-files')
               .upload(storagePath, imageBuffer, {
@@ -878,18 +949,18 @@ export async function POST(request: NextRequest) {
               });
 
             if (uploadError) {
-              console.error(`[이미지 재생성 배치] 임시 파일 저장 실패 (인덱스 ${req.index}):`, {
+              console.error(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????ㅽ뙣 (?몃뜳??${req.index}):`, {
                 error: uploadError,
                 storagePath,
                 fileName,
                 originalFileName: sourceFile.file_name,
               });
               
-              // 파일명 재시도 (더 간단한 파일명 사용)
+              // ?뚯씪紐??ъ떆??(??媛꾨떒???뚯씪紐??ъ슜)
               const fallbackFileName = `regenerated-${uuid}${extension}`;
               const fallbackStoragePath = `${sourceFile.cut_id}/${sourceFile.process_id}/${fallbackFileName}`;
               
-              console.log(`[이미지 재생성 배치] 재시도 - 간단한 파일명 사용 (인덱스 ${req.index}):`, fallbackStoragePath);
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] ?ъ떆??- 媛꾨떒???뚯씪紐??ъ슜 (?몃뜳??${req.index}):`, fallbackStoragePath);
               const { error: retryError } = await supabase.storage
                 .from('webtoon-files')
                 .upload(fallbackStoragePath, imageBuffer, {
@@ -898,8 +969,8 @@ export async function POST(request: NextRequest) {
                 });
               
               if (retryError) {
-                console.error(`[이미지 재생성 배치] 재시도도 실패 (인덱스 ${req.index}):`, retryError);
-                // 저장 실패 시 기존 방식으로 fallback (base64 반환)
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] ?ъ떆?꾨룄 ?ㅽ뙣 (?몃뜳??${req.index}):`, retryError);
+                // ????ㅽ뙣 ??湲곗〈 諛⑹떇?쇰줈 fallback (base64 諛섑솚)
                 return {
                   index: req.index,
                   imageData: finalImageData,
@@ -912,13 +983,13 @@ export async function POST(request: NextRequest) {
                 };
               }
               
-              // 재시도 성공 시 fallback 경로 사용
+              // ?ъ떆???깃났 ??fallback 寃쎈줈 ?ъ슜
               const { data: urlData } = supabase.storage
                 .from('webtoon-files')
                 .getPublicUrl(fallbackStoragePath);
               const fileUrl = urlData.publicUrl;
               
-              // DB에 임시 파일 정보 저장 (is_temp = true)
+              // DB???꾩떆 ?뚯씪 ?뺣낫 ???(is_temp = true)
               let imageWidth: number | undefined;
               let imageHeight: number | undefined;
               try {
@@ -926,12 +997,12 @@ export async function POST(request: NextRequest) {
                 imageWidth = metadata.width;
                 imageHeight = metadata.height;
               } catch (error) {
-                console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
+                console.warn(`[?대?吏 ?ъ깮??諛곗튂] 硫뷀??곗씠??異붿텧 ?ㅽ뙣 (?몃뜳??${req.index}):`, error);
               }
               
               const finalCreatedBy = createdBy || sourceFile.created_by;
-              console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Gemini fallback):`, {
-                createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 ???(?몃뜳??${req.index}, Gemini fallback):`, {
+                createdBy: createdBy || '?놁쓬 (?먮낯 ?뚯씪 ?앹꽦???ъ슜)',
                 sourceCreatedBy: sourceFile.created_by,
                 finalCreatedBy,
               });
@@ -947,7 +1018,7 @@ export async function POST(request: NextRequest) {
                   file_size: imageBuffer.length,
                   file_type: 'image',
                   mime_type: finalMimeType,
-                  description: `AI 재생성: ${sourceFile.file_name}`,
+                  description: `AI ?ъ깮?? ${sourceFile.file_name}`,
                   prompt: req.stylePrompt,
                   created_by: finalCreatedBy,
                   source_file_id: sourceFile.id,
@@ -964,7 +1035,7 @@ export async function POST(request: NextRequest) {
                 .single();
               
               if (dbError || !fileData) {
-                console.error(`[이미지 재생성 배치] DB 저장 실패 (인덱스 ${req.index}):`, dbError);
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] DB ????ㅽ뙣 (?몃뜳??${req.index}):`, dbError);
                 await supabase.storage.from('webtoon-files').remove([fallbackStoragePath]);
                 return {
                   index: req.index,
@@ -992,13 +1063,13 @@ export async function POST(request: NextRequest) {
               };
             }
 
-            // 파일 URL 생성
+            // ?뚯씪 URL ?앹꽦
             const { data: urlData } = supabase.storage
               .from('webtoon-files')
               .getPublicUrl(storagePath);
             const fileUrl = urlData.publicUrl;
 
-            // 이미지 메타데이터 추출
+            // ?대?吏 硫뷀??곗씠??異붿텧
             let imageWidth: number | undefined;
             let imageHeight: number | undefined;
             try {
@@ -1006,13 +1077,13 @@ export async function POST(request: NextRequest) {
               imageWidth = metadata.width;
               imageHeight = metadata.height;
             } catch (error) {
-              console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
+              console.warn(`[?대?吏 ?ъ깮??諛곗튂] 硫뷀??곗씠??異붿텧 ?ㅽ뙣 (?몃뜳??${req.index}):`, error);
             }
 
-            // DB에 임시 파일 정보 저장 (is_temp = true)
+            // DB???꾩떆 ?뚯씪 ?뺣낫 ???(is_temp = true)
             const finalCreatedBy = createdBy || sourceFile.created_by;
-            console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Gemini):`, {
-              createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 ???(?몃뜳??${req.index}, Gemini):`, {
+              createdBy: createdBy || '?놁쓬 (?먮낯 ?뚯씪 ?앹꽦???ъ슜)',
               sourceCreatedBy: sourceFile.created_by,
               finalCreatedBy,
             });
@@ -1028,7 +1099,7 @@ export async function POST(request: NextRequest) {
                 file_size: imageBuffer.length,
                 file_type: 'image',
                 mime_type: finalMimeType,
-                description: `AI 재생성: ${sourceFile.file_name}`,
+                description: `AI ?ъ깮?? ${sourceFile.file_name}`,
                 prompt: req.stylePrompt,
                 created_by: finalCreatedBy,
                 source_file_id: sourceFile.id,
@@ -1042,10 +1113,10 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (dbError || !fileData) {
-              console.error(`[이미지 재생성 배치] DB 저장 실패 (인덱스 ${req.index}):`, dbError);
-              // Storage 파일은 삭제
+              console.error(`[?대?吏 ?ъ깮??諛곗튂] DB ????ㅽ뙣 (?몃뜳??${req.index}):`, dbError);
+              // Storage ?뚯씪? ??젣
               await supabase.storage.from('webtoon-files').remove([storagePath]);
-              // 저장 실패 시 기존 방식으로 fallback (base64 반환)
+              // ????ㅽ뙣 ??湲곗〈 諛⑹떇?쇰줈 fallback (base64 諛섑솚)
               return {
                 index: req.index,
                 imageData: finalImageData,
@@ -1058,7 +1129,7 @@ export async function POST(request: NextRequest) {
               };
             }
 
-            console.log(`[이미지 재생성 배치] 임시 파일 저장 완료 (인덱스 ${req.index}):`, {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????꾨즺 (?몃뜳??${req.index}):`, {
               fileId: fileData.id,
               storagePath,
               fileUrl,
@@ -1078,35 +1149,64 @@ export async function POST(request: NextRequest) {
               ...(req.styleName && { styleName: req.styleName }),
             };
           } catch (error: unknown) {
-            lastError = error;
-            const isRetryable = isRetryableError(error);
-
-            if (!isRetryable || attempt >= maxRetries) {
-              console.error(`[이미지 재생성 배치] Gemini API 호출 실패 (인덱스 ${req.index}):`, {
-                error: error instanceof Error ? error.message : String(error),
-                attempt: attempt + 1,
-              });
-              throw error;
-            }
+            const errorDetails = extractErrorDetails(error);
+            const isTimeout = error instanceof Error && error.message.toLowerCase().includes('timeout');
+            const errorType = isTimeout ? 'timeout' : 'error';
+            
+            console.error(`[?대?吏 ?ъ깮??諛곗튂] Gemini API ?몄텧 ?ㅽ뙣 (?몃뜳??${req.index}, ${errorType}):`, {
+              errorDetails,
+              requestIndex: req.index,
+              promptLength: req.stylePrompt.length,
+              promptPreview: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              errorType,
+            });
+            throw error;
           }
-        }
-
-          throw lastError || new Error('Gemini API 응답을 받을 수 없습니다.');
         });
 
         const chunkResults = await Promise.allSettled(geminiPromises);
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             geminiGroupResults.push(result.value);
           } else {
-            console.error(`[이미지 재생성 배치] Gemini 요청 실패:`, result.reason);
+            console.error(`[?대?吏 ?ъ깮??諛곗튂] Gemini ?붿껌 ?ㅽ뙣:`, result.reason);
+            // ?ㅽ뙣???붿껌??寃곌낵???ы븿 (?먮윭 ?뺣낫? ?④퍡)
+            const failedRequest = chunk[index];
+            if (failedRequest) {
+              const errorInfo = categorizeError(result.reason, 'gemini');
+              // ?먮윭 ?뺣낫 寃利?
+              if (!errorInfo || !errorInfo.code || !errorInfo.message) {
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] categorizeError 諛섑솚媛믪씠 ?좏슚?섏? ?딆쓬 (?몃뜳??${failedRequest.index}):`, errorInfo);
+                errorInfo.code = 'GEMINI_ERROR';
+                errorInfo.message = '?대?吏 ?앹꽦 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.';
+              }
+              const errorResult: RegenerateImageBatchResponse['images'][0] = {
+                index: failedRequest.index,
+                apiProvider: 'gemini',
+                stylePrompt: failedRequest.stylePrompt,
+                ...(failedRequest.styleId && { styleId: failedRequest.styleId }),
+                ...(failedRequest.styleKey && { styleKey: failedRequest.styleKey }),
+                ...(failedRequest.styleName && { styleName: failedRequest.styleName }),
+                error: {
+                  code: errorInfo.code,
+                  message: errorInfo.message,
+                },
+              };
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini ?먮윭 寃곌낵 ?앹꽦 (?몃뜳??${failedRequest.index}):`, {
+                errorCode: errorResult.error?.code,
+                errorMessage: errorResult.error?.message,
+                fullResult: JSON.stringify(errorResult, null, 2),
+              });
+              geminiGroupResults.push(errorResult);
+            }
           }
         });
       }
 
-      const geminiSuccessCount = geminiGroupResults.length;
-      const geminiFailCount = geminiRequests.length - geminiSuccessCount;
-      console.log(`[이미지 재생성 배치] Gemini 그룹 처리 완료: ${geminiSuccessCount}개 성공, ${geminiFailCount}개 실패`);
+      // ?깃났??寃껊쭔 移댁슫??(error媛 ?녿뒗 寃껊쭔)
+      const geminiSuccessCount = geminiGroupResults.filter(r => !r.error).length;
+      const geminiFailCount = geminiGroupResults.filter(r => !!r.error).length;
+      console.log(`[?대?吏 ?ъ깮??諛곗튂] Gemini 洹몃９ 泥섎━ ?꾨즺: ${geminiSuccessCount}媛??깃났, ${geminiFailCount}媛??ㅽ뙣`);
       
       return geminiGroupResults;
     };
@@ -1116,34 +1216,31 @@ export async function POST(request: NextRequest) {
         return [];
       }
       
-      // 원본 파일 정보를 클로저로 전달
+      // ?먮낯 ?뚯씪 ?뺣낫瑜??대줈?濡??꾨떖
       const sourceFile = file;
 
-      console.log(`[이미지 재생성 배치] Seedream 그룹 처리 시작 (${seedreamRequests.length}개 요청)...`);
+      console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream 洹몃９ 泥섎━ ?쒖옉 (${seedreamRequests.length}媛??붿껌)...`);
       if (!SEEDREAM_API_KEY) {
-        console.error('[이미지 재생성 배치] SEEDREAM_API_KEY가 설정되지 않음');
-        throw new Error('SEEDREAM_API_KEY가 설정되지 않았습니다.');
+        console.error('[?대?吏 ?ъ깮??諛곗튂] SEEDREAM_API_KEY媛 ?ㅼ젙?섏? ?딆쓬');
+        throw new Error('SEEDREAM_API_KEY媛 ?ㅼ젙?섏? ?딆븯?듬땲??');
       }
 
-      // Seedream 요청들을 2개씩 청크로 나누어 처리
+      // Seedream ?붿껌?ㅼ쓣 2媛쒖뵫 泥?겕濡??섎늻??泥섎━
       const SEEDREAM_CONCURRENT_LIMIT = 2;
       const seedreamGroupResults: RegenerateImageBatchResponse['images'] = [];
 
       for (let i = 0; i < seedreamRequests.length; i += SEEDREAM_CONCURRENT_LIMIT) {
         const chunk = seedreamRequests.slice(i, i + SEEDREAM_CONCURRENT_LIMIT);
-        console.log(`[이미지 재생성 배치] Seedream 청크 처리 시작 (${chunk.length}개, 인덱스 ${i}~${i + chunk.length - 1})...`);
+        console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream 泥?겕 泥섎━ ?쒖옉 (${chunk.length}媛? ?몃뜳??${i}~${i + chunk.length - 1})...`);
 
         const seedreamPromises = chunk.map(async (req) => {
-          const maxRetries = 3;
-          let lastError: unknown;
+        const requestStartTime = Date.now();
 
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              const requestStartTime = Date.now();
-              console.log(`[이미지 재생성 배치] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
-                prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
-                promptLength: req.stylePrompt.length,
-              });
+        try {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream API ?몄텧 ?쒖옉 (?몃뜳??${req.index}):`, {
+              prompt: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+              promptLength: req.stylePrompt.length,
+            });
 
               const { base64: generatedImageData, mimeType: generatedImageMimeType } = await generateSeedreamImage({
                 provider: 'seedream',
@@ -1159,27 +1256,27 @@ export async function POST(request: NextRequest) {
               });
 
             const requestTime = Date.now() - requestStartTime;
-            console.log(`[이미지 재생성 배치] Seedream API 호출 완료 (인덱스 ${req.index}):`, {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream API ?몄텧 ?꾨즺 (?몃뜳??${req.index}):`, {
               requestTime: `${requestTime}ms`,
               imageDataLength: generatedImageData.length,
               mimeType: generatedImageMimeType,
             });
 
-            // base64 데이터를 Buffer로 변환
+            // base64 ?곗씠?곕? Buffer濡?蹂??
             const imageBuffer = Buffer.from(generatedImageData, 'base64');
             
-            // 영구 파일과 같은 경로에 임시 파일 저장
+            // ?곴뎄 ?뚯씪怨?媛숈? 寃쎈줈???꾩떆 ?뚯씪 ???
             const extension = getExtensionFromMimeType(generatedImageMimeType || 'image/png');
             const uuid = crypto.randomUUID().substring(0, 8);
             const baseFileName = sourceFile.file_name.replace(/\.[^/.]+$/, '') || 'regenerated';
-            // 파일명 sanitize (한글 및 특수문자 처리)
+            // ?뚯씪紐?sanitize (?쒓? 諛??뱀닔臾몄옄 泥섎━)
             const sanitizedBaseFileName = baseFileName
-              .replace(/[^a-zA-Z0-9._-]/g, '_') // 한글 및 특수문자를 언더스코어로 변환
-              .substring(0, 100); // 파일명 길이 제한
+              .replace(/[^a-zA-Z0-9._-]/g, '_') // ?쒓? 諛??뱀닔臾몄옄瑜??몃뜑?ㅼ퐫?대줈 蹂??
+              .substring(0, 100); // ?뚯씪紐?湲몄씠 ?쒗븳
             const fileName = `${sanitizedBaseFileName}-${uuid}${extension}`;
             const storagePath = `${sourceFile.cut_id}/${sourceFile.process_id}/${fileName}`;
             
-            console.log(`[이미지 재생성 배치] 임시 파일 저장 시작 (인덱스 ${req.index}):`, storagePath);
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????쒖옉 (?몃뜳??${req.index}):`, storagePath);
             const { error: uploadError } = await supabase.storage
               .from('webtoon-files')
               .upload(storagePath, imageBuffer, {
@@ -1188,18 +1285,18 @@ export async function POST(request: NextRequest) {
               });
 
             if (uploadError) {
-              console.error(`[이미지 재생성 배치] 임시 파일 저장 실패 (인덱스 ${req.index}):`, {
+              console.error(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????ㅽ뙣 (?몃뜳??${req.index}):`, {
                 error: uploadError,
                 storagePath,
                 fileName,
                 originalFileName: sourceFile.file_name,
               });
               
-              // 파일명 재시도 (더 간단한 파일명 사용)
+              // ?뚯씪紐??ъ떆??(??媛꾨떒???뚯씪紐??ъ슜)
               const fallbackFileName = `regenerated-${uuid}${extension}`;
               const fallbackStoragePath = `${sourceFile.cut_id}/${sourceFile.process_id}/${fallbackFileName}`;
               
-              console.log(`[이미지 재생성 배치] 재시도 - 간단한 파일명 사용 (인덱스 ${req.index}):`, fallbackStoragePath);
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] ?ъ떆??- 媛꾨떒???뚯씪紐??ъ슜 (?몃뜳??${req.index}):`, fallbackStoragePath);
               const { error: retryError } = await supabase.storage
                 .from('webtoon-files')
                 .upload(fallbackStoragePath, imageBuffer, {
@@ -1208,8 +1305,8 @@ export async function POST(request: NextRequest) {
                 });
               
               if (retryError) {
-                console.error(`[이미지 재생성 배치] 재시도도 실패 (인덱스 ${req.index}):`, retryError);
-                // 저장 실패 시 기존 방식으로 fallback (base64 반환)
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] ?ъ떆?꾨룄 ?ㅽ뙣 (?몃뜳??${req.index}):`, retryError);
+                // ????ㅽ뙣 ??湲곗〈 諛⑹떇?쇰줈 fallback (base64 諛섑솚)
                 return {
                   index: req.index,
                   imageData: generatedImageData,
@@ -1222,13 +1319,13 @@ export async function POST(request: NextRequest) {
                 };
               }
               
-              // 재시도 성공 시 fallback 경로 사용
+              // ?ъ떆???깃났 ??fallback 寃쎈줈 ?ъ슜
               const { data: urlData } = supabase.storage
                 .from('webtoon-files')
                 .getPublicUrl(fallbackStoragePath);
               const fileUrl = urlData.publicUrl;
               
-              // DB에 임시 파일 정보 저장 (is_temp = true)
+              // DB???꾩떆 ?뚯씪 ?뺣낫 ???(is_temp = true)
               let imageWidth: number | undefined;
               let imageHeight: number | undefined;
               try {
@@ -1236,12 +1333,12 @@ export async function POST(request: NextRequest) {
                 imageWidth = metadata.width;
                 imageHeight = metadata.height;
               } catch (error) {
-                console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
+                console.warn(`[?대?吏 ?ъ깮??諛곗튂] 硫뷀??곗씠??異붿텧 ?ㅽ뙣 (?몃뜳??${req.index}):`, error);
               }
               
               const finalCreatedBy = createdBy || sourceFile.created_by;
-              console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Seedream fallback):`, {
-                createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 ???(?몃뜳??${req.index}, Seedream fallback):`, {
+                createdBy: createdBy || '?놁쓬 (?먮낯 ?뚯씪 ?앹꽦???ъ슜)',
                 sourceCreatedBy: sourceFile.created_by,
                 finalCreatedBy,
               });
@@ -1257,7 +1354,7 @@ export async function POST(request: NextRequest) {
                   file_size: imageBuffer.length,
                   file_type: 'image',
                   mime_type: generatedImageMimeType || 'image/png',
-                  description: `AI 재생성: ${sourceFile.file_name}`,
+                  description: `AI ?ъ깮?? ${sourceFile.file_name}`,
                   prompt: req.stylePrompt,
                   created_by: finalCreatedBy,
                   source_file_id: sourceFile.id,
@@ -1274,7 +1371,7 @@ export async function POST(request: NextRequest) {
                 .single();
               
               if (dbError || !fileData) {
-                console.error(`[이미지 재생성 배치] DB 저장 실패 (인덱스 ${req.index}):`, dbError);
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] DB ????ㅽ뙣 (?몃뜳??${req.index}):`, dbError);
                 await supabase.storage.from('webtoon-files').remove([fallbackStoragePath]);
                 return {
                   index: req.index,
@@ -1302,13 +1399,13 @@ export async function POST(request: NextRequest) {
               };
             }
 
-            // 파일 URL 생성
+            // ?뚯씪 URL ?앹꽦
             const { data: urlData } = supabase.storage
               .from('webtoon-files')
               .getPublicUrl(storagePath);
             const fileUrl = urlData.publicUrl;
 
-            // 이미지 메타데이터 추출
+            // ?대?吏 硫뷀??곗씠??異붿텧
             let imageWidth: number | undefined;
             let imageHeight: number | undefined;
             try {
@@ -1316,13 +1413,13 @@ export async function POST(request: NextRequest) {
               imageWidth = metadata.width;
               imageHeight = metadata.height;
             } catch (error) {
-              console.warn(`[이미지 재생성 배치] 메타데이터 추출 실패 (인덱스 ${req.index}):`, error);
+              console.warn(`[?대?吏 ?ъ깮??諛곗튂] 硫뷀??곗씠??異붿텧 ?ㅽ뙣 (?몃뜳??${req.index}):`, error);
             }
 
-            // DB에 임시 파일 정보 저장 (is_temp = true)
+            // DB???꾩떆 ?뚯씪 ?뺣낫 ???(is_temp = true)
             const finalCreatedBy = createdBy || sourceFile.created_by;
-            console.log(`[이미지 재생성 배치] 파일 저장 (인덱스 ${req.index}, Seedream):`, {
-              createdBy: createdBy || '없음 (원본 파일 생성자 사용)',
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?뚯씪 ???(?몃뜳??${req.index}, Seedream):`, {
+              createdBy: createdBy || '?놁쓬 (?먮낯 ?뚯씪 ?앹꽦???ъ슜)',
               sourceCreatedBy: sourceFile.created_by,
               finalCreatedBy,
             });
@@ -1338,7 +1435,7 @@ export async function POST(request: NextRequest) {
                 file_size: imageBuffer.length,
                 file_type: 'image',
                 mime_type: generatedImageMimeType || 'image/png',
-                description: `AI 재생성: ${sourceFile.file_name}`,
+                description: `AI ?ъ깮?? ${sourceFile.file_name}`,
                 prompt: req.stylePrompt,
                 created_by: finalCreatedBy,
                 source_file_id: sourceFile.id,
@@ -1352,10 +1449,10 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (dbError || !fileData) {
-              console.error(`[이미지 재생성 배치] DB 저장 실패 (인덱스 ${req.index}):`, dbError);
-              // Storage 파일은 삭제
+              console.error(`[?대?吏 ?ъ깮??諛곗튂] DB ????ㅽ뙣 (?몃뜳??${req.index}):`, dbError);
+              // Storage ?뚯씪? ??젣
               await supabase.storage.from('webtoon-files').remove([storagePath]);
-              // 저장 실패 시 기존 방식으로 fallback (base64 반환)
+              // ????ㅽ뙣 ??湲곗〈 諛⑹떇?쇰줈 fallback (base64 諛섑솚)
               return {
                 index: req.index,
                 imageData: generatedImageData,
@@ -1368,7 +1465,7 @@ export async function POST(request: NextRequest) {
               };
             }
 
-            console.log(`[이미지 재생성 배치] 임시 파일 저장 완료 (인덱스 ${req.index}):`, {
+            console.log(`[?대?吏 ?ъ깮??諛곗튂] ?꾩떆 ?뚯씪 ????꾨즺 (?몃뜳??${req.index}):`, {
               fileId: fileData.id,
               storagePath,
               fileUrl,
@@ -1387,54 +1484,83 @@ export async function POST(request: NextRequest) {
               ...(req.styleKey && { styleKey: req.styleKey }),
               ...(req.styleName && { styleName: req.styleName }),
             };
-            } catch (error: unknown) {
-              lastError = error;
-              const isRetryable = isRetryableError(error);
-
-              if (!isRetryable || attempt >= maxRetries) {
-                throw error;
-              }
-            }
+          } catch (error: unknown) {
+            const errorDetails = extractErrorDetails(error);
+            console.error(`[?대?吏 ?ъ깮??諛곗튂] Seedream API ?몄텧 ?ㅽ뙣 (?몃뜳??${req.index}):`, {
+              errorDetails,
+              requestIndex: req.index,
+              promptLength: req.stylePrompt.length,
+              promptPreview: req.stylePrompt.substring(0, 200) + (req.stylePrompt.length > 200 ? '...' : ''),
+            });
+            throw error;
           }
-
-          throw lastError || new Error('Seedream API 응답을 받을 수 없습니다.');
         });
 
         const chunkResults = await Promise.allSettled(seedreamPromises);
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             seedreamGroupResults.push(result.value);
           } else {
-            console.error(`[이미지 재생성 배치] Seedream 요청 실패:`, result.reason);
+            console.error(`[?대?吏 ?ъ깮??諛곗튂] Seedream ?붿껌 ?ㅽ뙣:`, result.reason);
+            // ?ㅽ뙣???붿껌??寃곌낵???ы븿 (?먮윭 ?뺣낫? ?④퍡)
+            const failedRequest = chunk[index];
+            if (failedRequest) {
+              const errorInfo = categorizeError(result.reason, 'seedream');
+              // ?먮윭 ?뺣낫 寃利?
+              if (!errorInfo || !errorInfo.code || !errorInfo.message) {
+                console.error(`[?대?吏 ?ъ깮??諛곗튂] categorizeError 諛섑솚媛믪씠 ?좏슚?섏? ?딆쓬 (?몃뜳??${failedRequest.index}):`, errorInfo);
+                errorInfo.code = 'SEEDREAM_ERROR';
+                errorInfo.message = '?대?吏 ?앹꽦 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.';
+              }
+              const errorResult: RegenerateImageBatchResponse['images'][0] = {
+                index: failedRequest.index,
+                apiProvider: 'seedream',
+                stylePrompt: failedRequest.stylePrompt,
+                ...(failedRequest.styleId && { styleId: failedRequest.styleId }),
+                ...(failedRequest.styleKey && { styleKey: failedRequest.styleKey }),
+                ...(failedRequest.styleName && { styleName: failedRequest.styleName }),
+                error: {
+                  code: errorInfo.code,
+                  message: errorInfo.message,
+                },
+              };
+              console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream ?먮윭 寃곌낵 ?앹꽦 (?몃뜳??${failedRequest.index}):`, {
+                errorCode: errorResult.error?.code,
+                errorMessage: errorResult.error?.message,
+                fullResult: JSON.stringify(errorResult, null, 2),
+              });
+              seedreamGroupResults.push(errorResult);
+            }
           }
         });
       }
 
-      const seedreamSuccessCount = seedreamGroupResults.length;
-      const seedreamFailCount = seedreamRequests.length - seedreamSuccessCount;
-      console.log(`[이미지 재생성 배치] Seedream 그룹 처리 완료: ${seedreamSuccessCount}개 성공, ${seedreamFailCount}개 실패`);
+      // ?깃났??寃껊쭔 移댁슫??(error媛 ?녿뒗 寃껊쭔)
+      const seedreamSuccessCount = seedreamGroupResults.filter(r => !r.error).length;
+      const seedreamFailCount = seedreamGroupResults.filter(r => !!r.error).length;
+      console.log(`[?대?吏 ?ъ깮??諛곗튂] Seedream 洹몃９ 泥섎━ ?꾨즺: ${seedreamSuccessCount}媛??깃났, ${seedreamFailCount}媛??ㅽ뙣`);
       
       return seedreamGroupResults;
     };
 
-    // Gemini와 Seedream 그룹을 병렬 처리
-    console.log('[이미지 재생성 배치] Gemini와 Seedream 그룹 병렬 처리 시작...');
+    // Gemini? Seedream 洹몃９??蹂묐젹 泥섎━
+    console.log('[?대?吏 ?ъ깮??諛곗튂] Gemini? Seedream 洹몃９ 蹂묐젹 泥섎━ ?쒖옉...');
     const [geminiResults, seedreamResults] = await Promise.all([
       processGeminiGroup().catch((error) => {
-        console.error('[이미지 재생성 배치] Gemini 그룹 처리 실패:', error);
+        console.error('[?대?吏 ?ъ깮??諛곗튂] Gemini 洹몃９ 泥섎━ ?ㅽ뙣:', error);
         return [];
       }),
       processSeedreamGroup().catch((error) => {
-        console.error('[이미지 재생성 배치] Seedream 그룹 처리 실패:', error);
+        console.error('[?대?吏 ?ъ깮??諛곗튂] Seedream 洹몃９ 泥섎━ ?ㅽ뙣:', error);
         return [];
       }),
     ]);
 
-    // 결과 합치기
+    // 寃곌낵 ?⑹튂湲?
     results.push(...geminiResults, ...seedreamResults);
 
     const totalTime = Date.now() - startTime;
-    console.log('[이미지 재생성 배치] 배치 재생성 완료:', {
+    console.log('[?대?吏 ?ъ깮??諛곗튂] 諛곗튂 ?ъ깮???꾨즺:', {
       totalTime: `${totalTime}ms`,
       totalRequests: requests.length,
       successCount: results.length,
@@ -1442,19 +1568,25 @@ export async function POST(request: NextRequest) {
       geminiCount: geminiRequests.length,
       seedreamCount: seedreamRequests.length,
     });
+    
+    // 理쒖쥌 寃곌낵 濡쒓퉭 (?먮윭 ?뺤씤??
+    const resultsWithErrors = results.filter(r => r.error);
+    if (resultsWithErrors.length > 0) {
+      console.log('[?대?吏 ?ъ깮??諛곗튂] ?먮윭媛 ?ы븿??寃곌낵:', JSON.stringify(resultsWithErrors, null, 2));
+    }
 
     return NextResponse.json({
       images: results,
     });
   } catch (error: unknown) {
     const totalTime = Date.now() - startTime;
-    console.error('[이미지 재생성 배치] 예외 발생:', {
+    console.error('[?대?吏 ?ъ깮??諛곗튂] ?덉쇅 諛쒖깮:', {
       error,
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       errorMessage: error instanceof Error ? error.message : String(error),
       totalTime: `${totalTime}ms`
     });
-    const errorMessage = error instanceof Error ? error.message : '이미지 재생성 중 오류가 발생했습니다.';
+    const errorMessage = error instanceof Error ? error.message : '?대?吏 ?ъ깮??以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.';
     return NextResponse.json(
       {
         error: errorMessage,

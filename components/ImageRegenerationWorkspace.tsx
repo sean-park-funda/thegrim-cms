@@ -488,13 +488,52 @@ export function ImageRegenerationWorkspace({
         return;
       }
 
-      console.log('[ImageRegenerationWorkspace] 레퍼런스 파일 업로드 시작:', { fileName, processId, webtoonId });
-      
-      // 레퍼런스 파일로 업로드
-      const uploadedFile = await uploadReferenceFile(file, webtoonId, processId, '클립보드에서 붙여넣은 이미지');
+      console.log('[ImageRegenerationWorkspace] 레퍼런스 파일 업로드 시작 - API로 업로드:', { fileName, processId, webtoonId });
+
+      // File -> base64 데이터 URL 변환
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
+
+      const [header, base64] = dataUrl.split(',');
+      const mimeMatch = header.match(/^data:(.*);base64$/);
+      const mimeType = mimeMatch?.[1] || file.type || 'image/png';
+
+      // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+      const response = await fetch('/api/reference-files/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: base64,
+          mimeType,
+          fileName: file.name,
+          webtoonId,
+          processId,
+          description: '클립보드에서 붙여넣은 이미지',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('[ImageRegenerationWorkspace] 레퍼런스 파일 업로드 API 실패', {
+          status: response.status,
+          error: errorData,
+        });
+        throw new Error(errorData?.error || '클립보드 이미지 업로드에 실패했습니다.');
+      }
+
+      const result = await response.json();
+      console.log('[ImageRegenerationWorkspace] 레퍼런스 파일 업로드 API 성공', {
+        fileId: result.file?.id,
+      });
       
       // 업로드 완료 핸들러 호출하여 레퍼런스 파일 목록 갱신 및 선택
-      await handleReferenceUploadComplete(uploadedFile);
+      await handleReferenceUploadComplete(result.file);
     } catch (error) {
       console.error('클립보드 이미지 붙여넣기 실패:', error);
       alert('클립보드 이미지 붙여넣기에 실패했습니다.');

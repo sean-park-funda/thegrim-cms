@@ -119,7 +119,51 @@ export function CharacterSheetDialog({
 
     try {
       setUploading(true);
-      await uploadCharacterSheet(file, character.id, uploadDescription || undefined);
+
+      // File -> base64 데이터 URL 변환
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
+
+      const [header, base64] = dataUrl.split(',');
+      const mimeMatch = header.match(/^data:(.*);base64$/);
+      const mimeType = mimeMatch?.[1] || file.type || 'image/png';
+
+      console.log('[CharacterSheetDialog][handleFileSelect] 직접 업로드 탭 - save-sheet API로 업로드 시도', {
+        characterId: character.id,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      });
+
+      // API를 통해 업로드 (Supabase Storage 네트워크 이슈 회피)
+      const response = await fetch(`/api/characters/${character.id}/save-sheet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: base64,
+          mimeType,
+          fileName: file.name,
+          description: uploadDescription || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('[CharacterSheetDialog][handleFileSelect] save-sheet API 업로드 실패', {
+          status: response.status,
+          error: errorData,
+        });
+        throw new Error(errorData?.error || '캐릭터 시트 업로드에 실패했습니다.');
+      }
+
+      console.log('[CharacterSheetDialog][handleFileSelect] save-sheet API 업로드 성공');
+
       if (isMountedRef.current) {
         console.log('[CharacterSheetDialog][handleFileSelect] 업로드 성공, 시트 목록 재로딩');
         await loadSheets();
@@ -134,7 +178,7 @@ export function CharacterSheetDialog({
           characterId: character.id,
           fileName: file.name,
         });
-        alert('캐릭터 시트 업로드에 실패했습니다.');
+        alert(error instanceof Error ? error.message : '캐릭터 시트 업로드에 실패했습니다.');
       }
     } finally {
       if (isMountedRef.current) {
