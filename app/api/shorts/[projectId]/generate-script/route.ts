@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { GridSize, GRID_CONFIGS } from '@/lib/video-generation/grid-splitter';
 
-// 9개 패널 각각의 상세 설명
+// 패널 각각의 상세 설명
 interface PanelDescription {
-  panelIndex: number; // 0-8
+  panelIndex: number;
   description: string; // 이 패널에 대한 상세 시각적 설명
   characters: string[]; // 이 패널에 등장하는 캐릭터들
   action: string; // 캐릭터의 동작/표정
   environment: string; // 배경/환경 설명
 }
 
-// 8개 영상 씬 (패널 → 패널 전환)
+// 영상 씬 (패널 → 패널 전환)
 interface VideoScene {
-  sceneIndex: number; // 0-7
+  sceneIndex: number;
   startPanelIndex: number;
   endPanelIndex: number;
   motionDescription: string;
@@ -22,10 +23,11 @@ interface VideoScene {
 }
 
 interface VideoScript {
-  panels: PanelDescription[]; // 9개 패널 설명
-  scenes: VideoScene[]; // 8개 영상 씬
+  panels: PanelDescription[];
+  scenes: VideoScene[];
   totalDuration: number;
   style: string;
+  gridSize: GridSize;
 }
 
 // POST: /api/shorts/[projectId]/generate-script - 영상용 스크립트 생성
@@ -35,6 +37,18 @@ export async function POST(
 ) {
   const { projectId } = await params;
   console.log('[shorts][generate-script][POST] 영상 스크립트 생성:', projectId);
+
+  // body에서 모델 선택 및 그리드 크기 받기
+  const body = await request.json().catch(() => null) as {
+    model?: string;
+    gridSize?: GridSize;
+  } | null;
+  const selectedModel = body?.model || 'gemini-2.5-flash';
+  const gridSize: GridSize = body?.gridSize || '3x3';
+  const gridConfig = GRID_CONFIGS[gridSize];
+  
+  console.log('[shorts][generate-script] 선택된 모델:', selectedModel);
+  console.log('[shorts][generate-script] 그리드 크기:', gridSize, '패널:', gridConfig.panelCount, '씬:', gridConfig.sceneCount);
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -85,14 +99,19 @@ export async function POST(
     .map(c => `- ${c.name}: ${c.description || '주요 등장인물'}`)
     .join('\n');
 
-  // LLM 프롬프트 구성
+  // LLM 프롬프트 구성 (그리드 크기에 따라 동적)
   const systemPrompt = `당신은 숏폼 동영상 제작 전문가입니다. 
 주어진 대본을 바탕으로:
-1. 9개의 핵심 장면(패널)을 정의하고 각각의 시각적 설명을 작성합니다.
-2. 연속된 패널 사이의 8개 영상 전환(씬)에 대한 Veo 프롬프트를 작성합니다.
+1. ${gridConfig.panelCount}개의 핵심 장면(패널)을 정의하고 각각의 시각적 설명을 작성합니다.
+2. 연속된 패널 사이의 ${gridConfig.sceneCount}개 영상 전환(씬)에 대한 Veo 프롬프트를 작성합니다.
 
 패널 설명은 이미지 생성에 사용되고, 씬 프롬프트는 영상 생성에 사용됩니다.
 일관성을 위해 두 가지를 함께 설계해야 합니다.`;
+
+  // 그리드 크기에 따른 패널/씬 연결 설명 생성
+  const lastPanelIndex = gridConfig.panelCount - 1;
+  const lastSceneIndex = gridConfig.sceneCount - 1;
+  const panelConnections = Array.from({ length: gridConfig.sceneCount }, (_, i) => `${i}→${i + 1}`).join(', ');
 
   const userPrompt = `대본:
 ${project.script}
@@ -123,12 +142,13 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
     }
   ],
   "totalDuration": 전체 예상 길이(초),
-  "style": "전체 영상 스타일 설명 (영어)"
+  "style": "전체 영상 스타일 설명 (영어)",
+  "gridSize": "${gridSize}"
 }
 
 요구사항:
-1. panels는 정확히 9개 (panelIndex 0-8)
-2. scenes는 정확히 8개 (sceneIndex 0-7, 각각 연속된 두 패널 연결: 0→1, 1→2, ..., 7→8)
+1. panels는 정확히 ${gridConfig.panelCount}개 (panelIndex 0-${lastPanelIndex})
+2. scenes는 정확히 ${gridConfig.sceneCount}개 (sceneIndex 0-${lastSceneIndex}, 각각 연속된 두 패널 연결: ${panelConnections})
 3. panels의 description은 이미지 생성에 바로 사용될 수 있도록 구체적이고 시각적으로 작성 (영어)
 4. dialogue는 대본에서 해당 씬에 맞는 대사를 원본 언어로 추출 (한국어면 한국어)
 5. 카메라 움직임(pan, zoom, dolly, tracking 등)을 구체적으로 명시
@@ -179,28 +199,111 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     console.log('='.repeat(80));
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: selectedModel,
       contents: [
         { role: 'user', parts: [{ text: fullPrompt }] },
       ],
       config: {
         responseMimeType: 'application/json',
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
       },
     });
 
+    console.log('='.repeat(80));
+    console.log('[shorts][generate-script] Gemini 응답 객체:');
+    console.log('='.repeat(80));
+    console.log('response.text:', typeof response.text, response.text ? `exists (${response.text.length} chars)` : 'empty/undefined');
+    console.log('response keys:', Object.keys(response || {}));
+    
+    // candidates 확인 (finishReason이 SAFETY나 OTHER면 응답이 차단된 것)
+    if (response.candidates && response.candidates.length > 0) {
+      const candidate = response.candidates[0];
+      console.log('candidates[0].finishReason:', candidate.finishReason);
+      console.log('candidates[0].safetyRatings:', JSON.stringify(candidate.safetyRatings, null, 2));
+      if (candidate.content) {
+        console.log('candidates[0].content.parts 개수:', candidate.content.parts?.length || 0);
+        if (candidate.content.parts?.[0]?.text) {
+          console.log('candidates[0].content.parts[0].text 길이:', candidate.content.parts[0].text.length);
+        }
+      }
+    } else {
+      console.log('candidates가 없습니다!');
+      console.log('promptFeedback:', JSON.stringify(response.promptFeedback, null, 2));
+    }
+    console.log('='.repeat(80));
+
     const responseText = response.text || '';
+    
+    console.log('[shorts][generate-script] responseText 길이:', responseText.length);
+    if (responseText.length > 0) {
+      console.log('[shorts][generate-script] responseText 내용 (처음 2000자):');
+      console.log(responseText.slice(0, 2000));
+    } else {
+      console.log('[shorts][generate-script] 응답이 비었습니다! 전체 response:', JSON.stringify(response, null, 2).slice(0, 3000));
+    }
+    
+    // 응답이 비었으면 상세 정보 포함해서 에러 반환
+    if (!responseText) {
+      const blockReason = response.promptFeedback?.blockReason;
+      const finishReason = response.candidates?.[0]?.finishReason;
+      
+      let errorMessage = 'Gemini API 응답이 비어있습니다.';
+      if (blockReason) {
+        errorMessage = `Gemini API가 요청을 차단했습니다. 차단 사유: ${blockReason}`;
+        if (blockReason === 'PROHIBITED_CONTENT') {
+          errorMessage += ' (대본 내용이 안전 필터에 의해 차단되었습니다. 대본 내용을 확인해주세요.)';
+        }
+      } else if (finishReason && finishReason !== 'STOP') {
+        errorMessage = `Gemini API 응답 종료 사유: ${finishReason}`;
+      }
+      
+      return NextResponse.json({
+        error: errorMessage,
+        geminiResponse: {
+          blockReason,
+          finishReason,
+          modelVersion: response.modelVersion,
+        },
+      }, { status: 400 });
+    }
     
     // JSON 파싱
     let videoScript: VideoScript;
     try {
       videoScript = JSON.parse(responseText);
-    } catch {
-      // JSON 블록 추출 시도
+    } catch (parseError) {
+      console.log('[shorts][generate-script] 직접 JSON 파싱 실패, 코드블록 추출 시도...');
+      
+      // JSON 블록 추출 시도 (```json ... ``` 또는 ``` ... ```)
       const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
-        videoScript = JSON.parse(jsonMatch[1].trim());
+        try {
+          videoScript = JSON.parse(jsonMatch[1].trim());
+        } catch (innerError) {
+          console.error('[shorts][generate-script] 코드블록 JSON 파싱 실패:', innerError);
+          console.log('[shorts][generate-script] 코드블록 내용:', jsonMatch[1].slice(0, 500));
+          throw new Error('응답을 JSON으로 파싱할 수 없습니다.');
+        }
       } else {
-        throw new Error('응답을 JSON으로 파싱할 수 없습니다.');
+        // { 로 시작하는 JSON 객체 추출 시도
+        const jsonObjectMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonObjectMatch) {
+          try {
+            videoScript = JSON.parse(jsonObjectMatch[0]);
+          } catch (objError) {
+            console.error('[shorts][generate-script] JSON 객체 파싱 실패:', objError);
+            throw new Error('응답을 JSON으로 파싱할 수 없습니다.');
+          }
+        } else {
+          console.error('[shorts][generate-script] JSON을 찾을 수 없음. 전체 응답:', responseText);
+          throw new Error('응답을 JSON으로 파싱할 수 없습니다.');
+        }
       }
     }
 

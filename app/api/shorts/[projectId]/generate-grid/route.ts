@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { generateGeminiImage } from '@/lib/image-generation/providers/gemini';
-import { splitGridImage, createPanelPairs } from '@/lib/video-generation/grid-splitter';
+import { splitGridImage, createPanelPairs, GridSize, GRID_CONFIGS } from '@/lib/video-generation/grid-splitter';
 
 // 스타일 타입
 type ImageStyle = 'realistic' | 'cartoon';
 
-// POST: /api/shorts/[projectId]/generate-grid - 4x2 그리드 이미지 생성
+// POST: /api/shorts/[projectId]/generate-grid - 그리드 이미지 생성
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
   
-  // 요청 body에서 스타일 파라미터 추출
-  const body = await request.json().catch(() => ({})) as { style?: ImageStyle };
+  // 요청 body에서 스타일 및 그리드 크기 파라미터 추출
+  const body = await request.json().catch(() => ({})) as { style?: ImageStyle; gridSize?: GridSize };
   const style: ImageStyle = body.style || 'realistic';
+  const gridSize: GridSize = body.gridSize || '3x3';
+  const gridConfig = GRID_CONFIGS[gridSize];
   
-  console.log('[shorts][generate-grid][POST] 그리드 이미지 생성:', projectId, '스타일:', style);
+  console.log('[shorts][generate-grid][POST] 그리드 이미지 생성:', projectId, '스타일:', style, '그리드:', gridSize);
 
   // 프로젝트, 캐릭터, 영상스크립트 정보 조회
   const { data: project, error: projectError } = await supabase
@@ -100,7 +102,7 @@ export async function POST(
   
   // 패널 설명이 있으면 상세 프롬프트 구성
   let panelSection = '';
-  if (panelDescriptions.length === 9) {
+  if (panelDescriptions.length === gridConfig.panelCount) {
     panelSection = `
 PANEL DESCRIPTIONS (follow these EXACTLY for each panel):
 ${panelDescriptions.map((p: PanelDesc) => `
@@ -112,11 +114,15 @@ Panel ${p.panelIndex + 1}:
 `).join('')}`;
     console.log('[shorts][generate-grid] 패널 설명 사용:', panelDescriptions.length);
   } else {
-    console.log('[shorts][generate-grid] 패널 설명 없음, 대본 기반 생성');
+    console.log('[shorts][generate-grid] 패널 설명 없음 또는 개수 불일치, 대본 기반 생성. 기대:', gridConfig.panelCount, '실제:', panelDescriptions.length);
   }
 
-  // 프롬프트 구성 (3x3 그리드 = 9개 패널, 각 패널 9:16 → 전체 9:16)
-  const promptText = `Create a 3x3 grid of 9 sequential story panels for a short video.
+  // 프롬프트 구성 (그리드 크기에 따라 동적)
+  const gridLayoutDesc = gridSize === '2x2' 
+    ? '2 columns x 2 rows (4 total panels)\n2. Reading order: left to right, top to bottom (panels 1-2 on top row, 3-4 on bottom row)'
+    : '3 columns x 3 rows (9 total panels)\n2. Reading order: left to right, top to bottom (panels 1-3 on top row, 4-6 on middle row, 7-9 on bottom row)';
+
+  const promptText = `Create a ${gridSize} grid of ${gridConfig.panelCount} sequential story panels for a short video.
 
 ${panelSection ? panelSection : `STORY SCRIPT:\n${project.script}`}
 
@@ -128,8 +134,7 @@ ${styleDescription}
 ${videoScript?.style ? `\nOverall style: ${videoScript.style}` : ''}
 
 REQUIREMENTS:
-1. Layout: 3 columns x 3 rows (9 total panels)
-2. Reading order: left to right, top to bottom (panels 1-3 on top row, 4-6 on middle row, 7-9 on bottom row)
+1. Layout: ${gridLayoutDesc}
 3. Each panel MUST match its description exactly${panelSection ? ' as specified above' : ''}
 4. Maintain STRICT character appearance consistency across ALL panels
 5. Use cinematic composition suitable for video transitions
@@ -143,7 +148,7 @@ CRITICAL - NO TEXT OR SPEECH BUBBLES:
 - The image should be purely visual with NO textual elements
 - This is for video production where audio/TTS will be added separately
 
-Create the complete 3x3 grid image now.`;
+Create the complete ${gridSize} grid image now.`;
 
   console.log('='.repeat(80));
   console.log('[shorts][generate-grid] 전체 프롬프트:');
@@ -164,7 +169,9 @@ Create the complete 3x3 grid image now.`;
 
   try {
     // Gemini로 그리드 이미지 생성
-    // 3x3 그리드, 각 패널 9:16 → 전체 (9*3):(16*3) = 27:48 = 9:16
+    // 그리드 크기에 따른 비율 (각 패널 9:16)
+    // 2x2: (9*2):(16*2) = 18:32 = 9:16
+    // 3x3: (9*3):(16*3) = 27:48 = 9:16
     const result = await generateGeminiImage({
       provider: 'gemini',
       model: 'gemini-3-pro-image-preview',
@@ -173,15 +180,15 @@ Create the complete 3x3 grid image now.`;
         responseModalities: ['IMAGE', 'TEXT'],
         imageConfig: {
           imageSize: '2K', // 고해상도: 각 패널이 영상 재료로 사용됨
-          aspectRatio: '9:16', // 3x3 그리드의 세로형 비율
+          aspectRatio: '9:16', // 세로형 비율 (모든 그리드 크기에서 동일)
         },
       },
       timeoutMs: 180000, // 3분
     });
 
-    // 그리드 이미지를 8개 패널로 분할
-    const splitResult = await splitGridImage(result.base64, result.mimeType);
-    const panelPairs = createPanelPairs(splitResult.panels);
+    // 그리드 이미지를 패널로 분할
+    const splitResult = await splitGridImage(result.base64, result.mimeType, gridSize);
+    const panelPairs = createPanelPairs(splitResult.panels, gridSize);
 
     // Supabase Storage에 그리드 이미지 저장
     const gridFileName = `${projectId}/grid-${Date.now()}.png`;

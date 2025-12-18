@@ -27,6 +27,20 @@ import {
   FolderOpen,
 } from 'lucide-react';
 
+type GridSize = '2x2' | '3x3';
+
+interface GridConfig {
+  rows: number;
+  cols: number;
+  panelCount: number;
+  sceneCount: number;
+}
+
+const GRID_CONFIGS: Record<GridSize, GridConfig> = {
+  '2x2': { rows: 2, cols: 2, panelCount: 4, sceneCount: 3 },
+  '3x3': { rows: 3, cols: 3, panelCount: 9, sceneCount: 8 },
+};
+
 interface ShortsProjectListItem {
   id: string;
   title: string | null;
@@ -66,7 +80,7 @@ interface PanelDescription {
 }
 
 interface VideoScript {
-  panels: PanelDescription[]; // 9개 패널 설명
+  panels: PanelDescription[];  // 패널 설명 (2x2: 4개, 3x3: 9개)
   scenes: Array<{
     sceneIndex: number;
     startPanelIndex: number;
@@ -116,6 +130,7 @@ export default function ScriptToShortsPage() {
   const [gridImagePath, setGridImagePath] = useState<string | null>(null);
   const [scenes, setScenes] = useState<ShortsScene[]>([]);
   const [imageStyle, setImageStyle] = useState<'realistic' | 'cartoon'>('realistic');
+  const [gridSize, setGridSize] = useState<GridSize>('3x3');
 
   // 영상 스크립트 상태
   const [videoScript, setVideoScript] = useState<VideoScript | null>(null);
@@ -130,6 +145,9 @@ export default function ScriptToShortsPage() {
   // Veo API Key 상태
   const [veoApiKey, setVeoApiKey] = useState('');
   const [showVeoApiKeyDialog, setShowVeoApiKeyDialog] = useState(false);
+
+  // Gemini 모델 선택 상태
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
 
   // 프로젝트 목록 로드
   const loadProjectList = useCallback(async () => {
@@ -367,7 +385,7 @@ export default function ScriptToShortsPage() {
       const res = await fetch(`/api/shorts/${projectId}/generate-grid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ style: imageStyle }),
+        body: JSON.stringify({ style: imageStyle, gridSize }),
       });
 
       if (!res.ok) {
@@ -385,7 +403,7 @@ export default function ScriptToShortsPage() {
     } finally {
       setGeneratingGrid(false);
     }
-  }, [projectId, imageStyle]);
+  }, [projectId, imageStyle, gridSize]);
 
   // 영상 스크립트 생성
   const handleGenerateScript = useCallback(async () => {
@@ -400,6 +418,8 @@ export default function ScriptToShortsPage() {
     try {
       const res = await fetch(`/api/shorts/${projectId}/generate-script`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: geminiModel, gridSize }),
       });
 
       if (!res.ok) {
@@ -420,7 +440,7 @@ export default function ScriptToShortsPage() {
     } finally {
       setGeneratingScript(false);
     }
-  }, [projectId]);
+  }, [projectId, geminiModel, gridSize]);
 
   // 단일 영상 생성
   const handleGenerateVideo = useCallback(
@@ -712,13 +732,36 @@ export default function ScriptToShortsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">제목 (선택)</label>
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="프로젝트 제목"
-                  />
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm font-medium">제목 (선택)</label>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="프로젝트 제목"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">그리드 크기</label>
+                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                      <Button
+                        variant={gridSize === '2x2' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setGridSize('2x2')}
+                        className="px-3"
+                      >
+                        2×2 (4컷)
+                      </Button>
+                      <Button
+                        variant={gridSize === '3x3' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setGridSize('3x3')}
+                        className="px-3"
+                      >
+                        3×3 (9컷)
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">대본 *</label>
@@ -893,31 +936,49 @@ export default function ScriptToShortsPage() {
                     <div>
                       <h3 className="text-sm font-medium">1단계: 컷 설명 생성</h3>
                       <p className="text-xs text-muted-foreground">
-                        대본을 분석하여 9개 패널의 상세 설명과 영상 프롬프트를 생성합니다.
+                        대본을 분석하여 {GRID_CONFIGS[gridSize].panelCount}개 패널의 상세 설명과 영상 프롬프트를 생성합니다.
                       </p>
                     </div>
-                    <Button
-                      onClick={handleGenerateScript}
-                      disabled={generatingScript}
-                      variant={videoScript?.panels?.length === 9 ? 'outline' : 'default'}
-                    >
-                      {generatingScript ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          생성 중...
-                        </>
-                      ) : videoScript?.panels?.length === 9 ? (
-                        <>
-                          <RefreshCcw className="h-4 w-4 mr-2" />
-                          재생성
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="h-4 w-4 mr-2" />
-                          컷 설명 생성
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={geminiModel}
+                        onValueChange={setGeminiModel}
+                        disabled={generatingScript}
+                      >
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue placeholder="모델 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (권장)</SelectItem>
+                          <SelectItem value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (빠름)</SelectItem>
+                          <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro (고성능)</SelectItem>
+                          <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash (최신)</SelectItem>
+                          <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro (최신)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={handleGenerateScript}
+                        disabled={generatingScript}
+                        variant={videoScript?.panels?.length === 9 ? 'outline' : 'default'}
+                      >
+                        {generatingScript ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            생성 중...
+                          </>
+                        ) : videoScript?.panels?.length === 9 ? (
+                          <>
+                            <RefreshCcw className="h-4 w-4 mr-2" />
+                            재생성
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="h-4 w-4 mr-2" />
+                            컷 설명 생성
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* 패널 설명 미리보기 */}
@@ -927,8 +988,8 @@ export default function ScriptToShortsPage() {
                         <Check className="h-3 w-3" />
                         {videoScript.panels.length}개 패널 설명 생성됨
                       </p>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        {videoScript.panels.slice(0, 9).map((panel) => (
+                      <div className={`grid gap-2 text-xs ${gridSize === '2x2' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                        {videoScript.panels.slice(0, GRID_CONFIGS[gridSize].panelCount).map((panel) => (
                           <div key={panel.panelIndex} className="bg-background p-2 rounded border">
                             <div className="font-medium mb-1">패널 {panel.panelIndex + 1}</div>
                             <p className="text-muted-foreground line-clamp-2">{panel.description}</p>
@@ -945,8 +1006,8 @@ export default function ScriptToShortsPage() {
                     <div>
                       <h3 className="text-sm font-medium">2단계: 이미지 생성</h3>
                       <p className="text-xs text-muted-foreground">
-                        {videoScript?.panels?.length === 9
-                          ? '컷 설명을 기반으로 3x3 그리드 이미지를 생성합니다.'
+                        {videoScript?.panels?.length === GRID_CONFIGS[gridSize].panelCount
+                          ? `컷 설명을 기반으로 ${gridSize} 그리드 이미지를 생성합니다.`
                           : '먼저 컷 설명을 생성해주세요.'}
                       </p>
                     </div>
@@ -966,7 +1027,7 @@ export default function ScriptToShortsPage() {
                       </Select>
                       <Button
                         onClick={handleGenerateGrid}
-                        disabled={generatingGrid || (videoScript?.panels?.length !== 9 && !gridImagePath)}
+                        disabled={generatingGrid || (videoScript?.panels?.length !== GRID_CONFIGS[gridSize].panelCount && !gridImagePath)}
                       >
                         {generatingGrid ? (
                           <>
@@ -1011,7 +1072,7 @@ export default function ScriptToShortsPage() {
 
                 {gridImagePath ? (
                   <>
-                    {/* 분할된 9개 패널 (3x3 그리드) */}
+                    {/* 분할된 패널 */}
                     {scenes.length > 0 && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -1041,8 +1102,8 @@ export default function ScriptToShortsPage() {
                             전체 그리드 다운로드
                           </Button>
                         </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          {/* 패널 0-8을 순서대로 표시 (scenes에서 추출) */}
+                        <div className={`grid gap-3 ${gridSize === '2x2' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                          {/* 패널을 순서대로 표시 (scenes에서 추출) */}
                           {(() => {
                             // scenes를 scene_index 순으로 정렬
                             const sortedScenes = [...scenes].sort((a, b) => a.scene_index - b.scene_index);
@@ -1109,8 +1170,8 @@ export default function ScriptToShortsPage() {
                     {/* 씬 전환 정보 */}
                     {scenes.length > 0 && (
                       <div className="space-y-2">
-                        <h3 className="text-sm font-medium">씬 전환 (8개 영상)</h3>
-                        <div className="grid grid-cols-4 gap-2">
+                        <h3 className="text-sm font-medium">씬 전환 ({GRID_CONFIGS[gridSize].sceneCount}개 영상)</h3>
+                        <div className={`grid gap-2 ${gridSize === '2x2' ? 'grid-cols-3' : 'grid-cols-4'}`}>
                           {[...scenes].sort((a, b) => a.scene_index - b.scene_index).map((scene) => (
                             <Card key={scene.id} className="p-2 text-center">
                               <div className="text-xs font-medium mb-1">씬 {scene.scene_index + 1}</div>

@@ -1,5 +1,19 @@
 import sharp from 'sharp';
 
+export type GridSize = '2x2' | '3x3';
+
+export interface GridConfig {
+  rows: number;
+  cols: number;
+  panelCount: number;
+  sceneCount: number;
+}
+
+export const GRID_CONFIGS: Record<GridSize, GridConfig> = {
+  '2x2': { rows: 2, cols: 2, panelCount: 4, sceneCount: 3 },
+  '3x3': { rows: 3, cols: 3, panelCount: 9, sceneCount: 8 },
+};
+
 export interface GridPanel {
   index: number;
   row: number;
@@ -14,20 +28,25 @@ export interface GridSplitResult {
   originalHeight: number;
   panelWidth: number;
   panelHeight: number;
+  gridSize: GridSize;
 }
 
 /**
- * 3x3 그리드 이미지를 9개의 패널로 분할합니다.
- * 패널 순서: 왼쪽에서 오른쪽, 위에서 아래 (0-8)
+ * 그리드 이미지를 패널로 분할합니다.
  * 
- * Layout:
+ * 2x2 Layout (4 panels):
+ * | 0 | 1 |
+ * | 2 | 3 |
+ * 
+ * 3x3 Layout (9 panels):
  * | 0 | 1 | 2 |
  * | 3 | 4 | 5 |
  * | 6 | 7 | 8 |
  */
 export async function splitGridImage(
   imageBase64: string,
-  mimeType: string = 'image/png'
+  mimeType: string = 'image/png',
+  gridSize: GridSize = '3x3'
 ): Promise<GridSplitResult> {
   // Base64 데이터 URL prefix 제거
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -41,9 +60,8 @@ export async function splitGridImage(
     throw new Error('이미지 크기를 가져올 수 없습니다.');
   }
 
-  // 3x3 그리드 패널 크기 계산
-  const cols = 3;
-  const rows = 3;
+  const config = GRID_CONFIGS[gridSize];
+  const { rows, cols } = config;
   const panelWidth = Math.floor(width / cols);
   const panelHeight = Math.floor(height / rows);
 
@@ -82,21 +100,28 @@ export async function splitGridImage(
     originalHeight: height,
     panelWidth,
     panelHeight,
+    gridSize,
   };
 }
 
 /**
  * 영상 생성을 위해 패널 페어를 생성합니다.
- * 9개 패널에서 8개의 연속 페어 생성: (0→1), (1→2), ..., (7→8)
- * 각 영상은 이전 패널에서 다음 패널로의 전환을 표현합니다.
+ * 
+ * 2x2 (4 panels): 3개 연속 페어 (0→1), (1→2), (2→3)
+ * 3x3 (9 panels): 8개 연속 페어 (0→1), (1→2), ..., (7→8)
  */
-export function createPanelPairs(panels: GridPanel[]): Array<{
+export function createPanelPairs(
+  panels: GridPanel[],
+  gridSize: GridSize = '3x3'
+): Array<{
   sceneIndex: number;
   startPanel: GridPanel;
   endPanel: GridPanel;
 }> {
-  if (panels.length !== 9) {
-    throw new Error(`9개의 패널이 필요합니다. 현재: ${panels.length}`);
+  const config = GRID_CONFIGS[gridSize];
+  
+  if (panels.length !== config.panelCount) {
+    throw new Error(`${gridSize} 그리드에는 ${config.panelCount}개의 패널이 필요합니다. 현재: ${panels.length}`);
   }
 
   const sortedPanels = [...panels].sort((a, b) => a.index - b.index);
@@ -106,8 +131,8 @@ export function createPanelPairs(panels: GridPanel[]): Array<{
     endPanel: GridPanel;
   }> = [];
 
-  // 연속된 패널 페어 생성 (0→1, 1→2, ..., 7→8)
-  for (let i = 0; i < 8; i++) {
+  // 연속된 패널 페어 생성
+  for (let i = 0; i < config.sceneCount; i++) {
     pairs.push({
       sceneIndex: i,
       startPanel: sortedPanels[i],
