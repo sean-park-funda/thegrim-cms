@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2,
@@ -125,6 +126,10 @@ export default function ScriptToShortsPage() {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [generatingVideo, setGeneratingVideo] = useState<number | null>(null);
   const [generatingAllVideos, setGeneratingAllVideos] = useState(false);
+
+  // Veo API Key 상태
+  const [veoApiKey, setVeoApiKey] = useState('');
+  const [showVeoApiKeyDialog, setShowVeoApiKeyDialog] = useState(false);
 
   // 프로젝트 목록 로드
   const loadProjectList = useCallback(async () => {
@@ -432,7 +437,7 @@ export default function ScriptToShortsPage() {
         const res = await fetch(`/api/shorts/${projectId}/generate-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sceneIndex }),
+          body: JSON.stringify({ sceneIndex, veoApiKey: veoApiKey || undefined }),
         });
 
         if (!res.ok) {
@@ -448,7 +453,7 @@ export default function ScriptToShortsPage() {
         setGeneratingVideo(null);
       }
     },
-    [projectId]
+    [projectId, veoApiKey]
   );
 
   // 모든 영상 생성
@@ -465,7 +470,7 @@ export default function ScriptToShortsPage() {
       const res = await fetch(`/api/shorts/${projectId}/generate-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ veoApiKey: veoApiKey || undefined }),
       });
 
       if (!res.ok) {
@@ -480,7 +485,7 @@ export default function ScriptToShortsPage() {
     } finally {
       setGeneratingAllVideos(false);
     }
-  }, [projectId]);
+  }, [projectId, veoApiKey]);
 
   // 프로젝트 새로고침
   const refreshProject = useCallback(async () => {
@@ -1153,22 +1158,30 @@ export default function ScriptToShortsPage() {
                       각 씬을 Veo로 영상화합니다. 영상 생성에는 몇 분이 소요될 수 있습니다.
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={handleGenerateAllVideos}
-                    disabled={generatingAllVideos || !videoScript}
-                  >
-                    {generatingAllVideos ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        생성 중...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        모든 영상 생성
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowVeoApiKeyDialog(true)}
+                    >
+                      {veoApiKey ? '✓ Veo API Key' : 'Veo API Key'}
+                    </Button>
+                    <Button
+                      onClick={handleGenerateAllVideos}
+                      disabled={generatingAllVideos || generatingVideo !== null || !videoScript}
+                    >
+                      {generatingAllVideos ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          생성 중...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          모든 영상 생성
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1289,7 +1302,7 @@ export default function ScriptToShortsPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleGenerateVideo(scene.scene_index)}
-                                    disabled={isGenerating || generatingAllVideos}
+                                    disabled={isGenerating || generatingAllVideos || (generatingVideo !== null && generatingVideo !== scene.scene_index)}
                                   >
                                     {isGenerating ? (
                                       <>
@@ -1324,6 +1337,35 @@ export default function ScriptToShortsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Veo API Key 다이얼로그 */}
+      <Dialog open={showVeoApiKeyDialog} onOpenChange={setShowVeoApiKeyDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Veo API Key 설정</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              type="password"
+              placeholder="Veo API Key를 입력하세요"
+              value={veoApiKey}
+              onChange={(e) => setVeoApiKey(e.target.value)}
+            />
+            <p className="text-sm text-muted-foreground mt-2">
+              별도의 API Key를 입력하면 해당 키로 영상이 생성됩니다.
+              입력하지 않으면 서버의 기본 키가 사용됩니다.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowVeoApiKeyDialog(false)}>
+              취소
+            </Button>
+            <Button onClick={() => setShowVeoApiKeyDialog(false)}>
+              확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

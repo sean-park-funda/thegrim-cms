@@ -12,10 +12,12 @@ export async function POST(
 
   const body = await request.json().catch(() => null) as {
     sceneIndex?: number;
+    veoApiKey?: string;
   } | null;
 
   // sceneIndex가 지정되면 해당 씬만, 아니면 모든 씬 생성
   const targetSceneIndex = body?.sceneIndex;
+  const customApiKey = body?.veoApiKey;
 
   // 프로젝트와 씬 정보 조회
   const { data: project, error: projectError } = await supabase
@@ -139,6 +141,7 @@ export async function POST(
 
       // Veo 영상 생성 (시작 프레임 + 끝 프레임)
       const result = await generateVeoVideo({
+        apiKey: customApiKey, // 클라이언트에서 전달받은 API Key 사용
         prompt: videoPrompt,
         startImageBase64: startPanelBase64,
         startImageMimeType: startPanelMimeType,
