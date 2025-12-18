@@ -8,7 +8,7 @@ const DEFAULT_POLL_INTERVAL = 10000; // 10 seconds
 
 // 영상 생성용 별도 API Key (하드코딩 또는 환경변수)
 // TODO: 실제 API key로 교체하세요
-const VEO_API_KEY = process.env.VEO_API_KEY || 'AIzaSyCan1H3B2MvHNvUNouCAsDq4Jqo7XhKPvE';
+const VEO_API_KEY = process.env.GEMINI_API_KEY;
 
 function isRetryableVeoError(error: unknown): boolean {
   if (isRetryableNetworkError(error)) return true;
