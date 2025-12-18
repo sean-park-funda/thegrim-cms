@@ -133,3 +133,5 @@ export async function generateGeminiImage(request: GeminiRequest): Promise<Gener
     elapsedMs: Date.now() - startedAt,
   };
 }
+
+

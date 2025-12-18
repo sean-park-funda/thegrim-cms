@@ -9,6 +9,9 @@ ALTER TABLE episodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cuts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE processes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE characters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE character_sheets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reference_files ENABLE ROW LEVEL SECURITY;
 
 -- 2. 기존 정책 삭제 (있다면)
 DROP POLICY IF EXISTS "Public access" ON webtoons;
@@ -16,6 +19,9 @@ DROP POLICY IF EXISTS "Public access" ON episodes;
 DROP POLICY IF EXISTS "Public access" ON cuts;
 DROP POLICY IF EXISTS "Public access" ON processes;
 DROP POLICY IF EXISTS "Public access" ON files;
+DROP POLICY IF EXISTS "Public access" ON characters;
+DROP POLICY IF EXISTS "Public access" ON character_sheets;
+DROP POLICY IF EXISTS "Public access" ON reference_files;
 
 -- 3. 모든 사용자에게 읽기/쓰기 권한 부여 (개발용)
 
@@ -45,6 +51,24 @@ CREATE POLICY "Public access" ON processes
 
 -- 파일 테이블
 CREATE POLICY "Public access" ON files
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- 캐릭터 테이블
+CREATE POLICY "Public access" ON characters
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- 캐릭터 시트 테이블
+CREATE POLICY "Public access" ON character_sheets
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- 레퍼런스 파일 테이블
+CREATE POLICY "Public access" ON reference_files
   FOR ALL
   USING (true)
   WITH CHECK (true);

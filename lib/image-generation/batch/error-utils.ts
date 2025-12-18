@@ -114,3 +114,5 @@ export function categorizeError(error: unknown, provider: ImageProvider): { code
     message: `이미지 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`,
   };
 }
+
+
