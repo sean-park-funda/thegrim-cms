@@ -1224,7 +1224,7 @@ export default function ScriptToShortsPage() {
                       variant="outline"
                       onClick={() => setShowVeoApiKeyDialog(true)}
                     >
-                      {veoApiKey ? '✓ Veo API Key' : 'Veo API Key'}
+                      {veoApiKey ? '🔑 커스텀 API Key' : 'Veo API Key'}
                     </Button>
                     <Button
                       onClick={handleGenerateAllVideos}
@@ -1405,19 +1405,36 @@ export default function ScriptToShortsPage() {
           <DialogHeader>
             <DialogTitle>Veo API Key 설정</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">현재 상태:</span>
+              {veoApiKey ? (
+                <span className="text-orange-600 font-medium">🔑 커스텀 API Key 사용 중</span>
+              ) : (
+                <span className="text-green-600 font-medium">✓ 서버 기본 키 사용 중</span>
+              )}
+            </div>
             <Input
-              type="password"
-              placeholder="Veo API Key를 입력하세요"
+              type="text"
+              placeholder="커스텀 API Key를 입력하세요 (선택)"
               value={veoApiKey}
               onChange={(e) => setVeoApiKey(e.target.value)}
             />
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground">
               별도의 API Key를 입력하면 해당 키로 영상이 생성됩니다.
-              입력하지 않으면 서버의 기본 키가 사용됩니다.
+              비워두면 서버에 설정된 기본 키가 사용됩니다.
             </p>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex gap-2">
+            {veoApiKey && (
+              <Button 
+                variant="destructive" 
+                onClick={() => setVeoApiKey('')}
+                className="mr-auto"
+              >
+                초기화 (기본 키 사용)
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setShowVeoApiKeyDialog(false)}>
               취소
             </Button>
