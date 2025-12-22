@@ -107,6 +107,7 @@ export function VideoGenerationSection({
                       src={scene.start_panel_path}
                       alt={isPerCutMode ? 'Panel' : 'Start'}
                       className="w-12 h-12 object-cover rounded"
+                      loading="lazy"
                     />
                   )}
                   {!isPerCutMode && scene.end_panel_path && (
@@ -114,6 +115,7 @@ export function VideoGenerationSection({
                       src={scene.end_panel_path}
                       alt="End"
                       className="w-12 h-12 object-cover rounded"
+                      loading="lazy"
                     />
                   )}
                 </div>

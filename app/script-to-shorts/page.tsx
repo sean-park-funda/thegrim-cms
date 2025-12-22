@@ -89,7 +89,7 @@ export default function ScriptToShortsPage() {
   // 그리드 이미지 상태
   const [gridImagePath, setGridImagePath] = useState<string | null>(null);
   const [scenes, setScenes] = useState<ShortsScene[]>([]);
-  const [imageStyle, setImageStyle] = useState<'realistic' | 'cartoon'>('realistic');
+  const [imageStyle, setImageStyle] = useState<'realistic' | 'cartoon'>('cartoon');
   const [gridSize, setGridSize] = useState<GridSize>('2x2');
   const [videoMode, setVideoMode] = useState<VideoMode>('per-cut');
 
@@ -937,12 +937,14 @@ export default function ScriptToShortsPage() {
                                 src={`data:${char.imageMimeType};base64,${char.imageBase64}`}
                                 alt={char.name}
                                 className="w-full h-full object-cover"
+                                loading="lazy"
                               />
                             ) : char.image_path ? (
                               <img
                                 src={char.image_path}
                                 alt={char.name}
                                 className="w-full h-full object-cover"
+                                loading="lazy"
                               />
                             ) : (
                               <Upload className="h-4 w-4 text-muted-foreground" />
@@ -1194,6 +1196,7 @@ export default function ScriptToShortsPage() {
                           src={sheet.file_path}
                           alt={sheet.character_name}
                           className="w-full h-full object-cover"
+                          loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Check className="h-8 w-8 text-white" />

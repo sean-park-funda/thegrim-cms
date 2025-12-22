@@ -227,6 +227,7 @@ export function PanelCardsGrid({
                       src={panelImage}
                       alt={`패널 ${idx + 1}`}
                       className="w-full aspect-[9/16] object-cover"
+                      loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button

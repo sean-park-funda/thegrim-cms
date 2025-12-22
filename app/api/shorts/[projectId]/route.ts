@@ -9,6 +9,7 @@ export async function GET(
   const { projectId } = await params;
   console.log('[shorts][GET] 프로젝트 조회:', projectId);
 
+  // grid_image_base64는 매우 크기 때문에 조회에서 제외 (성능 최적화)
   const { data, error } = await supabase
     .from('shorts_projects')
     .select(`
@@ -19,7 +20,6 @@ export async function GET(
       video_mode,
       grid_size,
       grid_image_path,
-      grid_image_base64,
       video_script,
       created_at,
       updated_at,
