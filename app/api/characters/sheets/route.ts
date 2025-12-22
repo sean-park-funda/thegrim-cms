@@ -33,7 +33,8 @@ export async function GET() {
 
     // 응답 형식 변환
     const sheets = (data || []).map((sheet) => {
-      const character = sheet.characters as { id: string; name: string; webtoons: { id: string; title: string } | null } | null;
+      // Supabase의 중첩 select 타입 처리
+      const character = sheet.characters as unknown as { id: string; name: string; webtoons: { id: string; title: string } | null } | null;
       return {
         id: sheet.id,
         file_path: sheet.file_path,
