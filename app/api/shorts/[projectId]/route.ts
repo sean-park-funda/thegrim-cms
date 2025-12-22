@@ -87,7 +87,6 @@ export async function PATCH(
   if (settingsChanged) {
     updateData.video_script = null;
     updateData.grid_image_path = null;
-    updateData.grid_image_base64 = null;
     updateData.status = 'draft';
     
     // 기존 씬 삭제

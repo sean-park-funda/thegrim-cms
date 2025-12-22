@@ -368,7 +368,7 @@ lib/image-generation/
 | status | text | 프로젝트 상태 |
 | video_mode | text | 영상 생성 모드 ('cut-to-cut' / 'per-cut') |
 | grid_image_path | text | 그리드 이미지 URL |
-| grid_image_base64 | text | 그리드 이미지 Base64 |
+| grid_image_base64 | text | (미사용) 레거시 필드 |
 | video_script | jsonb | VideoScript JSON |
 | created_at | timestamptz | 생성일 |
 | updated_at | timestamptz | 수정일 |

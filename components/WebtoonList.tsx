@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon } from 'lucide-react';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon, Video } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Webtoon, supabase } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
@@ -373,6 +373,23 @@ export function WebtoonList({ initialWebtoons }: WebtoonListProps = {}) {
                 <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
                   생성 히스토리
                 </span>
+              </div>
+            </div>
+            {/* 쇼츠 만들기 버튼 */}
+            <div
+              className="group cursor-pointer rounded-xl overflow-hidden border border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+              style={{ aspectRatio: '4/5' }}
+              onClick={() => router.push('/script-to-shorts')}
+            >
+              <div className="h-full flex flex-col items-center justify-center gap-2 px-3">
+                <Video className="h-10 w-10 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                  쇼츠 만들기
+                </span>
+                <div className="text-center space-y-0.5">
+                  <p className="text-[10px] text-muted-foreground/70">개발중 데모입니다</p>
+                  <p className="text-[10px] text-muted-foreground/70">동영상 생성수 제한(하루 10개)</p>
+                </div>
               </div>
             </div>
           </div>

@@ -368,11 +368,11 @@ Create the complete ${gridSize} grid image with EXACTLY ${panelCount} equal-size
     }
 
     // 프로젝트 업데이트 (영상 모드 포함)
+    // 참고: grid_image_base64는 저장하지 않음 (스토리지 URL만 사용)
     await supabase
       .from('shorts_projects')
       .update({
         grid_image_path: gridUrlData.publicUrl,
-        grid_image_base64: result.base64,
         video_mode: videoMode,
         status: 'grid_generated',
       })
