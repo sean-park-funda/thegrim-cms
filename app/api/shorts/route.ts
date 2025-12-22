@@ -7,6 +7,8 @@ interface ShortsProject {
   title: string | null;
   script: string;
   status: string;
+  video_mode: 'cut-to-cut' | 'per-cut';
+  grid_size: '2x2' | '3x3';
   grid_image_path: string | null;
   video_script: unknown;
   created_at: string;
@@ -24,6 +26,8 @@ export async function GET() {
       title,
       script,
       status,
+      video_mode,
+      grid_size,
       grid_image_path,
       video_script,
       created_at,
@@ -57,10 +61,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as {
     title?: string;
     script?: string;
+    video_mode?: 'cut-to-cut' | 'per-cut';
+    grid_size?: '2x2' | '3x3';
   } | null;
 
   const script = body?.script?.trim();
   const title = body?.title?.trim() || null;
+  const video_mode = body?.video_mode || 'per-cut';
+  const grid_size = body?.grid_size || '2x2';
 
   if (!script) {
     return NextResponse.json({ error: '대본(script)이 필요합니다.' }, { status: 400 });
@@ -71,6 +79,8 @@ export async function POST(request: NextRequest) {
     .insert({
       title,
       script,
+      video_mode,
+      grid_size,
       status: 'draft',
     })
     .select()

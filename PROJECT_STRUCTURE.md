@@ -16,11 +16,20 @@ thegrim-CMS/
 │   │   ├── regenerate-image/    # 이미지 재생성 API (Gemini/Seedream)
 │   │   ├── script-to-storyboard/  # 대본to콘티 API (Gemini 3 Pro Preview)
 │   │   ├── episode-scripts/          # 회차별 대본 CRUD, 정렬 API
-│   │   └── episode-scripts/[scriptId]/storyboards/  # 대본별 글콘티 생성/조회 API
+│   │   ├── episode-scripts/[scriptId]/storyboards/  # 대본별 글콘티 생성/조회 API
+│   │   └── shorts/                    # 대본→쇼츠 영상 API
+│   │       ├── route.ts               # 프로젝트 목록/생성
+│   │       └── [projectId]/           # 프로젝트별 API
+│   │           ├── route.ts           # 프로젝트 조회/수정/삭제
+│   │           ├── characters/        # 캐릭터 관리
+│   │           ├── generate-grid/     # 그리드 이미지 생성 (Gemini)
+│   │           ├── generate-script/   # VideoScript 생성 (Gemini)
+│   │           └── generate-video/    # 영상 생성 (Veo 3)
 │   ├── admin/                   # 관리자 페이지
 │   ├── login/                   # 로그인 페이지
 │   ├── signup/                  # 회원가입 페이지
 │   ├── script-to-storyboard/   # 대본to콘티 페이지
+│   ├── script-to-shorts/       # 대본→쇼츠 영상 페이지
 │   ├── favicon.ico              # 파비콘
 │   ├── globals.css              # 전역 스타일
 │   ├── layout.tsx               # 루트 레이아웃
@@ -92,6 +101,11 @@ thegrim-CMS/
 │   │
 │   ├── utils/                   # 유틸리티 함수
 │   │   └── permissions.ts       # 권한 체크 유틸리티
+│   │
+│   ├── video-generation/        # 영상 생성 유틸리티
+│   │   ├── veo.ts               # Veo 3 API 래퍼
+│   │   ├── grid-splitter.ts     # 그리드 이미지 분할
+│   │   └── types.ts             # 영상 생성 타입 정의
 │   │
 │   ├── supabase.ts              # Supabase 클라이언트 및 타입
 │   └── utils.ts                 # 유틸리티 함수
@@ -171,6 +185,16 @@ thegrim-CMS/
 - Gemini 3 Pro Preview 모델 사용
 - 대본 텍스트를 받아 컷별 글콘티 생성
 - JSON 형식 응답 반환 (컷 번호, 제목, 설명, 대사/내레이션)
+
+**shorts/ (대본→쇼츠 영상 시스템)**
+- 대본을 입력받아 AI로 쇼츠 영상을 자동 생성하는 시스템
+- **route.ts**: 프로젝트 목록 조회 (GET), 새 프로젝트 생성 (POST)
+- **[projectId]/route.ts**: 단일 프로젝트 CRUD
+- **[projectId]/characters/route.ts**: 캐릭터 관리 (등장인물 이름, 설명, 참조 이미지)
+- **[projectId]/generate-script/route.ts**: Gemini로 패널 설명 및 Veo 프롬프트 생성
+- **[projectId]/generate-grid/route.ts**: Gemini로 그리드 이미지 생성, sharp로 패널 분할
+- **[projectId]/generate-video/route.ts**: Veo 3로 시작/끝 프레임 기반 영상 생성
+- 상세 문서: [docs/SCRIPT_TO_SHORTS_GUIDE.md](./docs/SCRIPT_TO_SHORTS_GUIDE.md)
 
 ### 컴포넌트 (\`components/\`)
 
@@ -494,7 +518,9 @@ thegrim-CMS/
 - **데이터베이스**: Supabase (PostgreSQL)
 - **스토리지**: Supabase Storage
 - **인증**: Supabase Auth
-- **AI**: Google Gemini API (2.5 Pro, 2.5 Flash Image)
+- **AI**: Google Gemini API (2.5 Pro, 2.5 Flash Image, 3 Pro Image Preview)
+- **영상 생성**: Google Veo 3.1 Fast Generate
+- **이미지 처리**: sharp (그리드 분할)
 - **아이콘**: Lucide Icons
 
 ## 📖 관련 문서
@@ -503,5 +529,6 @@ thegrim-CMS/
 - [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) - 개발 진행 상황 및 계획
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - 주요 시스템 상세 설계
 - [SETUP_GUIDE.md](./SETUP_GUIDE.md) - 환경 설정 가이드
+- [docs/SCRIPT_TO_SHORTS_GUIDE.md](./docs/SCRIPT_TO_SHORTS_GUIDE.md) - 대본→쇼츠 영상 시스템 상세 문서
 
 

@@ -1,18 +1,26 @@
 import sharp from 'sharp';
 
 export type GridSize = '2x2' | '3x3';
+export type VideoMode = 'cut-to-cut' | 'per-cut';
 
 export interface GridConfig {
   rows: number;
   cols: number;
   panelCount: number;
-  sceneCount: number;
+  sceneCount: Record<VideoMode, number>;
 }
 
 export const GRID_CONFIGS: Record<GridSize, GridConfig> = {
-  '2x2': { rows: 2, cols: 2, panelCount: 4, sceneCount: 3 },
-  '3x3': { rows: 3, cols: 3, panelCount: 9, sceneCount: 8 },
+  '2x2': { rows: 2, cols: 2, panelCount: 4, sceneCount: { 'cut-to-cut': 3, 'per-cut': 4 } },
+  '3x3': { rows: 3, cols: 3, panelCount: 9, sceneCount: { 'cut-to-cut': 8, 'per-cut': 9 } },
 };
+
+/**
+ * 그리드 크기와 영상 모드에 따른 씬 개수를 반환합니다.
+ */
+export function getSceneCount(gridSize: GridSize, videoMode: VideoMode): number {
+  return GRID_CONFIGS[gridSize].sceneCount[videoMode];
+}
 
 export interface GridPanel {
   index: number;
@@ -105,7 +113,7 @@ export async function splitGridImage(
 }
 
 /**
- * 영상 생성을 위해 패널 페어를 생성합니다.
+ * 영상 생성을 위해 패널 페어를 생성합니다. (cut-to-cut 모드)
  * 
  * 2x2 (4 panels): 3개 연속 페어 (0→1), (1→2), (2→3)
  * 3x3 (9 panels): 8개 연속 페어 (0→1), (1→2), ..., (7→8)
@@ -131,8 +139,10 @@ export function createPanelPairs(
     endPanel: GridPanel;
   }> = [];
 
+  const sceneCount = config.sceneCount['cut-to-cut'];
+
   // 연속된 패널 페어 생성
-  for (let i = 0; i < config.sceneCount; i++) {
+  for (let i = 0; i < sceneCount; i++) {
     pairs.push({
       sceneIndex: i,
       startPanel: sortedPanels[i],
@@ -141,4 +151,31 @@ export function createPanelPairs(
   }
 
   return pairs;
+}
+
+/**
+ * 각 패널별로 개별 씬을 생성합니다. (per-cut 모드)
+ * 
+ * 2x2 (4 panels): 4개 씬 (패널 0, 1, 2, 3 각각)
+ * 3x3 (9 panels): 9개 씬 (패널 0, 1, 2, ..., 8 각각)
+ */
+export function createPerCutScenes(
+  panels: GridPanel[],
+  gridSize: GridSize = '3x3'
+): Array<{
+  sceneIndex: number;
+  panel: GridPanel;
+}> {
+  const config = GRID_CONFIGS[gridSize];
+  
+  if (panels.length !== config.panelCount) {
+    throw new Error(`${gridSize} 그리드에는 ${config.panelCount}개의 패널이 필요합니다. 현재: ${panels.length}`);
+  }
+
+  const sortedPanels = [...panels].sort((a, b) => a.index - b.index);
+  
+  return sortedPanels.map((panel, index) => ({
+    sceneIndex: index,
+    panel,
+  }));
 }

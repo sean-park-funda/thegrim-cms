@@ -63,6 +63,14 @@ export async function retryAsync<T>(
     } catch (error) {
       lastError = error;
       const canRetry = attempt < retries && isRetryable(error);
+      // 로그로 실패 원인과 재시도 여부를 남긴다.
+      console.error('[retryAsync] task failed', {
+        attempt,
+        retries,
+        canRetry,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (!canRetry) {
         throw error;
       }
@@ -75,6 +83,8 @@ export async function retryAsync<T>(
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return Buffer.from(buffer).toString('base64');
 }
+
+
 
 
 

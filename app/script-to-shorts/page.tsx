@@ -2,44 +2,36 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2,
-  FileText,
-  Users,
-  Image as ImageIcon,
   Video,
   Plus,
   Trash2,
-  Upload,
-  Sparkles,
-  Download,
   RefreshCcw,
-  Check,
-  AlertCircle,
-  Play,
   ArrowLeft,
   FolderOpen,
+  AlertCircle,
+  Check,
+  Search,
 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-type GridSize = '2x2' | '3x3';
-
-interface GridConfig {
-  rows: number;
-  cols: number;
-  panelCount: number;
-  sceneCount: number;
-}
-
-const GRID_CONFIGS: Record<GridSize, GridConfig> = {
-  '2x2': { rows: 2, cols: 2, panelCount: 4, sceneCount: 3 },
-  '3x3': { rows: 3, cols: 3, panelCount: 9, sceneCount: 8 },
-};
+import { PanelCardsGrid } from '@/components/shorts/PanelCardsGrid';
+import { VideoGenerationSection } from '@/components/shorts/VideoGenerationSection';
+import {
+  GridSize,
+  VideoMode,
+  VideoScript,
+  ShortsScene,
+  GRID_CONFIGS,
+} from '@/components/shorts/types';
+import { useImageModel } from '@/lib/contexts/ImageModelContext';
+import { Upload } from 'lucide-react';
 
 interface ShortsProjectListItem {
   id: string;
@@ -60,44 +52,13 @@ interface ShortsCharacter {
   image_path?: string;
 }
 
-interface ShortsScene {
-  id: string;
-  scene_index: number;
-  start_panel_path: string | null;
-  end_panel_path: string | null;
-  video_prompt: string | null;
-  video_path: string | null;
-  status: string;
-  error_message: string | null;
-}
-
-interface PanelDescription {
-  panelIndex: number;
-  description: string;
-  characters: string[];
-  action: string;
-  environment: string;
-}
-
-interface VideoScript {
-  panels: PanelDescription[];  // 패널 설명 (2x2: 4개, 3x3: 9개)
-  scenes: Array<{
-    sceneIndex: number;
-    startPanelIndex: number;
-    endPanelIndex: number;
-    motionDescription: string;
-    dialogue: string; // 해당 씬의 대사
-    veoPrompt: string;
-  }>;
-  totalDuration: number;
-  style: string;
-}
-
 interface ShortsProject {
   id: string;
   title: string | null;
   script: string;
   status: string;
+  video_mode?: VideoMode;
+  grid_size?: GridSize;
   grid_image_path: string | null;
   video_script: VideoScript | null;
   shorts_characters?: ShortsCharacter[];
@@ -107,7 +68,6 @@ interface ShortsProject {
 export default function ScriptToShortsPage() {
   // 뷰 상태: 'list' (목록) 또는 'edit' (편집)
   const [view, setView] = useState<'list' | 'edit'>('list');
-  const [activeTab, setActiveTab] = useState('script');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,19 +78,20 @@ export default function ScriptToShortsPage() {
   // 프로젝트 상태
   const [projectId, setProjectId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
   const [script, setScript] = useState('');
 
   // 캐릭터 상태
   const [characters, setCharacters] = useState<ShortsCharacter[]>([
     { name: '', description: '' },
   ]);
-  const [charactersSkipped, setCharactersSkipped] = useState(false);
 
   // 그리드 이미지 상태
   const [gridImagePath, setGridImagePath] = useState<string | null>(null);
   const [scenes, setScenes] = useState<ShortsScene[]>([]);
   const [imageStyle, setImageStyle] = useState<'realistic' | 'cartoon'>('realistic');
-  const [gridSize, setGridSize] = useState<GridSize>('3x3');
+  const [gridSize, setGridSize] = useState<GridSize>('2x2');
+  const [videoMode, setVideoMode] = useState<VideoMode>('per-cut');
 
   // 영상 스크립트 상태
   const [videoScript, setVideoScript] = useState<VideoScript | null>(null);
@@ -147,7 +108,27 @@ export default function ScriptToShortsPage() {
   const [showVeoApiKeyDialog, setShowVeoApiKeyDialog] = useState(false);
 
   // Gemini 모델 선택 상태
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [geminiModel, setGeminiModel] = useState('gemini-3-pro-preview');
+
+  // 캐릭터 시트 선택 다이얼로그 상태
+  const [showCharacterSheetDialog, setShowCharacterSheetDialog] = useState(false);
+  const [characterSheetTargetIndex, setCharacterSheetTargetIndex] = useState<number | null>(null);
+  const [characterSheets, setCharacterSheets] = useState<Array<{
+    id: string;
+    file_path: string;
+    file_name: string;
+    character_name: string;
+    webtoon_title: string;
+  }>>([]);
+  const [loadingCharacterSheets, setLoadingCharacterSheets] = useState(false);
+
+  // 전역 이미지 모델 (Gemini / Seedream)
+  const { model: imageModel } = useImageModel();
+
+  // 이미지 생성 프롬프트 상태
+  const [imagePrompt, setImagePrompt] = useState<string | null>(null);
+  const [showImagePromptDialog, setShowImagePromptDialog] = useState(false);
+  const [loadingImagePrompt, setLoadingImagePrompt] = useState(false);
 
   // 프로젝트 목록 로드
   const loadProjectList = useCallback(async () => {
@@ -156,7 +137,6 @@ export default function ScriptToShortsPage() {
       const res = await fetch('/api/shorts');
       if (res.ok) {
         const data = await res.json();
-        // API는 배열을 직접 반환함
         setProjectList(Array.isArray(data) ? data : []);
       }
     } catch (err) {
@@ -189,7 +169,14 @@ export default function ScriptToShortsPage() {
       setGridImagePath(data.grid_image_path);
       setVideoScript(data.video_script);
       setScenes(data.shorts_scenes || []);
+      if (data.video_mode) {
+        setVideoMode(data.video_mode);
+      }
+      if (data.grid_size) {
+        setGridSize(data.grid_size);
+      }
 
+      // 등장인물 설정 (없으면 빈 상태로 초기화)
       if (data.shorts_characters && data.shorts_characters.length > 0) {
         setCharacters(
           data.shorts_characters.map((c) => ({
@@ -199,13 +186,11 @@ export default function ScriptToShortsPage() {
             image_path: c.image_path,
           }))
         );
-        setCharactersSkipped(false);
-      } else if (data.grid_image_path) {
-        setCharactersSkipped(true);
+      } else {
+        setCharacters([{ name: '', description: '' }]);
       }
 
       setView('edit');
-      setActiveTab('script');
     } catch (err) {
       setError(err instanceof Error ? err.message : '프로젝트 로드 실패');
     } finally {
@@ -219,13 +204,11 @@ export default function ScriptToShortsPage() {
     setTitle('');
     setScript('');
     setCharacters([{ name: '', description: '' }]);
-    setCharactersSkipped(false);
     setGridImagePath(null);
     setScenes([]);
     setVideoScript(null);
     setError(null);
     setView('edit');
-    setActiveTab('script');
   }, []);
 
   // 목록으로 돌아가기
@@ -249,8 +232,49 @@ export default function ScriptToShortsPage() {
     }
   }, [loadProjectList]);
 
-  // 프로젝트 저장/생성
-  const handleSaveProject = useCallback(async () => {
+  // 프로젝트 설정 즉시 업데이트 (그리드 크기, 영상 모드)
+  const updateProjectSettings = useCallback(async (settings: { video_mode?: VideoMode; grid_size?: GridSize; title?: string }) => {
+    if (!projectId) return;
+
+    try {
+      const res = await fetch(`/api/shorts/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+
+      if (!res.ok) {
+        console.error('설정 업데이트 실패');
+      }
+    } catch (err) {
+      console.error('설정 업데이트 실패:', err);
+    }
+  }, [projectId]);
+
+  // 그리드 크기 변경 핸들러
+  const handleGridSizeChange = useCallback((value: string) => {
+    const size = value as GridSize;
+    setGridSize(size);
+    setVideoScript(null);
+    setGridImagePath(null);
+    setScenes([]);
+    setImagePrompt(null);
+    updateProjectSettings({ grid_size: size });
+  }, [updateProjectSettings]);
+
+  // 영상 모드 변경 핸들러
+  const handleVideoModeChange = useCallback((value: string) => {
+    const mode = value as VideoMode;
+    setVideoMode(mode);
+    setVideoScript(null);
+    setGridImagePath(null);
+    setScenes([]);
+    setImagePrompt(null);
+    updateProjectSettings({ video_mode: mode });
+  }, [updateProjectSettings]);
+
+  // 대본 + 등장인물 동시 저장
+  const handleSaveScriptAndCharacters = useCallback(async () => {
     if (!script.trim()) {
       setError('대본을 입력해주세요.');
       return;
@@ -260,12 +284,18 @@ export default function ScriptToShortsPage() {
     setError(null);
 
     try {
-      if (projectId) {
-        // 기존 프로젝트 수정
-        const res = await fetch(`/api/shorts/${projectId}`, {
+      // 1) 프로젝트 저장/업데이트
+      let currentProjectId = projectId;
+      if (currentProjectId) {
+        const res = await fetch(`/api/shorts/${currentProjectId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim() || null, script }),
+          body: JSON.stringify({
+            title: title.trim() || null,
+            script,
+            video_mode: videoMode,
+            grid_size: gridSize,
+          }),
         });
 
         if (!res.ok) {
@@ -273,11 +303,15 @@ export default function ScriptToShortsPage() {
           throw new Error(data.error || '프로젝트 수정에 실패했습니다.');
         }
       } else {
-        // 새 프로젝트 생성
         const res = await fetch('/api/shorts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim() || null, script }),
+          body: JSON.stringify({
+            title: title.trim() || null,
+            script,
+            video_mode: videoMode,
+            grid_size: gridSize,
+          }),
         });
 
         if (!res.ok) {
@@ -286,17 +320,53 @@ export default function ScriptToShortsPage() {
         }
 
         const data = await res.json();
+        currentProjectId = data.id;
         setProjectId(data.id);
       }
 
-      // 다음 탭으로 이동
-      setActiveTab('characters');
+      // 2) 등장인물 저장 (없으면 빈 배열로 저장하여 비우기)
+      if (currentProjectId) {
+        const validCharacters = characters.filter((c) => c.name.trim());
+
+        console.log('[handleSaveScriptAndCharacters] 저장할 캐릭터:', validCharacters.map(c => ({
+          name: c.name,
+          hasImageBase64: !!c.imageBase64,
+          imageBase64Length: c.imageBase64?.length,
+          image_path: c.image_path,
+        })));
+
+        const res = await fetch(`/api/shorts/${currentProjectId}/characters`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ characters: validCharacters }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || '캐릭터 저장에 실패했습니다.');
+        }
+
+        const savedCharacters = await res.json();
+        if (Array.isArray(savedCharacters) && savedCharacters.length > 0) {
+          setCharacters(
+            savedCharacters.map((c: { id: string; name: string; description: string | null; image_path: string | null }) => ({
+              id: c.id,
+              name: c.name,
+              description: c.description || '',
+              image_path: c.image_path || undefined,
+            }))
+          );
+        } else {
+          // 저장된 캐릭터가 없으면 빈 상태로 유지
+          setCharacters([{ name: '', description: '' }]);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '저장에 실패했습니다.');
     } finally {
       setSavingProject(false);
     }
-  }, [projectId, title, script]);
+  }, [projectId, title, script, videoMode, gridSize, characters]);
 
   // 캐릭터 추가
   const handleAddCharacter = () => {
@@ -309,7 +379,7 @@ export default function ScriptToShortsPage() {
   };
 
   // 캐릭터 수정
-  const handleUpdateCharacter = (index: number, field: keyof ShortsCharacter, value: string) => {
+  const handleUpdateCharacter = (index: number, field: 'name' | 'description', value: string) => {
     const updated = [...characters];
     updated[index] = { ...updated[index], [field]: value };
     setCharacters(updated);
@@ -317,11 +387,14 @@ export default function ScriptToShortsPage() {
 
   // 캐릭터 이미지 업로드
   const handleCharacterImageUpload = (index: number, file: File) => {
+    console.log('[handleCharacterImageUpload] 이미지 업로드 시작:', { index, fileName: file.name, fileType: file.type, fileSize: file.size });
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
       const base64 = result.split(',')[1];
       const mimeType = file.type;
+
+      console.log('[handleCharacterImageUpload] Base64 변환 완료:', { index, base64Length: base64?.length, mimeType });
 
       const updated = [...characters];
       updated[index] = {
@@ -329,47 +402,46 @@ export default function ScriptToShortsPage() {
         imageBase64: base64,
         imageMimeType: mimeType,
       };
+      console.log('[handleCharacterImageUpload] 캐릭터 상태 업데이트:', updated[index]);
       setCharacters(updated);
+    };
+    reader.onerror = (error) => {
+      console.error('[handleCharacterImageUpload] FileReader 에러:', error);
     };
     reader.readAsDataURL(file);
   };
 
-  // 캐릭터 저장
-  const handleSaveCharacters = useCallback(async () => {
+  // 이미지 생성 프롬프트 미리보기
+  const handlePreviewImagePrompt = useCallback(async () => {
     if (!projectId) {
       setError('먼저 대본을 저장해주세요.');
       return;
     }
 
-    const validCharacters = characters.filter((c) => c.name.trim());
-    if (validCharacters.length === 0) {
-      setError('최소 한 명의 등장인물을 입력해주세요.');
-      return;
-    }
-
-    setSavingProject(true);
+    setLoadingImagePrompt(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/shorts/${projectId}/characters`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ characters: validCharacters }),
+      const params = new URLSearchParams({
+        style: imageStyle,
+        gridSize,
       });
+      const res = await fetch(`/api/shorts/${projectId}/preview-image-prompt?${params.toString()}`);
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || '캐릭터 저장에 실패했습니다.');
+        throw new Error(data.error || '프롬프트를 불러올 수 없습니다.');
       }
 
-      // 다음 탭으로 이동
-      setActiveTab('images');
+      const data = await res.json();
+      setImagePrompt(data.prompt);
+      setShowImagePromptDialog(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '캐릭터 저장에 실패했습니다.');
+      setError(err instanceof Error ? err.message : '프롬프트 미리보기에 실패했습니다.');
     } finally {
-      setSavingProject(false);
+      setLoadingImagePrompt(false);
     }
-  }, [projectId, characters]);
+  }, [projectId, imageStyle, gridSize, videoMode, imageModel]);
 
   // 그리드 이미지 생성
   const handleGenerateGrid = useCallback(async () => {
@@ -385,7 +457,7 @@ export default function ScriptToShortsPage() {
       const res = await fetch(`/api/shorts/${projectId}/generate-grid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ style: imageStyle, gridSize }),
+        body: JSON.stringify({ style: imageStyle, gridSize, videoMode, apiProvider: imageModel }),
       });
 
       if (!res.ok) {
@@ -395,15 +467,15 @@ export default function ScriptToShortsPage() {
 
       const data = await res.json();
       setGridImagePath(data.gridImagePath);
+      setImagePrompt(data.prompt || null);
 
-      // 프로젝트 새로고침하여 씬 정보 가져오기
       await refreshProject();
     } catch (err) {
       setError(err instanceof Error ? err.message : '이미지 생성에 실패했습니다.');
     } finally {
       setGeneratingGrid(false);
     }
-  }, [projectId, imageStyle, gridSize]);
+  }, [projectId, imageStyle, gridSize, videoMode]);
 
   // 영상 스크립트 생성
   const handleGenerateScript = useCallback(async () => {
@@ -419,7 +491,7 @@ export default function ScriptToShortsPage() {
       const res = await fetch(`/api/shorts/${projectId}/generate-script`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: geminiModel, gridSize }),
+        body: JSON.stringify({ model: geminiModel, gridSize, videoMode }),
       });
 
       if (!res.ok) {
@@ -430,17 +502,13 @@ export default function ScriptToShortsPage() {
       const data = await res.json();
       setVideoScript(data);
 
-      // 프로젝트 새로고침
       await refreshProject();
-
-      // 다음 탭으로 이동
-      setActiveTab('video');
     } catch (err) {
       setError(err instanceof Error ? err.message : '스크립트 생성에 실패했습니다.');
     } finally {
       setGeneratingScript(false);
     }
-  }, [projectId, geminiModel, gridSize]);
+  }, [projectId, geminiModel, gridSize, videoMode]);
 
   // 단일 영상 생성
   const handleGenerateVideo = useCallback(
@@ -465,7 +533,6 @@ export default function ScriptToShortsPage() {
           throw new Error(data.error || '영상 생성에 실패했습니다.');
         }
 
-        // 프로젝트 새로고침
         await refreshProject();
       } catch (err) {
         setError(err instanceof Error ? err.message : '영상 생성에 실패했습니다.');
@@ -498,7 +565,6 @@ export default function ScriptToShortsPage() {
         throw new Error(data.error || '영상 생성에 실패했습니다.');
       }
 
-      // 프로젝트 새로고침
       await refreshProject();
     } catch (err) {
       setError(err instanceof Error ? err.message : '영상 생성에 실패했습니다.');
@@ -520,6 +586,12 @@ export default function ScriptToShortsPage() {
         setGridImagePath(data.grid_image_path);
         setVideoScript(data.video_script);
         setScenes(data.shorts_scenes || []);
+        if (data.video_mode) {
+          setVideoMode(data.video_mode);
+        }
+        if (data.grid_size) {
+          setGridSize(data.grid_size);
+        }
 
         if (data.shorts_characters && data.shorts_characters.length > 0) {
           setCharacters(
@@ -530,10 +602,6 @@ export default function ScriptToShortsPage() {
               image_path: c.image_path,
             }))
           );
-          setCharactersSkipped(false);
-        } else if (data.grid_image_path) {
-          // 캐릭터 없이 그리드 이미지가 있으면 건너뛴 것으로 간주
-          setCharactersSkipped(true);
         }
       }
     } catch (err) {
@@ -541,23 +609,101 @@ export default function ScriptToShortsPage() {
     }
   }, [projectId]);
 
-  // 탭 변경 시 프로젝트 새로고침
-  useEffect(() => {
-    if (projectId && (activeTab === 'images' || activeTab === 'video')) {
-      refreshProject();
-    }
-  }, [activeTab, projectId, refreshProject]);
+  // 씬 duration 업데이트
+  const updateSceneDuration = useCallback(async (sceneId: string, duration: number) => {
+    if (!projectId) return;
 
-  // 등장인물 건너뛰기
-  const handleSkipCharacters = useCallback(() => {
-    setCharactersSkipped(true);
-    setActiveTab('images');
+    try {
+      const res = await fetch(`/api/shorts/${projectId}/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration }),
+      });
+
+      if (res.ok) {
+        setScenes(prev => prev.map(s =>
+          s.id === sceneId ? { ...s, duration } : s
+        ));
+      } else {
+        console.error('씬 업데이트 실패');
+      }
+    } catch (err) {
+      console.error('씬 업데이트 오류:', err);
+    }
+  }, [projectId]);
+
+  // 캐릭터 시트 목록 불러오기
+  const loadCharacterSheets = useCallback(async () => {
+    setLoadingCharacterSheets(true);
+    try {
+      const res = await fetch('/api/characters/sheets');
+      if (res.ok) {
+        const data = await res.json();
+        setCharacterSheets(data);
+      }
+    } catch (err) {
+      console.error('캐릭터 시트 불러오기 실패:', err);
+    } finally {
+      setLoadingCharacterSheets(false);
+    }
   }, []);
 
-  // 탭 활성화 조건
-  const canAccessCharacters = !!projectId;
-  const canAccessImages = !!projectId && (characters.some((c) => c.name.trim()) || charactersSkipped);
-  const canAccessVideo = !!projectId && !!gridImagePath;
+  // 캐릭터 시트 선택 다이얼로그 열기
+  const openCharacterSheetDialog = useCallback((charIndex: number) => {
+    setCharacterSheetTargetIndex(charIndex);
+    setShowCharacterSheetDialog(true);
+    loadCharacterSheets();
+  }, [loadCharacterSheets]);
+
+  // 캐릭터 시트 선택
+  const handleSelectCharacterSheet = useCallback(async (sheet: {
+    id: string;
+    file_path: string;
+    file_name: string;
+    character_name: string;
+  }) => {
+    if (characterSheetTargetIndex === null) return;
+
+    // 일단 image_path를 먼저 설정 (CORS 오류 시에도 저장 가능하도록)
+    setCharacters(prev => {
+      const updated = [...prev];
+      updated[characterSheetTargetIndex] = {
+        ...updated[characterSheetTargetIndex],
+        name: updated[characterSheetTargetIndex].name || sheet.character_name,
+        image_path: sheet.file_path,
+      };
+      return updated;
+    });
+
+    // 이미지를 base64로 변환 시도 (선택적)
+    try {
+      const response = await fetch(sheet.file_path);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const mimeType = blob.type || 'image/png';
+        
+        setCharacters(prev => {
+          const updated = [...prev];
+          if (updated[characterSheetTargetIndex]) {
+            updated[characterSheetTargetIndex] = {
+              ...updated[characterSheetTargetIndex],
+              imageBase64: base64,
+              imageMimeType: mimeType,
+            };
+          }
+          return updated;
+        });
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.warn('캐릭터 시트 이미지 base64 변환 실패 (image_path는 사용됨):', err);
+    }
+    
+    setShowCharacterSheetDialog(false);
+    setCharacterSheetTargetIndex(null);
+  }, [characterSheetTargetIndex]);
 
   // 프로젝트 목록 화면
   if (view === 'list') {
@@ -652,7 +798,6 @@ export default function ScriptToShortsPage() {
     );
   }
 
-  // 프로젝트 편집 화면
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
@@ -662,23 +807,89 @@ export default function ScriptToShortsPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <Video className="h-6 w-6" />
-          <h1 className="text-2xl font-bold">
-            {title || (projectId ? '프로젝트 편집' : '새 프로젝트')}
-          </h1>
+          {editingTitle ? (
+            <Input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => {
+                setEditingTitle(false);
+                // 프로젝트가 있으면 제목 저장
+                if (projectId) {
+                  updateProjectSettings({ title: title || '제목 없음' });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setEditingTitle(false);
+                  if (projectId) {
+                    updateProjectSettings({ title: title || '제목 없음' });
+                  }
+                } else if (e.key === 'Escape') {
+                  setEditingTitle(false);
+                }
+              }}
+              className="text-xl font-bold h-8 w-[200px]"
+              placeholder="제목 없음"
+            />
+          ) : (
+            <h1
+              className="text-xl font-bold cursor-pointer hover:text-primary transition-colors"
+              onClick={() => setEditingTitle(true)}
+              title="클릭하여 제목 수정"
+            >
+              {title || '제목 없음'}
+            </h1>
+          )}
         </div>
-        {projectId && (
-          <Button variant="outline" size="sm" onClick={refreshProject} disabled={loading}>
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            새로고침
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* 프로젝트 설정 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">그리드:</span>
+            <Select
+              value={gridSize}
+              onValueChange={handleGridSizeChange}
+              disabled={generatingGrid || generatingScript}
+            >
+              <SelectTrigger className="w-[80px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2x2">2x2</SelectItem>
+                <SelectItem value="3x3">3x3</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">모드:</span>
+            <Select
+              value={videoMode}
+              onValueChange={handleVideoModeChange}
+              disabled={generatingGrid || generatingScript}
+            >
+              <SelectTrigger className="w-[130px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cut-to-cut">컷to컷</SelectItem>
+                <SelectItem value="per-cut">컷별</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {projectId && (
+            <Button variant="outline" size="sm" onClick={refreshProject} disabled={loading}>
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              새로고침
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 에러 표시 */}
       {error && (
-        <div className="p-4">
+        <div className="p-4 pb-0">
           <Card className="border-destructive">
-            <CardContent className="pt-6">
+            <CardContent className="pt-4 pb-4">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-5 w-5" />
                 <p className="text-sm">{error}</p>
@@ -688,146 +899,39 @@ export default function ScriptToShortsPage() {
         </div>
       )}
 
-      {/* 탭 콘텐츠 */}
-      <div className="flex-1 overflow-hidden p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="script" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              1. 대본
-            </TabsTrigger>
-            <TabsTrigger
-              value="characters"
-              disabled={!canAccessCharacters}
-              className="flex items-center gap-2"
-            >
-              <Users className="h-4 w-4" />
-              2. 등장인물
-            </TabsTrigger>
-            <TabsTrigger
-              value="images"
-              disabled={!canAccessImages}
-              className="flex items-center gap-2"
-            >
-              <ImageIcon className="h-4 w-4" />
-              3. 이미지
-            </TabsTrigger>
-            <TabsTrigger
-              value="video"
-              disabled={!canAccessVideo}
-              className="flex items-center gap-2"
-            >
-              <Video className="h-4 w-4" />
-              4. 영상
-            </TabsTrigger>
-          </TabsList>
+      {/* 좌우 패널 레이아웃 */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* 좌측 패널: 대본 + 등장인물 (단일 카드) */}
+        <div className="w-[400px] border-r overflow-y-auto p-4 space-y-4 flex-shrink-0">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">기본 정보</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">대본 *</label>
+                <Textarea
+                  value={script}
+                  onChange={(e) => setScript(e.target.value)}
+                  placeholder="대본을 입력하세요"
+                  className="min-h-[200px] resize-none"
+                  disabled={generatingGrid || generatingScript}
+                />
+              </div>
 
-          {/* 1. 대본 입력 */}
-          <TabsContent value="script" className="flex-1 overflow-auto mt-4">
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle>대본 입력</CardTitle>
-                <CardDescription>
-                  쇼츠 영상으로 만들 대본을 입력하세요. 장면 전환과 대사를 포함해주세요.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-4 items-end">
-                  <div className="flex-1 space-y-2">
-                    <label className="text-sm font-medium">제목 (선택)</label>
-                    <Input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="프로젝트 제목"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">그리드 크기</label>
-                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
-                      <Button
-                        variant={gridSize === '2x2' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setGridSize('2x2')}
-                        className="px-3"
-                      >
-                        2×2 (4컷)
-                      </Button>
-                      <Button
-                        variant={gridSize === '3x3' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setGridSize('3x3')}
-                        className="px-3"
-                      >
-                        3×3 (9컷)
-                      </Button>
-                    </div>
-                  </div>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-sm font-medium">등장인물 (선택)</p>
+                  <p className="text-xs text-muted-foreground">등장인물을 설정하지 않으면 AI가 자동 생성합니다</p>
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">대본 *</label>
-                  <Textarea
-                    value={script}
-                    onChange={(e) => setScript(e.target.value)}
-                    placeholder="대본을 입력하세요...
-
-예시:
-[장면 1: 도시의 밤거리]
-주인공이 비오는 거리를 걷고 있다.
-
-[장면 2: 카페 내부]
-주인공: '오랜만이야.'
-상대방: '그러게, 정말 오랜만이다.'"
-                    className="min-h-[400px] resize-none"
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveProject} disabled={savingProject || !script.trim()}>
-                    {savingProject ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        저장 중...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="h-4 w-4 mr-2" />
-                        저장 및 다음
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* 2. 등장인물 설정 */}
-          <TabsContent value="characters" className="flex-1 overflow-auto mt-4">
-            <Card className="h-full">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>등장인물 설정</CardTitle>
-                    <CardDescription>
-                      등장인물의 이름과 외모 설명, 참조 이미지를 입력하세요.
-                    </CardDescription>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={handleSkipCharacters}
-                    disabled={savingProject}
-                    className="text-muted-foreground"
-                  >
-                    건너뛰기 →
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {characters.map((char, index) => (
-                  <Card key={index} className="p-4">
-                    <div className="flex gap-4">
-                      {/* 이미지 업로드 영역 */}
-                      <div className="flex-shrink-0">
-                        <label className="cursor-pointer">
-                          <div className="w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center overflow-hidden hover:border-primary transition-colors">
+                  {characters.map((char, index) => (
+                    <div key={index} className="flex items-center gap-2 p-2 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                      {/* 이미지 영역 */}
+                      <div className="relative flex-shrink-0 group">
+                        <label className="cursor-pointer block">
+                          <div className="w-12 h-12 border-2 border-dashed rounded-lg flex items-center justify-center overflow-hidden hover:border-primary transition-colors bg-background">
                             {char.imageBase64 ? (
                               <img
                                 src={`data:${char.imageMimeType};base64,${char.imageBase64}`}
@@ -841,36 +945,41 @@ export default function ScriptToShortsPage() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="text-center p-2">
-                                <Upload className="h-6 w-6 mx-auto text-muted-foreground" />
-                                <span className="text-xs text-muted-foreground">이미지</span>
-                              </div>
+                              <Upload className="h-4 w-4 text-muted-foreground" />
                             )}
                           </div>
                           <input
                             type="file"
                             accept="image/*"
                             className="hidden"
+                            disabled={generatingGrid || generatingScript}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) handleCharacterImageUpload(index, file);
                             }}
                           />
                         </label>
+                        {/* 캐릭터 시트 검색 버튼 - 호버 시 표시 */}
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => openCharacterSheetDialog(index)}
+                          disabled={generatingGrid || generatingScript}
+                          title="캐릭터 시트에서 선택"
+                        >
+                          <Search className="h-2.5 w-2.5" />
+                        </Button>
                       </div>
 
-                      {/* 정보 입력 영역 */}
-                      <div className="flex-1 space-y-3">
+                      {/* 이름 입력 */}
+                      <div className="flex-1 min-w-0">
                         <Input
                           value={char.name}
                           onChange={(e) => handleUpdateCharacter(index, 'name', e.target.value)}
-                          placeholder="캐릭터 이름 *"
-                        />
-                        <Textarea
-                          value={char.description}
-                          onChange={(e) => handleUpdateCharacter(index, 'description', e.target.value)}
-                          placeholder="외모 설명 (예: 검은 단발머리, 청재킷을 입은 20대 여성)"
-                          className="min-h-[60px]"
+                          placeholder="캐릭터 이름"
+                          disabled={generatingGrid || generatingScript}
+                          className="h-8 text-sm"
                         />
                       </div>
 
@@ -879,524 +988,100 @@ export default function ScriptToShortsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-destructive"
+                          className="text-muted-foreground hover:text-destructive h-7 w-7 flex-shrink-0"
                           onClick={() => handleRemoveCharacter(index)}
+                          disabled={generatingGrid || generatingScript}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
                     </div>
-                  </Card>
-                ))}
+                  ))}
 
-                <Button variant="outline" onClick={handleAddCharacter} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  등장인물 추가
-                </Button>
-
-                <div className="flex justify-end">
+                  {/* 등장인물 추가 버튼 */}
                   <Button
-                    onClick={handleSaveCharacters}
-                    disabled={savingProject || !characters.some((c) => c.name.trim())}
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleAddCharacter}
+                    disabled={generatingGrid || generatingScript}
                   >
-                    {savingProject ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        저장 중...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="h-4 w-4 mr-2" />
-                        저장 및 다음
-                      </>
-                    )}
+                    <Plus className="h-4 w-4 mr-1" />
+                    등장인물 추가
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
 
-          {/* 3. 이미지 생성 */}
-          <TabsContent value="images" className="flex-1 overflow-auto mt-4">
-            <Card className="h-full">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>이미지 생성</CardTitle>
-                    <CardDescription>
-                      대본을 기반으로 4x2 그리드 이미지를 생성하고, 영상용 스크립트를 작성합니다.
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* 1단계: 컷 설명 생성 */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-medium">1단계: 컷 설명 생성</h3>
-                      <p className="text-xs text-muted-foreground">
-                        대본을 분석하여 {GRID_CONFIGS[gridSize].panelCount}개 패널의 상세 설명과 영상 프롬프트를 생성합니다.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={geminiModel}
-                        onValueChange={setGeminiModel}
-                        disabled={generatingScript}
-                      >
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue placeholder="모델 선택" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (권장)</SelectItem>
-                          <SelectItem value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (빠름)</SelectItem>
-                          <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro (고성능)</SelectItem>
-                          <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash (최신)</SelectItem>
-                          <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro (최신)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={handleGenerateScript}
-                        disabled={generatingScript}
-                        variant={videoScript?.panels?.length === 9 ? 'outline' : 'default'}
-                      >
-                        {generatingScript ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            생성 중...
-                          </>
-                        ) : videoScript?.panels?.length === 9 ? (
-                          <>
-                            <RefreshCcw className="h-4 w-4 mr-2" />
-                            재생성
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="h-4 w-4 mr-2" />
-                            컷 설명 생성
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* 패널 설명 미리보기 */}
-                  {videoScript?.panels && videoScript.panels.length > 0 && (
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-medium text-green-600 flex items-center gap-1">
-                        <Check className="h-3 w-3" />
-                        {videoScript.panels.length}개 패널 설명 생성됨
-                      </p>
-                      <div className={`grid gap-2 text-xs ${gridSize === '2x2' ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                        {videoScript.panels.slice(0, GRID_CONFIGS[gridSize].panelCount).map((panel) => (
-                          <div key={panel.panelIndex} className="bg-background p-2 rounded border">
-                            <div className="font-medium mb-1">패널 {panel.panelIndex + 1}</div>
-                            <p className="text-muted-foreground line-clamp-2">{panel.description}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveScriptAndCharacters}
+                  disabled={savingProject || !script.trim() || generatingGrid || generatingScript}
+                  size="sm"
+                >
+                  {savingProject ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      저장
+                    </>
                   )}
-                </div>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                {/* 2단계: 이미지 생성 */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-medium">2단계: 이미지 생성</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {videoScript?.panels?.length === GRID_CONFIGS[gridSize].panelCount
-                          ? `컷 설명을 기반으로 ${gridSize} 그리드 이미지를 생성합니다.`
-                          : '먼저 컷 설명을 생성해주세요.'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Select
-                        value={imageStyle}
-                        onValueChange={(value: 'realistic' | 'cartoon') => setImageStyle(value)}
-                        disabled={generatingGrid || !videoScript?.panels?.length}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="realistic">실사풍</SelectItem>
-                          <SelectItem value="cartoon">만화풍</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={handleGenerateGrid}
-                        disabled={generatingGrid || (videoScript?.panels?.length !== GRID_CONFIGS[gridSize].panelCount && !gridImagePath)}
-                      >
-                        {generatingGrid ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            생성 중...
-                          </>
-                        ) : gridImagePath ? (
-                          <>
-                            <RefreshCcw className="h-4 w-4 mr-2" />
-                            재생성
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            이미지 생성
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+        {/* 우측 패널: 패널 카드 + 영상 생성 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {projectId ? (
+            <>
+              <PanelCardsGrid
+                gridSize={gridSize}
+                videoMode={videoMode}
+                videoScript={videoScript}
+                scenes={scenes}
+                gridImagePath={gridImagePath}
+                generatingScript={generatingScript}
+                generatingGrid={generatingGrid}
+                loadingImagePrompt={loadingImagePrompt}
+                geminiModel={geminiModel}
+                imageStyle={imageStyle}
+                onGeminiModelChange={setGeminiModel}
+                onImageStyleChange={setImageStyle}
+                onGenerateScript={handleGenerateScript}
+                onGenerateGrid={handleGenerateGrid}
+                onPreviewImagePrompt={handlePreviewImagePrompt}
+              />
 
-                {/* 캐릭터 건너뛰기 안내 */}
-                {charactersSkipped && !gridImagePath && !videoScript?.panels?.length && (
-                  <Card className="p-4 bg-muted/50 border-dashed">
-                    <p className="text-sm text-muted-foreground">
-                      등장인물 설정을 건너뛰었습니다. 캐릭터 참조 이미지 없이 대본만으로 이미지를 생성합니다.
-                    </p>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="p-0 h-auto mt-1"
-                      onClick={() => {
-                        setCharactersSkipped(false);
-                        setActiveTab('characters');
-                      }}
-                    >
-                      ← 등장인물 설정으로 돌아가기
-                    </Button>
-                  </Card>
-                )}
-
-                {gridImagePath ? (
-                  <>
-                    {/* 분할된 패널 */}
-                    {scenes.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium">생성된 패널 (9개)</h3>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                const response = await fetch(gridImagePath);
-                                const blob = await response.blob();
-                                const blobUrl = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = blobUrl;
-                                link.download = `grid-${Date.now()}.png`;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                URL.revokeObjectURL(blobUrl);
-                              } catch (err) {
-                                console.error('다운로드 실패:', err);
-                                window.open(gridImagePath, '_blank');
-                              }
-                            }}
-                          >
-                            <Download className="h-4 w-4 mr-2" />
-                            전체 그리드 다운로드
-                          </Button>
-                        </div>
-                        <div className={`grid gap-3 ${gridSize === '2x2' ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                          {/* 패널을 순서대로 표시 (scenes에서 추출) */}
-                          {(() => {
-                            // scenes를 scene_index 순으로 정렬
-                            const sortedScenes = [...scenes].sort((a, b) => a.scene_index - b.scene_index);
-                            
-                            // 정렬된 scenes에서 패널 경로 추출
-                            const allPanels: string[] = [];
-                            sortedScenes.forEach((scene, idx) => {
-                              if (scene.start_panel_path && !allPanels.includes(scene.start_panel_path)) {
-                                allPanels.push(scene.start_panel_path);
-                              }
-                              // 마지막 씬의 end_panel만 추가 (중복 방지)
-                              if (idx === sortedScenes.length - 1 && scene.end_panel_path) {
-                                allPanels.push(scene.end_panel_path);
-                              }
-                            });
-                            
-                            // 다운로드 함수 (외부 URL을 blob으로 변환하여 다운로드)
-                            const handleDownload = async (url: string, filename: string) => {
-                              try {
-                                const response = await fetch(url);
-                                const blob = await response.blob();
-                                const blobUrl = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = blobUrl;
-                                link.download = filename;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                URL.revokeObjectURL(blobUrl);
-                              } catch (err) {
-                                console.error('다운로드 실패:', err);
-                                // 폴백: 새 탭에서 열기
-                                window.open(url, '_blank');
-                              }
-                            };
-                            
-                            return allPanels.map((panelPath, idx) => (
-                              <Card key={idx} className="overflow-hidden group relative">
-                                <img
-                                  src={panelPath}
-                                  alt={`패널 ${idx + 1}`}
-                                  className="w-full aspect-[9/16] object-cover"
-                                />
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleDownload(panelPath, `panel-${idx + 1}.png`)}
-                                  >
-                                    <Download className="h-4 w-4 mr-1" />
-                                    다운로드
-                                  </Button>
-                                </div>
-                                <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                                  {idx + 1}
-                                </div>
-                              </Card>
-                            ));
-                          })()}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 씬 전환 정보 */}
-                    {scenes.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-sm font-medium">씬 전환 ({GRID_CONFIGS[gridSize].sceneCount}개 영상)</h3>
-                        <div className={`grid gap-2 ${gridSize === '2x2' ? 'grid-cols-3' : 'grid-cols-4'}`}>
-                          {[...scenes].sort((a, b) => a.scene_index - b.scene_index).map((scene) => (
-                            <Card key={scene.id} className="p-2 text-center">
-                              <div className="text-xs font-medium mb-1">씬 {scene.scene_index + 1}</div>
-                              <div className="text-xs text-muted-foreground">
-                                패널 {scene.scene_index + 1} → {scene.scene_index + 2}
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 영상 탭으로 이동 버튼 */}
-                    {videoScript?.scenes && videoScript.scenes.length > 0 && (
-                      <div className="flex justify-end">
-                        <Button onClick={() => setActiveTab('video')}>
-                          <Video className="h-4 w-4 mr-2" />
-                          영상 생성으로 이동 →
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <ImageIcon className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                    <p className="text-muted-foreground">
-                      {generatingGrid
-                        ? '이미지를 생성하고 있습니다. 잠시만 기다려주세요...'
-                        : '이미지 생성 버튼을 클릭하여 스토리 패널을 생성하세요.'}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
+              {gridImagePath && scenes.length > 0 && (
+                <VideoGenerationSection
+                  videoMode={videoMode}
+                  videoScript={videoScript}
+                  scenes={scenes}
+                  generatingVideo={generatingVideo}
+                  generatingAllVideos={generatingAllVideos}
+                  veoApiKey={veoApiKey}
+                  onShowApiKeyDialog={() => setShowVeoApiKeyDialog(true)}
+                  onGenerateVideo={handleGenerateVideo}
+                  onGenerateAllVideos={handleGenerateAllVideos}
+                  onUpdateSceneDuration={updateSceneDuration}
+                />
+              )}
+            </>
+          ) : (
+            <Card className="p-8">
+              <div className="flex flex-col items-center justify-center text-center">
+                <Video className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                <p className="text-muted-foreground">
+                  먼저 좌측에서 대본을 입력하고 저장해주세요.
+                </p>
+              </div>
             </Card>
-          </TabsContent>
-
-          {/* 4. 영상 생성 */}
-          <TabsContent value="video" className="flex-1 overflow-auto mt-4">
-            <Card className="h-full">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>영상 생성</CardTitle>
-                    <CardDescription>
-                      각 씬을 Veo로 영상화합니다. 영상 생성에는 몇 분이 소요될 수 있습니다.
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowVeoApiKeyDialog(true)}
-                    >
-                      {veoApiKey ? '🔑 커스텀 API Key' : 'Veo API Key'}
-                    </Button>
-                    <Button
-                      onClick={handleGenerateAllVideos}
-                      disabled={generatingAllVideos || generatingVideo !== null || !videoScript}
-                    >
-                      {generatingAllVideos ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          생성 중...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          모든 영상 생성
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {videoScript ? (
-                  <>
-                    {/* 영상 스타일 */}
-                    <Card className="p-4 bg-muted/50">
-                      <p className="text-sm">
-                        <span className="font-medium">스타일:</span> {videoScript.style}
-                      </p>
-                      <p className="text-sm">
-                        <span className="font-medium">예상 길이:</span> {videoScript.totalDuration}초
-                      </p>
-                    </Card>
-
-                    {/* 씬별 영상 */}
-                    <div className="space-y-4">
-                      {[...scenes].sort((a, b) => a.scene_index - b.scene_index).map((scene) => {
-                        const sceneScript = videoScript.scenes.find(
-                          (s) => s.sceneIndex === scene.scene_index
-                        );
-                        const isGenerating = generatingVideo === scene.scene_index;
-
-                        return (
-                          <Card key={scene.id} className="p-4">
-                            <div className="flex items-start gap-4">
-                              {/* 패널 이미지 */}
-                              <div className="flex gap-2 flex-shrink-0">
-                                {scene.start_panel_path && (
-                                  <img
-                                    src={scene.start_panel_path}
-                                    alt="Start"
-                                    className="w-16 h-16 object-cover rounded"
-                                  />
-                                )}
-                                {scene.end_panel_path && (
-                                  <img
-                                    src={scene.end_panel_path}
-                                    alt="End"
-                                    className="w-16 h-16 object-cover rounded"
-                                  />
-                                )}
-                              </div>
-
-                              {/* 스크립트 정보 */}
-                              <div className="flex-1 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <h4 className="font-medium">씬 {scene.scene_index + 1}</h4>
-                                  <div className="flex items-center gap-2">
-                                    {scene.status === 'completed' && (
-                                      <span className="text-xs text-green-600 flex items-center gap-1">
-                                        <Check className="h-3 w-3" />
-                                        완료
-                                      </span>
-                                    )}
-                                    {scene.status === 'error' && (
-                                      <span className="text-xs text-destructive flex items-center gap-1">
-                                        <AlertCircle className="h-3 w-3" />
-                                        오류
-                                      </span>
-                                    )}
-                                    {scene.status === 'generating' && (
-                                      <span className="text-xs text-primary flex items-center gap-1">
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                        생성 중
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {sceneScript && (
-                                  <div className="text-sm text-muted-foreground space-y-1">
-                                    {sceneScript.dialogue && (
-                                      <p className="text-foreground bg-primary/10 p-2 rounded border-l-4 border-primary">
-                                        <span className="font-medium">대사:</span>{' '}
-                                        &quot;{sceneScript.dialogue}&quot;
-                                      </p>
-                                    )}
-                                    <p>
-                                      <span className="font-medium">모션:</span>{' '}
-                                      {sceneScript.motionDescription}
-                                    </p>
-                                    <p className="text-xs bg-muted p-2 rounded">
-                                      <span className="font-medium">프롬프트:</span>{' '}
-                                      {sceneScript.veoPrompt}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {scene.error_message && (
-                                  <p className="text-xs text-destructive">{scene.error_message}</p>
-                                )}
-                              </div>
-
-                              {/* 액션 버튼 */}
-                              <div className="flex flex-col gap-2 flex-shrink-0">
-                                {scene.video_path ? (
-                                  <>
-                                    <a
-                                      href={scene.video_path}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <Button variant="outline" size="sm">
-                                        <Play className="h-4 w-4 mr-1" />
-                                        재생
-                                      </Button>
-                                    </a>
-                                    <a href={scene.video_path} download>
-                                      <Button variant="outline" size="sm">
-                                        <Download className="h-4 w-4 mr-1" />
-                                        다운로드
-                                      </Button>
-                                    </a>
-                                  </>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleGenerateVideo(scene.scene_index)}
-                                    disabled={isGenerating || generatingAllVideos || (generatingVideo !== null && generatingVideo !== scene.scene_index)}
-                                  >
-                                    {isGenerating ? (
-                                      <>
-                                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                        생성 중
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Sparkles className="h-4 w-4 mr-1" />
-                                        생성
-                                      </>
-                                    )}
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Video className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                    <p className="text-muted-foreground">
-                      먼저 이미지 탭에서 그리드 이미지와 영상 스크립트를 생성해주세요.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </div>
 
       {/* Veo API Key 다이얼로그 */}
@@ -1427,8 +1112,8 @@ export default function ScriptToShortsPage() {
           </div>
           <DialogFooter className="flex gap-2">
             {veoApiKey && (
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={() => setVeoApiKey('')}
                 className="mr-auto"
               >
@@ -1440,6 +1125,93 @@ export default function ScriptToShortsPage() {
             </Button>
             <Button onClick={() => setShowVeoApiKeyDialog(false)}>
               확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 이미지 생성 프롬프트 다이얼로그 */}
+      <Dialog open={showImagePromptDialog} onOpenChange={setShowImagePromptDialog}>
+        <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>이미지 생성 프롬프트</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {imagePrompt ? (
+              <div className="bg-muted p-4 rounded-lg border">
+                <pre className="whitespace-pre-wrap break-words text-sm font-mono overflow-auto">
+                  {imagePrompt}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-muted-foreground">프롬프트가 없습니다.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImagePromptDialog(false)}>
+              닫기
+            </Button>
+            {imagePrompt && (
+              <Button
+                onClick={() => {
+                  navigator.clipboard.writeText(imagePrompt);
+                  setShowImagePromptDialog(false);
+                }}
+              >
+                복사
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 캐릭터 시트 선택 다이얼로그 */}
+      <Dialog open={showCharacterSheetDialog} onOpenChange={setShowCharacterSheetDialog}>
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>캐릭터 시트 선택</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            {loadingCharacterSheets ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : characterSheets.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                등록된 캐릭터 시트가 없습니다.
+              </p>
+            ) : (
+              <ScrollArea className="h-[400px]">
+                <div className="grid grid-cols-3 gap-3 pr-4">
+                  {characterSheets.map((sheet) => (
+                    <div
+                      key={sheet.id}
+                      className="cursor-pointer border rounded-lg overflow-hidden hover:border-primary transition-colors group"
+                      onClick={() => handleSelectCharacterSheet(sheet)}
+                    >
+                      <div className="aspect-square relative">
+                        <img
+                          src={sheet.file_path}
+                          alt={sheet.character_name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Check className="h-8 w-8 text-white" />
+                        </div>
+                      </div>
+                      <div className="p-2 bg-muted/50">
+                        <p className="text-xs font-medium truncate">{sheet.character_name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{sheet.webtoon_title}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCharacterSheetDialog(false)}>
+              취소
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -58,6 +58,7 @@ export async function generateVeoVideo(request: VeoRequest): Promise<VeoResult> 
     numberOfVideos: config?.numberOfVideos ?? 1,
     resolution: '720p', // Veo 3 필수
     aspectRatio: config?.aspectRatio ?? '9:16',
+    durationSeconds: config?.durationSeconds ?? 4, // 스크립트에서 결정된 영상 길이
   };
 
   // 끝 이미지가 있으면 config.lastFrame에 추가

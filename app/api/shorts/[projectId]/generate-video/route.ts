@@ -26,12 +26,14 @@ export async function POST(
       id,
       script,
       video_script,
+      video_mode,
       shorts_scenes (
         id,
         scene_index,
         start_panel_path,
         end_panel_path,
         video_prompt,
+        duration,
         status
       )
     `)
@@ -57,6 +59,7 @@ export async function POST(
     start_panel_path: string | null;
     end_panel_path: string | null;
     video_prompt: string | null;
+    duration: number | null;
     status: string;
   }> || [];
 
@@ -126,18 +129,26 @@ export async function POST(
       const startPanelBase64 = Buffer.from(startPanelBuffer).toString('base64');
       const startPanelMimeType = startPanelResponse.headers.get('content-type') || 'image/png';
 
-      // 끝 패널 이미지 다운로드 (마지막 프레임)
+      // 끝 패널 이미지 다운로드 (마지막 프레임) - cut-to-cut 모드에서만 사용
       let endPanelBase64: string | undefined;
       let endPanelMimeType: string | undefined;
+      const videoMode = (project.video_mode as string) || 'per-cut';
+      
       if (scene.end_panel_path) {
         const endPanelResponse = await fetch(scene.end_panel_path);
         if (endPanelResponse.ok) {
           const endPanelBuffer = await endPanelResponse.arrayBuffer();
           endPanelBase64 = Buffer.from(endPanelBuffer).toString('base64');
           endPanelMimeType = endPanelResponse.headers.get('content-type') || 'image/png';
-          console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 끝 프레임 로드 완료`);
+          console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 끝 프레임 로드 완료 (cut-to-cut 모드)`);
         }
+      } else {
+        console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 시작 프레임만 사용 (${videoMode} 모드)`);
       }
+
+      // 영상 길이 결정 (DB에 저장된 값 또는 기본 4초)
+      const durationSeconds = scene.duration || 4;
+      console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 영상 길이: ${durationSeconds}초`);
 
       // Veo 영상 생성 (시작 프레임 + 끝 프레임)
       const result = await generateVeoVideo({
@@ -149,6 +160,7 @@ export async function POST(
         endImageMimeType: endPanelMimeType,
         config: {
           aspectRatio: '9:16', // 쇼츠용 세로 비율
+          durationSeconds, // 스크립트에서 결정된 영상 길이
         },
         timeoutMs: 600000, // 10분
         pollIntervalMs: 15000, // 15초마다 폴링

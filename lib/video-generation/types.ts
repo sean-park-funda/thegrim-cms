@@ -1,6 +1,6 @@
 export interface VeoRequestConfig {
   aspectRatio?: '16:9' | '9:16';
-  durationSeconds?: 5 | 8;
+  durationSeconds?: 4 | 6 | 8;
   numberOfVideos?: 1 | 2;
   personGeneration?: 'dont_allow' | 'allow_adult';
 }
