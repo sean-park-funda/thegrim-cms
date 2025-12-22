@@ -362,38 +362,42 @@ export function WebtoonList({ initialWebtoons }: WebtoonListProps = {}) {
                 profile={profile}
               />
             ))}
-            {/* 생성 히스토리 버튼 */}
-            <div
-              className="group cursor-pointer rounded-xl overflow-hidden border border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
-              style={{ aspectRatio: '4/5' }}
-              onClick={() => router.push('/regenerated-images')}
-            >
-              <div className="h-full flex flex-col items-center justify-center gap-3">
-                <Sparkles className="h-10 w-10 text-muted-foreground group-hover:text-foreground transition-colors" />
-                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                  생성 히스토리
-                </span>
-              </div>
+          </div>
+        )}
+
+        {/* 기능 바로가기 (항상 별도 줄에 표시) */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-4 mt-6">
+          {/* 생성 히스토리 버튼 */}
+          <div
+            className="group cursor-pointer rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+            style={{ aspectRatio: '4/5' }}
+            onClick={() => router.push('/regenerated-images')}
+          >
+            <div className="h-full flex flex-col items-center justify-center gap-3">
+              <Sparkles className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
+              <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
+                생성 히스토리
+              </span>
             </div>
-            {/* 쇼츠 만들기 버튼 */}
-            <div
-              className="group cursor-pointer rounded-xl overflow-hidden border border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
-              style={{ aspectRatio: '4/5' }}
-              onClick={() => router.push('/script-to-shorts')}
-            >
-              <div className="h-full flex flex-col items-center justify-center gap-2 px-3">
-                <Video className="h-10 w-10 text-muted-foreground group-hover:text-foreground transition-colors" />
-                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                  쇼츠 만들기
-                </span>
-                <div className="text-center space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground/70">개발중 데모입니다</p>
-                  <p className="text-[10px] text-muted-foreground/70">동영상 생성수 제한(하루 10개)</p>
-                </div>
+          </div>
+          {/* 쇼츠 만들기 버튼 */}
+          <div
+            className="group cursor-pointer rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+            style={{ aspectRatio: '4/5' }}
+            onClick={() => router.push('/script-to-shorts')}
+          >
+            <div className="h-full flex flex-col items-center justify-center gap-2 px-3">
+              <Video className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
+              <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
+                쇼츠 만들기
+              </span>
+              <div className="text-center space-y-0.5">
+                <p className="text-[10px] text-zinc-500">개발중 데모입니다</p>
+                <p className="text-[10px] text-zinc-500">동영상 생성수 제한(하루 10개)</p>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* 웹툰 생성 Dialog */}
