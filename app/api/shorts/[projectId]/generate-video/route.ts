@@ -147,8 +147,10 @@ export async function POST(
       }
 
       // 영상 길이 결정 (DB에 저장된 값 또는 기본 4초)
-      const durationSeconds = scene.duration || 4;
-      console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 영상 길이: ${durationSeconds}초`);
+      // Veo API는 4, 6, 8초만 지원하므로 가장 가까운 값으로 변환
+      const rawDuration = scene.duration || 4;
+      const durationSeconds: 4 | 6 | 8 = rawDuration <= 5 ? 4 : rawDuration <= 7 ? 6 : 8;
+      console.log(`[shorts][generate-video] 씬 ${scene.scene_index} 영상 길이: ${durationSeconds}초 (요청: ${rawDuration}초)`);
 
       // Veo 영상 생성 (시작 프레임 + 끝 프레임)
       const result = await generateVeoVideo({
