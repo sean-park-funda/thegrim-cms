@@ -108,7 +108,7 @@ export default function AnnouncementModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="max-w-[90vw] w-[900px] max-h-[90vh] h-[85vh] flex flex-col">
+        <DialogContent className="max-w-[90vw] w-[900px] max-h-[90vh] h-[85vh] !grid grid-rows-[auto_1fr_auto] overflow-hidden">
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-center justify-between pr-8">
               <DialogTitle className="text-2xl font-bold">{currentAnnouncement.title}</DialogTitle>
@@ -127,11 +127,13 @@ export default function AnnouncementModal({
             </div>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-6 py-4 px-2">
-              {currentAnnouncement.content.map((block, index) => renderContentBlock(block, index))}
-            </div>
-          </ScrollArea>
+          <div className="min-h-0 overflow-hidden">
+            <ScrollArea className="h-full pr-4">
+              <div className="space-y-6 py-4 px-2">
+                {currentAnnouncement.content.map((block, index) => renderContentBlock(block, index))}
+              </div>
+            </ScrollArea>
+          </div>
 
           <DialogFooter className="flex-shrink-0 flex items-center justify-between gap-2 pt-4 border-t">
             <div className="flex items-center gap-2">
