@@ -58,6 +58,7 @@ export function FileGrid({ cutId }: FileGridProps) {
 
   // 커스텀 훅 사용
   const {
+    files: allFiles,
     loading,
     thumbnailUrls,
     imageErrors,
@@ -125,20 +126,15 @@ export function FileGrid({ cutId }: FileGridProps) {
 
   // 파일 목록이 변경될 때 파생 이미지 개수 조회
   useEffect(() => {
-    // 로딩 중이거나 공정이 없으면 스킵
-    if (loading || !processes.length) return;
+    // 로딩 중이거나 파일이 없으면 스킵
+    if (loading || allFiles.length === 0) return;
     
-    const allFileIds: string[] = [];
-    processes.forEach(process => {
-      const files = getFilesByProcess(process.id);
-      files.forEach(file => allFileIds.push(file.id));
-    });
+    const allFileIds = allFiles.map(file => file.id);
     
     if (allFileIds.length > 0) {
       loadDerivedCounts(allFileIds);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, processes.length]);
+  }, [loading, allFiles, loadDerivedCounts]);
 
   // 파생 이미지 클릭 핸들러
   const handleDerivedClick = useCallback((file: FileType) => {

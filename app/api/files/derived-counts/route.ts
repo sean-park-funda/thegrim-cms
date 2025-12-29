@@ -15,33 +15,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ counts: {} });
     }
 
-    // 파생 이미지 개수를 일괄 조회
-    // source_file_id가 fileIds 중 하나인 파일들을 그룹화하여 개수 조회
-    let query = supabase
-      .from('files')
-      .select('source_file_id')
-      .in('source_file_id', fileIds);
+    // RPC 함수를 사용하여 파생 이미지 개수 조회
+    // 이 방식은 URL 길이 제한 없이 많은 파일 ID를 처리할 수 있음
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('get_derived_counts', {
+      file_ids: fileIds,
+      user_id: currentUserId || null
+    });
 
-    // 공개/비공개 필터링
-    if (currentUserId) {
-      query = query.or(`is_public.eq.true,created_by.eq.${currentUserId}`);
-    } else {
-      query = query.eq('is_public', true);
+    if (!rpcError && rpcResult) {
+      // RPC 결과를 counts 객체로 변환
+      const counts: Record<string, number> = {};
+      for (const row of rpcResult) {
+        if (row.source_file_id) {
+          counts[row.source_file_id] = Number(row.count);
+        }
+      }
+      return NextResponse.json({ counts });
     }
 
-    const { data: derivedFiles, error } = await query;
-
-    if (error) {
-      console.error('[파생 이미지 개수 일괄 조회] 실패:', error);
-      return NextResponse.json({ counts: {} });
-    }
-
-    // 각 source_file_id 별 개수 집계
+    // RPC 실패 시 기존 방식으로 fallback (청크로 나누어 처리)
+    console.warn('[파생 이미지 개수] RPC 실패, 청크 방식으로 fallback:', rpcError?.message);
+    
     const counts: Record<string, number> = {};
-    if (derivedFiles) {
-      for (const file of derivedFiles) {
-        if (file.source_file_id) {
-          counts[file.source_file_id] = (counts[file.source_file_id] || 0) + 1;
+    const chunkSize = 100; // 한 번에 처리할 파일 ID 수
+    
+    for (let i = 0; i < fileIds.length; i += chunkSize) {
+      const chunk = fileIds.slice(i, i + chunkSize);
+      
+      let query = supabase
+        .from('files')
+        .select('source_file_id')
+        .in('source_file_id', chunk);
+
+      if (currentUserId) {
+        query = query.or(`is_public.eq.true,created_by.eq.${currentUserId}`);
+      } else {
+        query = query.eq('is_public', true);
+      }
+
+      const { data: derivedFiles, error } = await query;
+
+      if (error) {
+        console.error('[파생 이미지 개수 일괄 조회] 청크 실패:', error);
+        continue;
+      }
+
+      if (derivedFiles) {
+        for (const file of derivedFiles) {
+          if (file.source_file_id) {
+            counts[file.source_file_id] = (counts[file.source_file_id] || 0) + 1;
+          }
         }
       }
     }
@@ -52,4 +75,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ counts: {} });
   }
 }
-
