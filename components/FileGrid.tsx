@@ -56,6 +56,10 @@ export function FileGrid({ cutId }: FileGridProps) {
   const [derivedDialogOpen, setDerivedDialogOpen] = useState(false);
   const [derivedSourceFile, setDerivedSourceFile] = useState<FileType | null>(null);
 
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20; // 한 페이지에 표시할 파일 수
+
   // 커스텀 훅 사용
   const {
     files: allFiles,
@@ -813,6 +817,7 @@ export function FileGrid({ cutId }: FileGridProps) {
     if (process) {
       setSelectedProcess(process);
       updateProcessInUrl(process.id);
+      setCurrentPage(1); // 공정 변경 시 페이지 리셋
     }
   };
 
@@ -857,35 +862,94 @@ export function FileGrid({ cutId }: FileGridProps) {
 
             if (!isActive) return null;
 
+            // 페이지네이션 적용
+            const totalFiles = processFiles.length;
+            const totalPages = Math.ceil(totalFiles / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const paginatedFiles = processFiles.slice(startIndex, endIndex);
+
             return (
               <div
                 key={process.id}
                 data-process-id={process.id}
                 className="flex-1 flex flex-col min-h-0"
-                style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
+                style={{ flex: '1 1 0', minHeight: 0 }}
               >
-                <ProcessFileSection
-                  process={process}
-                  files={processFiles}
-                  thumbnailUrls={thumbnailUrls}
-                  uploadingFiles={processUploadingFiles}
-                  uploadProgress={processProgress}
-                  onUpload={(files) => handleFileUpload(files, process.id)}
-                  onFileClick={handleFileClick}
-                  onDownload={handleDownload}
-                  onAnalyze={canUpload ? handleAnalyzeClick : undefined}
-                  onEdit={canUpload ? handleEditClick : undefined}
-                  onDelete={handleDeleteClick}
-                  analyzingFiles={analyzingFiles}
-                  pendingAnalysisFiles={pendingAnalysisFiles}
-                  imageErrors={imageErrors}
-                  onImageError={handleImageError}
-                  canUpload={!!canUpload}
-                  canDelete={!!canDelete}
-                  loading={loading}
-                  derivedCounts={derivedCounts}
-                  onDerivedClick={handleDerivedClick}
-                />
+                {/* 페이지네이션 컨트롤 (상단) */}
+                {totalPages > 1 && (
+                  <div className="px-3 sm:px-6 py-2 flex items-center justify-between border-b bg-muted/30 flex-shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      총 {totalFiles}개 중 {startIndex + 1}-{Math.min(endIndex, totalFiles)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                      >
+                        처음
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        이전
+                      </Button>
+                      <span className="px-2 text-sm">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        다음
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                      >
+                        마지막
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                  <ProcessFileSection
+                    process={process}
+                    files={paginatedFiles}
+                    thumbnailUrls={thumbnailUrls}
+                    uploadingFiles={processUploadingFiles}
+                    uploadProgress={processProgress}
+                    onUpload={(files) => handleFileUpload(files, process.id)}
+                    onFileClick={handleFileClick}
+                    onDownload={handleDownload}
+                    onAnalyze={canUpload ? handleAnalyzeClick : undefined}
+                    onEdit={canUpload ? handleEditClick : undefined}
+                    onDelete={handleDeleteClick}
+                    analyzingFiles={analyzingFiles}
+                    pendingAnalysisFiles={pendingAnalysisFiles}
+                    imageErrors={imageErrors}
+                    onImageError={handleImageError}
+                    canUpload={!!canUpload}
+                    canDelete={!!canDelete}
+                    loading={loading}
+                    derivedCounts={derivedCounts}
+                    onDerivedClick={handleDerivedClick}
+                  />
+                </div>
               </div>
             );
           })}
