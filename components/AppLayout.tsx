@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useStore } from '@/lib/store/useStore';
 import { Navigation } from '@/components/Navigation';
@@ -9,13 +10,32 @@ import { ImageModelProvider } from '@/lib/contexts/ImageModelContext';
 import { getUnreadAnnouncements, Announcement } from '@/lib/api/announcements';
 import AnnouncementModal from '@/components/AnnouncementModal';
 
+// 인증이 필요 없는 페이지 경로
+const PUBLIC_PATHS = ['/login', '/signup'];
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   useAuth();
 
+  const router = useRouter();
+  const pathname = usePathname();
   const { user, profile, isLoading } = useStore();
   const [unreadAnnouncements, setUnreadAnnouncements] = useState<Announcement[]>([]);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const hasCheckedAnnouncements = useRef(false);
+
+  // 비로그인 상태에서 인증이 필요한 페이지 접근 시 /login으로 리다이렉트
+  useEffect(() => {
+    // 로딩 중이면 리다이렉트하지 않음
+    if (isLoading) return;
+    
+    // 현재 경로가 공개 경로인지 확인
+    const isPublicPath = PUBLIC_PATHS.some(path => pathname?.startsWith(path));
+    
+    // 비로그인 상태이고 공개 경로가 아닌 경우 /login으로 리다이렉트
+    if (!user && !isPublicPath) {
+      router.push('/login');
+    }
+  }, [user, isLoading, pathname, router]);
 
   // 읽지 않은 공지사항 로드
   const loadUnreadAnnouncements = useCallback(async () => {

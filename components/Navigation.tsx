@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn } from 'lucide-react';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 import { type ApiProvider } from '@/lib/supabase';
 import {
@@ -168,6 +168,18 @@ export function Navigation() {
 
           {/* 오른쪽 액션 - Linear 스타일: 미니멀한 버튼 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* 비로그인 상태: 로그인 버튼 */}
+            {!user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/login')}
+                className="h-8 px-3 text-xs font-medium text-background/70 hover:text-background hover:bg-background/10"
+              >
+                <LogIn className="h-3.5 w-3.5 mr-1.5" />
+                <span>로그인</span>
+              </Button>
+            )}
             {/* 이미지 모델 선택 드롭다운 */}
             {user && profile && (
               <DropdownMenu>
