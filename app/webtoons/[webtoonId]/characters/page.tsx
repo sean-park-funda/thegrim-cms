@@ -244,9 +244,9 @@ export default function CharactersPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-[calc(100vh-64px)] flex flex-col">
       {/* 헤더 */}
-      <div className="flex items-center gap-4 p-4 border-b border-border">
+      <div className="flex-shrink-0 flex items-center gap-4 p-4 border-b border-border">
         <Button
           variant="ghost"
           size="sm"
@@ -460,9 +460,9 @@ export default function CharactersPage() {
         </div>
 
         {/* 오른쪽: 캐릭터 목록 */}
-        <div className="flex-1 overflow-hidden flex flex-col p-4">
+        <div className="flex-1 min-h-0 flex flex-col p-4">
           {/* 상단 액션 버튼 */}
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex-shrink-0 flex justify-between items-center mb-4">
             <span className="text-sm text-muted-foreground">
               {selectedFolderId === null && '전체'}
               {selectedFolderId === 'uncategorized' && '미분류'}
@@ -478,7 +478,7 @@ export default function CharactersPage() {
           </div>
 
           {/* 캐릭터 목록 */}
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {filteredCharacters.length === 0 ? (
               <div className="text-center py-12">
                 <User className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
@@ -511,7 +511,7 @@ export default function CharactersPage() {
                 ))}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       </div>
 
