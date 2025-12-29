@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS files (
   created_by UUID REFERENCES user_profiles(id),
   source_file_id UUID REFERENCES files(id),
   is_temp BOOLEAN DEFAULT false NOT NULL,
+  is_public BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

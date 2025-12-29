@@ -5,9 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Image from 'next/image';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Eye, EyeOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { ImageViewer } from './ImageViewer';
+import { useStore } from '@/lib/store/useStore';
 
 interface HistoryItem {
   fileId: string;
@@ -25,10 +26,12 @@ interface RegeneratedImageHistoryDialogProps {
 }
 
 export function RegeneratedImageHistoryDialog({ open, onOpenChange }: RegeneratedImageHistoryDialogProps) {
+  const { profile } = useStore();
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
   const [viewerImageTitle, setViewerImageTitle] = useState<string>('');
+  const [visibilityFilter, setVisibilityFilter] = useState<'public' | 'private'>('public');
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -39,7 +42,11 @@ export function RegeneratedImageHistoryDialog({ open, onOpenChange }: Regenerate
 
       setLoading(true);
       try {
-        const response = await fetch('/api/regenerate-image-history?limit=100');
+        const params = new URLSearchParams({ limit: '100', visibility: visibilityFilter });
+        if (profile?.id) {
+          params.set('currentUserId', profile.id);
+        }
+        const response = await fetch(`/api/regenerate-image-history?${params.toString()}`);
         
         if (!isMountedRef.current) return;
         
@@ -69,7 +76,7 @@ export function RegeneratedImageHistoryDialog({ open, onOpenChange }: Regenerate
     return () => {
       isMountedRef.current = false;
     };
-  }, [open]);
+  }, [open, visibilityFilter]);
 
   const handleImageClick = (item: HistoryItem) => {
     setViewerImageUrl(item.fileUrl);
@@ -83,6 +90,34 @@ export function RegeneratedImageHistoryDialog({ open, onOpenChange }: Regenerate
           <DialogHeader>
             <DialogTitle>생성된 이미지 조회</DialogTitle>
           </DialogHeader>
+
+          {/* 상단 필터 토글 */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={visibilityFilter === 'public' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setVisibilityFilter('public')}
+                className="gap-1.5"
+              >
+                <Eye className="h-4 w-4" />
+                퍼블릭
+              </Button>
+              <Button
+                variant={visibilityFilter === 'private' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setVisibilityFilter('private')}
+                className="gap-1.5"
+                disabled={!profile?.id}
+              >
+                <EyeOff className="h-4 w-4" />
+                프라이빗
+              </Button>
+            </div>
+            {visibilityFilter === 'private' && (
+              <span className="text-xs text-muted-foreground">내가 만든 비공개 이미지만 표시됩니다</span>
+            )}
+          </div>
           
           <ScrollArea className="flex-1 pr-4">
             {loading ? (

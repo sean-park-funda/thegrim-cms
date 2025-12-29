@@ -38,7 +38,7 @@ export async function processImageBatch(
   request: RegenerateImageBatchRequest
 ): Promise<RegenerateImageBatchResponse> {
   const startTime = Date.now();
-  const { fileId, requests, characterSheets, createdBy } = request;
+  const { fileId, requests, characterSheets, createdBy, isPublic } = request;
 
   // referenceFileIds가 있으면 사용, 없으면 referenceFileId를 배열로 변환 (하위 호환성)
   const finalReferenceFileIds = request.referenceFileIds ||
@@ -90,6 +90,7 @@ export async function processImageBatch(
     refImages: downloadedImages.refImages,
     characterSheetImages: downloadedImages.characterSheetImages,
     createdBy,
+    isPublic,
   };
 
   const seedreamParams: SeedreamProcessParams = {
@@ -103,6 +104,7 @@ export async function processImageBatch(
     refImages: downloadedImages.refImages,
     characterSheetImages: downloadedImages.characterSheetImages,
     createdBy,
+    isPublic,
   };
 
   // 6. Gemini와 Seedream 그룹을 병렬 처리
@@ -148,6 +150,8 @@ export async function processImageBatch(
     images: results,
   };
 }
+
+
 
 
 

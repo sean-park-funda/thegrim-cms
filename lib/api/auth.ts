@@ -14,6 +14,7 @@ export interface UserProfile {
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'viewer';
   name?: string;
+  default_ai_image_public?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -668,6 +669,33 @@ export async function getUsers(): Promise<UserProfile[]> {
     return data || [];
   } catch (error: any) {
     console.error('유저 목록 조회 오류:', error);
+    throw error;
+  }
+}
+
+// 유저 프로필 설정 업데이트
+export async function updateUserProfileSetting(
+  userId: string,
+  settings: {
+    default_ai_image_public?: boolean;
+  }
+): Promise<UserProfile | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .update(settings)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('프로필 설정 업데이트 오류:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('프로필 설정 업데이트 실패:', error);
     throw error;
   }
 }

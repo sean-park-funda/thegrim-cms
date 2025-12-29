@@ -96,6 +96,7 @@ export interface File {
   created_by?: string;
   source_file_id?: string;
   is_temp?: boolean;
+  is_public?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -105,6 +106,7 @@ export interface UserProfile {
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'viewer';
   name?: string;
+  default_ai_image_public?: boolean;
   created_at: string;
   updated_at: string;
 }

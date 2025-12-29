@@ -18,6 +18,7 @@ export async function saveTempFile(params: SaveTempFileParams): Promise<SavedFil
     styleId,
     styleKey,
     styleName,
+    isPublic = true,
   } = params;
 
   const imageBuffer = Buffer.from(imageData, 'base64');
@@ -115,6 +116,7 @@ export async function saveTempFile(params: SaveTempFileParams): Promise<SavedFil
       created_by: finalCreatedBy,
       source_file_id: sourceFile.id,
       is_temp: true,
+      is_public: isPublic,
       metadata: {
         width: imageWidth,
         height: imageHeight,
@@ -163,7 +165,8 @@ export async function saveGeneratedImage(
     styleKey?: string;
     styleName?: string;
   },
-  createdBy?: string
+  createdBy?: string,
+  isPublic?: boolean
 ): Promise<ProcessedImage> {
   try {
     const savedFile = await saveTempFile({
@@ -175,6 +178,7 @@ export async function saveGeneratedImage(
       styleId: request.styleId,
       styleKey: request.styleKey,
       styleName: request.styleName,
+      isPublic,
     });
 
     return {

@@ -5,13 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, ChevronRight, ChevronLeft, Calendar, User, Sparkles } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Calendar, User, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { RemixImageDialog } from '@/components/RemixImageDialog';
 import { format } from 'date-fns';
 import { ImageViewer } from '@/components/ImageViewer';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useStore } from '@/lib/store/useStore';
 
 interface HistoryItem {
   fileId: string;
@@ -71,6 +72,7 @@ const PAGE_SIZE = 10; // 페이지 사이즈는 10으로 고정
 function RegeneratedImagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { profile } = useStore();
   const [images, setImages] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,6 +84,18 @@ function RegeneratedImagesContent() {
   const [imageCache, setImageCache] = useState<Map<number, HistoryItem[]>>(new Map());
   const [remixDialogOpen, setRemixDialogOpen] = useState(false);
   const [selectedImageForRemix, setSelectedImageForRemix] = useState<HistoryItem | null>(null);
+  const [visibilityFilter, setVisibilityFilter] = useState<'public' | 'private'>('public');
+
+  // 필터 변경 시 캐시 초기화 및 페이지 리셋
+  const handleVisibilityChange = (visibility: 'public' | 'private') => {
+    if (visibility !== visibilityFilter) {
+      setVisibilityFilter(visibility);
+      setImageCache(new Map());
+      setCurrentPage(1);
+      setPageInput('1');
+      setImages([]);
+    }
+  };
 
   // 브라우저 이미지 프리로드
   const preloadImage = useCallback((url: string) => {
@@ -109,7 +123,9 @@ function RegeneratedImagesContent() {
     await Promise.all(pagesToFetch.map(async (p) => {
       try {
         const offset = (p - 1) * PAGE_SIZE;
-        const response = await fetch(`/api/regenerate-image-history?limit=${PAGE_SIZE}&offset=${offset}`);
+        const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), visibility: visibilityFilter });
+        if (profile?.id) params.set('currentUserId', profile.id);
+        const response = await fetch(`/api/regenerate-image-history?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
           if (data.history && data.history.length > 0) {
@@ -148,7 +164,9 @@ function RegeneratedImagesContent() {
         setLoading(false);
         // 캐시에서 로드했어도 total 정보는 항상 확인 (최신 정보 유지)
         try {
-          const response = await fetch(`/api/regenerate-image-history?limit=1&offset=0`);
+          const totalParams = new URLSearchParams({ limit: '1', offset: '0', visibility: visibilityFilter });
+        if (profile?.id) totalParams.set('currentUserId', profile.id);
+        const response = await fetch(`/api/regenerate-image-history?${totalParams.toString()}`);
           if (response.ok) {
             const data = await response.json();
             if (data.total !== undefined) {
@@ -173,7 +191,9 @@ function RegeneratedImagesContent() {
       setLoading(true);
       try {
         const offset = (currentPage - 1) * PAGE_SIZE;
-        const response = await fetch(`/api/regenerate-image-history?limit=${PAGE_SIZE}&offset=${offset}`);
+        const freshParams = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), visibility: visibilityFilter });
+        if (profile?.id) freshParams.set('currentUserId', profile.id);
+        const response = await fetch(`/api/regenerate-image-history?${freshParams.toString()}`);
         if (response.ok) {
           const data = await response.json();
           if (data.history && data.history.length > 0) {
@@ -205,7 +225,7 @@ function RegeneratedImagesContent() {
     };
     loadImages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, visibilityFilter]);
 
   // 이전 페이지
   const handlePrevious = () => {
@@ -271,6 +291,34 @@ function RegeneratedImagesContent() {
     <Fragment>
       <ScrollArea className="h-full">
       <div className="container mx-auto px-4 pt-4 pb-8">
+          {/* 상단 필터 토글 */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={visibilityFilter === 'public' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleVisibilityChange('public')}
+                className="gap-1.5"
+              >
+                <Eye className="h-4 w-4" />
+                퍼블릭
+              </Button>
+              <Button
+                variant={visibilityFilter === 'private' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleVisibilityChange('private')}
+                className="gap-1.5"
+                disabled={!profile?.id}
+              >
+                <EyeOff className="h-4 w-4" />
+                프라이빗
+              </Button>
+            </div>
+            {visibilityFilter === 'private' && (
+              <span className="text-xs text-muted-foreground">내가 만든 비공개 이미지만 표시됩니다</span>
+            )}
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-24">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

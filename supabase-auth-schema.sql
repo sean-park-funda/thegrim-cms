@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   email TEXT UNIQUE NOT NULL,
   role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'manager', 'staff', 'viewer')),
   name TEXT,
+  default_ai_image_public BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

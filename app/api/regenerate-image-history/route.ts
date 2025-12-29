@@ -8,7 +8,9 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 interface GetRegenerateImageHistoryRequest {
   sourceFileId?: string; // 원본 파일 ID (선택적)
-  userId?: string; // 사용자 ID (선택적)
+  userId?: string; // 사용자 ID (선택적) - 특정 사용자의 이미지만 조회
+  currentUserId?: string; // 현재 요청자 ID - 공개/비공개 필터링에 사용
+  visibility?: 'public' | 'private'; // 공개/비공개 필터 (public: 모든 공개 이미지, private: 내 비공개 이미지만)
   limit?: number; // 최대 개수 (기본값: 50)
   offset?: number; // 오프셋 (기본값: 0)
   before?: string; // 특정 시간 이전의 이미지 조회 (ISO 8601 형식) - 하위 호환성 유지
@@ -22,6 +24,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const sourceFileId = searchParams.get('sourceFileId') || undefined;
     const userId = searchParams.get('userId') || undefined;
+    const currentUserId = searchParams.get('currentUserId') || undefined;
+    const visibility = searchParams.get('visibility') as 'public' | 'private' | null;
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const before = searchParams.get('before') || undefined;
@@ -29,6 +33,8 @@ export async function GET(request: NextRequest) {
     console.log('[이미지 재생성 히스토리] AI 생성 파일 목록 조회 시작:', {
       sourceFileId,
       userId,
+      currentUserId,
+      visibility,
       limit,
       offset,
       before,
@@ -36,6 +42,7 @@ export async function GET(request: NextRequest) {
 
     // 전체 개수 조회 (필터링 조건 동일하게 적용)
     // AI로 생성된 파일 (prompt가 있는 파일)을 모두 포함
+    // 공개/비공개 필터링: 공개된 이미지이거나 본인이 생성한 이미지만 표시
     let countQuery = supabase
       .from('files')
       .select('*', { count: 'exact', head: true })
@@ -47,6 +54,20 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       countQuery = countQuery.eq('created_by', userId);
+    }
+
+    // 공개/비공개 필터링 적용
+    if (visibility === 'private') {
+      // 프라이빗 모드: 내가 만든 비공개 이미지만
+      if (currentUserId) {
+        countQuery = countQuery.eq('is_public', false).eq('created_by', currentUserId);
+      } else {
+        // currentUserId 없으면 비공개 이미지 볼 수 없음
+        countQuery = countQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // 빈 결과
+      }
+    } else {
+      // 퍼블릭 모드 (기본): 모든 공개 이미지
+      countQuery = countQuery.eq('is_public', true);
     }
 
     const { count: totalCount, error: countError } = await countQuery;
@@ -104,6 +125,20 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       query = query.eq('created_by', userId);
+    }
+
+    // 공개/비공개 필터링 적용
+    if (visibility === 'private') {
+      // 프라이빗 모드: 내가 만든 비공개 이미지만
+      if (currentUserId) {
+        query = query.eq('is_public', false).eq('created_by', currentUserId);
+      } else {
+        // currentUserId 없으면 비공개 이미지 볼 수 없음
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000'); // 빈 결과
+      }
+    } else {
+      // 퍼블릭 모드 (기본): 모든 공개 이미지
+      query = query.eq('is_public', true);
     }
 
     // before 파라미터가 있으면 해당 시간 이전의 이미지만 조회 (하위 호환성)

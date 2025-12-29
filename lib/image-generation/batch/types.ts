@@ -18,6 +18,7 @@ export interface RegenerateImageBatchRequest {
   referenceFileId?: string;
   referenceFileIds?: string[];
   createdBy?: string;
+  isPublic?: boolean;
 }
 
 /** 처리된 이미지 결과 (성공 또는 실패) */
@@ -88,6 +89,7 @@ export interface SaveTempFileParams {
   styleId?: string;
   styleKey?: string;
   styleName?: string;
+  isPublic?: boolean;
 }
 
 /** 저장된 파일 정보 */
@@ -109,6 +111,7 @@ export interface GeminiProcessParams {
   refImages: ImageData[];
   characterSheetImages: ImageData[];
   createdBy?: string;
+  isPublic?: boolean;
 }
 
 /** Seedream 배치 처리 파라미터 */
@@ -123,7 +126,10 @@ export interface SeedreamProcessParams {
   refImages: ImageData[];
   characterSheetImages: ImageData[];
   createdBy?: string;
+  isPublic?: boolean;
 }
+
+
 
 
 

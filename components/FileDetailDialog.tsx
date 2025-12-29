@@ -58,7 +58,11 @@ interface FileDetailDialogProps {
     referenceImage?: { id: string },
     targetFileId?: string,
     characterSheets?: Array<{ sheetId: string }>,
-    apiProvider?: 'gemini' | 'seedream' | 'auto'
+    apiProvider?: 'gemini' | 'seedream' | 'auto',
+    styleId?: string,
+    styleKey?: string,
+    styleName?: string,
+    isPublic?: boolean
   ) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;

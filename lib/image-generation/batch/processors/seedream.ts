@@ -79,7 +79,7 @@ async function processSingleSeedreamRequest(
   seedreamSize: string
 ): Promise<ProcessedImage> {
   const requestStartTime = Date.now();
-  const { sourceFile, createdBy } = params;
+  const { sourceFile, createdBy, isPublic } = params;
 
   try {
     console.log(`[seedream-processor] Seedream API 호출 시작 (인덱스 ${req.index}):`, {
@@ -113,7 +113,8 @@ async function processSingleSeedreamRequest(
       generatedImageMimeType,
       sourceFile,
       req,
-      createdBy
+      createdBy,
+      isPublic
     );
   } catch (error: unknown) {
     const errorDetails = extractErrorDetails(error);

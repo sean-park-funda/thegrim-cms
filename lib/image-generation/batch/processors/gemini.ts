@@ -29,6 +29,7 @@ async function processSingleGeminiRequest(
     refImages,
     characterSheetImages,
     createdBy,
+    isPublic,
   } = params;
 
   try {
@@ -115,7 +116,8 @@ async function processSingleGeminiRequest(
       finalMimeType,
       sourceFile,
       req,
-      createdBy
+      createdBy,
+      isPublic
     );
   } catch (error: unknown) {
     const errorDetails = extractErrorDetails(error);
@@ -218,6 +220,8 @@ export async function processGeminiRequests(params: GeminiProcessParams): Promis
 
   return geminiGroupResults;
 }
+
+
 
 
 

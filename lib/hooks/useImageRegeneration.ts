@@ -69,7 +69,7 @@ export function useImageRegeneration({
     };
   }, [regeneratedImages]);
 
-  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[], apiProvider: ApiProvider = 'auto', styleId?: string, styleKey?: string, styleName?: string) => {
+  const handleRegenerate = async (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImages?: ReferenceImageInfo[] | ReferenceImageInfo, targetFileId?: string, characterSheets?: CharacterSheetInfo[], apiProvider: ApiProvider = 'auto', styleId?: string, styleKey?: string, styleName?: string, isPublic?: boolean) => {
     // targetFileId가 제공되면 그것을 사용, 아니면 fileToView.id 사용
     const actualFileId = targetFileId || (fileToView?.id);
     if (!actualFileId || (fileToView && fileToView.file_type !== 'image')) return;
@@ -368,6 +368,7 @@ export function useImageRegeneration({
             requests: batch,
             ...(useCharacterSheets && characterSheets ? { characterSheets } : {}),
             ...(currentUserId && { createdBy: currentUserId }),
+            ...(isPublic !== undefined && { isPublic }),
           };
           
           // 디버깅: 요청 본문 확인

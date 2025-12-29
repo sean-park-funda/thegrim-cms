@@ -169,8 +169,9 @@ thegrim-CMS/
 - 파일명, 설명, 공정 ID 변경 가능
 
 **regenerate-image-history/route.ts**
-- 임시 파일 히스토리 조회 API
-- DB에서 `is_temp = true`인 파일만 조회
+- AI 생성 파일 히스토리 조회 API
+- DB에서 `prompt`가 있는 파일 조회
+- 공개/비공개 필터링 적용 (is_public = true 또는 본인이 생성한 파일)
 - 최신순으로 정렬하여 반환
 
 **analyze-image/route.ts**
@@ -450,8 +451,8 @@ thegrim-CMS/
   - \`Episode\`
   - \`Cut\`
   - \`Process\`
-  - \`File\` (created_by, source_file_id, is_temp 포함)
-  - \`UserProfile\` (id, email, name, role)
+  - \`File\` (created_by, source_file_id, is_temp, is_public 포함)
+  - \`UserProfile\` (id, email, name, role, default_ai_image_public 포함)
   - \`ReferenceFile\`
   - \`Character\` (웹툰별 캐릭터)
   - \`CharacterSheet\` (캐릭터 시트 이미지)

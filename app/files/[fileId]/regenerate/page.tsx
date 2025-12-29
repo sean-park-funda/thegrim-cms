@@ -8,6 +8,7 @@ import { FileWithRelations, Process } from '@/lib/supabase';
 import { ImageRegenerationWorkspace } from '@/components/ImageRegenerationWorkspace';
 import { useImageRegeneration } from '@/lib/hooks/useImageRegeneration';
 import { useStore } from '@/lib/store/useStore';
+import { updateUserProfileSetting } from '@/lib/api/auth';
 
 function RegeneratePageContent() {
   const params = useParams();
@@ -21,6 +22,26 @@ function RegeneratePageContent() {
   const [generationCount, setGenerationCount] = useState<number>(2);
   const [remixPrompt, setRemixPrompt] = useState<string | null>(null);
   const [remixStyleKey, setRemixStyleKey] = useState<string | null>(null);
+  const [isPublic, setIsPublic] = useState<boolean>(profile?.default_ai_image_public ?? true);
+
+  // 프로필에서 기본 공개/비공개 설정 동기화
+  useEffect(() => {
+    if (profile?.default_ai_image_public !== undefined) {
+      setIsPublic(profile.default_ai_image_public);
+    }
+  }, [profile?.default_ai_image_public]);
+
+  // 공개/비공개 변경 시 DB에 저장 (debounce)
+  const handleIsPublicChange = async (newIsPublic: boolean) => {
+    setIsPublic(newIsPublic);
+    if (profile?.id) {
+      try {
+        await updateUserProfileSetting(profile.id, { default_ai_image_public: newIsPublic });
+      } catch (error) {
+        console.error('공개/비공개 설정 저장 실패:', error);
+      }
+    }
+  };
 
   useEffect(() => {
     if (fileId) {
@@ -156,6 +177,8 @@ function RegeneratePageContent() {
             }}
             remixPrompt={remixPrompt}
             remixStyleKey={remixStyleKey}
+            defaultIsPublic={isPublic}
+            onIsPublicChange={handleIsPublicChange}
           />
         </div>
       </div>

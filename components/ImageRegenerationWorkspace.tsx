@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X, ArrowLeft } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, Check, Plus, Wand2, Download, RefreshCw, Search, CheckSquare2, Upload, Settings, ImageIcon, Users, X, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { getReferenceFilesByWebtoon, uploadReferenceFile, deleteReferenceFile } from '@/lib/api/referenceFiles';
 import { ReferenceFileWithProcess, Process, ReferenceFile, AiRegenerationPrompt, AiRegenerationStyle, FileWithRelations } from '@/lib/supabase';
 import { ReferenceFileUpload } from './ReferenceFileUpload';
@@ -53,7 +54,7 @@ interface ImageRegenerationWorkspaceProps {
   savingImages: boolean;
   generationCount: number;
   onGenerationCountChange: (count: number) => void;
-  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto', styleId?: string, styleKey?: string, styleName?: string) => void;
+  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto', styleId?: string, styleKey?: string, styleName?: string, isPublic?: boolean) => void;
   onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
@@ -66,6 +67,8 @@ interface ImageRegenerationWorkspaceProps {
   onSaveComplete?: (processId: string) => void;
   remixPrompt?: string | null;
   remixStyleKey?: string | null;
+  defaultIsPublic?: boolean;
+  onIsPublicChange?: (isPublic: boolean) => void;
 }
 
 export function ImageRegenerationWorkspace({
@@ -91,9 +94,25 @@ export function ImageRegenerationWorkspace({
   onSaveComplete,
   remixPrompt,
   remixStyleKey,
+  defaultIsPublic = true,
+  onIsPublicChange,
 }: ImageRegenerationWorkspaceProps) {
   const { profile } = useStore();
   const { model: globalModel } = useImageModel();
+  
+  // 공개/비공개 상태 (부모에서 전달받거나 기본값 사용)
+  const [isPublic, setIsPublic] = useState<boolean>(defaultIsPublic);
+  
+  // defaultIsPublic 변경 시 상태 동기화
+  useEffect(() => {
+    setIsPublic(defaultIsPublic);
+  }, [defaultIsPublic]);
+  
+  // 공개/비공개 토글 핸들러
+  const handleIsPublicToggle = (checked: boolean) => {
+    setIsPublic(checked);
+    onIsPublicChange?.(checked);
+  };
   
   // 스타일 관련 상태
   const [styles, setStyles] = useState<AiRegenerationStyle[]>([]);
@@ -296,7 +315,7 @@ export function ImageRegenerationWorkspace({
 
     const count = selectedStyle.allow_multiple ? generationCount : selectedStyle.default_count;
 
-    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?, styleId?, styleKey?, styleName?)
+    // onRegenerate 시그니처: (stylePrompt, count?, useLatestImageAsInput?, referenceImages?, targetFileId?, characterSheets?, apiProvider?, styleId?, styleKey?, styleName?, isPublic?)
     // targetFileId는 undefined로 전달 (fileToView.id를 사용하도록)
     // apiProvider는 전역 설정의 model 값 사용 (헤더에서 선택한 모델)
     onRegenerate(
@@ -309,7 +328,8 @@ export function ImageRegenerationWorkspace({
       globalModel,
       selectedStyle.id,
       selectedStyle.style_key,
-      selectedStyle.name
+      selectedStyle.name,
+      isPublic
     );
   };
 
@@ -897,6 +917,26 @@ export function ImageRegenerationWorkspace({
                               </Select>
                             </div>
                           )}
+
+                          {/* 공개/비공개 토글 */}
+                          <div className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-1.5">
+                              {isPublic ? (
+                                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                              ) : (
+                                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                              )}
+                              <label htmlFor="is-public-toggle" className="text-xs font-medium text-muted-foreground cursor-pointer">
+                                히스토리 공개
+                              </label>
+                            </div>
+                            <Checkbox
+                              id="is-public-toggle"
+                              checked={isPublic}
+                              onCheckedChange={(checked) => handleIsPublicToggle(checked === true)}
+                              disabled={regeneratingImage !== null}
+                            />
+                          </div>
 
                           {/* 프롬프트 편집 토글 */}
                           <Button
