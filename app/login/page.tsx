@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { signIn } from '@/lib/api/auth';
 import { useStore } from '@/lib/store/useStore';
 import { Button } from '@/components/ui/button';
@@ -95,9 +96,17 @@ function LoginForm() {
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
-                비밀번호
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium">
+                  비밀번호
+                </label>
+                <Link 
+                  href="/forgot-password" 
+                  className="text-xs text-primary hover:underline"
+                >
+                  비밀번호를 잊으셨나요?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"

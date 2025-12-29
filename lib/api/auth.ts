@@ -700,6 +700,38 @@ export async function updateUserProfileSetting(
   }
 }
 
+// 비밀번호 재설정 이메일 발송
+export async function sendPasswordResetEmail(email: string) {
+  try {
+    const redirectTo = typeof window !== 'undefined' 
+      ? `${window.location.origin}/reset-password`
+      : `${process.env.NEXT_PUBLIC_APP_URL || ''}/reset-password`;
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    
+    if (error) throw error;
+  } catch (error: any) {
+    console.error('비밀번호 재설정 이메일 발송 오류:', error);
+    throw new Error(error.message || '비밀번호 재설정 이메일 발송에 실패했습니다.');
+  }
+}
+
+// 새 비밀번호로 업데이트
+export async function updatePassword(newPassword: string) {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    
+    if (error) throw error;
+  } catch (error: any) {
+    console.error('비밀번호 업데이트 오류:', error);
+    throw new Error(error.message || '비밀번호 업데이트에 실패했습니다.');
+  }
+}
+
 // 유틸리티 함수
 function split_part(str: string, delimiter: string, part: number): string {
   const parts = str.split(delimiter);

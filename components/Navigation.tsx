@@ -247,11 +247,12 @@ export function Navigation() {
                     <span className="hidden sm:inline truncate max-w-[120px]">{profile.name || profile.email}</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
-                    <div className="flex flex-col">
-                      <span className="text-sm">{profile.name || profile.email}</span>
-                      <span className="text-xs text-muted-foreground font-normal">{profile.role}</span>
+                    <div className="flex flex-col gap-0.5">
+                      {profile.name && <span className="text-sm font-medium">{profile.name}</span>}
+                      <span className="text-xs text-muted-foreground font-normal truncate">{profile.email}</span>
+                      <span className="text-xs text-muted-foreground font-normal capitalize">{profile.role}</span>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

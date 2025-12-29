@@ -11,7 +11,7 @@ import { getUnreadAnnouncements, Announcement } from '@/lib/api/announcements';
 import AnnouncementModal from '@/components/AnnouncementModal';
 
 // 인증이 필요 없는 페이지 경로
-const PUBLIC_PATHS = ['/login', '/signup'];
+const PUBLIC_PATHS = ['/login', '/signup', '/forgot-password', '/reset-password'];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   useAuth();
