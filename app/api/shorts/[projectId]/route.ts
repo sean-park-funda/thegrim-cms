@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// 서버 사이드에서 사용할 Supabase 클라이언트 (Service Role Key 사용)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // GET: /api/shorts/[projectId] - 단일 프로젝트 조회
 export async function GET(
@@ -9,8 +15,12 @@ export async function GET(
   const { projectId } = await params;
   console.log('[shorts][GET] 프로젝트 조회:', projectId);
 
+  // 쿼리 파라미터에서 currentUserId 추출
+  const { searchParams } = new URL(request.url);
+  const currentUserId = searchParams.get('currentUserId');
+
   // grid_image_base64는 매우 크기 때문에 조회에서 제외 (성능 최적화)
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('shorts_projects')
     .select(`
       id,
@@ -21,6 +31,8 @@ export async function GET(
       grid_size,
       grid_image_path,
       video_script,
+      is_public,
+      created_by,
       created_at,
       updated_at,
       shorts_characters (
@@ -49,6 +61,11 @@ export async function GET(
     return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
   }
 
+  // 비공개 프로젝트는 소유자만 볼 수 있음
+  if (!data.is_public && data.created_by !== currentUserId) {
+    return NextResponse.json({ error: '접근 권한이 없습니다.' }, { status: 403 });
+  }
+
   return NextResponse.json(data);
 }
 
@@ -66,6 +83,7 @@ export async function PATCH(
     status?: string;
     video_mode?: 'cut-to-cut' | 'per-cut';
     grid_size?: '2x2' | '3x3';
+    is_public?: boolean;
   } | null;
 
   if (!body) {
@@ -76,6 +94,7 @@ export async function PATCH(
   if (body.title !== undefined) updateData.title = body.title;
   if (body.script !== undefined) updateData.script = body.script;
   if (body.status !== undefined) updateData.status = body.status;
+  if (body.is_public !== undefined) updateData.is_public = body.is_public;
   
   // 설정 변경 시 기존 데이터 초기화 여부 확인
   const settingsChanged = body.video_mode !== undefined || body.grid_size !== undefined;
@@ -90,13 +109,13 @@ export async function PATCH(
     updateData.status = 'draft';
     
     // 기존 씬 삭제
-    await supabase
+    await supabaseAdmin
       .from('shorts_scenes')
       .delete()
       .eq('project_id', projectId);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('shorts_projects')
     .update(updateData)
     .eq('id', projectId)
@@ -119,7 +138,7 @@ export async function DELETE(
   const { projectId } = await params;
   console.log('[shorts][DELETE] 프로젝트 삭제:', projectId);
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('shorts_projects')
     .delete()
     .eq('id', projectId);

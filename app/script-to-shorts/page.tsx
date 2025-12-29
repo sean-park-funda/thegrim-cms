@@ -20,6 +20,8 @@ import {
   Search,
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useStore } from '@/lib/store/useStore';
 
 import { PanelCardsGrid } from '@/components/shorts/PanelCardsGrid';
 import { VideoGenerationSection } from '@/components/shorts/VideoGenerationSection';
@@ -39,6 +41,8 @@ interface ShortsProjectListItem {
   script: string;
   status: string;
   grid_image_path: string | null;
+  is_public: boolean;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,11 +65,16 @@ interface ShortsProject {
   grid_size?: GridSize;
   grid_image_path: string | null;
   video_script: VideoScript | null;
+  is_public: boolean;
+  created_by: string | null;
   shorts_characters?: ShortsCharacter[];
   shorts_scenes?: ShortsScene[];
 }
 
 export default function ScriptToShortsPage() {
+  // 사용자 프로필
+  const { profile } = useStore();
+
   // 뷰 상태: 'list' (목록) 또는 'edit' (편집)
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [loading, setLoading] = useState(false);
@@ -74,6 +83,14 @@ export default function ScriptToShortsPage() {
   // 프로젝트 목록 상태
   const [projectList, setProjectList] = useState<ShortsProjectListItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [visibilityFilter, setVisibilityFilter] = useState<'public' | 'private'>('public');
+
+  // 새 프로젝트 공개/비공개 상태
+  const [newProjectIsPublic, setNewProjectIsPublic] = useState(true);
+
+  // 현재 프로젝트 공개/비공개 상태 (편집 시)
+  const [projectIsPublic, setProjectIsPublic] = useState(true);
+  const [projectCreatedBy, setProjectCreatedBy] = useState<string | null>(null);
 
   // 프로젝트 상태
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -134,7 +151,13 @@ export default function ScriptToShortsPage() {
   const loadProjectList = useCallback(async () => {
     setLoadingList(true);
     try {
-      const res = await fetch('/api/shorts');
+      const params = new URLSearchParams();
+      params.set('visibility', visibilityFilter);
+      if (profile?.id) {
+        params.set('currentUserId', profile.id);
+      }
+      
+      const res = await fetch(`/api/shorts?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setProjectList(Array.isArray(data) ? data : []);
@@ -144,7 +167,7 @@ export default function ScriptToShortsPage() {
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [visibilityFilter, profile?.id]);
 
   // 초기 로드
   useEffect(() => {
@@ -157,7 +180,11 @@ export default function ScriptToShortsPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/shorts/${id}`);
+      const params = new URLSearchParams();
+      if (profile?.id) {
+        params.set('currentUserId', profile.id);
+      }
+      const res = await fetch(`/api/shorts/${id}?${params.toString()}`);
       if (!res.ok) {
         throw new Error('프로젝트를 불러올 수 없습니다.');
       }
@@ -190,13 +217,17 @@ export default function ScriptToShortsPage() {
         setCharacters([{ name: '', description: '' }]);
       }
 
+      // 공개/비공개 상태 및 소유자 설정
+      setProjectIsPublic(data.is_public ?? true);
+      setProjectCreatedBy(data.created_by ?? null);
+
       setView('edit');
     } catch (err) {
       setError(err instanceof Error ? err.message : '프로젝트 로드 실패');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile?.id]);
 
   // 새 프로젝트 만들기
   const handleNewProject = useCallback(() => {
@@ -208,6 +239,8 @@ export default function ScriptToShortsPage() {
     setScenes([]);
     setVideoScript(null);
     setError(null);
+    setNewProjectIsPublic(true); // 기본값은 공개
+    setProjectCreatedBy(null);
     setView('edit');
   }, []);
 
@@ -231,6 +264,32 @@ export default function ScriptToShortsPage() {
       console.error('프로젝트 삭제 실패:', err);
     }
   }, [loadProjectList]);
+
+  // 프로젝트 공개/비공개 토글 (즉시 저장)
+  const handleToggleProjectVisibility = useCallback(async () => {
+    if (!projectId) return;
+    
+    const newIsPublic = !projectIsPublic;
+    setProjectIsPublic(newIsPublic);
+    
+    try {
+      const res = await fetch(`/api/shorts/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_public: newIsPublic }),
+      });
+      
+      if (!res.ok) {
+        // 실패 시 롤백
+        setProjectIsPublic(!newIsPublic);
+        console.error('공개/비공개 설정 저장 실패');
+      }
+    } catch (err) {
+      // 실패 시 롤백
+      setProjectIsPublic(!newIsPublic);
+      console.error('공개/비공개 설정 저장 실패:', err);
+    }
+  }, [projectId, projectIsPublic]);
 
   // 프로젝트 설정 즉시 업데이트 (그리드 크기, 영상 모드)
   const updateProjectSettings = useCallback(async (settings: { video_mode?: VideoMode; grid_size?: GridSize; title?: string }) => {
@@ -311,6 +370,8 @@ export default function ScriptToShortsPage() {
             script,
             video_mode: videoMode,
             grid_size: gridSize,
+            is_public: newProjectIsPublic,
+            created_by: profile?.id || null,
           }),
         });
 
@@ -715,10 +776,32 @@ export default function ScriptToShortsPage() {
             <Video className="h-6 w-6" />
             <h1 className="text-2xl font-bold">대본 → 쇼츠 영상</h1>
           </div>
-          <Button onClick={handleNewProject}>
-            <Plus className="h-4 w-4 mr-2" />
-            새 프로젝트
-          </Button>
+          <div className="flex items-center gap-4">
+            {/* 공개/비공개 필터 */}
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                variant={visibilityFilter === 'public' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setVisibilityFilter('public')}
+                className={`h-7 ${visibilityFilter === 'public' ? 'bg-primary text-primary-foreground' : ''}`}
+              >
+                퍼블릭
+              </Button>
+              <Button
+                variant={visibilityFilter === 'private' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setVisibilityFilter('private')}
+                disabled={!profile}
+                className={`h-7 ${visibilityFilter === 'private' ? 'bg-primary text-primary-foreground' : ''}`}
+              >
+                프라이빗
+              </Button>
+            </div>
+            <Button onClick={handleNewProject}>
+              <Plus className="h-4 w-4 mr-2" />
+              새 프로젝트
+            </Button>
+          </div>
         </div>
 
         {/* 프로젝트 목록 */}
@@ -841,6 +924,28 @@ export default function ScriptToShortsPage() {
               {title || '제목 없음'}
             </h1>
           )}
+          
+          {/* 공개/비공개 토글 (소유자만 표시) */}
+          {projectId && projectCreatedBy === profile?.id && (
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1 ml-4">
+              <Button
+                variant={projectIsPublic ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => !projectIsPublic && handleToggleProjectVisibility()}
+                className={`h-6 text-xs ${projectIsPublic ? 'bg-primary text-primary-foreground' : ''}`}
+              >
+                퍼블릭
+              </Button>
+              <Button
+                variant={!projectIsPublic ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => projectIsPublic && handleToggleProjectVisibility()}
+                className={`h-6 text-xs ${!projectIsPublic ? 'bg-primary text-primary-foreground' : ''}`}
+              >
+                프라이빗
+              </Button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* 프로젝트 설정 */}
@@ -918,6 +1023,23 @@ export default function ScriptToShortsPage() {
                   disabled={generatingGrid || generatingScript}
                 />
               </div>
+
+              {/* 공개/비공개 설정 (새 프로젝트일 때만 표시) */}
+              {!projectId && (
+                <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+                  <Checkbox
+                    id="isPublic"
+                    checked={newProjectIsPublic}
+                    onCheckedChange={(checked) => setNewProjectIsPublic(checked === true)}
+                  />
+                  <label htmlFor="isPublic" className="text-sm cursor-pointer">
+                    공개 프로젝트로 생성
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    (비공개 시 본인만 볼 수 있음)
+                  </span>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div>
