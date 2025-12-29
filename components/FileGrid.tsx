@@ -125,7 +125,8 @@ export function FileGrid({ cutId }: FileGridProps) {
 
   // 파일 목록이 변경될 때 파생 이미지 개수 조회
   useEffect(() => {
-    if (!processes.length) return;
+    // 로딩 중이거나 공정이 없으면 스킵
+    if (loading || !processes.length) return;
     
     const allFileIds: string[] = [];
     processes.forEach(process => {
@@ -136,7 +137,8 @@ export function FileGrid({ cutId }: FileGridProps) {
     if (allFileIds.length > 0) {
       loadDerivedCounts(allFileIds);
     }
-  }, [processes, getFilesByProcess, loadDerivedCounts, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, processes.length]);
 
   // 파생 이미지 클릭 핸들러
   const handleDerivedClick = useCallback((file: FileType) => {
