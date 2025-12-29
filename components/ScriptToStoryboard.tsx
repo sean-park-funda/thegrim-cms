@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Users, Sparkles, Check, Edit, Scissors } from 'lucide-react';
 import { ImageViewer } from '@/components/ImageViewer';
-import { CharacterManagementDialog } from '@/components/CharacterManagementDialog';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
 import { Webtoon, Episode } from '@/lib/supabase';
 import { createCharacter, getCharactersByWebtoon } from '@/lib/api/characters';
@@ -105,7 +104,6 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
     }>;
     webtoonId: string;
   }>>({});
-  const [characterManagementOpen, setCharacterManagementOpen] = useState(false);
   const [characterEditOpen, setCharacterEditOpen] = useState(false);
   const [editingCharacterForScript, setEditingCharacterForScript] = useState<{ scriptId: string; characterName: string; characterDescription: string; webtoonId: string } | null>(null);
   
@@ -1789,15 +1787,6 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
               setViewingImageName('');
             }
           }}
-        />
-      )}
-
-      {/* 캐릭터 관리 다이얼로그 */}
-      {webtoonId && (
-        <CharacterManagementDialog
-          open={characterManagementOpen}
-          onOpenChange={setCharacterManagementOpen}
-          webtoon={{ id: webtoonId } as Webtoon}
         />
       )}
 

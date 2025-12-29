@@ -157,10 +157,26 @@ export interface ReferenceFileWithProcess extends ReferenceFile {
   process?: Process;
 }
 
+// 캐릭터 폴더 타입
+export interface CharacterFolder {
+  id: string;
+  webtoon_id: string;
+  name: string;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 캐릭터 폴더와 캐릭터 수 포함 타입
+export interface CharacterFolderWithCount extends CharacterFolder {
+  character_count: number;
+}
+
 // 캐릭터 타입
 export interface Character {
   id: string;
   webtoon_id: string;
+  folder_id?: string | null;
   name: string;
   description?: string;
   created_at: string;

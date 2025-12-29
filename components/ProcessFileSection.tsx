@@ -28,6 +28,8 @@ interface ProcessFileSectionProps {
   canUpload: boolean;
   canDelete: boolean;
   loading?: boolean;
+  derivedCounts?: Record<string, number>;
+  onDerivedClick?: (file: FileType) => void;
 }
 
 export function ProcessFileSection({
@@ -49,6 +51,8 @@ export function ProcessFileSection({
   canUpload,
   canDelete,
   loading = false,
+  derivedCounts,
+  onDerivedClick,
 }: ProcessFileSectionProps) {
   const ProcessDropzone = ({ children }: { children: (open: () => void) => React.ReactNode }) => {
     const onDrop = (acceptedFiles: globalThis.File[]) => {
@@ -179,6 +183,8 @@ export function ProcessFileSection({
                         onImageError={onImageError}
                         canUpload={canUpload}
                         canDelete={canDelete}
+                        derivedCount={derivedCounts?.[file.id]}
+                        onDerivedClick={onDerivedClick ? () => onDerivedClick(file) : undefined}
                       />
                     );
                   })}

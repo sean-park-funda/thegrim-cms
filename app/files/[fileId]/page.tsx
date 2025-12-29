@@ -8,7 +8,8 @@ import { FileWithRelations, Process } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileIcon, Download, Trash2, Sparkles, Calendar, HardDrive, Wand2, ArrowLeft, User, Search, Link2, FileSearch } from 'lucide-react';
+import { FileIcon, Download, Trash2, Sparkles, Calendar, HardDrive, Wand2, ArrowLeft, User, Search, Link2, FileSearch, GitBranch } from 'lucide-react';
+import { DerivedImagesDialog } from '@/components/DerivedImagesDialog';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { canUploadFile, canDeleteFile } from '@/lib/utils/permissions';
@@ -29,6 +30,10 @@ export default function FileDetailPage() {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  
+  // 파생 이미지 관련 상태
+  const [derivedCount, setDerivedCount] = useState<number>(0);
+  const [derivedDialogOpen, setDerivedDialogOpen] = useState(false);
 
   useEffect(() => {
     if (fileId) {
@@ -36,6 +41,33 @@ export default function FileDetailPage() {
       loadProcesses();
     }
   }, [fileId]);
+
+  // 파생 이미지 개수 조회
+  useEffect(() => {
+    const loadDerivedCount = async () => {
+      if (!fileId) {
+        setDerivedCount(0);
+        return;
+      }
+      
+      try {
+        const params = new URLSearchParams();
+        if (profile?.id) {
+          params.set('currentUserId', profile.id);
+        }
+        const response = await fetch(`/api/files/${fileId}/derived-count?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          setDerivedCount(data.count || 0);
+        }
+      } catch (error) {
+        console.error('파생 이미지 개수 조회 실패:', error);
+        setDerivedCount(0);
+      }
+    };
+
+    loadDerivedCount();
+  }, [fileId, profile?.id]);
 
   const loadFile = async () => {
     try {
@@ -303,6 +335,25 @@ export default function FileDetailPage() {
                 </div>
               )}
 
+              {/* 파생 이미지 */}
+              {derivedCount > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    파생 이미지
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs"
+                    onClick={() => setDerivedDialogOpen(true)}
+                  >
+                    <GitBranch className="h-3 w-3 mr-1.5" />
+                    파생 이미지 보기 ({derivedCount}개)
+                  </Button>
+                </div>
+              )}
+
               {/* 설명 */}
               {file.description && (
                 <div className="space-y-1">
@@ -494,6 +545,15 @@ export default function FileDetailPage() {
           onDownload={() => handleDownload({ stopPropagation: () => {} } as React.MouseEvent)}
         />
       )}
+
+      {/* 파생 이미지 다이얼로그 */}
+      <DerivedImagesDialog
+        open={derivedDialogOpen}
+        onOpenChange={setDerivedDialogOpen}
+        sourceFileId={fileId}
+        sourceFileName={file?.file_name}
+        sourceFileUrl={imageUrl}
+      />
     </div>
   );
 }

@@ -174,6 +174,18 @@ thegrim-CMS/
 - 공개/비공개 필터링 적용 (is_public = true 또는 본인이 생성한 파일)
 - 최신순으로 정렬하여 반환
 
+**files/[fileId]/derived/route.ts** (신규)
+- 특정 파일을 원본으로 하는 파생 이미지 목록 조회 API
+- `source_file_id`가 해당 파일인 이미지들을 조회
+- 공개/비공개 필터링 적용
+
+**files/[fileId]/derived-count/route.ts** (신규)
+- 특정 파일의 파생 이미지 개수 조회 API
+
+**files/derived-counts/route.ts** (신규)
+- 여러 파일의 파생 이미지 개수를 일괄 조회하는 API
+- FileGrid에서 일괄 조회 시 사용
+
 **analyze-image/route.ts**
 - 이미지 메타데이터 자동 분석 API
 - 장면 요약, 태그, 등장인물 수 추출
@@ -306,6 +318,10 @@ thegrim-CMS/
 - 웹툰별 캐릭터 목록 표시
 - 캐릭터 추가/수정/삭제 기능
 - 캐릭터 카드 (첫 번째 시트 이미지 썸네일)
+- 폴더 기능: 캐릭터를 폴더로 분류하여 관리
+- 왼쪽 사이드바: 폴더 목록 (전체, 미분류, 사용자 폴더)
+- 드래그 앤 드롭: 캐릭터를 폴더로 이동
+- 폴더별 캐릭터 수 표시
 
 **CharacterEditDialog.tsx**
 - 캐릭터 추가/수정 폼
@@ -387,6 +403,14 @@ thegrim-CMS/
 - \`updateCharacter(id, data)\`: 캐릭터 수정
 - \`deleteCharacter(id)\`: 캐릭터 삭제 (시트 파일 포함)
 
+**characterFolders.ts**
+- \`getCharacterFoldersByWebtoon(webtoonId)\`: 웹툰의 캐릭터 폴더 목록 (캐릭터 수 포함)
+- \`createCharacterFolder(data)\`: 캐릭터 폴더 생성
+- \`updateCharacterFolder(id, data)\`: 캐릭터 폴더 수정
+- \`deleteCharacterFolder(id)\`: 캐릭터 폴더 삭제 (폴더 내 캐릭터는 미분류로 이동)
+- \`moveCharacterToFolder(characterId, folderId)\`: 캐릭터를 폴더로 이동
+- \`moveCharactersToFolder(characterIds, folderId)\`: 여러 캐릭터를 폴더로 이동
+
 **characterSheets.ts**
 - \`getSheetsByCharacter(characterId)\`: 캐릭터의 시트 목록
 - \`getCharacterSheet(sheetId)\`: 캐릭터 시트 상세
@@ -454,7 +478,9 @@ thegrim-CMS/
   - \`File\` (created_by, source_file_id, is_temp, is_public 포함)
   - \`UserProfile\` (id, email, name, role, default_ai_image_public 포함)
   - \`ReferenceFile\`
-  - \`Character\` (웹툰별 캐릭터)
+  - \`CharacterFolder\` (캐릭터 폴더)
+  - \`CharacterFolderWithCount\` (캐릭터 폴더 + 캐릭터 수)
+  - \`Character\` (웹툰별 캐릭터, folder_id 포함)
   - \`CharacterSheet\` (캐릭터 시트 이미지)
   - 관계형 타입 (FileWithRelations, CharacterWithSheets 등)
 

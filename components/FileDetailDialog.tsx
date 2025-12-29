@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
-import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2, FileSearch } from 'lucide-react';
+import { FileIcon, Download, Trash2, Sparkles, Wand2, Search, HardDrive, Calendar, Upload, CheckSquare2, RefreshCw, User, Link2, Save, Loader2, FileSearch, GitBranch } from 'lucide-react';
+import { DerivedImagesDialog } from './DerivedImagesDialog';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -159,6 +160,10 @@ export function FileDetailDialog({
   const [loadingProcessFiles, setLoadingProcessFiles] = useState(false);
   const [applyingModification, setApplyingModification] = useState(false);
   const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false);
+  
+  // 파생 이미지 관련 상태
+  const [derivedImagesDialogOpen, setDerivedImagesDialogOpen] = useState(false);
+  const [derivedCount, setDerivedCount] = useState<number>(0);
 
   // 스타일 목록 로드
   useEffect(() => {
@@ -168,6 +173,33 @@ export function FileDetailDialog({
         .catch(console.error);
     }
   }, [open]);
+
+  // 파생 이미지 개수 조회
+  useEffect(() => {
+    const loadDerivedCount = async () => {
+      if (!open || !file?.id) {
+        setDerivedCount(0);
+        return;
+      }
+      
+      try {
+        const params = new URLSearchParams();
+        if (currentUserId) {
+          params.set('currentUserId', currentUserId);
+        }
+        const response = await fetch(`/api/files/${file.id}/derived-count?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          setDerivedCount(data.count || 0);
+        }
+      } catch (error) {
+        console.error('파생 이미지 개수 조회 실패:', error);
+        setDerivedCount(0);
+      }
+    };
+
+    loadDerivedCount();
+  }, [open, file?.id, currentUserId]);
 
 
   // 다음 공정 찾기 (order_index 기준)
@@ -560,6 +592,25 @@ export function FileDetailDialog({
                     )}
                     <p className="text-xs truncate flex-1">{file.source_file.file_name}</p>
                   </div>
+                </div>
+              )}
+
+              {/* 파생 이미지 */}
+              {derivedCount > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    파생 이미지
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs"
+                    onClick={() => setDerivedImagesDialogOpen(true)}
+                  >
+                    <GitBranch className="h-3 w-3 mr-1.5" />
+                    파생 이미지 보기 ({derivedCount}개)
+                  </Button>
                 </div>
               )}
 
@@ -1216,6 +1267,21 @@ export function FileDetailDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* 파생 이미지 다이얼로그 */}
+    <DerivedImagesDialog
+      open={derivedImagesDialogOpen}
+      onOpenChange={setDerivedImagesDialogOpen}
+      sourceFileId={file?.id || null}
+      sourceFileName={file?.file_name}
+      sourceFileUrl={file?.file_path?.startsWith('http') 
+        ? file.file_path 
+        : file?.file_path?.startsWith('/') 
+          ? file.file_path 
+          : file?.file_path 
+            ? `https://${file.file_path}`
+            : undefined}
+    />
     </>
   );
 }

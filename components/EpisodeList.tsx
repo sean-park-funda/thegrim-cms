@@ -15,7 +15,6 @@ import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sp
 import Link from 'next/link';
 import { Episode, WebtoonWithEpisodes } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
-import { CharacterManagementDialog } from './CharacterManagementDialog';
 
 interface EpisodeListProps {
   webtoon: WebtoonWithEpisodes;
@@ -163,7 +162,6 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
   const [formData, setFormData] = useState({ episode_number: 1, title: '', description: '', status: 'pending' as 'pending' | 'in_progress' | 'completed' });
   const [saving, setSaving] = useState(false);
   const [updatingUnitType, setUpdatingUnitType] = useState(false);
-  const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
   const [currentWebtoon, setCurrentWebtoon] = useState(webtoon);
 
   const loadEpisodes = async (showLoading = true) => {
@@ -379,15 +377,16 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
             </div>
             {profile && (
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  onClick={() => setCharacterDialogOpen(true)}
-                >
-                  <Users className="h-4 w-4" />
-                  캐릭터 관리
-                </Button>
+                <Link href={`/webtoons/${webtoon.id}/characters`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                  >
+                    <Users className="h-4 w-4" />
+                    캐릭터 관리
+                  </Button>
+                </Link>
                 {canCreateContent(profile.role) && (
                   <Button onClick={handleCreate} size="sm" className="h-9 gap-1.5">
                     <Plus className="h-4 w-4" />
@@ -595,12 +594,6 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
         </DialogContent>
       </Dialog>
 
-      {/* 캐릭터 관리 Dialog */}
-      <CharacterManagementDialog
-        open={characterDialogOpen}
-        onOpenChange={setCharacterDialogOpen}
-        webtoon={currentWebtoon}
-      />
     </>
   );
 }

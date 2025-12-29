@@ -19,6 +19,7 @@ import { FileEditDialog } from '@/components/FileEditDialog';
 import { FileDetailDialog } from '@/components/FileDetailDialog';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ProcessFileSection } from '@/components/ProcessFileSection';
+import { DerivedImagesDialog } from '@/components/DerivedImagesDialog';
 
 interface FileGridProps {
   cutId: string;
@@ -49,6 +50,11 @@ export function FileGrid({ cutId }: FileGridProps) {
   const [draggedOverProcessId, setDraggedOverProcessId] = useState<string | null>(null);
   const isProcessingPaste = useRef(false);
   const pasteListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
+  
+  // 파생 이미지 관련 상태
+  const [derivedCounts, setDerivedCounts] = useState<Record<string, number>>({});
+  const [derivedDialogOpen, setDerivedDialogOpen] = useState(false);
+  const [derivedSourceFile, setDerivedSourceFile] = useState<FileType | null>(null);
 
   // 커스텀 훅 사용
   const {
@@ -93,6 +99,50 @@ export function FileGrid({ cutId }: FileGridProps) {
   useEffect(() => {
     loadProcesses();
   }, [loadProcesses]);
+
+  // 파생 이미지 개수 조회
+  const loadDerivedCounts = useCallback(async (fileIds: string[]) => {
+    if (fileIds.length === 0) return;
+    
+    try {
+      const response = await fetch('/api/files/derived-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileIds,
+          currentUserId: profile?.id,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDerivedCounts(data.counts || {});
+      }
+    } catch (error) {
+      console.error('파생 이미지 개수 조회 실패:', error);
+    }
+  }, [profile?.id]);
+
+  // 파일 목록이 변경될 때 파생 이미지 개수 조회
+  useEffect(() => {
+    if (!processes.length) return;
+    
+    const allFileIds: string[] = [];
+    processes.forEach(process => {
+      const files = getFilesByProcess(process.id);
+      files.forEach(file => allFileIds.push(file.id));
+    });
+    
+    if (allFileIds.length > 0) {
+      loadDerivedCounts(allFileIds);
+    }
+  }, [processes, getFilesByProcess, loadDerivedCounts, loading]);
+
+  // 파생 이미지 클릭 핸들러
+  const handleDerivedClick = useCallback((file: FileType) => {
+    setDerivedSourceFile(file);
+    setDerivedDialogOpen(true);
+  }, []);
 
   // 메타데이터가 없는 이미지 파일들에 대해 주기적으로 폴링
   useEffect(() => {
@@ -835,6 +885,8 @@ export function FileGrid({ cutId }: FileGridProps) {
                   canUpload={!!canUpload}
                   canDelete={!!canDelete}
                   loading={loading}
+                  derivedCounts={derivedCounts}
+                  onDerivedClick={handleDerivedClick}
                 />
               </div>
             );
@@ -942,6 +994,26 @@ export function FileGrid({ cutId }: FileGridProps) {
           }}
         />
       )}
+
+      {/* 파생 이미지 다이얼로그 */}
+      <DerivedImagesDialog
+        open={derivedDialogOpen}
+        onOpenChange={(open) => {
+          setDerivedDialogOpen(open);
+          if (!open) {
+            setDerivedSourceFile(null);
+          }
+        }}
+        sourceFileId={derivedSourceFile?.id || null}
+        sourceFileName={derivedSourceFile?.file_name}
+        sourceFileUrl={derivedSourceFile?.file_path?.startsWith('http') 
+          ? derivedSourceFile.file_path 
+          : derivedSourceFile?.file_path?.startsWith('/') 
+            ? derivedSourceFile.file_path 
+            : derivedSourceFile?.file_path 
+              ? `https://${derivedSourceFile.file_path}`
+              : undefined}
+      />
     </>
   );
 }

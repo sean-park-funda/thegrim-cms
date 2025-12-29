@@ -12,6 +12,18 @@ export async function getWebtoons(): Promise<Webtoon[]> {
   return data || [];
 }
 
+// 웹툰 단일 조회
+export async function getWebtoon(id: string): Promise<Webtoon | null> {
+  const { data, error } = await supabase
+    .from('webtoons')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 // 웹툰 상세 조회 (회차 포함)
 export async function getWebtoonWithEpisodes(id: string): Promise<WebtoonWithEpisodes | null> {
   const { data, error } = await supabase

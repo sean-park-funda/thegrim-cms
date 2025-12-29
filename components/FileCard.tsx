@@ -5,7 +5,7 @@ import { File as FileType } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileIcon, Download, Trash2, Edit, Sparkles } from 'lucide-react';
+import { FileIcon, Download, Trash2, Edit, Sparkles, GitBranch } from 'lucide-react';
 import Image from 'next/image';
 
 interface FileCardProps {
@@ -23,6 +23,8 @@ interface FileCardProps {
   onImageError: (fileId: string, originalUrl: string) => void;
   canUpload: boolean;
   canDelete: boolean;
+  derivedCount?: number;
+  onDerivedClick?: (e: React.MouseEvent) => void;
 }
 
 export function FileCard({
@@ -40,6 +42,8 @@ export function FileCard({
   onImageError,
   canUpload,
   canDelete,
+  derivedCount,
+  onDerivedClick,
 }: FileCardProps) {
   const metadata = file.metadata as {
     scene_summary?: string;
@@ -85,6 +89,24 @@ export function FileCard({
               }
             }}
           />
+          {/* 파생 이미지 개수 배지 */}
+          {derivedCount !== undefined && derivedCount > 0 && (
+            <div
+              className="absolute top-2 right-2 z-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDerivedClick?.(e);
+              }}
+            >
+              <Badge 
+                variant="secondary" 
+                className="gap-1 cursor-pointer hover:bg-secondary/80 transition-colors"
+              >
+                <GitBranch className="h-3 w-3" />
+                {derivedCount}
+              </Badge>
+            </div>
+          )}
         </div>
       );
     }
