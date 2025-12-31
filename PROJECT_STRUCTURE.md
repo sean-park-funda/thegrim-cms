@@ -1,7 +1,7 @@
 # 프로젝트 구조
 
-> **역할**: 프로젝트의 정적 구조 및 아키텍처 참조 문서  
-> **대상**: 새로운 팀원, 코드 리뷰어, 유지보수 담당자  
+> **역할**: 프로젝트의 정적 구조 및 아키텍처 참조 문서
+> **대상**: 새로운 팀원, 코드 리뷰어, 유지보수 담당자
 > **목적**: 프로젝트의 디렉토리 구조, 주요 파일 역할, 데이터 흐름을 빠르게 파악하기 위한 문서
 
 ## 📁 디렉토리 구조
@@ -202,10 +202,11 @@ thegrim-CMS/
 **shorts/ (대본→쇼츠 영상 시스템)**
 - 대본을 입력받아 AI로 쇼츠 영상을 자동 생성하는 시스템
 - **route.ts**: 프로젝트 목록 조회 (GET), 새 프로젝트 생성 (POST)
-- **[projectId]/route.ts**: 단일 프로젝트 CRUD
+- **[projectId]/route.ts**: 단일 프로젝트 CRUD, video_script 업데이트 지원
 - **[projectId]/characters/route.ts**: 캐릭터 관리 (등장인물 이름, 설명, 참조 이미지)
 - **[projectId]/generate-script/route.ts**: Gemini로 패널 설명 및 Veo 프롬프트 생성
 - **[projectId]/generate-grid/route.ts**: Gemini로 그리드 이미지 생성, sharp로 패널 분할
+- **[projectId]/generate-panel/route.ts**: 개별 패널 이미지 생성 (병렬 생성 지원)
 - **[projectId]/generate-video/route.ts**: Veo 3로 시작/끝 프레임 기반 영상 생성
 - 상세 문서: [docs/SCRIPT_TO_SHORTS_GUIDE.md](./docs/SCRIPT_TO_SHORTS_GUIDE.md)
 
@@ -557,5 +558,3 @@ thegrim-CMS/
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - 주요 시스템 상세 설계
 - [SETUP_GUIDE.md](./SETUP_GUIDE.md) - 환경 설정 가이드
 - [docs/SCRIPT_TO_SHORTS_GUIDE.md](./docs/SCRIPT_TO_SHORTS_GUIDE.md) - 대본→쇼츠 영상 시스템 상세 문서
-
-

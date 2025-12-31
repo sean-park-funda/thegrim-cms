@@ -84,6 +84,7 @@ export async function PATCH(
     video_mode?: 'cut-to-cut' | 'per-cut';
     grid_size?: '2x2' | '3x3';
     is_public?: boolean;
+    video_script?: Record<string, unknown>;
   } | null;
 
   if (!body) {
@@ -95,19 +96,20 @@ export async function PATCH(
   if (body.script !== undefined) updateData.script = body.script;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.is_public !== undefined) updateData.is_public = body.is_public;
-  
+  if (body.video_script !== undefined) updateData.video_script = body.video_script;
+
   // 설정 변경 시 기존 데이터 초기화 여부 확인
   const settingsChanged = body.video_mode !== undefined || body.grid_size !== undefined;
-  
+
   if (body.video_mode !== undefined) updateData.video_mode = body.video_mode;
   if (body.grid_size !== undefined) updateData.grid_size = body.grid_size;
-  
+
   // 설정 변경 시 기존 스크립트와 이미지 초기화
   if (settingsChanged) {
     updateData.video_script = null;
     updateData.grid_image_path = null;
     updateData.status = 'draft';
-    
+
     // 기존 씬 삭제
     await supabaseAdmin
       .from('shorts_scenes')

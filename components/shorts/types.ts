@@ -19,10 +19,8 @@ export function getSceneCount(gridSize: GridSize, videoMode: VideoMode): number 
 
 export interface PanelDescription {
   panelIndex: number;
-  description: string;
-  characters: string[];
-  action: string;
-  environment: string;
+  description: string; // 이미지 생성용 프롬프트 (한글, 장면 묘사 + 연출/구도 포함)
+  characters: string[]; // 등장인물
 }
 
 export interface VideoScene {
@@ -53,4 +51,3 @@ export interface ShortsScene {
   status: string;
   error_message: string | null;
 }
-

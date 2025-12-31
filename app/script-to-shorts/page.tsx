@@ -119,6 +119,7 @@ export default function ScriptToShortsPage() {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [generatingVideo, setGeneratingVideo] = useState<number | null>(null);
   const [generatingAllVideos, setGeneratingAllVideos] = useState(false);
+  const [generatingPanels, setGeneratingPanels] = useState<Set<number>>(new Set()); // 개별 패널 생성 상태
 
   // Veo API Key 상태
   const [veoApiKey, setVeoApiKey] = useState('');
@@ -156,7 +157,7 @@ export default function ScriptToShortsPage() {
       if (profile?.id) {
         params.set('currentUserId', profile.id);
       }
-      
+
       const res = await fetch(`/api/shorts?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
@@ -268,17 +269,17 @@ export default function ScriptToShortsPage() {
   // 프로젝트 공개/비공개 토글 (즉시 저장)
   const handleToggleProjectVisibility = useCallback(async () => {
     if (!projectId) return;
-    
+
     const newIsPublic = !projectIsPublic;
     setProjectIsPublic(newIsPublic);
-    
+
     try {
       const res = await fetch(`/api/shorts/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_public: newIsPublic }),
       });
-      
+
       if (!res.ok) {
         // 실패 시 롤백
         setProjectIsPublic(!newIsPublic);
@@ -670,6 +671,84 @@ export default function ScriptToShortsPage() {
     }
   }, [projectId]);
 
+  // 패널 설명 수정 (즉시 DB에 저장)
+  const handleUpdatePanelDescription = useCallback(async (panelIndex: number, description: string) => {
+    if (!videoScript || !projectId) return;
+
+    const updatedPanels = videoScript.panels.map(panel =>
+      panel.panelIndex === panelIndex
+        ? { ...panel, description }
+        : panel
+    );
+
+    const updatedVideoScript = {
+      ...videoScript,
+      panels: updatedPanels,
+    };
+
+    // 로컬 상태 즉시 업데이트
+    setVideoScript(updatedVideoScript);
+
+    // DB에 저장
+    try {
+      const res = await fetch(`/api/shorts/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_script: updatedVideoScript }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '패널 설명 저장에 실패했습니다.');
+      }
+
+      console.log('[handleUpdatePanelDescription] 패널 설명 저장 완료:', panelIndex);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '패널 설명 저장에 실패했습니다.');
+    }
+  }, [projectId, videoScript]);
+
+  // 개별 패널 이미지 생성
+  const handleGeneratePanel = useCallback(async (panelIndex: number) => {
+    if (!projectId) {
+      setError('먼저 대본을 저장해주세요.');
+      return;
+    }
+
+    // 생성 중인 패널 추가
+    setGeneratingPanels(prev => new Set([...prev, panelIndex]));
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/shorts/${projectId}/generate-panel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          panelIndex,
+          style: imageStyle,
+          apiProvider: imageModel,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '패널 이미지 생성에 실패했습니다.');
+      }
+
+      // 프로젝트 새로고침하여 씬 정보 업데이트
+      await refreshProject();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '패널 이미지 생성에 실패했습니다.');
+    } finally {
+      // 생성 완료된 패널 제거
+      setGeneratingPanels(prev => {
+        const next = new Set(prev);
+        next.delete(panelIndex);
+        return next;
+      });
+    }
+  }, [projectId, imageStyle, imageModel, refreshProject]);
+
   // 씬 duration 업데이트
   const updateSceneDuration = useCallback(async (sceneId: string, duration: number) => {
     if (!projectId) return;
@@ -744,7 +823,7 @@ export default function ScriptToShortsPage() {
       reader.onloadend = () => {
         const base64 = (reader.result as string).split(',')[1];
         const mimeType = blob.type || 'image/png';
-        
+
         setCharacters(prev => {
           const updated = [...prev];
           if (updated[characterSheetTargetIndex]) {
@@ -761,7 +840,7 @@ export default function ScriptToShortsPage() {
     } catch (err) {
       console.warn('캐릭터 시트 이미지 base64 변환 실패 (image_path는 사용됨):', err);
     }
-    
+
     setShowCharacterSheetDialog(false);
     setCharacterSheetTargetIndex(null);
   }, [characterSheetTargetIndex]);
@@ -924,7 +1003,7 @@ export default function ScriptToShortsPage() {
               {title || '제목 없음'}
             </h1>
           )}
-          
+
           {/* 공개/비공개 토글 (소유자만 표시) */}
           {projectId && projectCreatedBy === profile?.id && (
             <div className="flex items-center gap-1 bg-muted rounded-lg p-1 ml-4">
@@ -1170,6 +1249,7 @@ export default function ScriptToShortsPage() {
                 gridImagePath={gridImagePath}
                 generatingScript={generatingScript}
                 generatingGrid={generatingGrid}
+                generatingPanels={generatingPanels}
                 loadingImagePrompt={loadingImagePrompt}
                 geminiModel={geminiModel}
                 imageStyle={imageStyle}
@@ -1177,6 +1257,8 @@ export default function ScriptToShortsPage() {
                 onImageStyleChange={setImageStyle}
                 onGenerateScript={handleGenerateScript}
                 onGenerateGrid={handleGenerateGrid}
+                onGeneratePanel={handleGeneratePanel}
+                onUpdatePanelDescription={handleUpdatePanelDescription}
                 onPreviewImagePrompt={handlePreviewImagePrompt}
               />
 

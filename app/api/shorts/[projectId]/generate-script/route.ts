@@ -6,10 +6,8 @@ import { GridSize, VideoMode, GRID_CONFIGS, getSceneCount } from '@/lib/video-ge
 // 패널 각각의 상세 설명
 interface PanelDescription {
   panelIndex: number;
-  description: string; // 이 패널에 대한 상세 시각적 설명
-  characters: string[]; // 이 패널에 등장하는 캐릭터들
-  action: string; // 캐릭터의 동작/표정
-  environment: string; // 배경/환경 설명
+  description: string; // 이미지 생성용 프롬프트 (한글, 장면 묘사 + 연출/구도 포함)
+  characters: string[]; // 등장인물
 }
 
 // 영상 씬 (패널 → 패널 전환)
@@ -51,7 +49,7 @@ export async function POST(
   const videoMode: VideoMode = body?.videoMode || 'cut-to-cut';
   const gridConfig = GRID_CONFIGS[gridSize];
   const sceneCount = getSceneCount(gridSize, videoMode);
-  
+
   console.log('[shorts][generate-script] 선택된 모델:', selectedModel);
   console.log('[shorts][generate-script] 그리드 크기:', gridSize, '패널:', gridConfig.panelCount);
   console.log('[shorts][generate-script] 영상 모드:', videoMode, '씬:', sceneCount);
@@ -105,7 +103,7 @@ export async function POST(
   // 캐릭터 이미지 로드 (이미지가 있는 캐릭터만)
   const characterImages: Array<{ name: string; base64: string; mimeType: string }> = [];
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  
+
   for (const char of characters) {
     // image_path가 없으면 storage_path로 URL 생성
     let imageUrl = char.image_path;
@@ -113,7 +111,7 @@ export async function POST(
       imageUrl = `${supabaseUrl}/storage/v1/object/public/shorts-videos/${char.storage_path}`;
       console.log(`[shorts][generate-script] storage_path로 URL 생성: ${char.name} -> ${imageUrl}`);
     }
-    
+
     if (imageUrl) {
       try {
         const response = await fetch(imageUrl);
@@ -133,7 +131,7 @@ export async function POST(
       }
     }
   }
-  
+
   const hasCharacterImages = characterImages.length > 0;
   console.log(`[shorts][generate-script] 캐릭터 이미지 ${characterImages.length}개 로드됨, 이미지 사용: ${hasCharacterImages}`);
 
@@ -142,13 +140,13 @@ export async function POST(
   // 캐릭터 설명 구성 - 이미지가 있으면 이미지 참조, 없으면 상세 묘사
   let characterDescriptions: string;
   let characterImageInstruction: string;
-  
+
   if (hasCharacterImages) {
     // 캐릭터 이미지가 첨부된 경우
     characterDescriptions = characterImages
       .map((img, idx) => `- ${img.name}: [첨부된 이미지 ${idx + 1}의 캐릭터 - 외모 묘사 생략, 이미지 참조]`)
       .join('\n');
-    
+
     // 이미지 없는 캐릭터도 추가 (텍스트 설명만 있는 경우)
     const imageCharNames = characterImages.map(c => c.name);
     const textOnlyChars = characters.filter(c => !imageCharNames.includes(c.name));
@@ -157,7 +155,7 @@ export async function POST(
         .map(c => `- ${c.name}: ${c.description || '주요 등장인물'}`)
         .join('\n');
     }
-    
+
     characterImageInstruction = `
 CRITICAL - 캐릭터 이미지가 첨부되었습니다:
 ${characterImages.map((img, idx) => `- 이미지 ${idx + 1}: ${img.name}의 레퍼런스 이미지`).join('\n')}
@@ -176,7 +174,7 @@ ${characterImages.map((img, idx) => `- 이미지 ${idx + 1}: ${img.name}의 레�
     characterDescriptions = characters
       .map(c => `- ${c.name}: ${c.description || '주요 등장인물'}`)
       .join('\n');
-    
+
     characterImageInstruction = `
 캐릭터 외모 묘사 규칙 (이미지 없음):
 - 캐릭터의 외모, 의상, 체형 등을 panels.description에 상세히 포함하세요.
@@ -194,7 +192,7 @@ ${characterImages.map((img, idx) => `- 이미지 ${idx + 1}: ${img.name}의 레�
 
   if (videoMode === 'per-cut') {
     // per-cut 모드: 각 패널에 대한 개별 영상 프롬프트 생성
-    systemPrompt = `당신은 숏폼 동영상 제작 전문가입니다. 
+    systemPrompt = `당신은 숏폼 동영상 제작 전문가입니다.
 주어진 대본을 바탕으로:
 1. ${gridConfig.panelCount}개의 핵심 장면(패널)을 정의하고 각각의 시각적 설명을 작성합니다.
 2. 각 패널에 대해 ${sceneCount}개의 개별 영상 씬을 생성합니다 (각 패널 이미지를 기반으로 애니메이션 생성).
@@ -214,10 +212,8 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
   "panels": [
     {
       "panelIndex": 0,
-      "description": "이 패널의 상세 시각적 설명 (영어, 이미지 생성용 프롬프트로 사용됨)",
-      "characters": ["등장 캐릭터명1", "등장 캐릭터명2"],
-      "action": "캐릭터의 동작/표정 (영어)",
-      "environment": "배경/환경 설명 (영어)"
+      "description": "이미지 생성용 프롬프트 (한글로 상세히 작성, 장면 묘사 + 연출/구도 포함)",
+      "characters": ["등장인물1", "등장인물2"]
     }
   ],
   "scenes": [
@@ -228,7 +224,7 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
       "motionDescription": "이 패널 이미지에서 일어나는 움직임/애니메이션 설명",
       "dialogue": "이 씬의 대사 (원본 언어 유지 - 한국어면 한국어로)",
       "duration": 4,
-      "veoPrompt": "A [scene description] with [character description] [performing action]. [캐릭터 설명] says: '[대사]' with [감정/톤]. Camera [camera movement]. Audio: [환경 사운드 목록], no background music."
+      "veoPrompt": "영어로 작성된 영상 생성 프롬프트"
     }
   ],
   "totalDuration": 전체 예상 길이(초),
@@ -241,18 +237,28 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
 1. panels는 정확히 ${gridConfig.panelCount}개 (panelIndex 0-${lastPanelIndex})
 2. scenes는 정확히 ${sceneCount}개 (sceneIndex 0-${lastSceneIndex}, 각 패널에 대응: 패널0→씬0, 패널1→씬1, ...)
 3. 각 scene에서 startPanelIndex와 endPanelIndex는 동일한 값 (같은 패널)
-4. panels의 description은 이미지 생성에 바로 사용될 수 있도록 구체적이고 시각적으로 작성 (영어)
-5. dialogue는 대본에서 해당 씬에 맞는 대사를 원본 언어로 추출 (한국어면 한국어)
-6. 카메라 움직임(pan, zoom, dolly, tracking 등)을 구체적으로 명시
-7. 숏폼에 적합한 역동적 연출
-8. duration은 각 씬의 적절한 영상 길이(초)로, 반드시 4, 6, 8 중 하나를 선택 (대사 길이와 액션에 따라 결정)
+4. **panels.description 작성 규칙 (매우 중요 - 이미지 생성 프롬프트):**
+   - 한글로 상세하게 작성
+   - 등장인물의 위치, 자세, 표정, 외모, 의상 포함
+   - 배경/환경 묘사 포함
+   - 카메라 시점(클로즈업, 미디엄샷, 와이드샷, 버드아이뷰 등) 포함
+   - 구도, 연출 기법(모션 블러, 명암 효과, 역광 등) 포함
+   - 이 description이 그대로 이미지 생성에 사용됩니다
+5. characters: 이 패널에 등장하는 캐릭터 이름 목록
+6. dialogue는 대본에서 해당 씬에 맞는 대사를 원본 언어로 추출 (한국어면 한국어)
+7. 카메라 움직임(pan, zoom, dolly, tracking 등)을 구체적으로 명시
+8. 숏폼에 적합한 역동적 연출
+9. duration은 각 씬의 적절한 영상 길이(초)로, 반드시 4, 6, 8 중 하나를 선택 (대사 길이와 액션에 따라 결정)
 ${characterImageInstruction}
 
-IMPORTANT - panels.description 작성 시 주의사항:
-- 스타일 관련 용어 절대 금지: "anime style", "cartoon", "realistic", "webtoon" 등 스타일 지정 금지
-- 스타일은 이미지 생성 시 별도로 지정되므로, 순수하게 장면 내용만 설명
-- 예시 (좋음): "A muscular man hanging on a steep rock cliff with one hand, looking down with a stern expression. Bright blue sky in the background."
-- 예시 (나쁨): "Anime style, a muscular man hanging on a rock cliff..."
+IMPORTANT - panels.description 작성 예시 (한글, 이미지 생성용):
+- 예시 1: "근육질의 남자가 가파른 바위 절벽에 한 손으로 매달려 있다. 굳은 표정으로 아래를 내려다보고 있다. 배경에는 밝은 파란 하늘이 펼쳐져 있다. 로우 앵글 클로즈업, 아래에서 위로 올려다보는 구도. 긴장감을 주는 역광 효과."
+- 예시 2: "카페 내부, 창가 테이블에 두 남녀가 마주앉아 대화를 나누고 있다. 여자는 커피잔을 들고 있고, 남자는 진지한 표정으로 상대를 바라본다. 따뜻한 오후 햇살이 창문으로 들어온다. 미디엄 투샷, 따뜻한 톤의 조명."
+- 예시 3: "비 오는 도시의 밤거리. 네온사인 불빛이 반사된 젖은 아스팔트 위를 우산을 쓴 남자가 걸어간다. 뒷모습, 롱샷. 고독하고 쓸쓸한 분위기, 영화적 시네마틱 연출."
+
+CRITICAL - 스타일 관련 용어 절대 금지:
+- "anime style", "cartoon", "realistic", "webtoon", "만화풍", "애니메이션 스타일" 등 스타일 지정 금지
+- 스타일은 이미지 생성 시 별도로 지정되므로, 순수하게 장면 내용과 연출만 설명
 
 CRITICAL - veoPrompt 작성 방법 (per-cut 모드, Veo 3 오디오 생성 필수):
 veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지(해당 패널)가 레퍼런스로 제공되므로, 캐릭터 외모/생김새를 설명하지 말고 동작과 대사만 설명하세요.
@@ -289,7 +295,7 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     // cut-to-cut 모드: 연속된 패널 사이의 전환 영상 프롬프트 생성 (기존 로직)
     const panelConnections = Array.from({ length: sceneCount }, (_, i) => `${i}→${i + 1}`).join(', ');
 
-    systemPrompt = `당신은 숏폼 동영상 제작 전문가입니다. 
+    systemPrompt = `당신은 숏폼 동영상 제작 전문가입니다.
 주어진 대본을 바탕으로:
 1. ${gridConfig.panelCount}개의 핵심 장면(패널)을 정의하고 각각의 시각적 설명을 작성합니다.
 2. 연속된 패널 사이의 ${sceneCount}개 영상 전환(씬)에 대한 Veo 프롬프트를 작성합니다.
@@ -309,10 +315,8 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
   "panels": [
     {
       "panelIndex": 0,
-      "description": "이 패널의 상세 시각적 설명 (영어, 이미지 생성용 프롬프트로 사용됨)",
-      "characters": ["등장 캐릭터명1", "등장 캐릭터명2"],
-      "action": "캐릭터의 동작/표정 (영어)",
-      "environment": "배경/환경 설명 (영어)"
+      "description": "이미지 생성용 프롬프트 (한글로 상세히 작성, 장면 묘사 + 연출/구도 포함)",
+      "characters": ["등장인물1", "등장인물2"]
     }
   ],
   "scenes": [
@@ -323,7 +327,7 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
       "motionDescription": "패널0에서 패널1로의 카메라 움직임, 캐릭터 동작 변화 설명",
       "dialogue": "이 씬의 대사 (원본 언어 유지 - 한국어면 한국어로)",
       "duration": 4,
-      "veoPrompt": "Starting from [첫 프레임 설명], [카메라/캐릭터 움직임], transitioning to [끝 프레임 설명]. [캐릭터 설명] says: '[대사]' with [감정/톤]. Audio: [환경 사운드 목록], no background music."
+      "veoPrompt": "영어로 작성된 영상 생성 프롬프트"
     }
   ],
   "totalDuration": 전체 예상 길이(초),
@@ -335,18 +339,28 @@ ${characterDescriptions || '(등장인물 정보 없음)'}
 요구사항:
 1. panels는 정확히 ${gridConfig.panelCount}개 (panelIndex 0-${lastPanelIndex})
 2. scenes는 정확히 ${sceneCount}개 (sceneIndex 0-${lastSceneIndex}, 각각 연속된 두 패널 연결: ${panelConnections})
-3. panels의 description은 이미지 생성에 바로 사용될 수 있도록 구체적이고 시각적으로 작성 (영어)
-4. dialogue는 대본에서 해당 씬에 맞는 대사를 원본 언어로 추출 (한국어면 한국어)
-5. 카메라 움직임(pan, zoom, dolly, tracking 등)을 구체적으로 명시
-6. 숏폼에 적합한 역동적 연출
-7. duration은 각 씬의 적절한 영상 길이(초)로, 반드시 4, 6, 8 중 하나를 선택 (대사 길이와 액션에 따라 결정)
+3. **panels.description 작성 규칙 (매우 중요 - 이미지 생성 프롬프트):**
+   - 한글로 상세하게 작성
+   - 등장인물의 위치, 자세, 표정, 외모, 의상 포함
+   - 배경/환경 묘사 포함
+   - 카메라 시점(클로즈업, 미디엄샷, 와이드샷, 버드아이뷰 등) 포함
+   - 구도, 연출 기법(모션 블러, 명암 효과, 역광 등) 포함
+   - 이 description이 그대로 이미지 생성에 사용됩니다
+4. characters: 이 패널에 등장하는 캐릭터 이름 목록
+5. dialogue는 대본에서 해당 씬에 맞는 대사를 원본 언어로 추출 (한국어면 한국어)
+6. 카메라 움직임(pan, zoom, dolly, tracking 등)을 구체적으로 명시
+7. 숏폼에 적합한 역동적 연출
+8. duration은 각 씬의 적절한 영상 길이(초)로, 반드시 4, 6, 8 중 하나를 선택 (대사 길이와 액션에 따라 결정)
 ${characterImageInstruction}
 
-IMPORTANT - panels.description 작성 시 주의사항:
-- 스타일 관련 용어 절대 금지: "anime style", "cartoon", "realistic", "webtoon" 등 스타일 지정 금지
-- 스타일은 이미지 생성 시 별도로 지정되므로, 순수하게 장면 내용만 설명
-- 예시 (좋음): "A muscular man hanging on a steep rock cliff with one hand, looking down with a stern expression. Bright blue sky in the background."
-- 예시 (나쁨): "Anime style, a muscular man hanging on a rock cliff..."
+IMPORTANT - panels.description 작성 예시 (한글, 이미지 생성용):
+- 예시 1: "근육질의 남자가 가파른 바위 절벽에 한 손으로 매달려 있다. 굳은 표정으로 아래를 내려다보고 있다. 배경에는 밝은 파란 하늘이 펼쳐져 있다. 로우 앵글 클로즈업, 아래에서 위로 올려다보는 구도. 긴장감을 주는 역광 효과."
+- 예시 2: "카페 내부, 창가 테이블에 두 남녀가 마주앉아 대화를 나누고 있다. 여자는 커피잔을 들고 있고, 남자는 진지한 표정으로 상대를 바라본다. 따뜻한 오후 햇살이 창문으로 들어온다. 미디엄 투샷, 따뜻한 톤의 조명."
+- 예시 3: "비 오는 도시의 밤거리. 네온사인 불빛이 반사된 젖은 아스팔트 위를 우산을 쓴 남자가 걸어간다. 뒷모습, 롱샷. 고독하고 쓸쓸한 분위기, 영화적 시네마틱 연출."
+
+CRITICAL - 스타일 관련 용어 절대 금지:
+- "anime style", "cartoon", "realistic", "webtoon", "만화풍", "애니메이션 스타일" 등 스타일 지정 금지
+- 스타일은 이미지 생성 시 별도로 지정되므로, 순수하게 장면 내용과 연출만 설명
 
 CRITICAL - veoPrompt 작성 방법 (Veo 3 오디오 생성 필수):
 veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지(첫 프레임)와 끝 이미지(마지막 프레임)가 함께 제공되므로, 캐릭터 외모/생김새를 설명하지 말고 동작과 전환만 설명하세요.
@@ -387,7 +401,7 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     const ai = new GoogleGenAI({ apiKey });
 
     const fullPrompt = systemPrompt + '\n\n' + userPrompt;
-    
+
     console.log('='.repeat(80));
     console.log('[shorts][generate-script] 전체 프롬프트:');
     console.log('='.repeat(80));
@@ -396,10 +410,10 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
 
     // 캐릭터 이미지가 있으면 이미지 파트 추가
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
-    
+
     // 텍스트 프롬프트 추가
     parts.push({ text: fullPrompt });
-    
+
     // 캐릭터 이미지 첨부 (있는 경우)
     if (characterImages.length > 0) {
       console.log(`[shorts][generate-script] ${characterImages.length}개 캐릭터 이미지 첨부`);
@@ -435,7 +449,7 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     console.log('='.repeat(80));
     console.log('response.text:', typeof response.text, response.text ? `exists (${response.text.length} chars)` : 'empty/undefined');
     console.log('response keys:', Object.keys(response || {}));
-    
+
     // candidates 확인 (finishReason이 SAFETY나 OTHER면 응답이 차단된 것)
     if (response.candidates && response.candidates.length > 0) {
       const candidate = response.candidates[0];
@@ -454,7 +468,7 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     console.log('='.repeat(80));
 
     const responseText = response.text || '';
-    
+
     console.log('[shorts][generate-script] responseText 길이:', responseText.length);
     if (responseText.length > 0) {
       console.log('[shorts][generate-script] responseText 내용 (처음 2000자):');
@@ -462,12 +476,12 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
     } else {
       console.log('[shorts][generate-script] 응답이 비었습니다! 전체 response:', JSON.stringify(response, null, 2).slice(0, 3000));
     }
-    
+
     // 응답이 비었으면 상세 정보 포함해서 에러 반환
     if (!responseText) {
       const blockReason = response.promptFeedback?.blockReason;
       const finishReason = response.candidates?.[0]?.finishReason;
-      
+
       let errorMessage = 'Gemini API 응답이 비어있습니다.';
       if (blockReason) {
         errorMessage = `Gemini API가 요청을 차단했습니다. 차단 사유: ${blockReason}`;
@@ -477,7 +491,7 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
       } else if (finishReason && finishReason !== 'STOP') {
         errorMessage = `Gemini API 응답 종료 사유: ${finishReason}`;
       }
-      
+
       return NextResponse.json({
         error: errorMessage,
         geminiResponse: {
@@ -487,14 +501,14 @@ veoPrompt는 Veo 3 영상 생성 API에 직접 전달됩니다. 시작 이미지
         },
       }, { status: 400 });
     }
-    
+
     // JSON 파싱
     let videoScript: VideoScript;
     try {
       videoScript = JSON.parse(responseText);
     } catch (parseError) {
       console.log('[shorts][generate-script] 직접 JSON 파싱 실패, 코드블록 추출 시도...');
-      
+
       // JSON 블록 추출 시도 (```json ... ``` 또는 ``` ... ```)
       const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {

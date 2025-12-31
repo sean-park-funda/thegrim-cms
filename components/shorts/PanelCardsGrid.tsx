@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2,
@@ -12,8 +14,10 @@ import {
   Download,
   Eye,
   Image as ImageIcon,
+  Edit3,
+  X,
 } from 'lucide-react';
-import { GridSize, VideoMode, VideoScript, ShortsScene, GRID_CONFIGS, getSceneCount } from './types';
+import { GridSize, VideoMode, VideoScript, ShortsScene, PanelDescription, GRID_CONFIGS, getSceneCount } from './types';
 
 interface PanelCardsGridProps {
   gridSize: GridSize;
@@ -23,6 +27,7 @@ interface PanelCardsGridProps {
   gridImagePath: string | null;
   generatingScript: boolean;
   generatingGrid: boolean;
+  generatingPanels: Set<number>; // 개별 패널 생성 중인 인덱스들
   loadingImagePrompt: boolean;
   geminiModel: string;
   imageStyle: 'realistic' | 'cartoon';
@@ -30,6 +35,8 @@ interface PanelCardsGridProps {
   onImageStyleChange: (style: 'realistic' | 'cartoon') => void;
   onGenerateScript: () => void;
   onGenerateGrid: () => void;
+  onGeneratePanel: (panelIndex: number) => void; // 개별 패널 생성
+  onUpdatePanelDescription: (panelIndex: number, description: string) => void; // 패널 설명 수정 (즉시 저장)
   onPreviewImagePrompt: () => void;
 }
 
@@ -41,6 +48,7 @@ export function PanelCardsGrid({
   gridImagePath,
   generatingScript,
   generatingGrid,
+  generatingPanels,
   loadingImagePrompt,
   geminiModel,
   imageStyle,
@@ -48,10 +56,37 @@ export function PanelCardsGrid({
   onImageStyleChange,
   onGenerateScript,
   onGenerateGrid,
+  onGeneratePanel,
+  onUpdatePanelDescription,
   onPreviewImagePrompt,
 }: PanelCardsGridProps) {
   const panelCount = GRID_CONFIGS[gridSize].panelCount;
   const sceneCount = getSceneCount(gridSize, videoMode);
+
+  // 패널 설명 편집 모드 상태
+  const [editingPanelIndex, setEditingPanelIndex] = useState<number | null>(null);
+  const [editingDescription, setEditingDescription] = useState<string>('');
+
+  // 편집 시작
+  const handleStartEdit = (panelIndex: number, description: string) => {
+    setEditingPanelIndex(panelIndex);
+    setEditingDescription(description);
+  };
+
+  // 편집 저장 (즉시 DB에 저장됨)
+  const handleSaveEdit = () => {
+    if (editingPanelIndex !== null) {
+      onUpdatePanelDescription(editingPanelIndex, editingDescription);
+      setEditingPanelIndex(null);
+      setEditingDescription('');
+    }
+  };
+
+  // 편집 취소
+  const handleCancelEdit = () => {
+    setEditingPanelIndex(null);
+    setEditingDescription('');
+  };
 
   // 패널 이미지들을 scenes에서 추출
   const getPanelImages = (): string[] => {
@@ -139,18 +174,64 @@ export function PanelCardsGrid({
           <h4 className="text-xs font-medium text-muted-foreground mb-3">패널별 묘사</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {videoScript.panels.map((panel, idx) => (
-              <div key={panel.panelIndex} className="p-3 bg-muted/50 rounded border">
-                <div className="flex items-start gap-2 mb-1">
+              <div key={panel.panelIndex} className="p-3 bg-muted/50 rounded border group relative">
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-foreground">패널 {idx + 1}</span>
-                  {panel.characters && panel.characters.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground">
-                      👤 {panel.characters.join(', ')}
-                    </span>
+                  {editingPanelIndex !== idx && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleStartEdit(idx, panel.description)}
+                    >
+                      <Edit3 className="h-3 w-3" />
+                    </Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
-                  {panel.description}
-                </p>
+
+                {editingPanelIndex === idx ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={editingDescription}
+                      onChange={(e) => setEditingDescription(e.target.value)}
+                      className="text-xs min-h-[100px] resize-none"
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelEdit}
+                        className="h-6 text-xs"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSaveEdit}
+                        className="h-6 text-xs"
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 text-xs">
+                    {/* 등장인물 */}
+                    {panel.characters && panel.characters.length > 0 && (
+                      <div className="text-muted-foreground">
+                        <span className="font-medium text-foreground">👤 </span>
+                        {panel.characters.join(', ')}
+                      </div>
+                    )}
+
+                    {/* 이미지 생성 프롬프트 */}
+                    <p className="text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">
+                      {panel.description}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -217,7 +298,8 @@ export function PanelCardsGrid({
           {videoScript.panels.map((panel, idx) => {
             const panelImage = panelImages[idx];
             const sceneInfo = videoScript.scenes.find(s => s.startPanelIndex === idx);
-            
+            const isGeneratingThis = generatingPanels.has(idx);
+
             return (
               <Card key={panel.panelIndex} className="overflow-hidden group relative">
                 {/* 패널 이미지 또는 플레이스홀더 */}
@@ -229,7 +311,7 @@ export function PanelCardsGrid({
                       className="w-full aspect-[9/16] object-cover"
                       loading="lazy"
                     />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                       <Button
                         variant="secondary"
                         size="sm"
@@ -238,19 +320,60 @@ export function PanelCardsGrid({
                         <Download className="h-4 w-4 mr-1" />
                         다운로드
                       </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onGeneratePanel(idx)}
+                        disabled={isGeneratingThis || generatingGrid}
+                      >
+                        {isGeneratingThis ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <RefreshCcw className="h-4 w-4 mr-1" />
+                            재생성
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full aspect-[9/16] bg-muted flex items-center justify-center">
-                    <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+                  <div className="w-full aspect-[9/16] bg-muted flex flex-col items-center justify-center gap-2 group-hover:bg-muted/80 transition-colors">
+                    {isGeneratingThis ? (
+                      <>
+                        <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                        <span className="text-xs text-muted-foreground">생성 중...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onGeneratePanel(idx)}
+                          disabled={generatingGrid}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Sparkles className="h-4 w-4 mr-1" />
+                          생성
+                        </Button>
+                      </>
+                    )}
                   </div>
                 )}
-                
+
                 {/* 패널 번호 */}
                 <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                   {idx + 1}
                 </div>
-                
+
+                {/* 생성 중 표시 */}
+                {isGeneratingThis && panelImage && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 text-white animate-spin" />
+                  </div>
+                )}
+
                 {/* 영상 길이 표시 */}
                 {sceneInfo && (
                   <div className="absolute top-2 right-2 bg-primary/90 text-white text-xs px-2 py-1 rounded">
@@ -279,4 +402,3 @@ export function PanelCardsGrid({
     </Card>
   );
 }
-

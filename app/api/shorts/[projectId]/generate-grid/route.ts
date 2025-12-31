@@ -13,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
-  
+
   // 요청 body에서 스타일, 그리드 크기, 영상 모드, 이미지 모델 파라미터 추출
   const body = await request.json().catch(() => ({})) as {
     style?: ImageStyle;
@@ -26,7 +26,7 @@ export async function POST(
   const videoMode: VideoMode = body.videoMode || 'cut-to-cut';
   const apiProvider: ImageProvider = body.apiProvider === 'seedream' ? 'seedream' : 'gemini';
   const gridConfig = GRID_CONFIGS[gridSize];
-  
+
   console.log('[shorts][generate-grid][POST] 그리드 이미지 생성:', projectId, '스타일:', style, '그리드:', gridSize, '영상모드:', videoMode, '모델:', apiProvider);
 
   // 프로젝트, 캐릭터, 영상스크립트 정보 조회
@@ -105,17 +105,15 @@ export async function POST(
     panelIndex: number;
     description: string;
     characters?: string[];
-    action?: string;
-    environment?: string;
   }
-  
+
   const videoScript = project.video_script as { panels?: PanelDesc[]; style?: string } | null;
   const panelDescriptions = videoScript?.panels || [];
-  
+
   // 패널 설명이 있으면 상세 프롬프트 구성
   let panelSection = '';
   let usePanelDescriptions = false;
-  
+
   if (panelDescriptions.length > 0) {
     // 패널 설명이 있으면 사용 (개수가 정확히 맞지 않아도 사용)
     usePanelDescriptions = true;
@@ -125,10 +123,8 @@ ${panelDescriptions.map((p: PanelDesc) => `
 Panel ${p.panelIndex + 1}:
 - Scene: ${p.description}
 - Characters: ${p.characters?.join(', ') || 'N/A'}
-- Action: ${p.action || 'N/A'}
-- Environment: ${p.environment || 'N/A'}
 `).join('')}`;
-    
+
     if (panelDescriptions.length === gridConfig.panelCount) {
       console.log('[shorts][generate-grid] 패널 설명 사용:', panelDescriptions.length);
     } else {
@@ -140,10 +136,10 @@ Panel ${p.panelIndex + 1}:
 
   // 프롬프트 구성 (그리드 크기에 따라 동적)
   const panelCount = gridSize === '2x2' ? 4 : 9;
-  const gridLayoutDesc = gridSize === '2x2' 
+  const gridLayoutDesc = gridSize === '2x2'
     ? '2 columns x 2 rows (EXACTLY 4 total panels)\n2. Reading order: left to right, top to bottom (panels 1-2 on top row, 3-4 on bottom row)'
     : '3 columns x 3 rows (EXACTLY 9 total panels)\n2. Reading order: left to right, top to bottom (panels 1-3 on top row, 4-6 on middle row, 7-9 on bottom row)';
-  
+
   // 실사풍일 때 contact sheet 스타일 강조
   const gridLayoutStyle = style === 'realistic'
     ? `Professional photography contact sheet layout. Collage of ${panelCount} DISTINCT photographs separated by THICK WHITE BORDERS (at least 20px). Film strip layout with clear visual separation. Each photo must be a completely separate scene - NO overlapping, NO blending between panels.`
@@ -274,7 +270,7 @@ Create the complete ${gridSize} grid image with EXACTLY ${panelCount} equal-size
     if (videoMode === 'per-cut') {
       // per-cut 모드: 각 패널마다 개별 씬 생성 (end_panel = null)
       const perCutScenes = createPerCutScenes(splitResult.panels, gridSize);
-      
+
       for (const scene of perCutScenes) {
         const panelFileName = `${projectId}/panel-${scene.sceneIndex}-${Date.now()}.png`;
 
@@ -307,7 +303,7 @@ Create the complete ${gridSize} grid image with EXACTLY ${panelCount} equal-size
     } else {
       // cut-to-cut 모드: 연속된 패널 페어로 씬 생성 (기존 로직)
       const panelPairs = createPanelPairs(splitResult.panels, gridSize);
-      
+
       for (const pair of panelPairs) {
         const startPanelFileName = `${projectId}/panel-${pair.sceneIndex}-start-${Date.now()}.png`;
         const endPanelFileName = `${projectId}/panel-${pair.sceneIndex}-end-${Date.now()}.png`;
