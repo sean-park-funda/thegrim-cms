@@ -2964,7 +2964,7 @@ export default function ScriptToMoviePage() {
               disabled={(() => {
                 const sortedCuts = [...cuts].sort((a, b) => a.cut_index - b.cut_index);
                 const currentCut = editingCutIndex !== null ? sortedCuts[editingCutIndex] : null;
-                return !editingCutPrompt.trim() || (currentCut && regeneratingCutIds.has(currentCut.id || ''));
+                return !editingCutPrompt.trim() || !!(currentCut && regeneratingCutIds.has(currentCut.id || ''));
               })()}
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
