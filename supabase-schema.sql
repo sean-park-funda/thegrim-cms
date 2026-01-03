@@ -310,3 +310,97 @@ $$ LANGUAGE plpgsql STABLE;
 -- CREATE POLICY "Public access" ON files FOR ALL USING (true);
 
 
+-- ========================================
+-- Script-to-Movie 서비스 테이블
+-- ========================================
+
+-- movie_projects 테이블
+CREATE TABLE IF NOT EXISTS movie_projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255),
+  script TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'draft',
+  video_mode VARCHAR(20) DEFAULT 'per-cut' CHECK (video_mode IN ('cut-to-cut', 'per-cut')),
+  grid_size VARCHAR(10) DEFAULT '2x2' CHECK (grid_size IN ('2x2', '3x3')),
+  grid_image_path TEXT,
+  video_script JSONB,
+  is_public BOOLEAN DEFAULT true,
+  created_by VARCHAR(255),
+  image_style VARCHAR(20) DEFAULT 'realistic' CHECK (image_style IN ('realistic', 'cartoon')),
+  aspect_ratio VARCHAR(10) DEFAULT '16:9' CHECK (aspect_ratio IN ('16:9', '9:16')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- movie_characters 테이블
+CREATE TABLE IF NOT EXISTS movie_characters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES movie_projects(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  image_prompt TEXT,
+  image_path TEXT,
+  storage_path TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_movie_characters_project_id ON movie_characters(project_id);
+
+-- movie_backgrounds 테이블
+CREATE TABLE IF NOT EXISTS movie_backgrounds (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES movie_projects(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  image_prompt TEXT,
+  image_path TEXT,
+  storage_path TEXT,
+  order_index INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_movie_backgrounds_project_id ON movie_backgrounds(project_id);
+
+-- movie_cuts 테이블
+CREATE TABLE IF NOT EXISTS movie_cuts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES movie_projects(id) ON DELETE CASCADE,
+  cut_index INTEGER NOT NULL,
+  camera_shot VARCHAR(50), -- Shot Size: ELS, LS, FS, MLS, MS, MCU, CU, ECU, Insert
+  camera_angle VARCHAR(50), -- Perspective: Eye Level, High Angle, Low Angle, etc.
+  camera_composition VARCHAR(100), -- Composition: Rule of Thirds, Center Framing, etc.
+  image_prompt TEXT,
+  characters TEXT[], -- 등장 캐릭터 이름 배열
+  background_id UUID REFERENCES movie_backgrounds(id) ON DELETE SET NULL,
+  background_name VARCHAR(255),
+  dialogue TEXT,
+  duration INTEGER DEFAULT 4,
+  image_path TEXT,
+  storage_path TEXT,
+  video_path TEXT,
+  video_status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_movie_cuts_project_id ON movie_cuts(project_id);
+CREATE INDEX IF NOT EXISTS idx_movie_cuts_background_id ON movie_cuts(background_id);
+
+-- movie_scenes 테이블 (레거시, 추후 삭제 예정)
+CREATE TABLE IF NOT EXISTS movie_scenes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES movie_projects(id) ON DELETE CASCADE,
+  scene_index INTEGER NOT NULL,
+  start_panel_path TEXT,
+  end_panel_path TEXT,
+  video_prompt TEXT,
+  duration INTEGER DEFAULT 5,
+  video_path TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_movie_scenes_project_id ON movie_scenes(project_id);
