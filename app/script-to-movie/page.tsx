@@ -103,6 +103,8 @@ interface MovieProject {
   video_script: VideoScript | null;
   is_public: boolean;
   created_by: string | null;
+  image_style?: 'realistic' | 'cartoon';
+  aspect_ratio?: '16:9' | '9:16';
   movie_characters?: MovieCharacter[];
   movie_backgrounds?: MovieBackground[];
   movie_cuts?: MovieCut[];
