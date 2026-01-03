@@ -88,7 +88,7 @@ export class HiganjimaStyleGenerator extends MonsterStyleGenerator {
   private getGenderBodyDescription(): string {
     switch (this.selectedGender) {
       case 'female':
-        return '**여성의 신체** - 풍만한 유방, 곡선적인 몸매, 긴 머리카락 등 여성적 특징이 남아있으나 기괴하게 변형됨';
+        return '**아름다운 여성의 신체** - 글래머러스하고 매력적인 여성의 몸매(풍만한 유방, 잘록한 허리, 섹시한 곡선미, 긴 다리, 흑발의 긴 머리카락)가 기괴하게 변형됨. 아름다움과 공포의 대비가 핵심.';
       case 'male':
         return '**남성의 신체** - 근육질의 몸통, 넓은 어깨 등 남성적 특징이 남아있으나 기괴하게 변형됨';
       case 'ambiguous':
@@ -190,27 +190,32 @@ export class HiganjimaStyleGenerator extends MonsterStyleGenerator {
       },
     ];
 
-    // 여성 신체 특화 요소
+    // 여성 신체 특화 요소 (아름다운 여성의 몸이 변형됨)
     const femaleElements: DesignElement[] = [
       {
-        name: '변형된 여성 상체',
-        description: '풍만한 유방이 있으나 기괴하게 변형됨 (비대칭, 위치 이상, 추가 유방)',
-        examples: 'grotesque female torso with multiple breasts, asymmetric chest, breasts in wrong positions'
+        name: '아름다운 여체의 변형',
+        description: '글래머러스하고 섹시한 여성의 아름다운 몸매(풍만한 가슴, 잘록한 허리, 긴 다리)가 부분적으로 기괴하게 변형됨. 아름다움은 유지하되 일부가 괴물화.',
+        examples: 'beautiful voluptuous female body partially transformed, sexy figure with grotesque mutations, attractive woman with monstrous parts'
       },
       {
-        name: '곡선적 신체의 왜곡',
-        description: '여성적 곡선이 극단적으로 과장되거나 뒤틀림 (과장된 허리 곡선, 비정상적 골반)',
-        examples: 'exaggerated feminine curves twisted grotesquely, distorted hourglass figure, warped hips'
+        name: '변형된 미인의 상체',
+        description: '아름다운 여성의 풍만한 유방과 상체가 기괴하게 변형됨 (추가 유방, 위치 이상, 비대칭)',
+        examples: 'beautiful female torso with multiple breasts, glamorous chest mutated, attractive upper body with grotesque additions'
       },
       {
-        name: '긴 머리카락의 변형',
-        description: '긴 여성의 머리카락이 촉수나 손처럼 움직이거나, 피부와 융합됨',
-        examples: 'long female hair moving like tentacles, hair fused with skin, prehensile hair'
+        name: '매혹적 곡선의 왜곡',
+        description: '섹시한 여성의 곡선미가 극단적으로 과장되거나 뒤틀림 (과장된 허리 곡선, 비정상적 골반, 늘어난 다리)',
+        examples: 'exaggerated sexy curves twisted grotesquely, seductive hourglass figure warped, attractive feminine silhouette distorted'
       },
       {
-        name: '기괴한 임신/출산',
-        description: '배 부분에서 뭔가가 자라나거나, 기괴한 임신 상태',
-        examples: 'grotesque pregnant belly with something emerging, parasitic growth in abdomen'
+        name: '긴 흑발의 변형',
+        description: '아름다운 긴 검은 머리카락이 촉수나 손처럼 움직이거나, 피부와 융합되어 살아있는 것처럼',
+        examples: 'beautiful long black hair moving like tentacles, gorgeous dark hair fused with skin, prehensile flowing hair'
+      },
+      {
+        name: '미녀와 괴물의 대비',
+        description: '상반신은 아름다운 여성이지만 하반신이 괴물이거나, 그 반대. 미와 추의 극단적 대비.',
+        examples: 'beautiful woman upper body with monster lower half, attractive face on grotesque body, beauty and horror contrast'
       },
     ];
 
@@ -372,7 +377,7 @@ ${creaturesList}${humanPartText}
 - ${faceDescription}
 
 **중요:** 위에서 지정된 신체 성별과 얼굴 유형을 반드시 반영해야 합니다. 특히:
-${this.selectedGender === 'female' ? `- **여성 신체 필수**: 풍만한 유방, 곡선적인 여성 체형이 기괴하게 변형된 모습을 포함할 것` : ''}
+${this.selectedGender === 'female' ? `- **🔥 아름다운 여성 신체 필수**: 글래머러스하고 섹시한 여성의 아름다운 몸매(풍만한 가슴, 잘록한 허리, 긴 다리, 매혹적인 곡선미)를 기반으로 하되 일부가 기괴하게 변형됨. **아름다움과 공포의 대비**가 핵심! 단순한 괴물이 아닌 "아름다운 여성이 괴물화된" 느낌.` : ''}
 ${this.selectedFaceType !== 'human' ? `- **비인간 얼굴**: 인간의 얼굴이 아닌 형태로 표현할 것` : ''}
 
 **4. 이번에 적용할 디자인 요소:**
@@ -401,13 +406,13 @@ ${creatureApplicationGuide}
 **중요:** 응답은 반드시 유효한 JSON 형식으로 작성해주세요:
 \`\`\`json
 {
-  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. Higanjima manga style, G-pen linework, cross-hatching, grotesque human transformation 등의 스타일 키워드 포함. 지정된 성별(${this.selectedGender})과 얼굴 유형(${this.selectedFaceType})을 반드시 반영. 반드시 'no text, no speech bubbles, no sound effects, creature only, plain background' 포함",
-  "negativePrompt": "cute, anime style, smooth skin, glowing, magical, clean, beautiful, colorful, cartoon, chibi, text, speech bubble, dialogue, word balloon, sound effects, onomatopoeia, manga text, Japanese text, Korean text, letters, captions, action lines, speed lines, motion blur, impact lines, focus lines",
+  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. Higanjima manga style, G-pen linework, cross-hatching, grotesque human transformation 등의 스타일 키워드 포함. 지정된 성별(${this.selectedGender})과 얼굴 유형(${this.selectedFaceType})을 반드시 반영.${this.selectedGender === 'female' ? ' beautiful voluptuous female body, glamorous sexy curves, attractive woman partially transformed into monster, beauty and horror contrast.' : ''} 반드시 'no text, no speech bubbles, no sound effects, creature only, plain background' 포함",
+  "negativePrompt": "cute, anime style, smooth skin, glowing, magical, clean, colorful, cartoon, chibi, text, speech bubble, dialogue, word balloon, sound effects, onomatopoeia, manga text, Japanese text, Korean text, letters, captions, action lines, speed lines, motion blur, impact lines, focus lines",
   "aspectRatio": "9:16 또는 1:1 또는 16:9 중 하나"
 }
 \`\`\`
 
-- **imagePrompt:** 피안도 만화 스타일을 강조하는 영어 프롬프트. 지정된 성별과 얼굴 유형, 날카로운 펜선, 해칭, 인간 기반 변형, 거대화 등의 분위기 포함. **반드시 "no text, no speech bubbles, creature only" 등의 지시 포함.**
+- **imagePrompt:** 피안도 만화 스타일을 강조하는 영어 프롬프트. 지정된 성별과 얼굴 유형, 날카로운 펜선, 해칭, 인간 기반 변형, 거대화 등의 분위기 포함.${this.selectedGender === 'female' ? ' **여성일 경우 "beautiful voluptuous female body, sexy curves, attractive woman transformed" 등 아름다운 여성 키워드 필수.**' : ''} **반드시 "no text, no speech bubbles, creature only" 등의 지시 포함.**
 - **negativePrompt:** 피안도의 처절하고 징그러운 분위기와 맞지 않는 요소 + **텍스트/말풍선/효과선 관련 키워드 필수 포함**
 - **aspectRatio:** "9:16", "1:1", "16:9" 중 하나만 사용
 
