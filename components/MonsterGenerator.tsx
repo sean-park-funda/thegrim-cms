@@ -7,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { generateMonsterPrompt, generateMonsterImage } from '@/lib/api/monsterGenerator';
-import { Copy, Loader2, Sparkles, Image as ImageIcon, Save, CheckSquare2, X } from 'lucide-react';
+import { generateMonsterPrompt, generateMonsterImage, MonsterStyle } from '@/lib/api/monsterGenerator';
+import { Copy, Loader2, Sparkles, Image as ImageIcon, Save, CheckSquare2, X, Maximize2 } from 'lucide-react';
+import { ImageViewer } from '@/components/ImageViewer';
 import { Process, Episode, Cut } from '@/lib/supabase';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile } from '@/lib/api/files';
@@ -36,6 +37,7 @@ interface MonsterGeneratorProps {
 export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }: MonsterGeneratorProps) {
   const { profile } = useStore();
   const { model: globalModel } = useImageModel();
+  const [monsterStyle, setMonsterStyle] = useState<MonsterStyle>('normal');
   const [imagePrompt, setImagePrompt] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<string>('1:1');
   const [loading, setLoading] = useState(false);
@@ -47,9 +49,13 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
   const [savingImages, setSavingImages] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string>('');
   const [generationCount, setGenerationCount] = useState<number>(4);
+
+  // 이미지 뷰어 상태
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerImage, setViewerImage] = useState<{ url: string; name: string } | null>(null);
   const [generatingImages, setGeneratingImages] = useState<Array<{ id: string; status: 'loading' | 'success' | 'error' }>>([]);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
-  
+
   // 저장 다이얼로그용 회차/컷 선택 상태
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [episodesForSave, setEpisodesForSave] = useState<Episode[]>([]);
@@ -156,15 +162,15 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
 
         for (let i = batchStart; i < batchEnd; i++) {
           const placeholderId = placeholderIds[i].id;
-          
+
           // 프롬프트 생성 → 이미지 생성 순차 처리
           const promise = (async () => {
             try {
-              // 1. 프롬프트 생성
-              const promptResult = await generateMonsterPrompt();
-              
+              // 1. 프롬프트 생성 (선택된 스타일 적용)
+              const promptResult = await generateMonsterPrompt(monsterStyle);
+
               if (promptResult.error || !promptResult.imagePrompt) {
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
@@ -182,9 +188,9 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
 
               // 2. 이미지 생성
               const imageResult = await generateMonsterImage(promptText, ratio, cutId, profile?.id, globalModel);
-              
+
               if (imageResult.error) {
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
@@ -205,22 +211,22 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
                   selected: false,
                   createdAt: new Date().toISOString(),
                 };
-                
+
                 // 생성 중인 이미지 상태 업데이트
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'success' as const } : img
                 ));
-                
+
                 // 생성된 이미지를 즉시 추가
                 setGeneratedImages(prev => [newImage, ...prev]);
                 successCount++;
               } else {
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
               }
-              
+
               // 진행 상황 업데이트
               setGenerationProgress(prev => prev ? {
                 current: prev.current + 1,
@@ -228,7 +234,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
               } : null);
             } catch (err) {
               console.error(`프롬프트/이미지 ${i + 1} 생성 실패:`, err);
-              setGeneratingImages(prev => prev.map(img => 
+              setGeneratingImages(prev => prev.map(img =>
                 img.id === placeholderId ? { ...img, status: 'error' as const } : img
               ));
               failCount++;
@@ -279,7 +285,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
     const promptText = promptToUse || imagePrompt;
     const ratio = ratioToUse || aspectRatio;
     const generateCount = count || generationCount;
-    
+
     if (!promptText) {
       setImageError('이미지 프롬프트가 없습니다.');
       return;
@@ -288,7 +294,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
     setImageLoading(true);
     setImageError(null);
     setGenerationProgress({ current: 0, total: generateCount });
-    
+
     // 생성 중인 이미지 플레이스홀더 생성
     const placeholderIds = Array.from({ length: generateCount }, (_, i) => ({
       id: `placeholder-${Date.now()}-${i}`,
@@ -312,7 +318,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
           const promise = generateMonsterImage(promptText, ratio, cutId, profile?.id, globalModel)
             .then((result) => {
               if (result.error) {
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
@@ -329,24 +335,24 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
                   selected: false,
                   createdAt: new Date().toISOString(),
                 };
-                
+
                 // 생성 중인 이미지 상태 업데이트
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'success' as const } : img
                 ));
-                
+
                 // 생성된 이미지를 즉시 추가
                 setGeneratedImages(prev => [newImage, ...prev]);
                 newImages.push(newImage);
                 successCount++;
               } else if (result.imageData) {
                 // 하위 호환성: base64 데이터가 있는 경우
-                setGeneratingImages(prev => prev.map(img => 
+                setGeneratingImages(prev => prev.map(img =>
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
               }
-              
+
               // 진행 상황 업데이트
               setGenerationProgress(prev => prev ? {
                 current: prev.current + 1,
@@ -355,7 +361,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
             })
             .catch((err) => {
               console.error(`이미지 ${i + 1} 생성 실패:`, err);
-              setGeneratingImages(prev => prev.map(img => 
+              setGeneratingImages(prev => prev.map(img =>
                 img.id === placeholderId ? { ...img, status: 'error' as const } : img
               ));
               failCount++;
@@ -479,7 +485,11 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
               fileId: img.fileId,
               processId: selectedProcessId,
               cutId: targetCutId,
-              description: '괴수 생성기로 생성된 이미지',
+              description: monsterStyle === 'jjk'
+                ? '괴수 생성기로 생성된 이미지 (주술회전 스타일)'
+                : monsterStyle === 'higanjima'
+                ? '괴수 생성기로 생성된 이미지 (피안도 스타일)'
+                : '괴수 생성기로 생성된 이미지',
             }),
           });
 
@@ -533,14 +543,53 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
         </CardTitle>
         <CardDescription className="text-xs">
           랜덤으로 선택된 생물들을 결합하여 괴수 이미지를 생성합니다.
+          {monsterStyle === 'jjk' && (
+            <span className="ml-1 text-purple-500 font-medium">
+              (주술회전 스타일)
+            </span>
+          )}
+          {monsterStyle === 'higanjima' && (
+            <span className="ml-1 text-red-500 font-medium">
+              (피안도 스타일)
+            </span>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
+        {/* 스타일 선택 */}
+        <div className="flex gap-2">
+          <Select value={monsterStyle} onValueChange={(value) => setMonsterStyle(value as MonsterStyle)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="스타일 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">
+                <span className="flex items-center gap-2">
+                  <span className="text-base">🖊️</span>
+                  <span>일반 스타일 (흑백 펜화)</span>
+                </span>
+              </SelectItem>
+              <SelectItem value="jjk">
+                <span className="flex items-center gap-2">
+                  <span className="text-base">👹</span>
+                  <span>주술회전 스타일 (저주 괴수)</span>
+                </span>
+              </SelectItem>
+              <SelectItem value="higanjima">
+                <span className="flex items-center gap-2">
+                  <span className="text-base">🧛</span>
+                  <span>피안도 스타일 (악귀)</span>
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex gap-2">
           <Button
             onClick={handleGenerate}
             disabled={loading}
-            className="flex-1"
+            className={`flex-1 ${monsterStyle === 'jjk' ? 'bg-purple-600 hover:bg-purple-700' : monsterStyle === 'higanjima' ? 'bg-red-600 hover:bg-red-700' : ''}`}
             size="sm"
           >
             {loading ? (
@@ -551,7 +600,7 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
             ) : (
               <>
                 <Sparkles className="h-4 w-4 mr-2" />
-                괴수 이미지 생성
+                {monsterStyle === 'jjk' ? '주령 이미지 생성' : monsterStyle === 'higanjima' ? '악귀 이미지 생성' : '괴수 이미지 생성'}
               </>
             )}
           </Button>
@@ -643,29 +692,46 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
               {generatedImages.map((img) => (
                 <div
                   key={img.id}
-                  className={`relative border rounded-lg overflow-hidden cursor-pointer transition-all ${
+                  className={`relative border rounded-lg overflow-hidden transition-all ${
                     selectedImageIds.has(img.id) ? 'ring-2 ring-primary' : ''
                   }`}
-                  onClick={() => handleImageSelect(img.id, !selectedImageIds.has(img.id))}
                 >
-                  <div className="aspect-square relative">
+                  <div
+                    className="aspect-square relative cursor-pointer group"
+                    onClick={() => {
+                      if (img.fileUrl) {
+                        setViewerImage({ url: img.fileUrl, name: `monster-${img.id}` });
+                        setViewerOpen(true);
+                      }
+                    }}
+                  >
                     {img.fileUrl ? (
-                      <img
-                        src={img.fileUrl}
-                        alt="Generated monster"
-                        className="w-full h-full object-cover"
-                      />
+                      <>
+                        <img
+                          src={img.fileUrl}
+                          alt="Generated monster"
+                          className="w-full h-full object-cover"
+                        />
+                        {/* 호버 시 확대 아이콘 표시 */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </>
                     ) : (
                       <div className="w-full h-full bg-muted flex items-center justify-center">
                         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                       </div>
                     )}
                   </div>
-                  <div className="absolute top-1 right-1">
+                  {/* 체크박스 - 별도 영역 */}
+                  <div
+                    className="absolute top-1 right-1 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Checkbox
                       checked={selectedImageIds.has(img.id)}
                       onCheckedChange={(checked) => handleImageSelect(img.id, checked === true)}
-                      onClick={(e) => e.stopPropagation()}
+                      className="bg-white/80 border-gray-400"
                     />
                   </div>
                 </div>
@@ -828,7 +894,21 @@ export function MonsterGenerator({ cutId, webtoonId, processes, onFilesReload }:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 이미지 뷰어 */}
+      {viewerImage && (
+        <ImageViewer
+          imageUrl={viewerImage.url}
+          imageName={viewerImage.name}
+          open={viewerOpen}
+          onOpenChange={(open) => {
+            setViewerOpen(open);
+            if (!open) {
+              setViewerImage(null);
+            }
+          }}
+        />
+      )}
     </Card>
   );
 }
-

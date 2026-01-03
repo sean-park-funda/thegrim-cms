@@ -12,7 +12,7 @@ const SEEDREAM_API_TIMEOUT = 60000; // 60초
 interface GenerateMonsterImageRequest {
   prompt: string;
   aspectRatio?: string;
-  cutId: string; // 컷 ID (필수)
+  cutId?: string; // 컷 ID (선택적 - 없으면 임시 폴더에 저장)
   userId?: string; // 사용자 ID (선택적)
   apiProvider?: ApiProvider; // API 제공자 (gemini, seedream, auto)
 }
@@ -65,8 +65,8 @@ export async function POST(request: NextRequest) {
       // 1:1 -> 1920x1920 (3,686,400 픽셀)
       // 16:9 -> 2560x1440 (3,686,400 픽셀)
       // 9:16 -> 1440x2560 (3,686,400 픽셀)
-      const seedreamSize = aspectRatio === '16:9' ? '2560x1440' 
-        : aspectRatio === '9:16' ? '1440x2560' 
+      const seedreamSize = aspectRatio === '16:9' ? '2560x1440'
+        : aspectRatio === '9:16' ? '1440x2560'
         : '1920x1920';
       const result = await generateSeedreamImage({
         provider: 'seedream',
@@ -124,57 +124,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!cutId) {
-      console.error('[괴수 이미지 생성] cutId가 없음');
-      return NextResponse.json(
-        { error: 'cutId가 필요합니다.' },
-        { status: 400 }
-      );
-    }
-
     // base64 데이터를 Buffer로 변환
     const imageBuffer = Buffer.from(generatedImageData, 'base64');
-    
+
     // 임시 파일 저장 (is_temp = true)
     const extension = generatedImageMimeType === 'image/png' ? '.png' : '.jpg';
     const uuid = crypto.randomUUID().substring(0, 8);
     const fileName = `monster-${uuid}${extension}`;
-    
-    // 컷의 첫 번째 공정 ID를 가져오기 (임시로 사용)
-    const { data: cutData } = await supabase
-      .from('cuts')
-      .select('episode_id')
-      .eq('id', cutId)
-      .single();
-    
-    if (!cutData) {
-      console.error('[괴수 이미지 생성] 컷 정보를 찾을 수 없음');
-      return NextResponse.json(
-        { error: '컷 정보를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
+
+    let processId: string | null = null;
+    let storagePath: string;
+
+    if (cutId) {
+      // cutId가 있는 경우: 컷 폴더에 저장
+      const { data: cutData } = await supabase
+        .from('cuts')
+        .select('episode_id')
+        .eq('id', cutId)
+        .single();
+
+      if (!cutData) {
+        console.warn('[괴수 이미지 생성] 컷 정보를 찾을 수 없음, 임시 폴더에 저장');
+      }
+
+      // 첫 번째 공정 ID 가져오기
+      const { data: processes } = await supabase
+        .from('processes')
+        .select('id')
+        .order('order_index', { ascending: true })
+        .limit(1)
+        .single();
+
+      processId = processes?.id || null;
+
+      if (processId) {
+        storagePath = `${cutId}/${processId}/${fileName}`;
+      } else {
+        // 공정이 없으면 임시 폴더에 저장
+        storagePath = `temp/monster/${userId || 'anonymous'}/${fileName}`;
+      }
+    } else {
+      // cutId가 없는 경우: 임시 폴더에 저장
+      console.log('[괴수 이미지 생성] cutId가 없음, 임시 폴더에 저장');
+      storagePath = `temp/monster/${userId || 'anonymous'}/${fileName}`;
     }
 
-    // 에피소드의 첫 번째 공정 ID 가져오기
-    const { data: processes } = await supabase
-      .from('processes')
-      .select('id')
-      .order('order_index', { ascending: true })
-      .limit(1)
-      .single();
-
-    const processId = processes?.id || null;
-    
-    if (!processId) {
-      console.error('[괴수 이미지 생성] 공정을 찾을 수 없음');
-      return NextResponse.json(
-        { error: '공정을 찾을 수 없습니다.' },
-        { status: 404 }
-      );
-    }
-
-    const storagePath = `${cutId}/${processId}/${fileName}`;
-    
     console.log('[괴수 이미지 생성] 임시 파일 저장 시작:', storagePath);
     const { error: uploadError } = await supabase.storage
       .from('webtoon-files')
@@ -215,7 +209,7 @@ export async function POST(request: NextRequest) {
     const { data: fileData, error: dbError } = await supabase
       .from('files')
       .insert({
-        cut_id: cutId,
+        cut_id: cutId || null, // cutId가 없으면 null
         process_id: processId,
         file_name: fileName,
         file_path: fileUrl,
@@ -283,4 +277,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

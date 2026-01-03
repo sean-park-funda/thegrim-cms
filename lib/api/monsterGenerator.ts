@@ -1,7 +1,13 @@
+// 타입을 monster-styles 모듈에서 re-export
+export type { MonsterStyle } from '@/lib/monster-styles';
+import type { MonsterStyle } from '@/lib/monster-styles';
+
 export interface GenerateMonsterPromptResponse {
   prompt: string;
   imagePrompt?: string;
+  negativePrompt?: string;
   aspectRatio?: string;
+  style?: MonsterStyle;
   error?: string;
 }
 
@@ -15,13 +21,14 @@ export interface GenerateMonsterImageResponse {
 
 export type ApiProvider = 'gemini' | 'seedream' | 'auto';
 
-export async function generateMonsterPrompt(): Promise<GenerateMonsterPromptResponse> {
+export async function generateMonsterPrompt(style: MonsterStyle = 'normal'): Promise<GenerateMonsterPromptResponse> {
   try {
     const response = await fetch('/api/generate-monster-prompt', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ style }),
     });
 
     if (!response.ok) {
@@ -33,7 +40,9 @@ export async function generateMonsterPrompt(): Promise<GenerateMonsterPromptResp
     return {
       prompt: data.prompt || '',
       imagePrompt: data.imagePrompt || '',
+      negativePrompt: data.negativePrompt || '',
       aspectRatio: data.aspectRatio || '1:1',
+      style: data.style || style,
       error: data.error,
     };
   } catch (error) {
@@ -85,4 +94,3 @@ export async function generateMonsterImage(
     };
   }
 }
-
