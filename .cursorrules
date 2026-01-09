@@ -282,10 +282,10 @@ Dialog 컴포넌트를 생성하거나 수정할 때, 화면 공간을 충분히
    ```typescript
    // ✅ 올바른 방법
    <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
-   
+
    // ❌ 잘못된 방법 (sm: prefix 없음 - 기본값에 덮어써짐)
    <DialogContent className="max-w-4xl w-[90vw]">
-   
+
    // ❌ 잘못된 방법 (너무 작음)
    <DialogContent className="sm:max-w-lg">
    ```

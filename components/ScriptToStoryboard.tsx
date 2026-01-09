@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Users, Sparkles, Check, Edit, Scissors } from 'lucide-react';
+import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Users, Sparkles, Check, Edit, Scissors, ListPlus } from 'lucide-react';
 import { ImageViewer } from '@/components/ImageViewer';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
 import { Webtoon, Episode } from '@/lib/supabase';
@@ -174,6 +174,9 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   const [editScriptContent, setEditScriptContent] = useState('');
   const [savingEditScript, setSavingEditScript] = useState(false);
   const [editScriptDialogOpen, setEditScriptDialogOpen] = useState(false);
+
+  // 컷목록 바로넣기 관련 상태
+  const [savingCutList, setSavingCutList] = useState(false);
 
   // 회차 목록 로드
   useEffect(() => {
@@ -560,6 +563,118 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       setError(err instanceof Error ? err.message : '글콘티 생성에 실패했습니다.');
     } finally {
       setGeneratingId(null);
+    }
+  };
+
+  // 컷목록 파싱: 숫자로 시작하는 줄들을 컷으로 변환
+  const parseCutList = (text: string): Cut[] => {
+    const lines = text.split('\n');
+    const cuts: Cut[] = [];
+    let currentCut: { number: number; content: string[] } | null = null;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // 숫자로 시작하는지 확인 (예: "1. ", "1) ", "1: ", "1 ")
+      const match = trimmed.match(/^(\d+)[\.\)\:\s]+(.*)$/);
+      if (match) {
+        // 이전 컷 저장
+        if (currentCut) {
+          cuts.push({
+            cutNumber: currentCut.number,
+            title: '',
+            description: currentCut.content.join('\n').trim(),
+          });
+        }
+        // 새 컷 시작
+        currentCut = {
+          number: parseInt(match[1], 10),
+          content: match[2].trim() ? [match[2].trim()] : [],
+        };
+      } else if (currentCut) {
+        // 현재 컷에 내용 추가 (다음 숫자가 나올 때까지)
+        currentCut.content.push(trimmed);
+      }
+    }
+
+    // 마지막 컷 저장
+    if (currentCut) {
+      cuts.push({
+        cutNumber: currentCut.number,
+        title: '',
+        description: currentCut.content.join('\n').trim(),
+      });
+    }
+
+    return cuts;
+  };
+
+  // 컷목록 바로넣기: 대본 내용에서 숫자 목록을 파싱하여 컷으로 변환
+  const handleDirectCutList = async (script: Script) => {
+    if (!script.id) {
+      setError('scriptId가 없습니다. 페이지를 새로고침 후 다시 시도하세요.');
+      return;
+    }
+
+    const cuts = parseCutList(script.content);
+    if (cuts.length === 0) {
+      setError('대본에서 유효한 컷을 찾을 수 없습니다. 숫자로 시작하는 형식(예: 1. 내용)으로 대본을 작성해주세요.');
+      return;
+    }
+
+    const hasExistingStoryboards = script.storyboards && script.storyboards.length > 0;
+    
+    if (hasExistingStoryboards) {
+      const confirmed = window.confirm(
+        `기존 글콘티와 생성된 이미지가 모두 삭제되고 대본에서 ${cuts.length}개의 컷을 추출합니다. 계속하시겠습니까?`
+      );
+      if (!confirmed) {
+        return;
+      }
+    } else {
+      const confirmed = window.confirm(
+        `대본에서 ${cuts.length}개의 컷을 추출하여 글콘티로 저장합니다. 계속하시겠습니까?`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setSavingCutList(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(script.id)}/storyboards`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scriptId: script.id,
+          cuts: cuts,
+          deleteExisting: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '컷 목록 저장에 실패했습니다.');
+      }
+
+      const storyboard = (await res.json()) as Storyboard;
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === script.id
+            ? {
+                ...s,
+                storyboards: [storyboard],
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      console.error('컷 목록 저장 실패:', err);
+      setError(err instanceof Error ? err.message : '컷 목록 저장에 실패했습니다.');
+    } finally {
+      setSavingCutList(false);
     }
   };
 
@@ -1602,23 +1717,43 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle>생성된 글콘티</CardTitle>
-                      <Button
-                        size="sm"
-                        onClick={() => handleGenerate(selectedScript)}
-                        disabled={generatingId === selectedScript.id}
-                      >
-                        {generatingId === selectedScript.id ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            생성 중...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="mr-2 h-4 w-4" />
-                            글콘티 생성
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDirectCutList(selectedScript)}
+                          disabled={generatingId === selectedScript.id || savingCutList}
+                        >
+                          {savingCutList ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              추출 중...
+                            </>
+                          ) : (
+                            <>
+                              <ListPlus className="mr-2 h-4 w-4" />
+                              컷목록 바로넣기
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleGenerate(selectedScript)}
+                          disabled={generatingId === selectedScript.id || savingCutList}
+                        >
+                          {generatingId === selectedScript.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              생성 중...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              글콘티 생성
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -2205,6 +2340,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
           )}
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

@@ -281,3 +281,108 @@ export async function POST(
   return NextResponse.json(data, { status: 201 });
 }
 
+// PUT: 컷 목록 직접 저장 (AI 없이)
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ scriptId?: string }> }
+) {
+  const body = await request.json().catch(() => null) as {
+    scriptId?: string;
+    cuts: Array<{
+      cutNumber: number;
+      title?: string;
+      background?: string;
+      description: string;
+      dialogue?: string;
+      charactersInCut?: string[];
+    }>;
+    deleteExisting?: boolean;
+  } | null;
+
+  const { scriptId: paramScriptId } = await context.params;
+  const scriptId = paramScriptId || body?.scriptId;
+
+  if (!scriptId) {
+    console.error('[storyboards][PUT] scriptId 누락', { paramScriptId, body });
+    return NextResponse.json({ error: 'scriptId가 필요합니다.' }, { status: 400 });
+  }
+
+  if (!body?.cuts || !Array.isArray(body.cuts) || body.cuts.length === 0) {
+    return NextResponse.json({ error: '컷 목록이 필요합니다.' }, { status: 400 });
+  }
+
+  const deleteExisting = body.deleteExisting ?? true;
+
+  // 기존 스토리보드와 이미지 삭제
+  if (deleteExisting) {
+    console.log('[storyboards][PUT] 기존 스토리보드 및 이미지 삭제 시작', { scriptId });
+    
+    const { data: existingStoryboards, error: fetchError } = await supabase
+      .from('episode_script_storyboards')
+      .select('id')
+      .eq('script_id', scriptId);
+
+    if (fetchError) {
+      console.error('[storyboards][PUT] 기존 스토리보드 조회 실패:', fetchError);
+    } else if (existingStoryboards && existingStoryboards.length > 0) {
+      const storyboardIds = existingStoryboards.map(s => s.id);
+      
+      // 이미지 삭제
+      const { error: imageDeleteError } = await supabase
+        .from('episode_script_storyboard_images')
+        .delete()
+        .in('storyboard_id', storyboardIds);
+
+      if (imageDeleteError) {
+        console.error('[storyboards][PUT] 이미지 삭제 실패:', imageDeleteError);
+      }
+
+      // 스토리보드 삭제
+      const { error: storyboardDeleteError } = await supabase
+        .from('episode_script_storyboards')
+        .delete()
+        .eq('script_id', scriptId);
+
+      if (storyboardDeleteError) {
+        console.error('[storyboards][PUT] 스토리보드 삭제 실패:', storyboardDeleteError);
+      }
+    }
+  }
+
+  // 응답 JSON 구성
+  const responseJson = {
+    cuts: body.cuts.map((cut, index) => ({
+      cutNumber: cut.cutNumber || index + 1,
+      title: cut.title || '',
+      background: cut.background || '',
+      description: cut.description || '',
+      dialogue: cut.dialogue || '',
+      charactersInCut: cut.charactersInCut || [],
+    })),
+    characters: [],
+  };
+
+  // 저장
+  const { data, error: insertError } = await supabase
+    .from('episode_script_storyboards')
+    .insert({
+      script_id: scriptId,
+      model: 'manual', // 수동 입력 표시
+      prompt: null,
+      response_json: responseJson,
+      cuts_count: body.cuts.length,
+      created_by: null,
+    })
+    .select('*')
+    .single();
+
+  if (insertError) {
+    console.error('[storyboards][PUT] 저장 실패:', insertError);
+    return NextResponse.json({ error: '글콘티 저장에 실패했습니다.' }, { status: 500 });
+  }
+
+  console.log('[storyboards][PUT] 컷 목록 직접 저장 완료:', { cutsCount: body.cuts.length });
+
+  return NextResponse.json(data, { status: 201 });
+}
+
