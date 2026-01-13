@@ -381,7 +381,6 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
 
   // 상태
   const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<MonsterImage[]>([]);
@@ -559,7 +558,10 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
       return;
     }
 
-    setImageLoading(true);
+    // 해당 프롬프트만 로딩 상태로 변경
+    setGeneratedPrompts(prev => prev.map(p =>
+      p.id === promptId ? { ...p, isLoading: true } : p
+    ));
     setImageError(null);
     setGenerationProgress({ current: 0, total: generationCount });
 
@@ -670,7 +672,10 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
       setGeneratingImages([]);
       setGenerationProgress(null);
     } finally {
-      setImageLoading(false);
+      // 해당 프롬프트의 로딩 상태 해제
+      setGeneratedPrompts(prev => prev.map(p =>
+        p.id === promptId ? { ...p, isLoading: false } : p
+      ));
     }
   };
 
@@ -1004,10 +1009,10 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
                             <Button
                               size="sm"
                               onClick={() => handleGenerateImage(promptData.id)}
-                              disabled={imageLoading}
+                              disabled={promptData.isLoading}
                               className="flex-1"
                             >
-                              {imageLoading ? (
+                              {promptData.isLoading ? (
                                 <>
                                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                   이미지 생성 중...
@@ -1061,7 +1066,7 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
               </div>
             )}
 
-            {imageLoading && generationProgress && (
+            {generatedPrompts.some(p => p.isLoading) && generationProgress && (
               <div className="flex items-center justify-center p-4 border border-border rounded-lg">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 <span className="ml-2 text-sm text-muted-foreground">
