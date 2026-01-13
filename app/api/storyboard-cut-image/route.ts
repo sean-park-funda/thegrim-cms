@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     cutIndex?: number;
     selectedCharacterSheets?: Record<string, number>; // 캐릭터 이름 -> 선택된 시트 인덱스
     apiProvider?: 'gemini' | 'seedream';
+    backgroundImageUrl?: string; // 배경 이미지 URL (선택)
   } | null;
 
   const description = body?.description?.trim();
@@ -67,18 +68,18 @@ export async function POST(request: NextRequest) {
 
   // 현재 컷의 대사에서 캐릭터 이름 추출
   const characterSheetImages: Array<{ base64: string; mimeType: string; characterName: string }> = [];
-  const responseJson = storyboard.response_json as { 
-    cuts?: Array<{ cutNumber?: number; dialogue?: string; charactersInCut?: string[] }>; 
-    characters?: Array<{ name?: string; description?: string }> 
+  const responseJson = storyboard.response_json as {
+    cuts?: Array<{ cutNumber?: number; dialogue?: string; charactersInCut?: string[] }>;
+    characters?: Array<{ name?: string; description?: string }>
   };
 
   // 현재 컷 정보 가져오기
   const currentCut = responseJson.cuts?.[cutIndex];
   const cutDialogue = currentCut?.dialogue || dialogue || '';
-  
+
   // 캐릭터 이름 추출을 위한 Set 초기화
   const characterNamesInDialogue = new Set<string>();
-  
+
   // 0단계: 글콘티에서 컷마다 명시한 등장인물 배열(charactersInCut)이 있으면 우선 사용
   if (currentCut?.charactersInCut && Array.isArray(currentCut.charactersInCut)) {
     for (const name of currentCut.charactersInCut) {
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 1단계: 대사에서 캐릭터 이름 추출 (패턴: "캐릭터이름:", "캐릭터이름(OFF):", "N박스: 캐릭터이름" 등)
-  
+
   // 패턴 1: "캐릭터이름:" 또는 "캐릭터이름(OFF):"
   const nameColonPattern = /^([가-힣a-zA-Z\s]+?)(?:\([^)]+\))?\s*:/gm;
   let match;
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       characterNamesInDialogue.add(name);
     }
   }
-  
+
   // 패턴 2: "N박스: 캐릭터이름(정보)"
   const nboxPattern = /N박스:\s*([가-힣a-zA-Z\s]+?)(?:\([^)]+\))?/g;
   while ((match = nboxPattern.exec(cutDialogue)) !== null) {
@@ -123,9 +124,9 @@ export async function POST(request: NextRequest) {
   console.log('[storyboard-cut-image] 추출된 캐릭터 이름:', Array.from(characterNamesInDialogue));
 
   if (webtoonId && characterNamesInDialogue.size > 0) {
-    console.log('[storyboard-cut-image] 캐릭터시트 이미지 다운로드 시작...', { 
-      cutIndex, 
-      characterNames: Array.from(characterNamesInDialogue) 
+    console.log('[storyboard-cut-image] 캐릭터시트 이미지 다운로드 시작...', {
+      cutIndex,
+      characterNames: Array.from(characterNamesInDialogue)
     });
 
     for (const charName of characterNamesInDialogue) {
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
         const selectedSheetIndex = body?.selectedCharacterSheets?.[charName] ?? 0;
         const sheetIndex = Math.min(selectedSheetIndex, sheets.length - 1);
         const sheet = sheets[sheetIndex];
-        
+
         console.log('[storyboard-cut-image] 선택된 캐릭터시트 사용:', {
           characterName: charName,
           selectedIndex: selectedSheetIndex,
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 등장인물 목록 생성
-  const characterNamesList = characterSheetImages.length > 0 
+  const characterNamesList = characterSheetImages.length > 0
     ? characterSheetImages.map(c => c.characterName).join(', ')
     : '없음';
 
@@ -225,6 +226,7 @@ export async function POST(request: NextRequest) {
 - 명확한 구도/카메라 시점/인물 포즈 표현
 - 과도한 채색 없이 라인 드로잉 강조
 - **중요: 배경 설명을 정확히 반영하여 배경을 상세히 그려주세요. 배경의 일관성을 유지하는 것이 중요합니다.**
+${body?.backgroundImageUrl ? '- **중요: 첫 번째 레퍼런스 이미지는 현재 컷의 배경입니다. 이 배경을 기반으로 콘티를 그려주세요.**' : ''}
 ${characterSheetImages.length > 0 ? '- **중요: 아래 제공된 캐릭터 레퍼런스 이미지를 정확히 참고하여 각 캐릭터의 디자인을 일관성 있게 그려주세요. 각 레퍼런스 이미지 앞에 해당 캐릭터 이름이 명시되어 있습니다.**' : ''}
 
 컷 제목: ${title}
@@ -237,6 +239,28 @@ ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
   const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
     { text: prompt },
   ];
+
+  // 배경이미지가 있으면 레퍼런스로 추가
+  if (body?.backgroundImageUrl) {
+    try {
+      // data URL에서 base64와 mimeType 추출
+      const dataUrlMatch = body.backgroundImageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (dataUrlMatch) {
+        const [, mimeType, base64] = dataUrlMatch;
+        contentParts.push({
+          text: `\n[배경 레퍼런스 이미지]\n이 이미지는 현재 컷의 배경입니다. 이 배경을 기반으로 콘티를 그려주세요. 배경의 스타일, 분위기, 구도를 참고하여 일관성 있게 그려주세요.`,
+        });
+        contentParts.push({
+          inlineData: {
+            mimeType: mimeType || 'image/png',
+            data: base64,
+          },
+        });
+      }
+    } catch (error) {
+      console.warn('[storyboard-cut-image] 배경이미지 파싱 실패 (무시):', error);
+    }
+  }
 
   // 캐릭터시트 이미지들을 레퍼런스 이미지로 추가
   // 각 이미지 앞에 해당 캐릭터 이름을 명시
@@ -330,7 +354,15 @@ ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
     return NextResponse.json({ error: '콘티 생성에 실패했습니다.' }, { status: 500 });
   }
 
-  const seedreamImages = characterSheetImages.map((sheetImage) => `data:${sheetImage.mimeType};base64,${sheetImage.base64}`);
+  const seedreamImages: string[] = [];
+
+  // 배경이미지가 있으면 먼저 추가
+  if (body?.backgroundImageUrl) {
+    seedreamImages.push(body.backgroundImageUrl);
+  }
+
+  // 캐릭터시트 이미지 추가
+  seedreamImages.push(...characterSheetImages.map((sheetImage) => `data:${sheetImage.mimeType};base64,${sheetImage.base64}`));
 
   try {
     console.log('[storyboard-cut-image] Seedream API 호출 시작...', { model: 'seedream-4-5-251128' });
@@ -353,4 +385,3 @@ ${dialogue ? `대사/내레이션: ${dialogue}` : ''}`;
     return NextResponse.json({ error: '콘티 생성에 실패했습니다.' }, { status: 500 });
   }
 }
-

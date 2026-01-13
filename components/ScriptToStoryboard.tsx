@@ -25,6 +25,8 @@ interface Cut {
   dialogue?: string;
   // 이 컷에 등장하는 모든 인물 이름 (대사가 없는 캐릭터도 포함)
   charactersInCut?: string[];
+  // 관련배경 목록
+  relatedBackgrounds?: Array<{ cutNumber: number; background: string }>;
 }
 
 interface StoryboardImage {
@@ -177,6 +179,15 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
 
   // 컷목록 바로넣기 관련 상태
   const [savingCutList, setSavingCutList] = useState(false);
+  const [cutListConfirmOpen, setCutListConfirmOpen] = useState(false);
+  const [pendingCutListScript, setPendingCutListScript] = useState<Script | null>(null);
+
+  // 배경 관련 상태
+  const [cutBackgroundImages, setCutBackgroundImages] = useState<Record<string, string>>({});
+  const [generatingBgDescKey, setGeneratingBgDescKey] = useState<string | null>(null);
+  const [generatingBgImageKey, setGeneratingBgImageKey] = useState<string | null>(null);
+  const [editingBgDescKey, setEditingBgDescKey] = useState<string | null>(null);
+  const [editingBgDescValue, setEditingBgDescValue] = useState('');
 
   // 회차 목록 로드
   useEffect(() => {
@@ -333,16 +344,23 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
         storyboardId: string;
         cutIndex: number;
         mimeType: string;
+        imageType: string;
         imageUrl: string;
       }>;
 
-      // 이미지 매핑 업데이트
-      const imageMap: Record<string, string> = {};
+      // 이미지 타입별로 분리하여 매핑
+      const cutImageMap: Record<string, string> = {};
+      const bgImageMap: Record<string, string> = {};
       images.forEach((img) => {
         const key = `${img.storyboardId}-${img.cutIndex}`;
-        imageMap[key] = img.imageUrl;
+        if (img.imageType === 'background') {
+          bgImageMap[key] = img.imageUrl;
+        } else {
+          cutImageMap[key] = img.imageUrl;
+        }
       });
-      setCutImages((prev) => ({ ...prev, ...imageMap }));
+      setCutImages((prev) => ({ ...prev, ...cutImageMap }));
+      setCutBackgroundImages((prev) => ({ ...prev, ...bgImageMap }));
     } catch (err) {
       console.error('이미지 로드 실패:', err);
       // 이미지 로드 실패는 에러로 표시하지 않음 (선택적)
@@ -623,24 +641,21 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       return;
     }
 
-    const hasExistingStoryboards = script.storyboards && script.storyboards.length > 0;
-    
-    if (hasExistingStoryboards) {
-      const confirmed = window.confirm(
-        `기존 글콘티와 생성된 이미지가 모두 삭제되고 대본에서 ${cuts.length}개의 컷을 추출합니다. 계속하시겠습니까?`
-      );
-      if (!confirmed) {
-        return;
-      }
-    } else {
-      const confirmed = window.confirm(
-        `대본에서 ${cuts.length}개의 컷을 추출하여 글콘티로 저장합니다. 계속하시겠습니까?`
-      );
-      if (!confirmed) {
-        return;
-      }
+    // 컨펌 다이얼로그 표시
+    setPendingCutListScript(script);
+    setCutListConfirmOpen(true);
+  };
+
+  // 컷목록 바로넣기 확인 후 실행
+  const handleDirectCutListConfirm = async () => {
+    if (!pendingCutListScript || !pendingCutListScript.id) {
+      return;
     }
 
+    const script = pendingCutListScript;
+    const cuts = parseCutList(script.content);
+    
+    setCutListConfirmOpen(false);
     setSavingCutList(true);
     setError(null);
     try {
@@ -675,6 +690,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       setError(err instanceof Error ? err.message : '컷 목록 저장에 실패했습니다.');
     } finally {
       setSavingCutList(false);
+      setPendingCutListScript(null);
     }
   };
 
@@ -1009,6 +1025,154 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
     }
   };
 
+  // 배경설명 생성
+  const handleGenerateBgDescription = async (storyboardId: string, cutIndex: number, script: Script) => {
+    if (!script.content) {
+      setError('대본 내용이 없습니다.');
+      return;
+    }
+
+    const key = `${storyboardId}-${cutIndex}`;
+    setGeneratingBgDescKey(key);
+    setError(null);
+    try {
+      const res = await fetch('/api/generate-cut-background-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId,
+          cutIndex,
+          scriptContent: script.content,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '배경설명 생성에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === script.id
+            ? {
+                ...s,
+                storyboards: s.storyboards?.map((sb) =>
+                  sb.id === storyboardId
+                    ? {
+                        ...sb,
+                        response_json: {
+                          ...sb.response_json,
+                          cuts: (sb.response_json?.cuts || []).map((c: Cut, idx: number) =>
+                            idx === cutIndex
+                              ? { ...c, background: data.background, relatedBackgrounds: data.relatedBackgrounds }
+                              : c
+                          ),
+                        },
+                      }
+                    : sb
+                ) ?? [],
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      console.error('배경설명 생성 실패:', err);
+      setError(err instanceof Error ? err.message : '배경설명 생성에 실패했습니다.');
+    } finally {
+      setGeneratingBgDescKey(null);
+    }
+  };
+
+  // 배경설명 직접 수정
+  const handleUpdateBgDescription = async (storyboardId: string, cutIndex: number, newBackground: string) => {
+    if (!selectedScriptId) {
+      setError('대본을 선택해주세요.');
+      return;
+    }
+
+    setError(null);
+    try {
+      const res = await fetch(`/api/episode-scripts/${encodeURIComponent(selectedScriptId)}/storyboards/cuts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId,
+          cutIndex,
+          cut: {
+            cutNumber: cutIndex + 1,
+            background: newBackground.trim(),
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '배경설명 수정에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      const updatedStoryboard = data.storyboard;
+
+      // 스크립트 목록 업데이트
+      setScripts((prev) =>
+        prev.map((s) =>
+          s.id === selectedScriptId
+            ? {
+                ...s,
+                storyboards: s.storyboards?.map((sb) =>
+                  sb.id === storyboardId ? updatedStoryboard : sb
+                ) ?? [updatedStoryboard],
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      console.error('배경설명 수정 실패:', err);
+      setError(err instanceof Error ? err.message : '배경설명 수정에 실패했습니다.');
+    }
+  };
+
+  // 배경이미지 생성
+  const handleGenerateBgImage = async (storyboardId: string, cutIndex: number, cut: Cut) => {
+    if (!cut.background) {
+      setError('배경설명이 없습니다. 먼저 배경설명을 생성하세요.');
+      return;
+    }
+
+    const key = `${storyboardId}-${cutIndex}`;
+    setGeneratingBgImageKey(key);
+    setError(null);
+    try {
+      const res = await fetch('/api/generate-cut-background-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId,
+          cutIndex,
+          background: cut.background,
+          relatedBackgrounds: Array.isArray(cut.relatedBackgrounds) ? cut.relatedBackgrounds : [],
+          apiProvider: imageModel,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '배경 이미지 생성에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      setCutBackgroundImages((prev) => ({ ...prev, [key]: data.imageUrl }));
+    } catch (err) {
+      console.error('배경 이미지 생성 실패:', err);
+      setError(err instanceof Error ? err.message : '배경 이미지 생성에 실패했습니다.');
+    } finally {
+      setGeneratingBgImageKey(null);
+    }
+  };
+
   const handleDrawCut = async (sbId: string, cutIdx: number, cut: Cut) => {
     const key = `${sbId}-${cutIdx}`;
     setCutDrawingIds((prev) => new Set(prev).add(key));
@@ -1052,6 +1216,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
           cutIndex: cutIdx,
           selectedCharacterSheets: selectedSheets,
           apiProvider: imageModel,
+          backgroundImageUrl: cutBackgroundImages[key], // 배경이미지가 있으면 포함
         }),
       });
       if (!res.ok) {
@@ -1781,42 +1946,188 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                                     {/* 왼쪽 패널: 컷 내용 + 콘티 그리기 버튼 */}
                                     <div className="flex flex-col space-y-3 lg:col-span-2">
-                                      {cut.background && (
+                                      {/* 제목 */}
+                                      <div>
+                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">제목</h5>
+                                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
+                                          {cut.title || <span className="text-muted-foreground italic">없음</span>}
+                                        </p>
+                                      </div>
+                                      {/* 배경 */}
+                                      <div className="space-y-2">
+                                        <h5 className="text-xs font-semibold text-muted-foreground">배경</h5>
+                                        
+                                        {/* 배경설명 */}
                                         <div>
-                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">배경</h5>
-                                          <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
-                                            {cut.background}
-                                          </p>
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-xs text-muted-foreground">배경설명</span>
+                                            <div className="flex gap-1">
+                                              {editingBgDescKey !== `${sb.id}-${i}` ? (
+                                                <>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 px-2 text-xs"
+                                                    onClick={() => {
+                                                      setEditingBgDescKey(`${sb.id}-${i}`);
+                                                      setEditingBgDescValue(cut.background || '');
+                                                    }}
+                                                  >
+                                                    <Edit className="h-3 w-3 mr-1" />
+                                                    수정
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 px-2 text-xs"
+                                                    onClick={() => handleGenerateBgDescription(sb.id, i, selectedScript)}
+                                                    disabled={generatingBgDescKey === `${sb.id}-${i}`}
+                                                  >
+                                                    {generatingBgDescKey === `${sb.id}-${i}` ? (
+                                                      <>
+                                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                        생성 중...
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <Sparkles className="h-3 w-3 mr-1" />
+                                                        AI 생성
+                                                      </>
+                                                    )}
+                                                  </Button>
+                                                </>
+                                              ) : (
+                                                <div className="flex gap-1">
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 px-2 text-xs"
+                                                    onClick={async () => {
+                                                      await handleUpdateBgDescription(sb.id, i, editingBgDescValue);
+                                                      setEditingBgDescKey(null);
+                                                      setEditingBgDescValue('');
+                                                    }}
+                                                  >
+                                                    <Check className="h-3 w-3 mr-1" />
+                                                    저장
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 px-2 text-xs"
+                                                    onClick={() => {
+                                                      setEditingBgDescKey(null);
+                                                      setEditingBgDescValue('');
+                                                    }}
+                                                  >
+                                                    취소
+                                                  </Button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {editingBgDescKey === `${sb.id}-${i}` ? (
+                                            <Textarea
+                                              value={editingBgDescValue}
+                                              onChange={(e) => setEditingBgDescValue(e.target.value)}
+                                              className="min-h-[80px] text-sm"
+                                              placeholder="배경 설명을 입력하세요..."
+                                            />
+                                          ) : (
+                                            <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
+                                              {cut.background || <span className="text-muted-foreground italic">없음</span>}
+                                            </p>
+                                          )}
                                         </div>
-                                      )}
-                                      {cut.description && (
+
+                                        {/* 배경이미지 */}
                                         <div>
-                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                            연출/구도
-                                          </h5>
-                                          <p className="text-sm whitespace-pre-wrap">{cut.description}</p>
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-xs text-muted-foreground">배경이미지</span>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-6 px-2 text-xs"
+                                              onClick={() => handleGenerateBgImage(sb.id, i, cut)}
+                                              disabled={generatingBgImageKey === `${sb.id}-${i}` || !cut.background}
+                                            >
+                                              {generatingBgImageKey === `${sb.id}-${i}` ? (
+                                                <>
+                                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                  생성 중...
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <PenLine className="h-3 w-3 mr-1" />
+                                                  배경 그리기
+                                                </>
+                                              )}
+                                            </Button>
+                                          </div>
+                                          {cutBackgroundImages[`${sb.id}-${i}`] ? (
+                                            <div className="relative">
+                                              <img
+                                                src={cutBackgroundImages[`${sb.id}-${i}`]}
+                                                alt="배경 이미지"
+                                                className="w-full max-h-[200px] object-contain rounded border cursor-pointer hover:opacity-80 transition-opacity"
+                                                onClick={() => {
+                                                  setViewingImageUrl(cutBackgroundImages[`${sb.id}-${i}`]);
+                                                  setViewingImageName(`컷 ${cut.cutNumber ?? i + 1} 배경`);
+                                                  setImageViewerOpen(true);
+                                                }}
+                                              />
+                                            </div>
+                                          ) : (
+                                            <p className="text-xs text-muted-foreground italic bg-muted/30 p-2 rounded">
+                                              배경 이미지가 없습니다
+                                            </p>
+                                          )}
                                         </div>
-                                      )}
-                                      {cut.dialogue && (
-                                        <div>
-                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                            대사/내레이션
-                                          </h5>
-                                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                            {cut.dialogue}
-                                          </p>
-                                        </div>
-                                      )}
-                                      {Array.isArray(cut.charactersInCut) && cut.charactersInCut.length > 0 && (
-                                        <div>
-                                          <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                            등장인물
-                                          </h5>
-                                          <p className="text-sm text-muted-foreground">
-                                            {cut.charactersInCut.join(', ')}
-                                          </p>
-                                        </div>
-                                      )}
+
+                                        {/* 관련배경 */}
+                                        {Array.isArray(cut.relatedBackgrounds) && cut.relatedBackgrounds.length > 0 && (
+                                          <div>
+                                            <span className="text-xs text-muted-foreground">관련배경:</span>
+                                            <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                                              {cut.relatedBackgrounds.map((rb: { cutNumber: number; background: string }, idx: number) => (
+                                                <div key={idx} className="pl-2">
+                                                  컷 {rb.cutNumber}: {rb.background.slice(0, 50)}
+                                                  {rb.background.length > 50 ? '...' : ''}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      {/* 연출/구도 */}
+                                      <div>
+                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                          연출/구도
+                                        </h5>
+                                        <p className="text-sm whitespace-pre-wrap">
+                                          {cut.description || <span className="text-muted-foreground italic">없음</span>}
+                                        </p>
+                                      </div>
+                                      {/* 대사/내레이션 */}
+                                      <div>
+                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                          대사/내레이션
+                                        </h5>
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                          {cut.dialogue || <span className="text-muted-foreground italic">없음</span>}
+                                        </p>
+                                      </div>
+                                      {/* 등장인물 */}
+                                      <div>
+                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
+                                          등장인물
+                                        </h5>
+                                        <p className="text-sm text-muted-foreground">
+                                          {Array.isArray(cut.charactersInCut) && cut.charactersInCut.length > 0
+                                            ? cut.charactersInCut.join(', ')
+                                            : <span className="text-muted-foreground italic">없음</span>}
+                                        </p>
+                                      </div>
                                       <div className="mt-auto pt-2 flex gap-2">
                                         <Button
                                           variant="outline"
@@ -2141,6 +2452,54 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                 <>
                   <Check className="h-4 w-4 mr-2" />
                   저장
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 컷목록 바로넣기 컨펌 다이얼로그 */}
+      <Dialog open={cutListConfirmOpen} onOpenChange={setCutListConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>컷목록 바로넣기</DialogTitle>
+            <DialogDescription>
+              현재 만들어진 컷정보를 지우고 대본의 컷 내용으로 새로 생성합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              {pendingCutListScript && (() => {
+                const cuts = parseCutList(pendingCutListScript.content);
+                return `대본에서 ${cuts.length}개의 컷을 추출하여 글콘티로 저장합니다. 기존 글콘티와 생성된 이미지가 모두 삭제됩니다.`;
+              })()}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCutListConfirmOpen(false);
+                setPendingCutListScript(null);
+              }}
+              disabled={savingCutList}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleDirectCutListConfirm}
+              disabled={savingCutList}
+            >
+              {savingCutList ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  추출 중...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  확인
                 </>
               )}
             </Button>
