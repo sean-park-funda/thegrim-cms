@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       description?: string;
       dialogue?: string;
       charactersInCut?: string[];
+      relatedBackgrounds?: Array<{ cutNumber: number; background: string }>;
     }> } | null;
 
     const cuts = responseJson?.cuts || [];
@@ -118,7 +119,7 @@ ${previousCuts.length > 0
 }`;
 
     const config = {
-      responseModalities: ['TEXT'] as const,
+      responseModalities: ['TEXT'],
       temperature: 0.7,
       topP: 0.95,
       topK: 40,

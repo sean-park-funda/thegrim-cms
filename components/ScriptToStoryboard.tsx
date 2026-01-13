@@ -77,7 +77,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // 회차 선택 상태
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>(initialEpisodeId || '');
@@ -108,7 +108,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   }>>({});
   const [characterEditOpen, setCharacterEditOpen] = useState(false);
   const [editingCharacterForScript, setEditingCharacterForScript] = useState<{ scriptId: string; characterName: string; characterDescription: string; webtoonId: string } | null>(null);
-  
+
   // 캐릭터 이미지 생성 관련 상태
   const [generatingCharacterImage, setGeneratingCharacterImage] = useState<string | null>(null); // "scriptId:characterIndex"
   const [previewImageData, setPreviewImageData] = useState<{
@@ -126,13 +126,13 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
 
   // 대본 전체 보기 상태 관리
   const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
-  
+
   // 선택된 대본 ID 상태 관리
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
-  
+
   // 대본 추가 폼 표시 상태
   const [showAddScriptForm, setShowAddScriptForm] = useState(false);
-  
+
   // 선택된 캐릭터시트 인덱스 관리 (scriptId:characterName -> sheetIndex)
   // 캐릭터 이름을 키로 사용하여 인덱스 변경에 영향받지 않도록 함
   const [selectedCharacterSheet, setSelectedCharacterSheet] = useState<Record<string, number>>({});
@@ -142,7 +142,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   const [modificationPrompt, setModificationPrompt] = useState('');
   const [modifyingCut, setModifyingCut] = useState(false);
   const [cutEditDialogOpen, setCutEditDialogOpen] = useState(false);
-  
+
   // 컷 직접 수정 관련 상태
   const [directEditMode, setDirectEditMode] = useState(false);
   const [directEditValues, setDirectEditValues] = useState<{
@@ -156,10 +156,10 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
 
   // 컷 분할 관련 상태
   const [splittingCut, setSplittingCut] = useState<string | null>(null); // "storyboardId:cutIndex"
-  
+
   // 이미지 로드 추적 (중복 로드 방지)
   const [loadedStoryboardImages, setLoadedStoryboardImages] = useState<Set<string>>(new Set());
-  
+
   // 이미지 로딩 중인 storyboard ID 추적
   const [loadingStoryboardImages, setLoadingStoryboardImages] = useState<Set<string>>(new Set());
 
@@ -202,7 +202,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
             return a.episode_number - b.episode_number;
           });
           setEpisodes(sorted);
-          
+
           // initialEpisodeId가 없으면 첫 번째 회차 자동 선택
           if (!initialEpisodeId && sorted.length > 0) {
             setSelectedEpisodeId(sorted[0].id);
@@ -305,7 +305,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
         throw new Error(data.error || '글콘티 조회에 실패했습니다.');
       }
       const storyboards = (await res.json()) as Storyboard[];
-      
+
       // 스크립트 목록에 storyboards 추가
       setScripts((prev) =>
         prev.map((s) => (s.id === scriptId ? { ...s, storyboards } : s))
@@ -485,7 +485,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
         throw new Error(data.error || '대본 수정에 실패했습니다.');
       }
       const updated = await res.json();
-      
+
       // 스크립트 목록 업데이트
       setScripts((prev) =>
         prev.map((s) =>
@@ -494,7 +494,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
             : s
         )
       );
-      
+
       setEditScriptDialogOpen(false);
       setEditingScript(null);
     } catch (err) {
@@ -555,7 +555,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       const res = await fetch(`/api/episode-scripts/${encodeURIComponent(script.id)}/storyboards`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           scriptId: script.id,
           deleteExisting: hasExistingStoryboards,
         }),
@@ -654,7 +654,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
 
     const script = pendingCutListScript;
     const cuts = parseCutList(script.content);
-    
+
     setCutListConfirmOpen(false);
     setSavingCutList(true);
     setError(null);
@@ -882,7 +882,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
   // 생성된 이미지 채택 (캐릭터시트로 저장)
   const handleAcceptCharacterImage = async () => {
     console.log('[handleAcceptCharacterImage] 함수 호출됨');
-    
+
     if (!previewImageData) {
       console.error('[handleAcceptCharacterImage] previewImageData가 없습니다');
       return;
@@ -920,7 +920,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
         imageDataLength: previewImageData.imageData?.length,
         mimeType: previewImageData.mimeType,
       });
-      
+
       const saveRes = await fetch(`/api/characters/${characterId}/save-sheet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1052,7 +1052,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       }
 
       const data = await res.json();
-      
+
       // 스크립트 목록 업데이트
       setScripts((prev) =>
         prev.map((s) =>
@@ -1310,8 +1310,8 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
       background: editingCut.cut.background || '',
       description: editingCut.cut.description || '',
       dialogue: editingCut.cut.dialogue || '',
-      charactersInCut: Array.isArray(editingCut.cut.charactersInCut) 
-        ? editingCut.cut.charactersInCut.join(', ') 
+      charactersInCut: Array.isArray(editingCut.cut.charactersInCut)
+        ? editingCut.cut.charactersInCut.join(', ')
         : '',
     });
     setDirectEditMode(true);
@@ -1445,7 +1445,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
           <FileText className="h-6 w-6" />
           <h1 className="text-2xl font-bold">대본to콘티</h1>
         </div>
-        
+
         {/* 회차 선택 (webtoonId가 있을 때만 표시) */}
         {webtoonId && (
           <div className="flex items-center gap-2">
@@ -1494,7 +1494,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                 <Plus className="mr-2 h-4 w-4" />
                 대본 추가
               </Button>
-              
+
               {/* 대본 추가 폼 */}
               {showAddScriptForm && (
                 <Card className="mt-3">
@@ -1776,7 +1776,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                                     </p>
                                   )}
                                 </div>
-                                
+
                                 {char.existsInDb && char.characterSheets.length > 0 ? (
                                   <div className="space-y-2">
                                     <div className="flex items-center gap-2">
@@ -1820,7 +1820,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                                     <p className="text-xs text-muted-foreground">캐릭터시트가 없습니다</p>
                                   </div>
                                 )}
-                                
+
                                 <div className="flex items-center gap-2">
                                     <Button
                                       size="sm"
@@ -1956,7 +1956,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                                       {/* 배경 */}
                                       <div className="space-y-2">
                                         <h5 className="text-xs font-semibold text-muted-foreground">배경</h5>
-                                        
+
                                         {/* 배경설명 */}
                                         <div>
                                           <div className="flex items-center justify-between mb-1">
@@ -2268,14 +2268,14 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                 />
               </div>
               <div className="flex items-center justify-end gap-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setPreviewImageData(null)}
                   disabled={acceptingImage}
                 >
                   취소
                 </Button>
-                <Button 
+                <Button
                   onClick={handleAcceptCharacterImage}
                   disabled={acceptingImage}
                 >
@@ -2534,7 +2534,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                       </Button>
                     )}
                   </div>
-                  
+
                   {directEditMode ? (
                     // 직접 수정 폼
                     <div className="space-y-3 border rounded-lg p-4">
@@ -2620,7 +2620,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                     </div>
                   )}
                 </div>
-                
+
                 {/* LLM 수정 지시 (직접 수정 모드가 아닐 때만 표시) */}
                 {!directEditMode && (
                   <div>
@@ -2635,7 +2635,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                   </div>
                 )}
               </div>
-              
+
               <div className="flex items-center justify-end gap-2">
                 <Button
                   variant="outline"
@@ -2649,7 +2649,7 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                 >
                   취소
                 </Button>
-                
+
                 {directEditMode ? (
                   <>
                     <Button
@@ -2703,4 +2703,3 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
     </div>
   );
 }
-
