@@ -54,7 +54,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[괴수 이미지 생성] ${providerName} API 호출 시작...`);
+    console.log(`[괴수 이미지 생성] ${providerName} API 호출 시작...`, {
+      promptPreview: prompt.substring(0, 300) + (prompt.length > 300 ? '...' : ''),
+      promptLength: prompt.length,
+      aspectRatio,
+    });
     const apiRequestStart = Date.now();
 
     let generatedImageData: string;
@@ -82,31 +86,42 @@ export async function POST(request: NextRequest) {
       generatedImageMimeType = result.mimeType;
     } else {
       // Gemini API 사용
-      const result = await generateGeminiImage({
-        provider: 'gemini',
-        model: 'gemini-3-pro-image-preview',
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt.trim() }],
+      try {
+        const result = await generateGeminiImage({
+          provider: 'gemini',
+          model: 'gemini-3-pro-image-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt.trim() }],
+            },
+          ],
+          config: {
+            responseModalities: ['IMAGE', 'TEXT'],
+            imageConfig: {
+              imageSize: '1K',
+              ...(aspectRatio ? { aspectRatio } : {}),
+            },
+            temperature: 1.0,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 32768,
           },
-        ],
-        config: {
-          responseModalities: ['IMAGE', 'TEXT'],
-          imageConfig: {
-            imageSize: '1K',
-            ...(aspectRatio ? { aspectRatio } : {}),
-          },
-          temperature: 1.0,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 32768,
-        },
-        timeoutMs: GEMINI_API_TIMEOUT,
-        retries: 3,
-      });
-      generatedImageData = result.base64;
-      generatedImageMimeType = result.mimeType;
+          timeoutMs: GEMINI_API_TIMEOUT,
+          retries: 3,
+        });
+        generatedImageData = result.base64;
+        generatedImageMimeType = result.mimeType;
+      } catch (geminiError) {
+        console.error('[괴수 이미지 생성] Gemini API 호출 실패:', {
+          error: geminiError instanceof Error ? geminiError.message : String(geminiError),
+          errorStack: geminiError instanceof Error ? geminiError.stack : undefined,
+          prompt: prompt?.substring(0, 1000) || '(프롬프트 없음)',
+          promptLength: prompt?.length || 0,
+          aspectRatio,
+        });
+        throw geminiError;
+      }
     }
 
     const apiRequestTime = Date.now() - apiRequestStart;
@@ -268,7 +283,12 @@ export async function POST(request: NextRequest) {
       error,
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
       totalTime: `${totalTime}ms`,
+      prompt: prompt?.substring(0, 1000) || '(프롬프트 없음)',
+      promptLength: prompt?.length || 0,
+      aspectRatio,
+      apiProvider,
     });
     const errorMessage = error instanceof Error ? error.message : '이미지 생성 중 오류가 발생했습니다.';
     return NextResponse.json(

@@ -27,31 +27,89 @@ async function extractInlineImage(
 ): Promise<{ base64: string; mimeType: string }> {
   let base64: string | null = null;
   let mimeType: string | null = null;
+  const allChunks: any[] = [];
+  let textContent = '';
 
-  await withTimeout(
-    (async () => {
-      for await (const chunk of response) {
-        const parts = chunk.candidates?.[0]?.content?.parts;
-        if (!parts) continue;
+  try {
+    await withTimeout(
+      (async () => {
+        for await (const chunk of response) {
+          // 모든 chunk를 저장 (로깅용)
+          allChunks.push(JSON.parse(JSON.stringify(chunk))); // 깊은 복사
+          
+          const parts = chunk.candidates?.[0]?.content?.parts;
+          if (!parts) {
+            // parts가 없는 경우에도 로깅
+            console.log('[image-generation][gemini] chunk without parts:', {
+              hasCandidates: !!chunk.candidates,
+              candidatesLength: chunk.candidates?.length,
+              firstCandidate: chunk.candidates?.[0] ? {
+                hasContent: !!chunk.candidates[0].content,
+                hasParts: !!chunk.candidates[0].content?.parts,
+                finishReason: chunk.candidates[0].finishReason,
+                safetyRatings: chunk.candidates[0].safetyRatings,
+              } : null,
+            });
+            continue;
+          }
 
-        for (const part of parts) {
-          if (part.inlineData?.data) {
-            base64 = part.inlineData.data as string;
-            mimeType = part.inlineData.mimeType || 'image/png';
+          for (const part of parts) {
+            // 텍스트 내용 수집
+            if (part.text) {
+              textContent += part.text;
+            }
+            
+            if (part.inlineData?.data) {
+              base64 = part.inlineData.data as string;
+              mimeType = part.inlineData.mimeType || 'image/png';
+              break;
+            }
+          }
+
+          if (base64) {
             break;
           }
         }
-
-        if (base64) {
-          break;
-        }
-      }
-    })(),
-    timeoutMs,
-    `Gemini stream read timeout after ${timeoutMs}ms`
-  );
+      })(),
+      timeoutMs,
+      `Gemini stream read timeout after ${timeoutMs}ms`
+    );
+  } catch (error) {
+    console.error('[image-generation][gemini] extractInlineImage 에러:', {
+      error: error instanceof Error ? error.message : String(error),
+      chunksReceived: allChunks.length,
+      textContent: textContent.substring(0, 500), // 처음 500자만
+      lastChunk: allChunks[allChunks.length - 1],
+    });
+    throw error;
+  }
 
   if (!base64 || !mimeType) {
+    // 이미지 데이터를 찾지 못한 경우 전체 응답 로깅
+    console.error('[image-generation][gemini] 이미지 데이터를 찾지 못함 - 전체 응답:', {
+      chunksCount: allChunks.length,
+      textContent: textContent || '(텍스트 없음)',
+      chunks: allChunks.map((chunk, idx) => ({
+        index: idx,
+        hasCandidates: !!chunk.candidates,
+        candidatesCount: chunk.candidates?.length ?? 0,
+        firstCandidate: chunk.candidates?.[0] ? {
+          finishReason: chunk.candidates[0].finishReason,
+          safetyRatings: chunk.candidates[0].safetyRatings,
+          hasContent: !!chunk.candidates[0].content,
+          partsCount: chunk.candidates[0].content?.parts?.length ?? 0,
+          parts: chunk.candidates[0].content?.parts?.map((p: any, pIdx: number) => ({
+            index: pIdx,
+            hasText: !!p.text,
+            textLength: p.text?.length ?? 0,
+            textPreview: p.text?.substring(0, 200) ?? null,
+            hasInlineData: !!p.inlineData,
+            inlineDataType: p.inlineData?.mimeType ?? null,
+            inlineDataLength: p.inlineData?.data?.length ?? null,
+          })) ?? [],
+        } : null,
+      })),
+    });
     throw new Error('Gemini 응답에서 이미지 데이터를 찾지 못했습니다.');
   }
 
@@ -95,28 +153,61 @@ export async function generateGeminiImage(request: GeminiRequest): Promise<Gener
     aspectRatio: mergedConfig.imageConfig?.aspectRatio,
   });
 
+  let lastError: unknown = null;
   const { base64, mimeType } = await retryAsync(
     async (attempt) => {
       if (attempt > 0) {
         console.log(`[image-generation][gemini] retry ${attempt}/${retries}`);
       }
 
-      const response = await withTimeout(
-        ai.models.generateContentStream({
-          model,
-          config: mergedConfig,
-          contents,
-        }),
-        timeoutMs,
-        `Gemini API timeout after ${timeoutMs}ms`
-      );
+      try {
+        const response = await withTimeout(
+          ai.models.generateContentStream({
+            model,
+            config: mergedConfig,
+            contents,
+          }),
+          timeoutMs,
+          `Gemini API timeout after ${timeoutMs}ms`
+        );
 
-      const inline = await extractInlineImage(response, timeoutMs);
-      return inline;
+        const inline = await extractInlineImage(response, timeoutMs);
+        return inline;
+      } catch (error) {
+        lastError = error;
+        console.error(`[image-generation][gemini] attempt ${attempt + 1} failed:`, {
+          error: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          requestConfig: {
+            model,
+            modalities: mergedConfig.responseModalities,
+            imageSize: mergedConfig.imageConfig?.imageSize,
+            aspectRatio: mergedConfig.imageConfig?.aspectRatio,
+            promptPreview: contents?.[0]?.parts?.[0]?.text?.substring(0, 300) ?? '(프롬프트 없음)',
+            promptLength: contents?.[0]?.parts?.[0]?.text?.length ?? 0,
+          },
+        });
+        throw error;
+      }
     },
     retries,
     isRetryableGeminiError
-  );
+  ).catch((error) => {
+    console.error('[image-generation][gemini] 최종 실패:', {
+      error: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+      lastError: lastError instanceof Error ? lastError.message : String(lastError),
+      requestConfig: {
+        model,
+        modalities: mergedConfig.responseModalities,
+        imageSize: mergedConfig.imageConfig?.imageSize,
+        aspectRatio: mergedConfig.imageConfig?.aspectRatio,
+        promptPreview: contents?.[0]?.parts?.[0]?.text?.substring(0, 500) ?? '(프롬프트 없음)',
+        promptLength: contents?.[0]?.parts?.[0]?.text?.length ?? 0,
+      },
+    });
+    throw error;
+  });
 
   console.log('[image-generation][gemini] success', {
     model,

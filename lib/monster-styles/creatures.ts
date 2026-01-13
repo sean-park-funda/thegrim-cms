@@ -2,7 +2,102 @@
  * 괴수 스타일 생성기 - 생물 데이터
  */
 
-import { Creature, CreatureCategories, CreatureCategory, SelectedCreature, CATEGORY_NAMES } from './types';
+import { Creature, CreatureCategories, CreatureCategory, SelectedCreature, CATEGORY_NAMES, HumanType, BodySection } from './types';
+
+// ============================================================
+// V2 괴수 생성기 - 인체 타입 및 섹션 정보
+// ============================================================
+
+// 인체 타입 정보
+export const HUMAN_TYPES: Record<HumanType, { name: string; nameEn: string; description: string }> = {
+  man: { name: '남자', nameEn: 'Man', description: 'adult male human body' },
+  woman: { name: '여자', nameEn: 'Woman', description: 'adult female human body' },
+  child: { name: '아이', nameEn: 'Child', description: 'child human body' },
+};
+
+// 섹션별 설명
+export const SECTION_DESCRIPTIONS: Record<BodySection, { name: string; description: string; promptHint: string }> = {
+  face: { name: '얼굴', description: '얼굴/머리 부분', promptHint: 'face and head' },
+  torso: { name: '몸통', description: '몸통/상체 부분', promptHint: 'torso and body' },
+  limbs: { name: '팔다리', description: '팔/다리 부분', promptHint: 'arms and legs' },
+  other: { name: '기타', description: '기타(꼬리, 날개, 촉수 등)', promptHint: 'additional features like tail, wings, or tentacles' },
+};
+
+// ID가 포함된 생물 정보
+export interface CreatureWithId extends Creature {
+  id: string;
+  category: CreatureCategory;
+  categoryName: string;
+}
+
+// 플랫 생물 목록 생성 (UI 검색용)
+let _flatCreatureList: CreatureWithId[] | null = null;
+
+export function getFlatCreatureList(): CreatureWithId[] {
+  if (_flatCreatureList) return _flatCreatureList;
+  
+  const list: CreatureWithId[] = [];
+  const categories = Object.keys(CREATURE_CATEGORIES) as CreatureCategory[];
+  
+  for (const category of categories) {
+    const creatures = CREATURE_CATEGORIES[category];
+    creatures.forEach((creature, index) => {
+      list.push({
+        id: `${category}:${index}`,
+        name: creature.name,
+        description: creature.description,
+        category,
+        categoryName: CATEGORY_NAMES[category],
+      });
+    });
+  }
+  
+  _flatCreatureList = list;
+  return list;
+}
+
+// ID로 생물 찾기
+export function getCreatureById(id: string): CreatureWithId | null {
+  const [category, indexStr] = id.split(':');
+  const index = parseInt(indexStr, 10);
+  
+  if (!category || isNaN(index)) return null;
+  
+  const creatures = CREATURE_CATEGORIES[category as CreatureCategory];
+  if (!creatures || index < 0 || index >= creatures.length) return null;
+  
+  const creature = creatures[index];
+  return {
+    id,
+    name: creature.name,
+    description: creature.description,
+    category: category as CreatureCategory,
+    categoryName: CATEGORY_NAMES[category as CreatureCategory],
+  };
+}
+
+// 카테고리별 그룹화된 생물 목록 (UI 드롭다운용)
+export interface CreatureGroup {
+  category: CreatureCategory;
+  categoryName: string;
+  creatures: CreatureWithId[];
+}
+
+export function getGroupedCreatureList(): CreatureGroup[] {
+  const categories = Object.keys(CREATURE_CATEGORIES) as CreatureCategory[];
+  
+  return categories.map(category => ({
+    category,
+    categoryName: CATEGORY_NAMES[category],
+    creatures: CREATURE_CATEGORIES[category].map((creature, index) => ({
+      id: `${category}:${index}`,
+      name: creature.name,
+      description: creature.description,
+      category,
+      categoryName: CATEGORY_NAMES[category],
+    })),
+  }));
+}
 
 // 생물 목록 (카테고리별)
 export const CREATURE_CATEGORIES: CreatureCategories = {

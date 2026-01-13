@@ -117,6 +117,18 @@ export {
   selectHumanBodyPart,
   getRandomItem,
   shuffleArray,
+  // V2 추가
+  HUMAN_TYPES,
+  SECTION_DESCRIPTIONS,
+  getFlatCreatureList,
+  getCreatureById,
+  getGroupedCreatureList,
+} from './creatures';
+
+// V2 타입 re-export (명시적으로)
+export type {
+  CreatureWithId,
+  CreatureGroup,
 } from './creatures';
 
 // 개별 스타일 생성기 (직접 사용 시)

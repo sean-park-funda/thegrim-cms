@@ -3,12 +3,14 @@
 import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { MonsterGenerator } from '@/components/MonsterGenerator';
+import { MonsterGeneratorV2 } from '@/components/MonsterGeneratorV2';
 import { useStore } from '@/lib/store/useStore';
 import { getProcesses } from '@/lib/api/processes';
 import { useEffect, useState } from 'react';
 import { Process } from '@/lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Shuffle, Settings2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function MonsterGeneratorForm() {
   const searchParams = useSearchParams();
@@ -17,6 +19,7 @@ function MonsterGeneratorForm() {
   const webtoonId = searchParams.get('webtoonId') || undefined;
   const { processes, setProcesses } = useStore();
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'v1' | 'v2'>('v2'); // 기본값을 v2로 설정
 
   useEffect(() => {
     const loadProcesses = async () => {
@@ -56,13 +59,37 @@ function MonsterGeneratorForm() {
 
   return (
     <div className="bg-background">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <MonsterGenerator
-          cutId={cutId}
-          webtoonId={webtoonId}
-          processes={processes}
-          onFilesReload={handleFilesReload}
-        />
+      <div className={activeTab === 'v2' ? 'w-full px-4 sm:px-6 py-8' : 'max-w-4xl mx-auto px-4 sm:px-6 py-8'}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'v1' | 'v2')}>
+          <TabsList className="mb-4 grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="v2" className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              섹션 선택 (v2)
+            </TabsTrigger>
+            <TabsTrigger value="v1" className="flex items-center gap-2">
+              <Shuffle className="h-4 w-4" />
+              랜덤 생성 (v1)
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="v2" className="mt-0">
+            <MonsterGeneratorV2
+              cutId={cutId}
+              webtoonId={webtoonId}
+              processes={processes}
+              onFilesReload={handleFilesReload}
+            />
+          </TabsContent>
+          
+          <TabsContent value="v1" className="mt-0">
+            <MonsterGenerator
+              cutId={cutId}
+              webtoonId={webtoonId}
+              processes={processes}
+              onFilesReload={handleFilesReload}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

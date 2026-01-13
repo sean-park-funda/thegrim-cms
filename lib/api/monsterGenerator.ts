@@ -1,6 +1,6 @@
 // 타입을 monster-styles 모듈에서 re-export
-export type { MonsterStyle } from '@/lib/monster-styles';
-import type { MonsterStyle } from '@/lib/monster-styles';
+export type { MonsterStyle, MonsterV2Request, SectionSelection, HumanType, BodySection } from '@/lib/monster-styles';
+import type { MonsterStyle, MonsterV2Request } from '@/lib/monster-styles';
 
 export interface GenerateMonsterPromptResponse {
   prompt: string;
@@ -91,6 +91,43 @@ export async function generateMonsterImage(
     return {
       mimeType: 'image/png',
       error: error instanceof Error ? error.message : '이미지 생성 중 오류가 발생했습니다.',
+    };
+  }
+}
+
+// ============================================================
+// V2 괴수 생성기 API
+// ============================================================
+
+export async function generateMonsterPromptV2(request: MonsterV2Request): Promise<GenerateMonsterPromptResponse> {
+  try {
+    const response = await fetch('/api/generate-monster-prompt-v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: '알 수 없는 오류가 발생했습니다.' }));
+      return { prompt: '', error: errorData.error || '프롬프트 생성에 실패했습니다.' };
+    }
+
+    const data = await response.json();
+    return {
+      prompt: data.prompt || '',
+      imagePrompt: data.imagePrompt || '',
+      negativePrompt: data.negativePrompt || '',
+      aspectRatio: data.aspectRatio || '1:1',
+      style: data.style || request.style,
+      error: data.error,
+    };
+  } catch (error) {
+    console.error('프롬프트 생성 v2 API 호출 실패:', error);
+    return {
+      prompt: '',
+      error: error instanceof Error ? error.message : '프롬프트 생성 중 오류가 발생했습니다.',
     };
   }
 }

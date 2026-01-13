@@ -3,7 +3,8 @@
  */
 
 import { MonsterStyleGenerator } from '../base';
-import { DesignElement, MonsterStyle, SelectedCreature } from '../types';
+import { DesignElement, MonsterStyle, SelectedCreature, SectionCreatureResult } from '../types';
+import { SECTION_DESCRIPTIONS } from '../creatures';
 
 // 성별 타입
 type BodyGender = 'male' | 'female' | 'ambiguous';
@@ -415,6 +416,82 @@ ${creatureApplicationGuide}
 - **imagePrompt:** 피안도 만화 스타일을 강조하는 영어 프롬프트. 지정된 성별과 얼굴 유형, 날카로운 펜선, 해칭, 인간 기반 변형, 거대화 등의 분위기 포함.${this.selectedGender === 'female' ? ' **여성일 경우 "beautiful voluptuous female body, sexy curves, attractive woman transformed" 등 아름다운 여성 키워드 필수.**' : ''} **반드시 "no text, no speech bubbles, creature only" 등의 지시 포함.**
 - **negativePrompt:** 피안도의 처절하고 징그러운 분위기와 맞지 않는 요소 + **텍스트/말풍선/효과선 관련 키워드 필수 포함**
 - **aspectRatio:** "9:16", "1:1", "16:9" 중 하나만 사용
+
+지금 바로 1개의 **독창적인 피안도 스타일 악귀 디자인**을 생성하고 JSON 형식으로 응답해 주세요.`;
+  }
+
+  // ============================================================
+  // V2 프롬프트 생성
+  // ============================================================
+
+  protected buildPromptBodyV2(
+    sectionResults: SectionCreatureResult[],
+    allowVariant: boolean,
+    selectedElements: DesignElement[]
+  ): string {
+    const elementsList = this.formatDesignElements(selectedElements);
+    const sectionsText = this.formatSectionResults(sectionResults);
+    const genderDescription = this.getGenderBodyDescription();
+    const faceDescription = this.getFaceTypeDescription();
+    const variantText = allowVariant ? '\n\n**변종 허용:** 선택된 요소들의 변형 및 돌연변이가 가능합니다. 피안도 특유의 더 극단적인 신체 왜곡을 적용해도 됩니다.' : '';
+    const humanInstructions = this.formatHumanInstructions(sectionResults);
+    
+    // v2에서는 sectionResults에서 여성 여부 확인
+    const hasWoman = sectionResults.some(r => r.type === 'human' && r.humanType === 'woman');
+
+    return `당신은 일본 만화 '피안도(Higanjima)' 스타일의 **크리처(악귀/Amalgam)** 전문 컨셉 아티스트이자 프롬프트 엔지니어입니다.
+마츠모토 코지(Kōji Matsumoto) 작가 특유의 **'불쾌한 골짜기(Uncanny Valley)'와 '거대화된 인체 변형'**을 완벽하게 재현한 괴수 디자인 프롬프트를 작성하세요.
+
+**신체 섹션별 구성:**
+${sectionsText}${variantText}${humanInstructions}
+
+---
+
+### 작성 규칙 (Higanjima / Matsumoto Kōji Style):
+
+**1. 화풍 (Art Style):**
+- **G-Pen & Hatching:** 날카로운 펜 선(G-pen)과 집요한 해칭(Cross-hatching) 묘사.
+- **Realistic yet Grotesque:** 괴수의 피부 질감(주름, 핏줄, 땀구멍)을 과도하게 디테일하게 표현.
+- **High Contrast:** 흑백 만화 특유의 강렬한 대비.
+
+**2. 🎯 이번 괴수의 신체/얼굴 설정:**
+- ${genderDescription}
+- ${faceDescription}
+
+**3. 섹션별 적용 규칙:**
+- 각 신체 섹션에 지정된 요소를 반영하되, 피안도 특유의 인간 기반 변형으로 디자인할 것
+- 인체가 지정된 섹션은 거대화되거나 늘어난 인간의 특징이 나타나야 함
+- 생물이 지정된 섹션은 해당 생물의 특징이 인간 신체에 기생/융합된 형태로 반영되어야 함
+${hasWoman ? '\n- **여성 신체 표현:** 여성 인체 부위는 우아하고 아름다운 여성의 몸매를 기반으로 하되 일부가 기괴하게 변형됨' : ''}
+
+**4. 이번에 적용할 디자인 요소:**
+${elementsList}
+
+**5. 구도:**
+- **로우 앵글 (Low Angle):** 인간의 시점에서 괴수를 올려다보는 구도로 거대함을 강조.
+- **배경:** 단순한 흰색 또는 회색 배경. **효과선, 집중선, 만화 배경 효과 없음.**
+- **전신 샷:** 괴수의 전체적인 실루엣과 거대함이 보이도록.
+
+**6. 🚫 절대 포함하지 말 것:**
+- **텍스트 금지:** 어떤 글자, 대사, 말풍선, 효과음 텍스트도 포함하지 말 것
+- **만화 효과 금지:** 액션 라인, 스피드 라인, 집중선 등 없음
+- **괴수만 그릴 것:** 오직 괴수 캐릭터만 단독으로 그릴 것
+
+**7. 이미지 비율:**
+- 세로형(portrait): 9:16 - 늘어난 목이나 거대한 상체를 가진 괴수
+- 정사각형(square): 1:1 - 균형잡힌 형태의 괴수
+- 가로형(landscape): 16:9 - 다리가 많거나 넓게 퍼진 괴수
+
+---
+
+**중요:** 응답은 반드시 유효한 JSON 형식으로 작성해주세요:
+\`\`\`json
+{
+  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. 각 섹션별 요소가 반영된 악귀. Higanjima manga style, G-pen linework 포함.${hasWoman ? ' beautiful elegant female body, graceful feminine curves, woman transformed 포함.' : ''} 'no text, no speech bubbles, creature only, plain background' 포함",
+  "negativePrompt": "cute, anime style, smooth skin, colorful, cartoon, text, speech bubble, action lines, speed lines",
+  "aspectRatio": "9:16 또는 1:1 또는 16:9 중 하나"
+}
+\`\`\`
 
 지금 바로 1개의 **독창적인 피안도 스타일 악귀 디자인**을 생성하고 JSON 형식으로 응답해 주세요.`;
   }

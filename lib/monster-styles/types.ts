@@ -58,3 +58,48 @@ export const CATEGORY_NAMES: Record<CreatureCategory, string> = {
   birdsMammals: '조류/포유류',
   parasites: '기생충',
 };
+
+// ============================================================
+// V2 괴수 생성기 타입 정의
+// ============================================================
+
+// 신체 섹션 타입
+export type BodySection = 'face' | 'torso' | 'limbs' | 'other';
+
+// 인체 타입
+export type HumanType = 'man' | 'woman' | 'child';
+
+// 섹션 선택 옵션
+export interface SectionSelection {
+  type: 'creature' | 'human' | 'none';
+  creatureId?: string;      // 생물 선택 시 (카테고리:인덱스 형식)
+  humanType?: HumanType;    // 인체 선택 시
+}
+
+// v2 요청 타입
+export interface MonsterV2Request {
+  face: SectionSelection;
+  torso: SectionSelection;
+  limbs: SectionSelection;
+  other: SectionSelection;
+  style: MonsterStyle;
+  allowVariant?: boolean;  // 변종 허용 여부
+}
+
+// v2에서 사용하는 섹션별 선택 결과
+export interface SectionCreatureResult {
+  section: BodySection;
+  sectionName: string;
+  type: 'creature' | 'human';
+  name: string;
+  description: string;
+  humanType?: HumanType; // 인체 선택 시 타입 정보
+}
+
+// 섹션 한글 이름 매핑
+export const SECTION_NAMES: Record<BodySection, string> = {
+  face: '얼굴',
+  torso: '몸통',
+  limbs: '팔다리',
+  other: '기타',
+};
