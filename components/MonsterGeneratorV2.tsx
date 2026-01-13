@@ -396,6 +396,7 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
     aspectRatio: string;
     negativePrompt?: string;
     isEditing: boolean;
+    isLoading: boolean;  // 이미지 생성 중인지 여부
   }
   const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPrompt[]>([]);
   const [promptLoading, setPromptLoading] = useState(false);
@@ -527,6 +528,7 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
         aspectRatio: promptResult.aspectRatio || '1:1',
         negativePrompt: promptResult.negativePrompt,
         isEditing: false,
+        isLoading: false,
       };
 
       setGeneratedPrompts(prev => [newPrompt, ...prev]);

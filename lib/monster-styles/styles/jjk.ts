@@ -4,7 +4,7 @@
 
 import { MonsterStyleGenerator } from '../base';
 import { DesignElement, MonsterStyle, SelectedCreature, SectionCreatureResult } from '../types';
-import { SECTION_DESCRIPTIONS } from '../creatures';
+import { SECTION_DESCRIPTIONS, HUMAN_TYPES } from '../creatures';
 
 // 베이스 플랫폼 (몸체 형태) 타입
 type BodyPlatform =
@@ -536,15 +536,20 @@ ${creatureApplicationGuide}
     selectedElements: DesignElement[]
   ): string {
     const elementsList = this.formatDesignElements(selectedElements);
-    const sectionsText = this.formatSectionResults(sectionResults);
-    const recommendedRatio = this.getRecommendedAspectRatio();
+    const sectionsText = this.formatSectionResultsV2(sectionResults);
     const variantText = allowVariant ? '\n\n**변종 허용:** 선택된 요소들의 변형 및 돌연변이가 가능합니다. 저주 에너지로 인한 더 극단적인 변형을 적용해도 됩니다.' : '';
     const humanInstructions = this.formatHumanInstructions(sectionResults);
+    
+    // v2에서는 인체 선택 여부에 따라 형태 결정
+    const hasHuman = sectionResults.some(r => r.type === 'human');
+    const baseFormText = hasHuman 
+      ? '인체가 포함된 섹션은 해당 인간의 신체 특징을 기반으로 하되, 다른 섹션의 생물 특징과 기괴하게 융합된 형태로 디자인하세요.'
+      : '순수하게 생물들의 특징만 조합된 괴수입니다. 인간형(humanoid)이나 이족보행이 아닌, 선택된 생물들의 신체 구조를 기반으로 디자인하세요.';
 
     return `당신은 일본 만화 '주술회전(Jujutsu Kaisen)' 스타일의 **특급 주령(Special Grade Cursed Spirit)** 전문 컨셉 아티스트이자 프롬프트 엔지니어입니다.
 아래에 **신체 섹션별로 지정된 요소들**을 사용하여, **아쿠타미 게게(Gege Akutami)의 화풍**을 완벽하게 재현한 괴수 디자인 프롬프트를 작성하세요.
 
-**신체 섹션별 구성:**
+**⚠️ 중요: 사용자가 직접 선택한 요소만 사용하세요!**
 ${sectionsText}${variantText}${humanInstructions}
 
 ---
@@ -556,21 +561,19 @@ ${sectionsText}${variantText}${humanInstructions}
 - **Manga Aesthetics:** 일본 흑백 만화 스타일(Japanese Manga Style). 진한 먹칠(Heavy Black Ink), 스크린톤(Screentones), 먹물 튐 효과(Ink Splatters)를 포함할 것.
 - **Atmosphere:** 사악하고 불길한 오라(Ominous aura), 저주받은 에너지(Cursed Energy)가 느껴지는 연출.
 
-**2. 🎯 이번 괴수의 베이스 플랫폼:**
-- **${this.selectedPlatform.name}**
-- 설명: ${this.selectedPlatform.description}
-- 형태 키워드: ${this.selectedPlatform.examples}
+**2. 🎯 기본 형태:**
+${baseFormText}
 
-**3. 섹션별 적용 규칙:**
-- 각 신체 섹션에 지정된 요소를 반영하되, 저주로서 발현된 형태로 디자인할 것
-- 인체가 지정된 섹션은 기괴하게 비틀린 인간의 특징이 나타나야 함
-- 생물이 지정된 섹션은 해당 생물의 저주화된 특징이 반영되어야 함
+**3. 섹션별 적용 규칙 (반드시 준수!):**
+- **오직 위에서 지정된 생물/인체만 사용하세요.** 다른 생물이나 특징을 추가하지 마세요.
+- 각 섹션에 지정된 생물의 **한국어 이름에 해당하는 실제 생물**의 특징을 정확히 반영하세요.
+- 지정되지 않은 섹션은 다른 섹션의 요소가 자연스럽게 확장되거나 연결되도록 디자인하세요.
 
 **4. 이번에 적용할 저주 디자인 요소:**
 ${elementsList}
 
 **5. 구도:**
-- **배경:** 단순한 흰색 배경(White background) 또는 그라데이션. **효과선, 속도선, 집중선 없음.**
+- **배경:** 단순한 흰색 배경(White background). **효과선, 속도선, 집중선 없음.**
 - **전신 샷:** 괴수의 전체적인 실루엣이 보이도록.
 - **중앙 배치:** 괴수가 이미지 중앙에 위치하도록 구성.
 
@@ -578,8 +581,9 @@ ${elementsList}
 - **텍스트 금지:** 어떤 글자, 대사, 말풍선, 효과음 텍스트도 포함하지 말 것
 - **만화 효과 금지:** 액션 라인, 스피드 라인, 집중선 등 없음
 - **괴수만 그릴 것:** 오직 괴수 캐릭터만 단독으로 그릴 것
+${!hasHuman ? '- **인간형 금지:** humanoid, bipedal, standing upright 등 인간형 자세나 형태 금지' : ''}
 
-**7. 이미지 비율 (권장: ${recommendedRatio}):**
+**7. 이미지 비율:**
 - 세로형(portrait): 9:16
 - 정사각형(square): 1:1
 - 가로형(landscape): 16:9
@@ -589,12 +593,39 @@ ${elementsList}
 **중요:** 응답은 반드시 유효한 JSON 형식으로 작성해주세요:
 \`\`\`json
 {
-  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. 각 섹션별 요소가 반영된 주령. Jujutsu Kaisen manga style 포함. 'no text, no speech bubbles, creature only, clean background' 포함",
-  "negativePrompt": "photorealistic, 3d render, clean line art, color, text, speech bubble, action lines, speed lines",
-  "aspectRatio": "${recommendedRatio}"
+  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. 위에서 지정된 생물들(한국어 이름의 영어 번역)만 포함. Jujutsu Kaisen manga style 포함. 'no text, no speech bubbles, creature only, clean background' 포함",
+  "negativePrompt": "photorealistic, 3d render, clean line art, color, text, speech bubble, action lines, speed lines${!hasHuman ? ', humanoid, bipedal, standing upright, human posture' : ''}",
+  "aspectRatio": "9:16 또는 1:1 또는 16:9 중 괴수 형태에 맞게 선택"
 }
 \`\`\`
 
 지금 바로 1개의 **독창적인 특급 주령 디자인**을 생성하고 JSON 형식으로 응답해 주세요.`;
+  }
+
+  /**
+   * V2용 섹션 결과 포맷팅 (더 명확하게)
+   */
+  private formatSectionResultsV2(results: SectionCreatureResult[]): string {
+    if (results.length === 0) {
+      return '(지정된 요소 없음)';
+    }
+
+    return results.map((result) => {
+      const sectionInfo = SECTION_DESCRIPTIONS[result.section];
+      
+      if (result.type === 'human' && result.humanType) {
+        const humanInfo = HUMAN_TYPES[result.humanType];
+        return `- **${sectionInfo.name}**: 인체 - ${humanInfo.name} (${humanInfo.nameEn})`;
+      } else {
+        // 생물 이름에서 한글과 영어 분리
+        const nameParts = result.name.match(/^(.+?)\s*\((.+)\)$/);
+        if (nameParts) {
+          const koreanName = nameParts[1];
+          const englishName = nameParts[2];
+          return `- **${sectionInfo.name}**: 생물 - ${koreanName} (영어: ${englishName}) - 특징: ${result.description}`;
+        }
+        return `- **${sectionInfo.name}**: 생물 - ${result.name} - 특징: ${result.description}`;
+      }
+    }).join('\n');
   }
 }
