@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     const updateData: {
       is_temp: boolean;
       process_id?: string;
+      cut_id?: string;
       file_name?: string;
       description?: string;
     } = {
@@ -75,6 +76,11 @@ export async function POST(request: NextRequest) {
       // processId가 변경되면 storage_path도 업데이트 필요
       // 하지만 파일 이동은 하지 않으므로, storage_path는 그대로 유지
       // 필요시 나중에 파일 이동 로직 추가 가능
+    }
+
+    // cutId 저장 (컷/페이지에 연결)
+    if (cutId) {
+      updateData.cut_id = cutId;
     }
 
     if (fileName) {
