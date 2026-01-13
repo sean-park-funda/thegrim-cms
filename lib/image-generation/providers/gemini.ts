@@ -5,6 +5,31 @@ import { isRetryableNetworkError, retryAsync, withTimeout } from '../utils';
 const DEFAULT_GEMINI_MODEL = 'gemini-3-pro-image-preview';
 const DEFAULT_GEMINI_TIMEOUT = 120000;
 
+// 안전 설정 - 가능한 한 제한을 낮춤
+// 참고: 아동 안전 등 일부 콘텐츠는 항상 차단됨
+const SAFETY_SETTINGS = [
+  {
+    category: 'HARM_CATEGORY_HARASSMENT',
+    threshold: 'OFF',
+  },
+  {
+    category: 'HARM_CATEGORY_HATE_SPEECH',
+    threshold: 'OFF',
+  },
+  {
+    category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+    threshold: 'OFF',
+  },
+  {
+    category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+    threshold: 'OFF',
+  },
+  {
+    category: 'HARM_CATEGORY_CIVIC_INTEGRITY',
+    threshold: 'OFF',
+  },
+];
+
 function buildConfig(config?: GeminiRequestConfig): GeminiRequestConfig {
   const imageConfig = {
     imageSize: config?.imageConfig?.imageSize ?? '1K',
@@ -18,6 +43,7 @@ function buildConfig(config?: GeminiRequestConfig): GeminiRequestConfig {
     topP: config?.topP ?? 0.95,
     topK: config?.topK ?? 40,
     maxOutputTokens: config?.maxOutputTokens ?? 32768,
+    safetySettings: SAFETY_SETTINGS,
   };
 }
 
@@ -29,6 +55,8 @@ async function extractInlineImage(
   let mimeType: string | null = null;
   const allChunks: any[] = [];
   let textContent = '';
+  let lastFinishReason: string | null = null;
+  let lastSafetyRatings: any[] | null = null;
 
   try {
     await withTimeout(
@@ -37,17 +65,26 @@ async function extractInlineImage(
           // 모든 chunk를 저장 (로깅용)
           allChunks.push(JSON.parse(JSON.stringify(chunk))); // 깊은 복사
           
-          const parts = chunk.candidates?.[0]?.content?.parts;
+          // finishReason과 safetyRatings 추적
+          const candidate = chunk.candidates?.[0];
+          if (candidate?.finishReason) {
+            lastFinishReason = candidate.finishReason;
+          }
+          if (candidate?.safetyRatings) {
+            lastSafetyRatings = candidate.safetyRatings;
+          }
+          
+          const parts = candidate?.content?.parts;
           if (!parts) {
             // parts가 없는 경우에도 로깅
             console.log('[image-generation][gemini] chunk without parts:', {
               hasCandidates: !!chunk.candidates,
               candidatesLength: chunk.candidates?.length,
-              firstCandidate: chunk.candidates?.[0] ? {
-                hasContent: !!chunk.candidates[0].content,
-                hasParts: !!chunk.candidates[0].content?.parts,
-                finishReason: chunk.candidates[0].finishReason,
-                safetyRatings: chunk.candidates[0].safetyRatings,
+              firstCandidate: candidate ? {
+                hasContent: !!candidate.content,
+                hasParts: !!candidate.content?.parts,
+                finishReason: candidate.finishReason,
+                safetyRatings: candidate.safetyRatings,
               } : null,
             });
             continue;
@@ -80,6 +117,8 @@ async function extractInlineImage(
       chunksReceived: allChunks.length,
       textContent: textContent.substring(0, 500), // 처음 500자만
       lastChunk: allChunks[allChunks.length - 1],
+      lastFinishReason,
+      lastSafetyRatings,
     });
     throw error;
   }
@@ -89,6 +128,8 @@ async function extractInlineImage(
     console.error('[image-generation][gemini] 이미지 데이터를 찾지 못함 - 전체 응답:', {
       chunksCount: allChunks.length,
       textContent: textContent || '(텍스트 없음)',
+      lastFinishReason,
+      lastSafetyRatings,
       chunks: allChunks.map((chunk, idx) => ({
         index: idx,
         hasCandidates: !!chunk.candidates,
@@ -110,7 +151,24 @@ async function extractInlineImage(
         } : null,
       })),
     });
-    throw new Error('Gemini 응답에서 이미지 데이터를 찾지 못했습니다.');
+    
+    // finishReason에 따른 구체적인 에러 메시지
+    let errorMessage = 'Gemini 응답에서 이미지 데이터를 찾지 못했습니다.';
+    if (lastFinishReason) {
+      const reasonMessages: Record<string, string> = {
+        'IMAGE_SAFETY': '이미지 안전 정책 위반 (IMAGE_SAFETY)',
+        'PROHIBITED_CONTENT': '금지된 콘텐츠 (PROHIBITED_CONTENT)',
+        'SAFETY': '안전 정책 위반 (SAFETY)',
+        'RECITATION': '저작권 관련 차단 (RECITATION)',
+        'OTHER': '기타 이유로 차단됨 (OTHER)',
+        'BLOCKLIST': '차단 목록 콘텐츠 (BLOCKLIST)',
+        'SPII': '개인정보 관련 차단 (SPII)',
+      };
+      const reasonDesc = reasonMessages[lastFinishReason] || lastFinishReason;
+      errorMessage = `이미지 생성 실패: ${reasonDesc}`;
+    }
+    
+    throw new Error(errorMessage);
   }
 
   return { base64, mimeType };

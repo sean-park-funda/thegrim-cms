@@ -574,6 +574,7 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
     const BATCH_SIZE = 2;
     let successCount = 0;
     let failCount = 0;
+    const errorMessages: string[] = [];
 
     try {
       for (let batchStart = 0; batchStart < generationCount; batchStart += BATCH_SIZE) {
@@ -599,6 +600,10 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
                   img.id === placeholderId ? { ...img, status: 'error' as const } : img
                 ));
                 failCount++;
+                // 에러 메시지 수집 (중복 방지)
+                if (imageResult.error && !errorMessages.includes(imageResult.error)) {
+                  errorMessages.push(imageResult.error);
+                }
                 setGenerationProgress(prev => prev ? {
                   current: prev.current + 1,
                   total: prev.total,
@@ -640,6 +645,11 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
                 img.id === placeholderId ? { ...img, status: 'error' as const } : img
               ));
               failCount++;
+              // 예외 메시지 수집 (중복 방지)
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (errMsg && !errorMessages.includes(errMsg)) {
+                errorMessages.push(errMsg);
+              }
               setGenerationProgress(prev => prev ? {
                 current: prev.current + 1,
                 total: prev.total,
@@ -660,10 +670,12 @@ export function MonsterGeneratorV2({ cutId, webtoonId, processes, onFilesReload 
 
       await loadHistory();
 
+      // 에러 메시지 표시 (구체적인 이유 포함)
+      const errorDetail = errorMessages.length > 0 ? `\n실패 이유: ${errorMessages.join(', ')}` : '';
       if (failCount > 0 && successCount === 0) {
-        setImageError('모든 이미지 생성에 실패했습니다.');
+        setImageError(`모든 이미지 생성에 실패했습니다.${errorDetail}`);
       } else if (failCount > 0) {
-        setImageError(`${successCount}개의 이미지가 생성되었습니다. ${failCount}개 실패.`);
+        setImageError(`${successCount}개의 이미지가 생성되었습니다. ${failCount}개 실패.${errorDetail}`);
       } else if (successCount > 0) {
         setImageError(null);
       }

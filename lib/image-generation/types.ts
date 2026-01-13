@@ -14,6 +14,11 @@ export type GeminiContent = {
   parts: GeminiContentPart[];
 };
 
+export type SafetySetting = {
+  category: string;
+  threshold: 'OFF' | 'BLOCK_NONE' | 'BLOCK_ONLY_HIGH' | 'BLOCK_MEDIUM_AND_ABOVE' | 'BLOCK_LOW_AND_ABOVE';
+};
+
 export type GeminiRequestConfig = {
   responseModalities?: Array<'IMAGE' | 'TEXT'>;
   imageConfig?: {
@@ -24,6 +29,7 @@ export type GeminiRequestConfig = {
   topP?: number;
   topK?: number;
   maxOutputTokens?: number;
+  safetySettings?: SafetySetting[];
 };
 
 export type GeminiRequest = {

@@ -549,7 +549,7 @@ ${creatureApplicationGuide}
     return `당신은 일본 만화 '주술회전(Jujutsu Kaisen)' 스타일의 **특급 주령(Special Grade Cursed Spirit)** 전문 컨셉 아티스트이자 프롬프트 엔지니어입니다.
 아래에 **신체 섹션별로 지정된 요소들**을 사용하여, **아쿠타미 게게(Gege Akutami)의 화풍**을 완벽하게 재현한 괴수 디자인 프롬프트를 작성하세요.
 
-**⚠️ 중요: 사용자가 직접 선택한 요소만 사용하세요!**
+**⚠️ 핵심 규칙: 각 섹션에서 선택된 생물이 해당 부위의 기본 구조입니다!**
 ${sectionsText}${variantText}${humanInstructions}
 
 ---
@@ -561,12 +561,16 @@ ${sectionsText}${variantText}${humanInstructions}
 - **Manga Aesthetics:** 일본 흑백 만화 스타일(Japanese Manga Style). 진한 먹칠(Heavy Black Ink), 스크린톤(Screentones), 먹물 튐 효과(Ink Splatters)를 포함할 것.
 - **Atmosphere:** 사악하고 불길한 오라(Ominous aura), 저주받은 에너지(Cursed Energy)가 느껴지는 연출.
 
-**2. 🎯 기본 형태:**
+**2. 🎯 섹션별 구조 규칙 (가장 중요!):**
 ${baseFormText}
 
-**3. 섹션별 적용 규칙 (반드시 준수!):**
-- **오직 위에서 지정된 생물/인체만 사용하세요.** 다른 생물이나 특징을 추가하지 마세요.
-- 각 섹션에 지정된 생물의 **한국어 이름에 해당하는 실제 생물**의 특징을 정확히 반영하세요.
+**⚠️ 주의: 각 섹션에서 선택된 요소가 해당 부위의 "기본 형태/구조"가 되어야 합니다.**
+- 예: "몸통 = 갯가재"이면, 몸통은 **갯가재의 몸체 구조 자체**가 기본이 됩니다. (인간 몸통에 갯가재를 붙이는 것이 아님!)
+- 예: "얼굴 = 집게벌레"이면, 머리는 **집게벌레의 머리 구조 자체**가 기본이 됩니다.
+- 인체가 선택된 섹션에서만 인간의 신체가 기본 구조로 사용됩니다.
+
+**3. 섹션별 적용:**
+- 각 섹션에 지정된 생물의 **실제 해부학적 구조**를 정확히 반영하세요.
 - 지정되지 않은 섹션은 다른 섹션의 요소가 자연스럽게 확장되거나 연결되도록 디자인하세요.
 
 **4. 이번에 적용할 저주 디자인 요소:**
@@ -581,7 +585,6 @@ ${elementsList}
 - **텍스트 금지:** 어떤 글자, 대사, 말풍선, 효과음 텍스트도 포함하지 말 것
 - **만화 효과 금지:** 액션 라인, 스피드 라인, 집중선 등 없음
 - **괴수만 그릴 것:** 오직 괴수 캐릭터만 단독으로 그릴 것
-${!hasHuman ? '- **인간형 금지:** humanoid, bipedal, standing upright 등 인간형 자세나 형태 금지' : ''}
 
 **7. 이미지 비율:**
 - 세로형(portrait): 9:16
@@ -593,8 +596,8 @@ ${!hasHuman ? '- **인간형 금지:** humanoid, bipedal, standing upright 등 �
 **중요:** 응답은 반드시 유효한 JSON 형식으로 작성해주세요:
 \`\`\`json
 {
-  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. 위에서 지정된 생물들(한국어 이름의 영어 번역)만 포함. Jujutsu Kaisen manga style 포함. 'no text, no speech bubbles, creature only, clean background' 포함",
-  "negativePrompt": "photorealistic, 3d render, clean line art, color, text, speech bubble, action lines, speed lines${!hasHuman ? ', humanoid, bipedal, standing upright, human posture' : ''}",
+  "imagePrompt": "실제 생성에 사용할 상세한 영어 프롬프트. 각 섹션에서 선택된 생물이 해당 부위의 기본 구조가 되도록. Jujutsu Kaisen manga style 포함. 'no text, no speech bubbles, creature only, clean background' 포함",
+  "negativePrompt": "photorealistic, 3d render, clean line art, color, text, speech bubble, action lines, speed lines",
   "aspectRatio": "9:16 또는 1:1 또는 16:9 중 괴수 형태에 맞게 선택"
 }
 \`\`\`
