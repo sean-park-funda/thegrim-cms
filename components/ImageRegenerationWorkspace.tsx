@@ -597,7 +597,7 @@ export function ImageRegenerationWorkspace({
 
   // 공정 선택 다이얼로그 열기
   const handleOpenProcessSelect = () => {
-    if (file) {
+    if (file && file.process_id) {
       setSelectedProcessId(getNextProcessId(file.process_id));
     }
     setProcessSelectOpen(true);

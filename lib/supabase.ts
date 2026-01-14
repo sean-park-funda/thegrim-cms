@@ -81,8 +81,8 @@ export interface Process {
 
 export interface File {
   id: string;
-  cut_id: string;
-  process_id: string;
+  cut_id: string | null;
+  process_id: string | null;
   file_name: string;
   file_path: string;
   storage_path: string;
@@ -149,6 +149,7 @@ export interface ReferenceFile {
   mime_type?: string;
   description?: string;
   metadata?: Record<string, any>;
+  created_by?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -248,4 +249,57 @@ export interface AiRegenerationStyleInput {
   is_active?: boolean;
 }
 
+// 자유창작 세션 타입
+export interface FreeCreationSession {
+  id: string;
+  webtoon_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
 
+// 자유창작 세션 (통계 정보 포함)
+export interface FreeCreationSessionWithStats extends FreeCreationSession {
+  owner_name?: string;
+  message_count?: number;
+  latest_thumbnails?: string[];
+}
+
+// 자유창작 메시지 상태
+export type FreeCreationMessageStatus = 'pending' | 'generating' | 'completed' | 'error';
+
+// 자유창작 메시지 타입
+export interface FreeCreationMessage {
+  id: string;
+  session_id: string;
+  prompt: string;
+  reference_file_ids: string[];
+  generated_file_id: string | null;
+  api_provider: ApiProvider;
+  aspect_ratio: string;
+  status: FreeCreationMessageStatus;
+  error_message: string | null;
+  created_by?: string | null;
+  created_at: string;
+}
+
+// 자유창작 메시지 (관계 포함)
+export interface FreeCreationMessageWithFile extends FreeCreationMessage {
+  generated_file?: File;
+  reference_files?: ReferenceFile[];
+}
+
+// 자유창작 최근 레퍼런스 타입
+export interface FreeCreationRecentReference {
+  id: string;
+  session_id: string;
+  reference_file_id: string;
+  created_by?: string | null;
+  used_at: string;
+}
+
+// 자유창작 최근 레퍼런스 (관계 포함)
+export interface FreeCreationRecentReferenceWithFile extends FreeCreationRecentReference {
+  reference_file?: ReferenceFile;
+}

@@ -61,19 +61,21 @@ function ResetPasswordForm() {
     }
 
     setIsLoading(true);
+    setError(''); // 에러 초기화
 
     try {
       await updatePassword(password);
       setIsSuccess(true);
+      setIsLoading(false); // 성공 시 로딩 상태 해제
       
       // 3초 후 로그인 페이지로 이동
       setTimeout(() => {
         router.push('/login');
       }, 3000);
     } catch (err: any) {
+      console.error('비밀번호 변경 오류:', err);
       setError(err.message || '비밀번호 변경에 실패했습니다.');
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); // 에러 발생 시 로딩 상태 해제
     }
   };
 

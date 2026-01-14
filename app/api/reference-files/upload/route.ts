@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     webtoonId: string;
     processId: string;
     description?: string;
+    userId?: string;
   } | null;
 
   if (!body?.imageData || !body?.mimeType || !body?.fileName || !body?.webtoonId || !body?.processId) {
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
       mime_type: body.mimeType,
       description: body.description || '',
       metadata: {},
+      created_by: body.userId || null,
     });
 
     console.log('[reference-files/upload][POST] 레퍼런스 파일 업로드 및 DB 저장 성공', {

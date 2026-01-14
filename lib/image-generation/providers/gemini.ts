@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import type { GenerateImageResult, GeminiRequest, GeminiRequestConfig } from '../types';
 import { isRetryableNetworkError, retryAsync, withTimeout } from '../utils';
 
@@ -9,24 +9,24 @@ const DEFAULT_GEMINI_TIMEOUT = 120000;
 // 참고: 아동 안전 등 일부 콘텐츠는 항상 차단됨
 const SAFETY_SETTINGS = [
   {
-    category: 'HARM_CATEGORY_HARASSMENT',
-    threshold: 'OFF',
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.OFF,
   },
   {
-    category: 'HARM_CATEGORY_HATE_SPEECH',
-    threshold: 'OFF',
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.OFF,
   },
   {
-    category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-    threshold: 'OFF',
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.OFF,
   },
   {
-    category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-    threshold: 'OFF',
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.OFF,
   },
   {
-    category: 'HARM_CATEGORY_CIVIC_INTEGRITY',
-    threshold: 'OFF',
+    category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+    threshold: HarmBlockThreshold.OFF,
   },
 ];
 
@@ -43,7 +43,7 @@ function buildConfig(config?: GeminiRequestConfig): GeminiRequestConfig {
     topP: config?.topP ?? 0.95,
     topK: config?.topK ?? 40,
     maxOutputTokens: config?.maxOutputTokens ?? 32768,
-    safetySettings: SAFETY_SETTINGS,
+    safetySettings: [...SAFETY_SETTINGS],
   };
 }
 
@@ -241,8 +241,8 @@ export async function generateGeminiImage(request: GeminiRequest): Promise<Gener
             modalities: mergedConfig.responseModalities,
             imageSize: mergedConfig.imageConfig?.imageSize,
             aspectRatio: mergedConfig.imageConfig?.aspectRatio,
-            promptPreview: contents?.[0]?.parts?.[0]?.text?.substring(0, 300) ?? '(프롬프트 없음)',
-            promptLength: contents?.[0]?.parts?.[0]?.text?.length ?? 0,
+            promptPreview: (contents?.[0]?.parts?.[0] as { text?: string })?.text?.substring(0, 300) ?? '(프롬프트 없음)',
+            promptLength: (contents?.[0]?.parts?.[0] as { text?: string })?.text?.length ?? 0,
           },
         });
         throw error;
@@ -260,8 +260,8 @@ export async function generateGeminiImage(request: GeminiRequest): Promise<Gener
         modalities: mergedConfig.responseModalities,
         imageSize: mergedConfig.imageConfig?.imageSize,
         aspectRatio: mergedConfig.imageConfig?.aspectRatio,
-        promptPreview: contents?.[0]?.parts?.[0]?.text?.substring(0, 500) ?? '(프롬프트 없음)',
-        promptLength: contents?.[0]?.parts?.[0]?.text?.length ?? 0,
+        promptPreview: (contents?.[0]?.parts?.[0] as { text?: string })?.text?.substring(0, 500) ?? '(프롬프트 없음)',
+        promptLength: (contents?.[0]?.parts?.[0] as { text?: string })?.text?.length ?? 0,
       },
     });
     throw error;

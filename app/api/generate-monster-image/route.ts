@@ -21,9 +21,17 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   console.log('[괴수 이미지 생성] 요청 시작');
 
+  // catch 블록에서 사용하기 위해 try 블록 외부에 선언
+  let prompt: string | undefined;
+  let aspectRatio: string | undefined;
+  let apiProvider: ApiProvider = 'auto';
+
   try {
     const body: GenerateMonsterImageRequest = await request.json();
-    const { prompt, aspectRatio, cutId, userId, apiProvider = 'auto' } = body;
+    prompt = body.prompt;
+    aspectRatio = body.aspectRatio;
+    apiProvider = body.apiProvider || 'auto';
+    const { cutId, userId } = body;
 
     if (!prompt || !prompt.trim()) {
       console.error('[괴수 이미지 생성] 프롬프트가 없음');

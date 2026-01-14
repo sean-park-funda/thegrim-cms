@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sparkles, Box } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sparkles, Box, Palette } from 'lucide-react';
 import Link from 'next/link';
 import { Episode, WebtoonWithEpisodes } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
@@ -421,6 +421,12 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
                     <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
                       <FileText className="h-4 w-4" />
                       대본to콘티
+                    </Button>
+                  </Link>
+                  <Link href={`/free-creation?webtoonId=${webtoon.id}`}>
+                    <Button variant="default" size="sm" className="gap-2 bg-primary hover:bg-primary/90">
+                      <Palette className="h-4 w-4" />
+                      자유창작
                     </Button>
                   </Link>
                 </div>

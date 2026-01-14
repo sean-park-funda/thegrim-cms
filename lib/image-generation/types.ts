@@ -1,3 +1,5 @@
+import type { SafetySetting } from '@google/genai';
+
 export type ImageProvider = 'gemini' | 'seedream';
 
 export type InlineImage = {
@@ -12,11 +14,6 @@ export type GeminiContentPart =
 export type GeminiContent = {
   role: 'user' | 'system' | 'model';
   parts: GeminiContentPart[];
-};
-
-export type SafetySetting = {
-  category: string;
-  threshold: 'OFF' | 'BLOCK_NONE' | 'BLOCK_ONLY_HIGH' | 'BLOCK_MEDIUM_AND_ABOVE' | 'BLOCK_LOW_AND_ABOVE';
 };
 
 export type GeminiRequestConfig = {

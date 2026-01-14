@@ -214,7 +214,7 @@ export function FileDetailDialog({
 
   // 다이얼로그가 열릴 때 다음 공정으로 초기화
   const handleOpenProcessSelect = () => {
-    if (file) {
+    if (file && file.process_id) {
       setSelectedProcessId(getNextProcessId(file.process_id));
     }
     setProcessSelectOpen(true);

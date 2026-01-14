@@ -721,14 +721,45 @@ export async function sendPasswordResetEmail(email: string) {
 // 새 비밀번호로 업데이트
 export async function updatePassword(newPassword: string) {
   try {
-    const { error } = await supabase.auth.updateUser({
+    // 타임아웃 설정 (10초)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('비밀번호 변경 요청이 시간 초과되었습니다. 네트워크 연결을 확인해주세요.')), 10000);
+    });
+    
+    const updatePromise = supabase.auth.updateUser({
       password: newPassword,
     });
+    
+    const { error } = await Promise.race([
+      updatePromise,
+      timeoutPromise
+    ]) as Awaited<ReturnType<typeof supabase.auth.updateUser>>;
     
     if (error) throw error;
   } catch (error: any) {
     console.error('비밀번호 업데이트 오류:', error);
-    throw new Error(error.message || '비밀번호 업데이트에 실패했습니다.');
+    
+    // 타임아웃 에러인 경우 명확한 메시지 제공
+    if (error.message?.includes('시간 초과') || error.message?.includes('timeout')) {
+      throw new Error('비밀번호 변경 요청이 시간 초과되었습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
+    }
+    
+    // 네트워크 에러인 경우
+    if (error.message?.includes('network') || error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+      throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인하고 다시 시도해주세요.');
+    }
+    
+    // 세션 관련 에러
+    if (error.message?.includes('session') || error.message?.includes('Session')) {
+      throw new Error('세션이 만료되었습니다. 비밀번호 재설정 링크를 다시 요청해주세요.');
+    }
+    
+    // 기존 에러 메시지가 있으면 그대로 사용, 없으면 기본 메시지
+    if (error.message) {
+      throw new Error(error.message);
+    }
+    
+    throw new Error('비밀번호 업데이트에 실패했습니다.');
   }
 }
 

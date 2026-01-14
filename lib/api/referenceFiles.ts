@@ -131,7 +131,8 @@ export async function uploadReferenceFile(
     file: globalThis.File,
     webtoonId: string,
     processId: string,
-    description?: string
+    description?: string,
+    createdBy?: string
 ): Promise<ReferenceFile> {
     const timestamp = Date.now();
     const sanitizedFileName = sanitizeFileName(file.name);
@@ -163,7 +164,8 @@ export async function uploadReferenceFile(
         file_type: fileType,
         mime_type: file.type,
         description: description || '',
-        metadata: {}
+        metadata: {},
+        created_by: createdBy || null,
     });
 
     // 이미지 파일인 경우 썸네일 생성 (비동기, 실패해도 업로드는 성공으로 처리)
