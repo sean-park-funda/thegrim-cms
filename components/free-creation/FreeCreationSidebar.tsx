@@ -167,13 +167,13 @@ export function FreeCreationSidebar({
                       </div>
                     )}
                     {/* 삭제 버튼 */}
-                    {onReferenceDelete && (
+                    {onReferenceDelete && ref.reference_file && (
                       <button
                         type="button"
                         className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-destructive text-destructive-foreground rounded-full p-1 hover:bg-destructive/90 z-10"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm('이 레퍼런스 이미지를 삭제하시겠습니까?')) {
+                          if (ref.reference_file && confirm('이 레퍼런스 이미지를 삭제하시겠습니까?')) {
                             onReferenceDelete(ref.reference_file.id);
                           }
                         }}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { uploadFile, deleteFile, updateFile, analyzeImage, getFilesByCut } from '@/lib/api/files';
 import { getProcesses } from '@/lib/api/processes';
@@ -28,6 +28,7 @@ interface FileGridProps {
 export function FileGrid({ cutId }: FileGridProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { processes, setProcesses, profile, selectedWebtoon, selectedEpisode } = useStore();
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, globalThis.File[]>>({});
@@ -736,9 +737,8 @@ export function FileGrid({ cutId }: FileGridProps) {
   };
 
   const updateProcessInUrl = useCallback((processId: string) => {
-    const currentPath = window.location.pathname;
-    router.replace(`${currentPath}?process=${processId}`, { scroll: false });
-  }, [router]);
+    router.replace(`${pathname}?process=${processId}`, { scroll: false });
+  }, [router, pathname]);
 
   const handleFileMove = useCallback(async (fileId: string, newProcessId: string) => {
     try {
@@ -804,11 +804,10 @@ export function FileGrid({ cutId }: FileGridProps) {
       if (selectedProcess?.id !== firstProcess.id) {
         setSelectedProcess(firstProcess);
         // URL 업데이트 (현재 경로 유지하면서 쿼리 파라미터만 추가)
-        const currentPath = window.location.pathname;
-        router.replace(`${currentPath}?process=${firstProcess.id}`, { scroll: false });
+        router.replace(`${pathname}?process=${firstProcess.id}`, { scroll: false });
       }
     }
-  }, [processes, processIdFromUrl, sortedProcesses, selectedProcess, router]);
+  }, [processes, processIdFromUrl, sortedProcesses, selectedProcess, router, pathname]);
 
   const activeProcessId = selectedProcess?.id || (sortedProcesses.length > 0 ? sortedProcesses[0].id : '');
 
