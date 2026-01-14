@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink, RefreshCw, Play } from 'lucide-react';
+import { ArrowLeft, Wand2, Copy, Check, Loader2, ExternalLink, RefreshCw, Play, Upload, X } from 'lucide-react';
 
 interface GenerateResponse {
   image_url: string;
@@ -36,6 +36,8 @@ export default function ComfyTestPage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   // 워크플로우 리스트 로드
   const loadWorkflows = async () => {
@@ -83,6 +85,32 @@ export default function ComfyTestPage() {
     return null;
   }
 
+  // 이미지 파일 선택 핸들러
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 이미지 파일만 허용
+      if (!file.type.startsWith('image/')) {
+        setError('이미지 파일만 업로드할 수 있습니다');
+        return;
+      }
+      setSelectedImage(file);
+      // 미리보기 생성
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      setError(null);
+    }
+  };
+
+  // 선택한 이미지 제거
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+  };
+
   const generateImage = async () => {
     if (!selectedWorkflow) {
       setError('워크플로우를 선택해주세요');
@@ -98,25 +126,27 @@ export default function ComfyTestPage() {
     setImageUrl(null);
 
     try {
-      const response = await fetch(
-        'https://api.rewardpang.com/thegrim-cms/comfyui/generate',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            workflow_name: selectedWorkflow,
-            prompt: prompt.trim(),
-            negative_prompt: negativePrompt.trim() || '',
-            seed: useRandomSeed ? -1 : parseInt(seed) || -1,
-          }),
-        }
-      );
+      // FormData 생성
+      const formData = new FormData();
+      formData.append('workflow_name', selectedWorkflow);
+      formData.append('prompt', prompt.trim());
+      formData.append('negative_prompt', negativePrompt.trim() || '');
+      formData.append('seed', useRandomSeed ? '-1' : seed);
+
+      // 이미지 파일이 있으면 추가
+      if (selectedImage) {
+        formData.append('image', selectedImage);
+      }
+
+      // 우리 서버의 API Route로 요청
+      const response = await fetch('/api/comfyui/generate', {
+        method: 'POST',
+        body: formData,
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData.error || errorData.detail || `HTTP error! status: ${response.status}`);
       }
 
       const data: GenerateResponse = await response.json();
@@ -316,6 +346,55 @@ export default function ComfyTestPage() {
                   className="w-full min-h-[80px] p-3 text-sm border border-border rounded-md bg-background resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={loading || testLoading}
                 />
+              </div>
+
+              {/* 이미지 업로드 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  참조 이미지 (선택)
+                </label>
+                {!selectedImage ? (
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer bg-muted/50 hover:bg-muted transition-colors">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="h-8 w-8 mb-2 text-muted-foreground" />
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        <span className="font-semibold">클릭하여 이미지 선택</span> 또는 드래그 앤 드롭
+                      </p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF 등</p>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      disabled={loading || testLoading}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative">
+                    <div className="relative rounded-lg overflow-hidden border border-border bg-muted">
+                      {imagePreview && (
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-auto max-h-64 object-contain"
+                        />
+                      )}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={removeSelectedImage}
+                        disabled={loading || testLoading}
+                        className="absolute top-2 right-2 h-8 w-8 p-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      선택된 파일: {selectedImage.name}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* 시드 설정 */}
