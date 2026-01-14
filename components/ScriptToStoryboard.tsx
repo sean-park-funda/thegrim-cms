@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Loader2, FileText, Send, Trash2, ArrowUp, ArrowDown, Plus, RefreshCcw, PenLine, User, Users, Sparkles, Check, Edit, Scissors, ListPlus } from 'lucide-react';
 import { ImageViewer } from '@/components/ImageViewer';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
-import { Webtoon, Episode } from '@/lib/supabase';
+import { Episode } from '@/lib/supabase';
 import { createCharacter, getCharactersByWebtoon } from '@/lib/api/characters';
 import { CharacterWithSheets } from '@/lib/supabase';
 import { getEpisodes } from '@/lib/api/episodes';
@@ -17,53 +17,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 
-interface Cut {
-  cutNumber: number;
-  title: string;
-  background?: string;
-  description: string;
-  dialogue?: string;
-  // 이 컷에 등장하는 모든 인물 이름 (대사가 없는 캐릭터도 포함)
-  charactersInCut?: string[];
-  // 관련배경 목록
-  relatedBackgrounds?: Array<{ cutNumber: number; background: string }>;
-}
-
-interface StoryboardImage {
-  id: string;
-  storyboard_id: string;
-  cut_index: number;
-  mime_type: string;
-  image_base64: string;
-}
-
-interface Storyboard {
-  id: string;
-  model?: string | null;
-  response_json: { cuts?: Cut[] };
-  created_at: string;
-  images?: StoryboardImage[];
-}
-
-interface Script {
-  id: string;
-  episode_id: string;
-  title: string;
-  content: string;
-  order_index: number;
-  storyboards?: Storyboard[];
-  character_analysis?: {
-    characters: Array<{
-      name: string;
-      description: string;
-      existsInDb: boolean;
-      characterId: string | null;
-      characterSheets: Array<{ id: string; file_path: string; thumbnail_path?: string | null }>;
-    }>;
-    webtoonId: string;
-    analyzedAt?: string;
-  };
-}
+// 분리된 컴포넌트 및 타입 import
+import { 
+  Cut, 
+  Storyboard, 
+  Script, 
+  CharacterAnalysisData,
+  PreviewImageData,
+  DirectEditValues,
+  EditingCut,
+} from '@/components/script-to-storyboard/types';
+import { CutCard } from '@/components/script-to-storyboard/CutCard';
+import { CharacterAnalysisCard } from '@/components/script-to-storyboard/CharacterAnalysisCard';
 
 interface ScriptToStoryboardProps {
   cutId?: string;
@@ -1243,6 +1208,36 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
     }
   };
 
+  // 야콘티 이미지 생성 완료 시 호출되는 핸들러
+  const handleYakontiImageGenerated = async (storyboardId: string, cutIndex: number, imageUrl: string) => {
+    const key = `${storyboardId}-${cutIndex}`;
+    
+    // cutImages 상태 업데이트 (즉시 UI에 표시)
+    setCutImages((prev) => ({ ...prev, [key]: imageUrl }));
+    
+    // DB에 이미지 저장 (기존 이미지가 있으면 교체)
+    try {
+      const res = await fetch('/api/storyboard-cut-image/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyboardId,
+          cutIndex,
+          imageUrl,
+        }),
+      });
+      
+      if (!res.ok) {
+        console.error('[handleYakontiImageGenerated] 이미지 저장 실패');
+      } else {
+        // 저장 성공 시 storyboard 이미지 목록 다시 로드
+        await loadStoryboardImages(storyboardId);
+      }
+    } catch (err) {
+      console.error('[handleYakontiImageGenerated] 이미지 저장 오류:', err);
+    }
+  };
+
   const handleEditCut = (storyboardId: string, cutIndex: number, cut: Cut) => {
     setEditingCut({ storyboardId, cutIndex, cut });
     setModificationPrompt('');
@@ -1718,164 +1713,25 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
             {selectedScript && (
               <div className="space-y-6 max-w-full">
                 {/* 등장인물 */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2">
-                        <User className="h-5 w-5" />
-                        등장인물
-                        {characterAnalysis[selectedScript.id] &&
-                          characterAnalysis[selectedScript.id].characters.length > 0 && (
-                            <span className="text-sm font-normal text-muted-foreground">
-                              ({characterAnalysis[selectedScript.id].characters.length}명)
-                            </span>
-                          )}
-                      </CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleManualSelectOpen}
-                          disabled={loadingWebtoonCharacters || webtoonCharacters.length === 0}
-                        >
-                          <Users className="mr-2 h-4 w-4" />
-                          수동입력
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleAnalyzeCharacters(selectedScript)}
-                          disabled={analyzingId === selectedScript.id}
-                        >
-                          {analyzingId === selectedScript.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              분석 중...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="mr-2 h-4 w-4" />
-                              캐릭터 분석
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {characterAnalysis[selectedScript.id] &&
-                    characterAnalysis[selectedScript.id].characters.length > 0 ? (
-                      <div className="space-y-3">
-                        {characterAnalysis[selectedScript.id].characters.map((char, charIdx) => (
-                            <Card key={charIdx} className="p-3">
-                              <div className="space-y-3">
-                                <div>
-                                  <h5 className="font-semibold text-sm">{char.name}</h5>
-                                  {char.description && (
-                                    <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                                      {char.description}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {char.existsInDb && char.characterSheets.length > 0 ? (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <p className="text-xs text-muted-foreground">
-                                        캐릭터시트 {char.characterSheets.length}개
-                                      </p>
-                                    </div>
-                                    <div className="flex gap-2 overflow-x-auto py-2 px-1">
-                                      {char.characterSheets.map((sheet, sheetIdx) => {
-                                        // 캐릭터 이름을 키로 사용하여 인덱스 변경에 영향받지 않도록 함
-                                        const key = `${selectedScript.id}:${char.name}`;
-                                        const isSelected = (selectedCharacterSheet[key] ?? 0) === sheetIdx;
-                                        return (
-                                          <div
-                                            key={sheetIdx}
-                                            className={`flex-shrink-0 cursor-pointer transition-all ${
-                                              isSelected ? 'ring-2 ring-primary' : 'ring-1 ring-muted'
-                                            } rounded-md overflow-hidden`}
-                                            onClick={() => {
-                                              setSelectedCharacterSheet((prev) => ({
-                                                ...prev,
-                                                [key]: sheetIdx,
-                                              }));
-                                            }}
-                                          >
-                                            <img
-                                              src={sheet.file_path}
-                                              alt={`${char.name} 캐릭터시트 ${sheetIdx + 1}`}
-                                              className="w-20 h-20 object-cover"
-                                            />
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-16 h-16 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                                      <User className="h-8 w-8 text-muted-foreground/40" />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">캐릭터시트가 없습니다</p>
-                                  </div>
-                                )}
-
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="text-xs h-7"
-                                      onClick={() =>
-                                        handleGenerateCharacterImage(
-                                          selectedScript.id,
-                                          charIdx,
-                                          char.name,
-                                          char.description
-                                        )
-                                      }
-                                      disabled={generatingCharacterImage === `${selectedScript.id}:${charIdx}`}
-                                    >
-                                      {generatingCharacterImage === `${selectedScript.id}:${charIdx}` ? (
-                                        <>
-                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                          생성 중...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Sparkles className="h-3 w-3 mr-1" />
-                                          캐릭터시트 생성
-                                        </>
-                                      )}
-                                    </Button>
-                                    {!char.existsInDb && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="text-xs h-7"
-                                        onClick={() =>
-                                          handleCreateCharacterFromAnalysis(
-                                            selectedScript.id,
-                                            char.name,
-                                            char.description,
-                                            characterAnalysis[selectedScript.id].webtoonId
-                                          )
-                                        }
-                                      >
-                                        <Plus className="h-3 w-3 mr-1" />
-                                        캐릭터 생성
-                                      </Button>
-                                    )}
-                                </div>
-                              </div>
-                            </Card>
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">대본에 등장하는 캐릭터들을 자동 분석합니다</p>
-                    )}
-                  </CardContent>
-                </Card>
+                <CharacterAnalysisCard
+                  script={selectedScript}
+                  characterAnalysis={characterAnalysis[selectedScript.id]}
+                  selectedCharacterSheet={selectedCharacterSheet}
+                  analyzingId={analyzingId}
+                  generatingCharacterImage={generatingCharacterImage}
+                  loadingWebtoonCharacters={loadingWebtoonCharacters}
+                  webtoonCharactersCount={webtoonCharacters.length}
+                  onAnalyzeCharacters={handleAnalyzeCharacters}
+                  onManualSelectOpen={handleManualSelectOpen}
+                  onGenerateCharacterImage={handleGenerateCharacterImage}
+                  onCreateCharacterFromAnalysis={handleCreateCharacterFromAnalysis}
+                  onSelectCharacterSheet={(key, sheetIndex) => {
+                    setSelectedCharacterSheet((prev) => ({
+                      ...prev,
+                      [key]: sheetIndex,
+                    }));
+                  }}
+                />
 
                 {/* 생성된 글콘티 */}
                 <Card>
@@ -1925,289 +1781,54 @@ export function ScriptToStoryboard({ cutId, episodeId: initialEpisodeId, webtoon
                       {(selectedScript.storyboards ?? []).length > 0 ? (
                         selectedScript.storyboards?.map((sb) => {
                           const cuts = sb.response_json?.cuts ?? [];
-                          return cuts.map((cut, i) => (
-                            <Card key={`${sb.id}-${i}`}>
-                              <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <CardTitle className="text-base">
-                                      컷 {cut.cutNumber ?? i + 1}
-                                      {cut.title && <span className="ml-2">{cut.title}</span>}
-                                    </CardTitle>
-                                  </div>
-                                  {i === 0 && (
-                                    <CardDescription className="text-xs text-muted-foreground">
-                                      {cuts.length}개 컷 · {new Date(sb.created_at).toLocaleString()}
-                                    </CardDescription>
-                                  )}
-                                </div>
-                              </CardHeader>
-                              <CardContent className="space-y-3">
-                                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                    {/* 왼쪽 패널: 컷 내용 + 콘티 그리기 버튼 */}
-                                    <div className="flex flex-col space-y-3 lg:col-span-2">
-                                      {/* 제목 */}
-                                      <div>
-                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">제목</h5>
-                                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
-                                          {cut.title || <span className="text-muted-foreground italic">없음</span>}
-                                        </p>
-                                      </div>
-                                      {/* 배경 */}
-                                      <div className="space-y-2">
-                                        <h5 className="text-xs font-semibold text-muted-foreground">배경</h5>
-
-                                        {/* 배경설명 */}
-                                        <div>
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-xs text-muted-foreground">배경설명</span>
-                                            <div className="flex gap-1">
-                                              {editingBgDescKey !== `${sb.id}-${i}` ? (
-                                                <>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-xs"
-                                                    onClick={() => {
-                                                      setEditingBgDescKey(`${sb.id}-${i}`);
-                                                      setEditingBgDescValue(cut.background || '');
-                                                    }}
-                                                  >
-                                                    <Edit className="h-3 w-3 mr-1" />
-                                                    수정
-                                                  </Button>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-xs"
-                                                    onClick={() => handleGenerateBgDescription(sb.id, i, selectedScript)}
-                                                    disabled={generatingBgDescKey === `${sb.id}-${i}`}
-                                                  >
-                                                    {generatingBgDescKey === `${sb.id}-${i}` ? (
-                                                      <>
-                                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                                        생성 중...
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <Sparkles className="h-3 w-3 mr-1" />
-                                                        AI 생성
-                                                      </>
-                                                    )}
-                                                  </Button>
-                                                </>
-                                              ) : (
-                                                <div className="flex gap-1">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-xs"
-                                                    onClick={async () => {
-                                                      await handleUpdateBgDescription(sb.id, i, editingBgDescValue);
-                                                      setEditingBgDescKey(null);
-                                                      setEditingBgDescValue('');
-                                                    }}
-                                                  >
-                                                    <Check className="h-3 w-3 mr-1" />
-                                                    저장
-                                                  </Button>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-xs"
-                                                    onClick={() => {
-                                                      setEditingBgDescKey(null);
-                                                      setEditingBgDescValue('');
-                                                    }}
-                                                  >
-                                                    취소
-                                                  </Button>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                          {editingBgDescKey === `${sb.id}-${i}` ? (
-                                            <Textarea
-                                              value={editingBgDescValue}
-                                              onChange={(e) => setEditingBgDescValue(e.target.value)}
-                                              className="min-h-[80px] text-sm"
-                                              placeholder="배경 설명을 입력하세요..."
-                                            />
-                                          ) : (
-                                            <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
-                                              {cut.background || <span className="text-muted-foreground italic">없음</span>}
-                                            </p>
-                                          )}
-                                        </div>
-
-                                        {/* 배경이미지 */}
-                                        <div>
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-xs text-muted-foreground">배경이미지</span>
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              className="h-6 px-2 text-xs"
-                                              onClick={() => handleGenerateBgImage(sb.id, i, cut)}
-                                              disabled={generatingBgImageKey === `${sb.id}-${i}` || !cut.background}
-                                            >
-                                              {generatingBgImageKey === `${sb.id}-${i}` ? (
-                                                <>
-                                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                                  생성 중...
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <PenLine className="h-3 w-3 mr-1" />
-                                                  배경 그리기
-                                                </>
-                                              )}
-                                            </Button>
-                                          </div>
-                                          {cutBackgroundImages[`${sb.id}-${i}`] ? (
-                                            <div className="relative">
-                                              <img
-                                                src={cutBackgroundImages[`${sb.id}-${i}`]}
-                                                alt="배경 이미지"
-                                                className="w-full max-h-[200px] object-contain rounded border cursor-pointer hover:opacity-80 transition-opacity"
-                                                onClick={() => {
-                                                  setViewingImageUrl(cutBackgroundImages[`${sb.id}-${i}`]);
-                                                  setViewingImageName(`컷 ${cut.cutNumber ?? i + 1} 배경`);
-                                                  setImageViewerOpen(true);
-                                                }}
-                                              />
-                                            </div>
-                                          ) : (
-                                            <p className="text-xs text-muted-foreground italic bg-muted/30 p-2 rounded">
-                                              배경 이미지가 없습니다
-                                            </p>
-                                          )}
-                                        </div>
-
-                                        {/* 관련배경 */}
-                                        {Array.isArray(cut.relatedBackgrounds) && cut.relatedBackgrounds.length > 0 && (
-                                          <div>
-                                            <span className="text-xs text-muted-foreground">관련배경:</span>
-                                            <div className="text-xs text-muted-foreground mt-1 space-y-1">
-                                              {cut.relatedBackgrounds.map((rb: { cutNumber: number; background: string }, idx: number) => (
-                                                <div key={idx} className="pl-2">
-                                                  컷 {rb.cutNumber}: {rb.background.slice(0, 50)}
-                                                  {rb.background.length > 50 ? '...' : ''}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      {/* 연출/구도 */}
-                                      <div>
-                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                          연출/구도
-                                        </h5>
-                                        <p className="text-sm whitespace-pre-wrap">
-                                          {cut.description || <span className="text-muted-foreground italic">없음</span>}
-                                        </p>
-                                      </div>
-                                      {/* 대사/내레이션 */}
-                                      <div>
-                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                          대사/내레이션
-                                        </h5>
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                          {cut.dialogue || <span className="text-muted-foreground italic">없음</span>}
-                                        </p>
-                                      </div>
-                                      {/* 등장인물 */}
-                                      <div>
-                                        <h5 className="text-xs font-semibold text-muted-foreground mb-1">
-                                          등장인물
-                                        </h5>
-                                        <p className="text-sm text-muted-foreground">
-                                          {Array.isArray(cut.charactersInCut) && cut.charactersInCut.length > 0
-                                            ? cut.charactersInCut.join(', ')
-                                            : <span className="text-muted-foreground italic">없음</span>}
-                                        </p>
-                                      </div>
-                                      <div className="mt-auto pt-2 flex gap-2">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleEditCut(sb.id, i, cut)}
-                                          className="flex-1"
-                                        >
-                                          <Edit className="mr-2 h-4 w-4" />
-                                          수정
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleSplitCut(sb.id, i)}
-                                          disabled={splittingCut === `${sb.id}:${i}`}
-                                          className="flex-1"
-                                        >
-                                          {splittingCut === `${sb.id}:${i}` ? (
-                                            <>
-                                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                              분할 중...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Scissors className="mr-2 h-4 w-4" />
-                                              분할
-                                            </>
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleDrawCut(sb.id, i, cut)}
-                                          disabled={cutDrawingIds.has(`${sb.id}-${i}`)}
-                                          className="flex-1"
-                                        >
-                                          {cutDrawingIds.has(`${sb.id}-${i}`) ? (
-                                            <>
-                                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                              생성 중...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <PenLine className="mr-2 h-4 w-4" />
-                                              콘티 그리기
-                                            </>
-                                          )}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    {/* 오른쪽 패널: 이미지 */}
-                                    <div className="flex items-center justify-center min-h-[200px] bg-muted/20 rounded border lg:col-span-1">
-                                      {cutImages[`${sb.id}-${i}`] ? (
-                                        <img
-                                          src={cutImages[`${sb.id}-${i}`]}
-                                          alt={cut.title || `cut-${i + 1}`}
-                                          className="max-w-full max-h-[400px] rounded cursor-pointer hover:opacity-80 transition-opacity"
-                                          onClick={() => {
-                                            setViewingImageUrl(cutImages[`${sb.id}-${i}`]);
-                                            setViewingImageName(cut.title || `컷 ${cut.cutNumber ?? i + 1}`);
-                                            setImageViewerOpen(true);
-                                          }}
-                                        />
-                                      ) : loadingStoryboardImages.has(sb.id) || cutDrawingIds.has(`${sb.id}-${i}`) ? (
-                                        <div className="flex flex-col items-center gap-2">
-                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                                          <p className="text-sm text-muted-foreground">
-                                            {cutDrawingIds.has(`${sb.id}-${i}`) ? '이미지 생성 중...' : '이미지 불러오는 중...'}
-                                          </p>
-                                        </div>
-                                      ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                          콘티 이미지가 생성되면 여기에 표시됩니다.
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                              </CardContent>
-                            </Card>
-                          ));
+                          return cuts.map((cut, i) => {
+                            const cutKey = `${sb.id}-${i}`;
+                            return (
+                              <CutCard
+                                key={cutKey}
+                                cut={cut}
+                                cutIndex={i}
+                                storyboard={sb}
+                                totalCuts={cuts.length}
+                                cutImage={cutImages[cutKey]}
+                                cutBackgroundImage={cutBackgroundImages[cutKey]}
+                                isDrawing={cutDrawingIds.has(cutKey)}
+                                isLoadingImage={loadingStoryboardImages.has(sb.id)}
+                                isSplitting={splittingCut === `${sb.id}:${i}`}
+                                isGeneratingBgDesc={generatingBgDescKey === cutKey}
+                                isGeneratingBgImage={generatingBgImageKey === cutKey}
+                                editingBgDesc={editingBgDescKey === cutKey}
+                                editingBgDescValue={editingBgDescValue}
+                                onEditCut={handleEditCut}
+                                onSplitCut={handleSplitCut}
+                                onDrawCut={handleDrawCut}
+                                onGenerateBgDescription={(storyboardId, cutIndex) => 
+                                  handleGenerateBgDescription(storyboardId, cutIndex, selectedScript)
+                                }
+                                onUpdateBgDescription={async (storyboardId, cutIndex, value) => {
+                                  await handleUpdateBgDescription(storyboardId, cutIndex, value);
+                                  setEditingBgDescKey(null);
+                                  setEditingBgDescValue('');
+                                }}
+                                onGenerateBgImage={handleGenerateBgImage}
+                                onViewImage={(imageUrl, imageName) => {
+                                  setViewingImageUrl(imageUrl);
+                                  setViewingImageName(imageName);
+                                  setImageViewerOpen(true);
+                                }}
+                                onEditBgDescStart={(key, value) => {
+                                  setEditingBgDescKey(key);
+                                  setEditingBgDescValue(value);
+                                }}
+                                onEditBgDescChange={setEditingBgDescValue}
+                                onEditBgDescCancel={() => {
+                                  setEditingBgDescKey(null);
+                                  setEditingBgDescValue('');
+                                }}
+                                onYakontiImageGenerated={handleYakontiImageGenerated}
+                              />
+                            );
+                          });
                         }).flat()
                       ) : (
                         <p className="text-sm text-muted-foreground">대본을 글콘티로 변환하고, 이미지도 생성합니다</p>

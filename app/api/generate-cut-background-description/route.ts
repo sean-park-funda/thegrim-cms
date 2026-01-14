@@ -153,7 +153,7 @@ ${previousCuts.length > 0
         });
 
         const apiPromise = ai.models.generateContentStream({
-          model: 'gemini-3-pro-preview',
+          model: 'gemini-3-flash-preview',
           config,
           contents,
         });
