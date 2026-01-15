@@ -572,6 +572,17 @@ export function ImageRegenerationWorkspace({
     }
 
     const pasteHandler = (e: ClipboardEvent) => {
+      // 입력 필드에 포커스가 있으면 기본 동작 허용 (텍스트 붙여넣기)
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
+
       // 다이얼로그가 열려있으면 즉시 이벤트 전파 중단 (FileGrid로 전파 방지)
       e.preventDefault();
       e.stopImmediatePropagation();

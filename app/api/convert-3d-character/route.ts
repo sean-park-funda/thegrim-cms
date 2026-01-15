@@ -131,12 +131,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Gemini API 호출
-    let prompt = '이미지2의 더미캐릭터에 이미지1의 실제 캐릭터를 입혀주세요. ** 캐릭터의 세밀한 자세, 방향, 시선처리와 전체 구도는 이미지2를 엄격하게 따릅니다.**  ** 캐릭터의 외모와 체형, 의상, 화풍은 이미지1을 따릅니다.**';
-    // let prompt = '이미지1의 캐릭터를 이미지2의 자세와 구도로 그려주세요. 1) 캐릭터의 생김새, 체형, 옷차림, 그림체는 이미지1을 정확히 따릅니다. 2) 캐릭터의 자세와 시선, 팔과 다리의 각도, 카메라의 방향과 전체 구도는 이미지2와 동일하게 해주세요.';
+    let prompt = 'Make the person in image 1 do the exact same pose of the person in image 2.\nChanging the style and background of the image of the person in image 1 is undesirable, so don\'t do it.\nThe new pose should be pixel accurate to the pose we are trying to copy.\nThe position of the arms and head and legs should be the same as the pose we are trying to copy.\nChange the field of view and angle to match exactly image 2.\nHead tilt and eye gaze pose should match the person in image 2';
     
     // 추가 프롬프트가 있으면 보조적으로 추가 (자세와 구도는 변경하지 않음)
     if (additionalPrompt && additionalPrompt.trim()) {
-      prompt += ` 참고: ${additionalPrompt.trim()} (이 설명은 자세와 구도를 변경하지 않고, 감정, 표정, 분위기 등 보조적인 요소에만 적용해주세요. 이미지2의 자세와 구도는 엄격히 유지해야 합니다.)`;
+      prompt += `\n\nNote: ${additionalPrompt.trim()} (This description should only apply to auxiliary elements such as emotions, expressions, and atmosphere, without changing the pose and composition. The pose and composition of image 2 must be strictly maintained.)`;
     }
 
     const contents = [
@@ -309,4 +308,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

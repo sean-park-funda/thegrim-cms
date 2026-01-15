@@ -137,9 +137,20 @@ export function StyleEditDialog({
     setFormData(prev => ({ ...prev, style_key: sanitized }));
   };
 
+  // Dialog 내부에서 Ctrl+V 등 키보드 단축키가 작동하도록 허용
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+V, Ctrl+C, Ctrl+X, Ctrl+A 등 기본 편집 단축키 허용
+    if (e.ctrlKey || e.metaKey) {
+      e.stopPropagation();
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+      <DialogContent 
+        className="sm:max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto"
+        onKeyDown={handleKeyDown}
+      >
         <DialogHeader>
           <DialogTitle>
             {isEditing ? '스타일 수정' : '새 스타일 추가'}
@@ -158,6 +169,8 @@ export function StyleEditDialog({
             <Input
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              onKeyDown={(e) => e.stopPropagation()}
+              onPaste={(e) => e.stopPropagation()}
               placeholder="예: 극적 명암"
             />
           </div>
@@ -168,6 +181,8 @@ export function StyleEditDialog({
             <Input
               value={formData.style_key}
               onChange={(e) => handleKeyChange(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              onPaste={(e) => e.stopPropagation()}
               placeholder="예: dramatic-shading"
               disabled={isEditing} // 수정 시 키 변경 불가
             />
@@ -182,6 +197,8 @@ export function StyleEditDialog({
             <textarea
               value={formData.prompt}
               onChange={(e) => setFormData(prev => ({ ...prev, prompt: e.target.value }))}
+              onKeyDown={(e) => e.stopPropagation()}
+              onPaste={(e) => e.stopPropagation()}
               className="w-full min-h-[100px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder="이미지를 재생성할 때 사용할 기본 프롬프트를 입력하세요."
             />
@@ -224,6 +241,8 @@ export function StyleEditDialog({
                 <Input
                   value={newGroup}
                   onChange={(e) => setNewGroup(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onPaste={(e) => e.stopPropagation()}
                   placeholder="새 그룹 이름 입력"
                 />
               )}
@@ -335,4 +354,3 @@ export function StyleEditDialog({
     </Dialog>
   );
 }
-

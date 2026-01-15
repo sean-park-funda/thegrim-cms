@@ -850,9 +850,9 @@ function Viewer3DPage() {
                       <div className="p-3 bg-muted rounded-lg">
                         <p className="text-sm whitespace-pre-wrap">
                           {(() => {
-                            let previewPrompt = '이미지2의 자세와 구도에 이미지1의 캐릭터를 입혀주세요';
+                            let previewPrompt = 'Make the person in image 1 do the exact same pose of the person in image 2.\nChanging the style and background of the image of the person in image 1 is undesirable, so don\'t do it.\nThe new pose should be pixel accurate to the pose we are trying to copy.\nThe position of the arms and head and legs should be the same as the pose we are trying to copy.\nChange the field of view and angle to match exactly image 2.\nHead tilt and eye gaze pose should match the person in image 2';
                             if (additionalPrompt && additionalPrompt.trim()) {
-                              previewPrompt += ` 참고: ${additionalPrompt.trim()} (이 설명은 자세와 구도를 변경하지 않고, 감정, 표정, 분위기 등 보조적인 요소에만 적용해주세요. 이미지2의 자세와 구도는 엄격히 유지해야 합니다.)`;
+                              previewPrompt += `\n\nNote: ${additionalPrompt.trim()} (This description should only apply to auxiliary elements such as emotions, expressions, and atmosphere, without changing the pose and composition. The pose and composition of image 2 must be strictly maintained.)`;
                             }
                             return previewPrompt;
                           })()}
