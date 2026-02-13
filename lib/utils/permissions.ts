@@ -66,33 +66,33 @@ export function canViewContent(role: UserRole): boolean {
 // 회계 시스템 권한
 // ========================================
 
-// 회계 데이터 조회 권한
+// 회계 데이터 조회 권한 (accountant만)
 export function canViewAccounting(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'accountant';
 }
 
-// 회계 데이터 생성/수정 권한
+// 회계 데이터 생성/수정 권한 (accountant만)
 export function canManageAccounting(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'accountant';
 }
 
-// 거래 내역 승인 권한 (admin만)
+// 거래 내역 승인 권한 (accountant만)
 export function canApproveTransactions(role: UserRole): boolean {
-  return role === 'admin';
+  return role === 'accountant';
 }
 
-// 회계 카테고리 관리 권한
+// 회계 카테고리 관리 권한 (accountant만)
 export function canManageAccountingCategories(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'accountant';
 }
 
-// 예산 설정 권한
+// 예산 설정 권한 (accountant만)
 export function canManageBudgets(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'accountant';
 }
 
-// 회계 보고서 조회 권한
+// 회계 보고서 조회 권한 (accountant만)
 export function canViewAccountingReports(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'accountant';
 }
 
