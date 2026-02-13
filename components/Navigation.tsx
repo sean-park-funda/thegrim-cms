@@ -130,7 +130,7 @@ export function Navigation() {
                 <span className="hidden sm:inline">공정</span>
               </Button>
             </Link>
-            {profile && profile.role === 'accountant' && (
+            {profile && (profile.role === 'admin' || profile.role === 'accountant') && (
               <Link href="/accounting">
                 <Button
                   variant="ghost"
