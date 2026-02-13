@@ -52,6 +52,9 @@ pnpm dev
 - [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) - 개발 진행 상황 및 계획
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - 주요 시스템 상세 설계 (인증, 이미지 메타데이터, 컴포넌트 아키텍처, AI 이미지 재생성)
 - [SETUP_GUIDE.md](./SETUP_GUIDE.md) - 환경 설정 및 초기 설정 가이드
+- [ROLES_GUIDE.md](./ROLES_GUIDE.md) - 사용자 역할 및 권한 가이드
+- [docs/ACCOUNTING_PLAN.md](./docs/ACCOUNTING_PLAN.md) - 회계 시스템 계획서
+- [docs/ACCOUNTING_IMPLEMENTATION_GUIDE.md](./docs/ACCOUNTING_IMPLEMENTATION_GUIDE.md) - 회계 시스템 구현 가이드
 
 ## 🛠️ 기술 스택
 
@@ -70,7 +73,7 @@ pnpm dev
 
 - **웹툰 관리**: 웹툰, 회차, 컷 단위로 파일 관리
 - **공정별 관리**: 공정별로 파일을 그룹화하여 관리
-- **파일 업로드**: 
+- **파일 업로드**:
   - 드래그 앤 드롭 업로드
   - 파일 선택 다이얼로그 업로드
   - 클립보드 붙여넣기 업로드 (Ctrl+V / Cmd+V) - 화면 캡처 이미지 지원
@@ -78,8 +81,13 @@ pnpm dev
 - **AI 이미지 분석**: Gemini API를 활용한 자동 메타데이터 생성
 - **AI 이미지 재생성**: 다양한 스타일로 이미지 재생성
 - **대본to콘티**: Gemini 3 Pro Preview로 대본을 컷별 글콘티로 변환 및 저장 (대본 여러 개 관리/정렬/삭제)
-- **권한 관리**: 역할 기반 접근 제어 (admin, manager, staff, viewer)
+- **권한 관리**: 역할 기반 접근 제어 (admin, manager, staff, viewer, accountant)
 - **사용자 초대**: 관리자 초대 시스템
+- **회계 시스템** (v1.0 - Phase 1-2 완료):
+  - 수입/지출 거래 내역 관리
+  - 웹툰별 예산 설정 및 추적
+  - 월별/프로젝트별/카테고리별 보고서
+  - accountant 역할 전용 기능 (admin과 공유)
 
 ## 📖 참고 자료
 
