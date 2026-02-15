@@ -104,7 +104,7 @@ export interface File {
 export interface UserProfile {
   id: string;
   email: string;
-  role: 'admin' | 'manager' | 'staff' | 'viewer';
+  role: 'admin' | 'manager' | 'staff' | 'viewer' | 'accountant';
   name?: string;
   default_ai_image_public?: boolean;
   created_at: string;
