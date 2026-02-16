@@ -127,17 +127,6 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
         <p className="text-xs text-muted-foreground">{config.description}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {history.length > 0 && (
-          <div className="space-y-0.5">
-            {history.map((h, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-                <span className="truncate" title={h.file_name}>{h.file_name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div
           {...getRootProps()}
           className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
@@ -150,6 +139,17 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
             파일을 드래그하거나 클릭 (.xlsx)
           </p>
         </div>
+
+        {history.length > 0 && !result && (
+          <div className="space-y-0.5">
+            {history.map((h, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                <span className="truncate" title={h.file_name}>{h.file_name}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {files.length > 0 && (
           <div className="space-y-1">
