@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,8 +62,12 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       formData.append('revenue_type', revenueType);
       formData.append('file', file);
 
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/accounting/settlement/upload', {
         method: 'POST',
+        headers: {
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
         credentials: 'include',
         body: formData,
       });
