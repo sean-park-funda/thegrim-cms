@@ -47,7 +47,8 @@ export function parseRevenueExcel(
 /**
  * 국내유료수익 파싱
  * 시트: 활성 시트 (월별 선수수익(MG) 또는 N월_정산내역서)
- * IP명: 4~6행 C열 (idx 2), 매출액: 4~6행 J열 (idx 9)
+ * IP명: 4~6행 C열 (idx 2), 매출액: 4~6행 J열 (idx 9) 또는 H12 (CP정산액)
+ * Fallback: 파일명에서 작품명 추출
  */
 function parseDomesticPaid(
   workbook: XLSX.WorkBook,
@@ -66,41 +67,94 @@ function parseDomesticPaid(
   let ipName: string | null = null;
   let revenue = 0;
 
-  // 4~6행에서 IP명과 매출액 추출 (0-indexed: rows 3~5)
+  // 1) 4~6행에서 IP명 추출 (C열, idx 2)
   for (let i = 3; i <= 5 && i < data.length; i++) {
     const row = data[i];
     if (!row) continue;
-
     if (!ipName && row[2]) {
       ipName = String(row[2]).trim();
-    }
-    if (row[9] && typeof row[9] === 'number') {
-      revenue = row[9];
-      break;
-    }
-    if (row[9] && !isNaN(Number(row[9]))) {
-      revenue = Number(row[9]);
       break;
     }
   }
 
-  // H12 (CP정산액) 대안 검사
-  if (revenue === 0 && data.length > 11) {
-    const row11 = data[11];
-    if (row11 && row11[7] && !isNaN(Number(row11[7]))) {
-      revenue = Number(row11[7]);
+  // 2) IP명 못 찾으면 넓은 범위 탐색 (1~20행, B~D열)
+  if (!ipName) {
+    for (let i = 0; i < Math.min(data.length, 20); i++) {
+      const row = data[i];
+      if (!row) continue;
+      for (const colIdx of [2, 1, 3]) {
+        const val = row[colIdx];
+        if (val && typeof val === 'string' && val.trim().length >= 2 && !/^\d+$/.test(val.trim()) && !val.includes('정산') && !val.includes('기간') && !val.includes('구분')) {
+          ipName = val.trim();
+          break;
+        }
+      }
+      if (ipName) break;
     }
   }
 
-  if (ipName && revenue !== 0) {
-    rows.push({ work_name: ipName, amount: revenue });
-  } else if (ipName) {
-    errors.push(`매출액을 찾을 수 없습니다: ${fileName} (IP: ${ipName})`);
-  } else {
+  // 3) 그래도 못 찾으면 파일명에서 추출
+  // 패턴: YYYY-MM월_국내유상이용권_작품명(MG)_YYYYMMDD.xlsx
+  if (!ipName) {
+    ipName = extractWorkNameFromDomesticPaidFileName(fileName);
+  }
+
+  if (!ipName) {
     errors.push(`IP명을 찾을 수 없습니다: ${fileName}`);
+    return rows;
+  }
+
+  // 4) 매출액 탐색: 4~6행 J열 (idx 9)
+  for (let i = 3; i <= 5 && i < data.length; i++) {
+    const row = data[i];
+    if (!row) continue;
+    const val = parseNumber(row[9]);
+    if (val !== 0) {
+      revenue = val;
+      break;
+    }
+  }
+
+  // 5) H12 (CP정산액) 대안
+  if (revenue === 0 && data.length > 11) {
+    revenue = parseNumber(data[11]?.[7]);
+  }
+
+  // 6) 넓은 범위에서 큰 숫자 탐색 (매출액 후보)
+  if (revenue === 0) {
+    for (let i = 0; i < Math.min(data.length, 30); i++) {
+      const row = data[i];
+      if (!row) continue;
+      for (let j = 5; j < Math.min(row.length, 15); j++) {
+        const val = parseNumber(row[j]);
+        if (Math.abs(val) > Math.abs(revenue)) {
+          revenue = val;
+        }
+      }
+    }
+  }
+
+  if (revenue !== 0) {
+    rows.push({ work_name: ipName, amount: revenue });
+  } else {
+    errors.push(`매출액을 찾을 수 없습니다: ${fileName} (IP: ${ipName})`);
   }
 
   return rows;
+}
+
+/**
+ * 국내유료 파일명에서 작품명 추출
+ * 예: "2026-01월_국내유상이용권_공주님학교가신다(MG)_20260202.xlsx" → "공주님학교가신다"
+ */
+function extractWorkNameFromDomesticPaidFileName(fileName: string): string | null {
+  const base = fileName.replace(/\.(xlsx|xls)$/i, '');
+  const parts = base.split('_');
+  // 3번째 부분에서 (MG), (RS) 등 괄호 제거
+  if (parts.length >= 3) {
+    return parts[2].replace(/\(.*?\)/g, '').trim() || null;
+  }
+  return null;
 }
 
 /**
