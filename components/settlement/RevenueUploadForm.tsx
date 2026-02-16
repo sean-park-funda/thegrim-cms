@@ -128,14 +128,11 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
       </CardHeader>
       <CardContent className="space-y-3">
         {history.length > 0 && (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {history.map((h, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0 text-green-500" />
-                <div className="min-w-0">
-                  <span className="block truncate" title={h.file_name}>{h.file_name}</span>
-                  <span className="text-[10px]">{h.matched_count}건 {h.total_amount.toLocaleString()}원 · {new Date(h.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
+              <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                <span className="truncate" title={h.file_name}>{h.file_name}</span>
               </div>
             ))}
           </div>
