@@ -5,33 +5,17 @@ import { useDropzone } from 'react-dropzone';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { settlementFetch } from '@/lib/settlement/api';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { RevenueType } from '@/lib/types/settlement';
 
-const REVENUE_TYPE_LABELS: Record<RevenueType, string> = {
-  domestic_paid: '국내유료수익',
-  global_paid: '글로벌유료수익',
-  domestic_ad: '국내광고',
-  global_ad: '글로벌광고',
-  secondary: '2차사업',
+const REVENUE_TYPE_CONFIG: Record<RevenueType, { label: string; description: string; color: string }> = {
+  domestic_paid: { label: '국내유료수익', description: '국내유상이용권 정산 파일', color: 'blue' },
+  global_paid: { label: '글로벌유료수익', description: 'LINE Webtoon Invoice 파일', color: 'emerald' },
+  domestic_ad: { label: '국내광고', description: 'KR Webtoon/Series AD 정산리포트', color: 'amber' },
+  global_ad: { label: '글로벌광고', description: 'LINE Webtoon AD Invoice 파일', color: 'purple' },
+  secondary: { label: '2차사업', description: 'Super Like, 매니지먼트 등', color: 'rose' },
 };
-
-/**
- * 파일명에서 수익 유형 자동 감지
- */
-function detectRevenueType(fileName: string): RevenueType | null {
-  const name = fileName.toLowerCase();
-  if (name.includes('super like') || name.includes('superlike')) return 'secondary';
-  if (name.includes('매니지먼트') || name.includes('management')) return 'secondary';
-  if (name.includes('kr webtoon ad') || name.includes('kr series ad') || name.includes('시리즈광고')) return 'domestic_ad';
-  if (name.includes('정산리포트') && name.includes('광고')) return 'domestic_ad';
-  if (name.includes('linewebtoon_ad') || name.includes('linewebtoon ad') || (name.includes('글로벌광고') || (name.includes('global') && name.includes('ad')))) return 'global_ad';
-  if (name.includes('linewebtoon invoice') || name.includes('linewebtoon_invoice')) return 'global_paid';
-  if (name.includes('국내유상이용권') || name.includes('국내유상')) return 'domestic_paid';
-  return null;
-}
 
 interface UploadResult {
   matched: { work_name: string; work_id: string; amount: number }[];
@@ -41,25 +25,20 @@ interface UploadResult {
   errors: string[];
 }
 
-export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {
+function RevenueTypeCard({ revenueType, onUploadComplete }: { revenueType: RevenueType; onUploadComplete?: () => void }) {
   const { selectedMonth } = useSettlementStore();
-  const [revenueType, setRevenueType] = useState<RevenueType>('domestic_paid');
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const config = REVENUE_TYPE_CONFIG[revenueType];
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       setFiles(prev => [...prev, ...acceptedFiles]);
       setResult(null);
       setError(null);
-
-      // 첫 파일에서 수익 유형 자동 감지
-      const detected = detectRevenueType(acceptedFiles[0].name);
-      if (detected) {
-        setRevenueType(detected);
-      }
     }
   }, []);
 
@@ -111,119 +90,141 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
     }
   };
 
+  const colorMap: Record<string, string> = {
+    blue: 'border-l-blue-500',
+    emerald: 'border-l-emerald-500',
+    amber: 'border-l-amber-500',
+    purple: 'border-l-purple-500',
+    rose: 'border-l-rose-500',
+  };
+
+  const badgeColorMap: Record<string, string> = {
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    purple: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    rose: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4 items-end">
-        <div>
-          <label className="text-sm font-medium mb-1 block">수익 유형 (파일명에서 자동 감지)</label>
-          <Select value={revenueType} onValueChange={(v) => setRevenueType(v as RevenueType)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(REVENUE_TYPE_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <Card className={`border-l-4 ${colorMap[config.color]}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{config.label}</CardTitle>
+          {result && (
+            <span className={`text-xs px-2 py-0.5 rounded-full ${badgeColorMap[config.color]}`}>
+              {result.total_amount.toLocaleString()}원
+            </span>
+          )}
         </div>
-      </div>
-
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-          isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-        <p className="text-sm text-muted-foreground">
-          엑셀 파일을 드래그하거나 클릭하여 선택하세요 (.xlsx, 복수 선택 가능)
-        </p>
-      </div>
-
-      {files.length > 0 && (
-        <div className="space-y-1">
-          {files.map((f, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              <FileSpreadsheet className="h-4 w-4 shrink-0" />
-              <span className="truncate">{f.name}</span>
-              <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => removeFile(i)}>
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+        <p className="text-xs text-muted-foreground">{config.description}</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
+            isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
+          }`}
+        >
+          <input {...getInputProps()} />
+          <Upload className="mx-auto h-5 w-5 text-muted-foreground mb-1" />
+          <p className="text-xs text-muted-foreground">
+            파일을 드래그하거나 클릭 (.xlsx)
+          </p>
         </div>
-      )}
 
-      <Button onClick={handleUpload} disabled={files.length === 0 || uploading}>
-        {uploading ? '업로드 중...' : `업로드 및 파싱 (${files.length}개 파일)`}
-      </Button>
-
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-4 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
-            <span className="text-sm text-destructive">{error}</span>
-          </CardContent>
-        </Card>
-      )}
-
-      {result && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              업로드 결과
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">
-              총 금액: <span className="font-semibold">{result.total_amount.toLocaleString()}원</span>
-            </p>
-            {result.file_results && result.file_results.length > 1 && (
-              <div>
-                <p className="text-sm font-medium">파일별 결과</p>
-                <ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                  {result.file_results.map((f, i) => (
-                    <li key={i}>{f.name}: {f.count}건, {f.amount.toLocaleString()}원</li>
-                  ))}
-                </ul>
+        {files.length > 0 && (
+          <div className="space-y-1">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate flex-1">{f.name}</span>
+                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => removeFile(i)}>
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
+            ))}
+            <Button size="sm" className="w-full" onClick={handleUpload} disabled={uploading}>
+              {uploading ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> 업로드 중...</>
+              ) : (
+                `업로드 (${files.length}개 파일)`
+              )}
+            </Button>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-1.5 text-xs text-destructive">
+            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {result && (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center gap-1.5 text-green-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span className="font-medium">업로드 완료</span>
+            </div>
+            {result.file_results && result.file_results.length > 1 && (
+              <ul className="text-muted-foreground space-y-0.5 pl-5">
+                {result.file_results.map((f, i) => (
+                  <li key={i}>{f.name}: {f.count}건, {f.amount.toLocaleString()}원</li>
+                ))}
+              </ul>
             )}
             {result.matched.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-green-600">매칭됨 ({result.matched.length}건)</p>
-                <ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
+              <details className="group">
+                <summary className="cursor-pointer text-green-600 font-medium">
+                  매칭 {result.matched.length}건
+                </summary>
+                <ul className="text-muted-foreground mt-1 space-y-0.5 pl-5">
                   {result.matched.map((m, i) => (
                     <li key={i}>{m.work_name}: {m.amount.toLocaleString()}원</li>
                   ))}
                 </ul>
-              </div>
+              </details>
             )}
             {result.auto_created.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-blue-600">자동 등록됨 ({result.auto_created.length}건)</p>
-                <ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
+              <details className="group">
+                <summary className="cursor-pointer text-blue-600 font-medium">
+                  자동 등록 {result.auto_created.length}건
+                </summary>
+                <ul className="text-muted-foreground mt-1 space-y-0.5 pl-5">
                   {result.auto_created.map((m, i) => (
                     <li key={i}>{m.work_name}: {m.amount.toLocaleString()}원</li>
                   ))}
                 </ul>
-              </div>
+              </details>
             )}
             {result.errors.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-destructive">오류</p>
-                <ul className="text-xs text-destructive mt-1 space-y-0.5">
+              <details className="group" open>
+                <summary className="cursor-pointer text-destructive font-medium">
+                  오류 {result.errors.length}건
+                </summary>
+                <ul className="text-destructive mt-1 space-y-0.5 pl-5">
                   {result.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
                 </ul>
-              </div>
+              </details>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
+
+export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {REVENUE_TYPES.map((type) => (
+        <RevenueTypeCard key={type} revenueType={type} onUploadComplete={onUploadComplete} />
+      ))}
     </div>
   );
 }

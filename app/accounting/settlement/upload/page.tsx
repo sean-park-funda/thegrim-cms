@@ -61,18 +61,12 @@ export default function UploadPage() {
 
       <SettlementNav />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>엑셀 업로드</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            네이버 매출 엑셀 파일을 업로드하면 자동으로 파싱하여 작품별 수익을 집계합니다.
-            대상 월: <span className="font-semibold">{selectedMonth}</span>
-          </p>
-          <RevenueUploadForm onUploadComplete={loadHistory} />
-        </CardContent>
-      </Card>
+      <div>
+        <p className="text-sm text-muted-foreground mb-4">
+          각 수익 유형별로 엑셀 파일을 업로드하세요. 대상 월: <span className="font-semibold">{selectedMonth}</span>
+        </p>
+        <RevenueUploadForm onUploadComplete={loadHistory} />
+      </div>
 
       {history.length > 0 && (
         <Card>
