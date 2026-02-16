@@ -46,9 +46,9 @@ export function parseRevenueExcel(
 
 /**
  * 국내유료수익 파싱
- * 시트: 활성 시트 (월별 선수수익(MG) 또는 N월_정산내역서)
- * IP명: 4~6행 C열 (idx 2), 매출액: 4~6행 J열 (idx 9) 또는 H12 (CP정산액)
- * Fallback: 파일명에서 작품명 추출
+ * 시트: "컨텐츠별 매출 통계" → Row 7 (0-indexed: 6)부터 데이터
+ *   idx 0 = 작품명, idx 81 = 더그림 수익 (CP 정산액)
+ * Fallback: 파일명에서 작품명 추출 + "N월_정산내역서" 시트에서 CP정산액
  */
 function parseDomesticPaid(
   workbook: XLSX.WorkBook,
@@ -56,88 +56,76 @@ function parseDomesticPaid(
   errors: string[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) {
-    errors.push(`시트를 찾을 수 없습니다: ${fileName}`);
-    return rows;
-  }
 
-  const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  // 1) "컨텐츠별 매출 통계" 시트에서 파싱 (가장 정확)
+  const statsSheetName = workbook.SheetNames.find(n => n.includes('컨텐츠별 매출 통계'));
+  if (statsSheetName) {
+    const sheet = workbook.Sheets[statsSheetName];
+    const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  let ipName: string | null = null;
-  let revenue = 0;
-
-  // 1) 4~6행에서 IP명 추출 (C열, idx 2)
-  for (let i = 3; i <= 5 && i < data.length; i++) {
-    const row = data[i];
-    if (!row) continue;
-    if (!ipName && row[2]) {
-      ipName = String(row[2]).trim();
-      break;
-    }
-  }
-
-  // 2) IP명 못 찾으면 넓은 범위 탐색 (1~20행, B~D열)
-  if (!ipName) {
-    for (let i = 0; i < Math.min(data.length, 20); i++) {
-      const row = data[i];
-      if (!row) continue;
-      for (const colIdx of [2, 1, 3]) {
-        const val = row[colIdx];
-        if (val && typeof val === 'string' && val.trim().length >= 2 && !/^\d+$/.test(val.trim()) && !val.includes('정산') && !val.includes('기간') && !val.includes('구분')) {
-          ipName = val.trim();
+    // 헤더에서 "더그림" 수익 컬럼 인덱스 동적 탐색
+    let revenueColIdx = 81; // 기본값
+    const headerRow = data[4]; // Row 5 = 헤더
+    if (headerRow) {
+      for (let i = 0; i < headerRow.length; i++) {
+        if (headerRow[i] && String(headerRow[i]).includes('더그림')) {
+          revenueColIdx = i;
           break;
         }
       }
-      if (ipName) break;
     }
-  }
 
-  // 3) 그래도 못 찾으면 파일명에서 추출
-  // 패턴: YYYY-MM월_국내유상이용권_작품명(MG)_YYYYMMDD.xlsx
-  if (!ipName) {
-    ipName = extractWorkNameFromDomesticPaidFileName(fileName);
-  }
+    // Row 7부터 데이터 (0-indexed: 6)
+    for (let i = 6; i < data.length; i++) {
+      const row = data[i];
+      if (!row || !row[0]) continue;
 
-  if (!ipName) {
-    errors.push(`IP명을 찾을 수 없습니다: ${fileName}`);
-    return rows;
-  }
+      const workName = String(row[0]).trim();
+      if (!workName) continue;
 
-  // 4) 매출액 탐색: 4~6행 J열 (idx 9)
-  for (let i = 3; i <= 5 && i < data.length; i++) {
-    const row = data[i];
-    if (!row) continue;
-    const val = parseNumber(row[9]);
-    if (val !== 0) {
-      revenue = val;
-      break;
+      const revenue = parseNumber(row[revenueColIdx]);
+      if (revenue !== 0) {
+        rows.push({ work_name: workName, amount: revenue });
+      }
     }
+
+    if (rows.length > 0) return rows;
   }
 
-  // 5) H12 (CP정산액) 대안
-  if (revenue === 0 && data.length > 11) {
-    revenue = parseNumber(data[11]?.[7]);
-  }
+  // 2) Fallback: "N월_정산내역서" 시트에서 CP정산액 + 파일명에서 작품명
+  const settlementSheetName = workbook.SheetNames.find(n => n.includes('정산내역서'));
+  if (settlementSheetName) {
+    const sheet = workbook.Sheets[settlementSheetName];
+    const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  // 6) 넓은 범위에서 큰 숫자 탐색 (매출액 후보)
-  if (revenue === 0) {
-    for (let i = 0; i < Math.min(data.length, 30); i++) {
+    // "총" 또는 "합계" 포함 행에서 CP정산액 찾기
+    let revenue = 0;
+    for (let i = 0; i < data.length; i++) {
       const row = data[i];
       if (!row) continue;
-      for (let j = 5; j < Math.min(row.length, 15); j++) {
-        const val = parseNumber(row[j]);
-        if (Math.abs(val) > Math.abs(revenue)) {
-          revenue = val;
+      const firstCell = String(row[0] || '');
+      if (firstCell.includes('총') || firstCell.includes('합계')) {
+        // CP 정산액은 보통 idx 7 (H열)
+        for (let j = 5; j < Math.min(row.length, 15); j++) {
+          const val = parseNumber(row[j]);
+          if (val > revenue) revenue = val;
         }
       }
     }
+
+    const workName = extractWorkNameFromDomesticPaidFileName(fileName);
+    if (workName && revenue !== 0) {
+      rows.push({ work_name: workName, amount: revenue });
+      return rows;
+    }
   }
 
-  if (revenue !== 0) {
-    rows.push({ work_name: ipName, amount: revenue });
+  // 3) 최종 Fallback: 파일명에서 작품명만이라도 추출
+  const workName = extractWorkNameFromDomesticPaidFileName(fileName);
+  if (workName) {
+    errors.push(`매출액을 찾을 수 없습니다: ${fileName} (작품: ${workName})`);
   } else {
-    errors.push(`매출액을 찾을 수 없습니다: ${fileName} (IP: ${ipName})`);
+    errors.push(`파싱 실패: ${fileName}`);
   }
 
   return rows;
@@ -146,11 +134,12 @@ function parseDomesticPaid(
 /**
  * 국내유료 파일명에서 작품명 추출
  * 예: "2026-01월_국내유상이용권_공주님학교가신다(MG)_20260202.xlsx" → "공주님학교가신다"
+ * 예: "2026-01월_국내유상이용권_이섭의연애(다중상점)_20260205.xlsx" → "이섭의연애"
  */
 function extractWorkNameFromDomesticPaidFileName(fileName: string): string | null {
   const base = fileName.replace(/\.(xlsx|xls)$/i, '');
   const parts = base.split('_');
-  // 3번째 부분에서 (MG), (RS) 등 괄호 제거
+  // 3번째 부분에서 괄호 내용 제거 (MG, RS, 다중상점 등)
   if (parts.length >= 3) {
     return parts[2].replace(/\(.*?\)/g, '').trim() || null;
   }
