@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const aggregated = new Map<string, { work_name: string; work_id: string; amount: number }>();
 
     for (const row of parseResult.rows) {
-      let workId = workMap.get(row.work_name);
+      let workId: string | undefined = workMap.get(row.work_name);
 
       // 미매칭 → 자동 등록
       if (!workId) {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (newWork) {
-          workId = newWork.id;
+          workId = newWork.id as string;
           workMap.set(row.work_name, workId);
           autoCreated.push({ work_name: row.work_name, work_id: workId, amount: row.amount });
         }
