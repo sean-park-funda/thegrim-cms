@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
+
+// GET /api/accounting/settlement/work-partners
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || !canViewAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const workId = searchParams.get('workId');
+    const partnerId = searchParams.get('partnerId');
+
+    let query = supabase
+      .from('rs_work_partners')
+      .select('*, work:rs_works(*), partner:rs_partners(*)')
+      .order('created_at');
+
+    if (workId) query = query.eq('work_id', workId);
+    if (partnerId) query = query.eq('partner_id', partnerId);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('작품-파트너 조회 오류:', error);
+      return NextResponse.json({ error: '조회 실패' }, { status: 500 });
+    }
+
+    return NextResponse.json({ work_partners: data });
+  } catch (error) {
+    console.error('작품-파트너 조회 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}
+
+// POST /api/accounting/settlement/work-partners
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || !canManageAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { work_id, partner_id, rs_rate, role, is_mg_applied, note } = body;
+
+    if (!work_id || !partner_id || rs_rate === undefined) {
+      return NextResponse.json({ error: '작품, 파트너, RS 비율은 필수입니다.' }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from('rs_work_partners')
+      .insert({ work_id, partner_id, rs_rate, role: role || 'author', is_mg_applied: is_mg_applied || false, note })
+      .select('*, work:rs_works(*), partner:rs_partners(*)')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: '이미 존재하는 작품-파트너-역할 조합입니다.' }, { status: 409 });
+      }
+      console.error('작품-파트너 생성 오류:', error);
+      return NextResponse.json({ error: '생성 실패' }, { status: 500 });
+    }
+
+    return NextResponse.json({ work_partner: data }, { status: 201 });
+  } catch (error) {
+    console.error('작품-파트너 생성 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}
+
+// PUT /api/accounting/settlement/work-partners
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || !canManageAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { id, rs_rate, role, is_mg_applied, note } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from('rs_work_partners')
+      .update({ rs_rate, role, is_mg_applied, note })
+      .eq('id', id)
+      .select('*, work:rs_works(*), partner:rs_partners(*)')
+      .single();
+
+    if (error) {
+      console.error('작품-파트너 수정 오류:', error);
+      return NextResponse.json({ error: '수정 실패' }, { status: 500 });
+    }
+
+    return NextResponse.json({ work_partner: data });
+  } catch (error) {
+    console.error('작품-파트너 수정 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}
+
+// DELETE /api/accounting/settlement/work-partners
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || !canManageAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
+    }
+
+    const { error } = await supabase.from('rs_work_partners').delete().eq('id', id);
+    if (error) {
+      console.error('작품-파트너 삭제 오류:', error);
+      return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('작품-파트너 삭제 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}

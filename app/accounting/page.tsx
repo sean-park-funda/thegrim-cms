@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DollarSign, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, BarChart3, Calculator } from 'lucide-react';
 
 export default function AccountingPage() {
   const router = useRouter();
@@ -96,6 +96,41 @@ export default function AccountingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* RS 정산 시스템 */}
+      <Card className="border-primary/20">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Calculator className="h-5 w-5" />
+            RS 정산 시스템
+          </CardTitle>
+          <Button onClick={() => router.push('/accounting/settlement')}>
+            정산 관리로 이동
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            네이버 매출 엑셀 업로드 → 작품별 수익 집계 → 파트너별 RS 정산을 자동으로 처리합니다.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/upload')}>
+              엑셀 업로드
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/revenue')}>
+              수익 조회
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/settlements')}>
+              정산 내역
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/works')}>
+              작품 관리
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/partners')}>
+              파트너 관리
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 안내 메시지 */}
       <Card>
