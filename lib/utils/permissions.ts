@@ -1,6 +1,6 @@
 import { UserProfile } from '../api/auth';
 
-export type UserRole = 'admin' | 'manager' | 'staff' | 'viewer' | 'accountant';
+export type UserRole = 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant';
 
 /**
  * 역할별 권한 체크 유틸리티 함수
@@ -68,7 +68,7 @@ export function canViewContent(role: UserRole): boolean {
 
 // 회계 데이터 조회 권한
 export function canViewAccounting(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'admin' || role === 'executive' || role === 'accountant';
 }
 
 // 회계 데이터 생성/수정 권한
@@ -93,6 +93,6 @@ export function canManageBudgets(role: UserRole): boolean {
 
 // 회계 보고서 조회 권한
 export function canViewAccountingReports(role: UserRole): boolean {
-  return role === 'admin' || role === 'accountant';
+  return role === 'admin' || role === 'executive' || role === 'accountant';
 }
 

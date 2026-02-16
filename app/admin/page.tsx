@@ -29,7 +29,7 @@ export default function AdminPage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'admin' | 'manager' | 'staff' | 'viewer'>('staff');
+  const [role, setRole] = useState<UserProfile['role']>('staff');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -123,9 +123,11 @@ export default function AdminPage() {
   const getRoleBadge = (role: string) => {
     const roleMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       admin: { label: '관리자', variant: 'destructive' },
+      executive: { label: '경영진', variant: 'destructive' },
       manager: { label: '매니저', variant: 'default' },
       staff: { label: '스태프', variant: 'secondary' },
       viewer: { label: '조회자', variant: 'outline' },
+      accountant: { label: '회계', variant: 'default' },
     };
     const roleInfo = roleMap[role] || { label: role, variant: 'outline' as const };
     return <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>;
@@ -387,9 +389,11 @@ export default function AdminPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="admin">관리자</SelectItem>
+                              <SelectItem value="executive">경영진</SelectItem>
                               <SelectItem value="manager">매니저</SelectItem>
                               <SelectItem value="staff">스태프</SelectItem>
                               <SelectItem value="viewer">조회자</SelectItem>
+                              <SelectItem value="accountant">회계</SelectItem>
                             </SelectContent>
                           </Select>
                           {userItem.id === user?.id && (
@@ -445,9 +449,11 @@ export default function AdminPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin">관리자</SelectItem>
+                        <SelectItem value="executive">경영진</SelectItem>
                         <SelectItem value="manager">매니저</SelectItem>
                         <SelectItem value="staff">스태프</SelectItem>
                         <SelectItem value="viewer">조회자</SelectItem>
+                        <SelectItem value="accountant">회계</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
