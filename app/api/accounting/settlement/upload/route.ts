@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { canManageAccounting } from '@/lib/utils/permissions';
+import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel } from '@/lib/settlement/excel-parser';
 import { RevenueType } from '@/lib/types/settlement';
 
@@ -16,31 +15,13 @@ const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
 // POST /api/accounting/settlement/upload - 엑셀 업로드 + 파싱 → DB
 export async function POST(request: NextRequest) {
   try {
-    // 쿠키 기반 인증 시도
-    let supabase = await createClient();
-    let { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    // 쿠키 실패 시 Authorization 헤더에서 토큰 추출
-    if (userError || !user) {
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        supabase = createServiceClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { global: { headers: { Authorization: `Bearer ${token}` } } }
-        );
-        const result = await supabase.auth.getUser(token);
-        user = result.data.user;
-        userError = result.error;
-      }
-    }
-
-    if (userError || !user) {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
       return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
     }
+    const { supabase } = auth;
 
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
     if (!profile || !canManageAccounting(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
@@ -169,7 +150,7 @@ export async function POST(request: NextRequest) {
       total_amount,
       matched_count: matched.length,
       unmatched_count: 0,
-      uploaded_by: user.id,
+      uploaded_by: auth.userId,
     });
 
     return NextResponse.json({

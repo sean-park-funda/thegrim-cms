@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Download } from 'lucide-react';
 import { RsRevenue } from '@/lib/types/settlement';
+import { settlementFetch } from '@/lib/settlement/api';
 
 export default function RevenuePage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function RevenuePage() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/accounting/settlement/revenue?month=${selectedMonth}`);
+        const res = await settlementFetch(`/api/accounting/settlement/revenue?month=${selectedMonth}`);
         const data = await res.json();
         setRevenues(data.revenues || []);
       } catch (e) {

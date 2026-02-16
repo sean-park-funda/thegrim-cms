@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { RsPartner } from '@/lib/types/settlement';
+import { settlementFetch } from '@/lib/settlement/api';
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   individual: '개인',
@@ -37,7 +38,7 @@ export default function PartnersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/accounting/settlement/partners');
+      const res = await settlementFetch('/api/accounting/settlement/partners');
       const data = await res.json();
       setPartners(data.partners || []);
     } catch (e) {
@@ -54,7 +55,7 @@ export default function PartnersPage() {
   }, [profile]);
 
   const handleCreate = async (data: Partial<RsPartner>) => {
-    const res = await fetch('/api/accounting/settlement/partners', {
+    const res = await settlementFetch('/api/accounting/settlement/partners', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -64,7 +65,7 @@ export default function PartnersPage() {
 
   const handleUpdate = async (data: Partial<RsPartner>) => {
     if (!editPartner) return;
-    const res = await fetch(`/api/accounting/settlement/partners/${editPartner.id}`, {
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${editPartner.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -77,7 +78,7 @@ export default function PartnersPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    const res = await fetch(`/api/accounting/settlement/partners/${id}`, { method: 'DELETE' });
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${id}`, { method: 'DELETE' });
     if (res.ok) await load();
   };
 

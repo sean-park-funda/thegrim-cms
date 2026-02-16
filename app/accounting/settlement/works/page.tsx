@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Pencil, Trash2, Link2 } from 'lucide-react';
 import { RsWork, RsPartner, RsWorkPartner } from '@/lib/types/settlement';
+import { settlementFetch } from '@/lib/settlement/api';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
   exclusive: '독점',
@@ -53,9 +54,9 @@ export default function WorksPage() {
     setLoading(true);
     try {
       const [workRes, partnerRes, wpRes] = await Promise.all([
-        fetch('/api/accounting/settlement/works?active=false'),
-        fetch('/api/accounting/settlement/partners'),
-        fetch('/api/accounting/settlement/work-partners'),
+        settlementFetch('/api/accounting/settlement/works?active=false'),
+        settlementFetch('/api/accounting/settlement/partners'),
+        settlementFetch('/api/accounting/settlement/work-partners'),
       ]);
       const workData = await workRes.json();
       const partnerData = await partnerRes.json();
@@ -77,7 +78,7 @@ export default function WorksPage() {
   }, [profile]);
 
   const handleCreate = async (data: Partial<RsWork>) => {
-    const res = await fetch('/api/accounting/settlement/works', {
+    const res = await settlementFetch('/api/accounting/settlement/works', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -87,7 +88,7 @@ export default function WorksPage() {
 
   const handleUpdate = async (data: Partial<RsWork>) => {
     if (!editWork) return;
-    const res = await fetch(`/api/accounting/settlement/works/${editWork.id}`, {
+    const res = await settlementFetch(`/api/accounting/settlement/works/${editWork.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -100,7 +101,7 @@ export default function WorksPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    const res = await fetch(`/api/accounting/settlement/works/${id}`, { method: 'DELETE' });
+    const res = await settlementFetch(`/api/accounting/settlement/works/${id}`, { method: 'DELETE' });
     if (res.ok) await load();
   };
 
@@ -108,7 +109,7 @@ export default function WorksPage() {
     if (!linkWorkId || !linkPartnerId) return;
     setLinkSaving(true);
     try {
-      const res = await fetch('/api/accounting/settlement/work-partners', {
+      const res = await settlementFetch('/api/accounting/settlement/work-partners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,7 +134,7 @@ export default function WorksPage() {
 
   const handleUnlink = async (id: string) => {
     if (!confirm('연결을 해제하시겠습니까?')) return;
-    const res = await fetch(`/api/accounting/settlement/work-partners?id=${id}`, { method: 'DELETE' });
+    const res = await settlementFetch(`/api/accounting/settlement/work-partners?id=${id}`, { method: 'DELETE' });
     if (res.ok) await load();
   };
 

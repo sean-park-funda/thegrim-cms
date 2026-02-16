@@ -9,6 +9,7 @@ import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { MonthSelector } from '@/components/settlement/MonthSelector';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
+import { settlementFetch } from '@/lib/settlement/api';
 
 interface DashboardStats {
   totalRevenue: number;
@@ -37,10 +38,10 @@ export default function SettlementDashboardPage() {
       setLoading(true);
       try {
         const [revRes, settRes, workRes, partnerRes] = await Promise.all([
-          fetch(`/api/accounting/settlement/revenue?month=${selectedMonth}`),
-          fetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`),
-          fetch('/api/accounting/settlement/works'),
-          fetch('/api/accounting/settlement/partners'),
+          settlementFetch(`/api/accounting/settlement/revenue?month=${selectedMonth}`),
+          settlementFetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`),
+          settlementFetch('/api/accounting/settlement/works'),
+          settlementFetch('/api/accounting/settlement/partners'),
         ]);
 
         const revData = await revRes.json();

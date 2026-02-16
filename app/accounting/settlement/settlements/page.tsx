@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Calculator, Download } from 'lucide-react';
 import { RsSettlement, SettlementStatus } from '@/lib/types/settlement';
+import { settlementFetch } from '@/lib/settlement/api';
 
 export default function SettlementsPage() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function SettlementsPage() {
   const loadSettlements = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`);
+      const res = await settlementFetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`);
       const data = await res.json();
       setSettlements(data.settlements || []);
     } catch (e) {
@@ -51,7 +52,7 @@ export default function SettlementsPage() {
   const handleCalculate = async () => {
     setCalculating(true);
     try {
-      const res = await fetch('/api/accounting/settlement/calculate', {
+      const res = await settlementFetch('/api/accounting/settlement/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month: selectedMonth }),
@@ -75,7 +76,7 @@ export default function SettlementsPage() {
   };
 
   const handleSave = async (id: string, data: { status?: SettlementStatus; production_cost?: number; adjustment?: number; note?: string }) => {
-    const res = await fetch('/api/accounting/settlement/settlements', {
+    const res = await settlementFetch('/api/accounting/settlement/settlements', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...data }),

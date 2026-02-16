@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { canManageAccounting } from '@/lib/utils/permissions';
+import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { calculateSettlement } from '@/lib/settlement/calculator';
 
 // POST /api/accounting/settlement/calculate - 정산 계산 실행
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
       return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
     }
+    const { supabase } = auth;
 
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
     if (!profile || !canManageAccounting(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }

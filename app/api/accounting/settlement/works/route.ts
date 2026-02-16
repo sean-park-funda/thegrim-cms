@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
+import { getAuthenticatedClient } from '@/lib/settlement/auth';
 
 // GET /api/accounting/settlement/works - 작품 목록 조회
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
       return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
     }
+    const { supabase } = auth;
 
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
     if (!profile || !canViewAccounting(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
@@ -40,13 +40,13 @@ export async function GET(request: NextRequest) {
 // POST /api/accounting/settlement/works - 작품 생성
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
       return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
     }
+    const { supabase } = auth;
 
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
     if (!profile || !canManageAccounting(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }

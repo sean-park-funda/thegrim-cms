@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
 import { RsMgBalance, RsWork, RsPartner } from '@/lib/types/settlement';
+import { settlementFetch } from '@/lib/settlement/api';
 
 export default function MgPage() {
   const router = useRouter();
@@ -41,9 +42,9 @@ export default function MgPage() {
     setLoading(true);
     try {
       const [mgRes, workRes, partnerRes] = await Promise.all([
-        fetch(`/api/accounting/settlement/mg?month=${selectedMonth}`),
-        fetch('/api/accounting/settlement/works'),
-        fetch('/api/accounting/settlement/partners'),
+        settlementFetch(`/api/accounting/settlement/mg?month=${selectedMonth}`),
+        settlementFetch('/api/accounting/settlement/works'),
+        settlementFetch('/api/accounting/settlement/partners'),
       ]);
       const mgData = await mgRes.json();
       const workData = await workRes.json();
@@ -67,7 +68,7 @@ export default function MgPage() {
     if (!formWorkId || !formPartnerId || !formAmount) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/accounting/settlement/mg', {
+      const res = await settlementFetch('/api/accounting/settlement/mg', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
