@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const month = formData.get('month') as string;
     const revenueType = formData.get('revenue_type') as RevenueType;
-    const file = formData.get('file') as File;
+    const files = formData.getAll('files') as File[];
 
-    if (!month || !revenueType || !file) {
+    if (!month || !revenueType || files.length === 0) {
       return NextResponse.json({ error: '월, 수익 유형, 파일은 필수입니다.' }, { status: 400 });
     }
 
@@ -58,16 +58,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '잘못된 수익 유형입니다.' }, { status: 400 });
     }
 
-    // 파일 읽기
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const column = REVENUE_TYPE_COLUMNS[revenueType];
+    const allErrors: string[] = [];
+    const fileResults: { name: string; count: number; amount: number }[] = [];
 
-    // 엑셀 파싱
-    const parseResult = parseRevenueExcel(buffer, file.name, revenueType, month);
+    // 1) 모든 파일 파싱 (DB 작업 전에 먼저 파싱하여 오류 조기 발견)
+    const allRows: { work_name: string; amount: number }[] = [];
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const parseResult = parseRevenueExcel(buffer, file.name, revenueType, month);
+      allRows.push(...parseResult.rows);
+      allErrors.push(...parseResult.errors);
+      fileResults.push({
+        name: file.name,
+        count: parseResult.rows.length,
+        amount: parseResult.total_amount,
+      });
+    }
 
-    // 작품 목록 조회
+    // 2) 작품 목록 조회
     const { data: works } = await supabase.from('rs_works').select('id, name, naver_name');
-    const workMap = new Map<string, string>(); // name/naver_name → work_id
+    const workMap = new Map<string, string>();
     if (works) {
       for (const w of works) {
         workMap.set(w.name, w.id);
@@ -77,18 +89,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 매칭 + 미매칭 작품 자동 등록
+    // 3) 작품 매칭 + 자동 등록 + 금액 합산
     const matched: { work_name: string; work_id: string; amount: number }[] = [];
     const autoCreated: { work_name: string; work_id: string; amount: number }[] = [];
-    const column = REVENUE_TYPE_COLUMNS[revenueType];
-
-    // 동일 work_id에 대한 금액 합산
     const aggregated = new Map<string, { work_name: string; work_id: string; amount: number }>();
 
-    for (const row of parseResult.rows) {
+    for (const row of allRows) {
       let workId: string | undefined = workMap.get(row.work_name);
 
-      // 미매칭 → 자동 등록
       if (!workId) {
         const { data: newWork } = await supabase
           .from('rs_works')
@@ -113,10 +121,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 4) 해당 월/유형의 기존 값을 0으로 초기화 (덮어쓰기 안전하게)
+    const { data: existingRevenues } = await supabase
+      .from('rs_revenues')
+      .select('id')
+      .eq('month', month)
+      .gt(column, 0);
+
+    if (existingRevenues && existingRevenues.length > 0) {
+      const ids = existingRevenues.map(r => r.id);
+      await supabase
+        .from('rs_revenues')
+        .update({ [column]: 0 })
+        .in('id', ids);
+    }
+
+    // 5) 합산된 금액으로 UPSERT
     for (const item of aggregated.values()) {
       matched.push(item);
 
-      // 기존 수익 조회
       const { data: existing } = await supabase
         .from('rs_revenues')
         .select('id')
@@ -125,25 +148,25 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (existing) {
-        // 해당 컬럼만 UPDATE
         await supabase
           .from('rs_revenues')
           .update({ [column]: item.amount })
           .eq('id', existing.id);
       } else {
-        // INSERT
         await supabase
           .from('rs_revenues')
           .insert({ work_id: item.work_id, month, [column]: item.amount });
       }
     }
 
-    // 업로드 이력 기록
+    const total_amount = allRows.reduce((sum, r) => sum + r.amount, 0);
+
+    // 6) 업로드 이력 기록
     await supabase.from('rs_upload_history').insert({
       month,
       revenue_type: revenueType,
-      file_name: file.name,
-      total_amount: parseResult.total_amount,
+      file_name: files.map(f => f.name).join(', '),
+      total_amount,
       matched_count: matched.length,
       unmatched_count: 0,
       uploaded_by: user.id,
@@ -152,8 +175,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       matched,
       auto_created: autoCreated,
-      total_amount: parseResult.total_amount,
-      errors: parseResult.errors,
+      total_amount,
+      file_results: fileResults,
+      errors: allErrors,
     });
   } catch (error) {
     console.error('업로드 오류:', error);

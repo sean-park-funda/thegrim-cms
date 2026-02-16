@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { RevenueType } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_LABELS: Record<RevenueType, string> = {
@@ -22,20 +22,21 @@ interface UploadResult {
   matched: { work_name: string; work_id: string; amount: number }[];
   auto_created: { work_name: string; work_id: string; amount: number }[];
   total_amount: number;
+  file_results?: { name: string; count: number; amount: number }[];
   errors: string[];
 }
 
 export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {
   const { selectedMonth } = useSettlementStore();
   const [revenueType, setRevenueType] = useState<RevenueType>('domestic_paid');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
+      setFiles(prev => [...prev, ...acceptedFiles]);
       setResult(null);
       setError(null);
     }
@@ -47,11 +48,15 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'application/vnd.ms-excel': ['.xls'],
     },
-    maxFiles: 1,
+    multiple: true,
   });
 
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setUploading(true);
     setError(null);
     setResult(null);
@@ -60,7 +65,9 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       const formData = new FormData();
       formData.append('month', selectedMonth);
       formData.append('revenue_type', revenueType);
-      formData.append('file', file);
+      for (const file of files) {
+        formData.append('files', file);
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/accounting/settlement/upload', {
@@ -79,7 +86,7 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       }
 
       setResult(data);
-      setFile(null);
+      setFiles([]);
       onUploadComplete?.();
     } catch {
       setError('업로드 중 오류가 발생했습니다.');
@@ -114,20 +121,27 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       >
         <input {...getInputProps()} />
         <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-        {file ? (
-          <div className="flex items-center justify-center gap-2">
-            <FileSpreadsheet className="h-4 w-4" />
-            <span className="text-sm">{file.name}</span>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            엑셀 파일을 드래그하거나 클릭하여 선택하세요 (.xlsx)
-          </p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          엑셀 파일을 드래그하거나 클릭하여 선택하세요 (.xlsx, 복수 선택 가능)
+        </p>
       </div>
 
-      <Button onClick={handleUpload} disabled={!file || uploading}>
-        {uploading ? '업로드 중...' : '업로드 및 파싱'}
+      {files.length > 0 && (
+        <div className="space-y-1">
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm">
+              <FileSpreadsheet className="h-4 w-4 shrink-0" />
+              <span className="truncate">{f.name}</span>
+              <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => removeFile(i)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button onClick={handleUpload} disabled={files.length === 0 || uploading}>
+        {uploading ? '업로드 중...' : `업로드 및 파싱 (${files.length}개 파일)`}
       </Button>
 
       {error && (
@@ -151,6 +165,16 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
             <p className="text-sm">
               총 금액: <span className="font-semibold">{result.total_amount.toLocaleString()}원</span>
             </p>
+            {result.file_results && result.file_results.length > 1 && (
+              <div>
+                <p className="text-sm font-medium">파일별 결과</p>
+                <ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                  {result.file_results.map((f, i) => (
+                    <li key={i}>{f.name}: {f.count}건, {f.amount.toLocaleString()}원</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {result.matched.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-green-600">매칭됨 ({result.matched.length}건)</p>
