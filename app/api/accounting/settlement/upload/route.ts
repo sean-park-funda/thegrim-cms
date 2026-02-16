@@ -102,22 +102,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4) 해당 월/유형의 기존 값을 0으로 초기화 (덮어쓰기 안전하게)
-    const { data: existingRevenues } = await supabase
-      .from('rs_revenues')
-      .select('id')
-      .eq('month', month)
-      .gt(column, 0);
-
-    if (existingRevenues && existingRevenues.length > 0) {
-      const ids = existingRevenues.map(r => r.id);
-      await supabase
-        .from('rs_revenues')
-        .update({ [column]: 0 })
-        .in('id', ids);
-    }
-
-    // 5) 합산된 금액으로 UPSERT
+    // 4) 합산된 금액으로 UPSERT (해당 컬럼만 갱신, 다른 수익유형은 보존)
     for (const item of aggregated.values()) {
       matched.push(item);
 
@@ -142,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     const total_amount = allRows.reduce((sum, r) => sum + r.amount, 0);
 
-    // 6) 업로드 이력 기록
+    // 5) 업로드 이력 기록
     await supabase.from('rs_upload_history').insert({
       month,
       revenue_type: revenueType,
