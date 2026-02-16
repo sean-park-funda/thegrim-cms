@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { canManageAccounting } from '@/lib/utils/permissions';
+import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel } from '@/lib/settlement/excel-parser';
 import { RevenueType } from '@/lib/types/settlement';
@@ -11,6 +11,42 @@ const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
   global_ad: 'global_ad',
   secondary: 'secondary',
 };
+
+// GET /api/accounting/settlement/upload?month=YYYY-MM - 업로드 이력 조회
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+    const { supabase } = auth;
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
+    if (!profile || !canViewAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const month = searchParams.get('month');
+
+    let query = supabase
+      .from('rs_upload_history')
+      .select('revenue_type, file_name, total_amount, matched_count, created_at')
+      .order('created_at', { ascending: false });
+
+    if (month) query = query.eq('month', month);
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json({ error: '이력 조회 실패' }, { status: 500 });
+    }
+
+    return NextResponse.json({ history: data });
+  } catch {
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}
 
 // POST /api/accounting/settlement/upload - 엑셀 업로드 + 파싱 → DB
 export async function POST(request: NextRequest) {

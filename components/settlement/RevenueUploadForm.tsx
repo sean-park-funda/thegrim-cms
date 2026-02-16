@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { RevenueType } from '@/lib/types/settlement';
+
+interface UploadHistoryItem {
+  file_name: string;
+  total_amount: number;
+  matched_count: number;
+  created_at: string;
+}
 
 const REVENUE_TYPE_CONFIG: Record<RevenueType, { label: string; description: string; color: string }> = {
   domestic_paid: { label: '국내유료수익', description: '국내유상이용권 정산 파일', color: 'blue' },
@@ -25,7 +32,7 @@ interface UploadResult {
   errors: string[];
 }
 
-function RevenueTypeCard({ revenueType, onUploadComplete }: { revenueType: RevenueType; onUploadComplete?: () => void }) {
+function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueType: RevenueType; history: UploadHistoryItem[]; onUploadComplete?: () => void }) {
   const { selectedMonth } = useSettlementStore();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -120,6 +127,20 @@ function RevenueTypeCard({ revenueType, onUploadComplete }: { revenueType: Reven
         <p className="text-xs text-muted-foreground">{config.description}</p>
       </CardHeader>
       <CardContent className="space-y-3">
+        {history.length > 0 && (
+          <div className="space-y-1">
+            {history.map((h, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0 text-green-500" />
+                <div className="min-w-0">
+                  <span className="block truncate" title={h.file_name}>{h.file_name}</span>
+                  <span className="text-[10px]">{h.matched_count}건 {h.total_amount.toLocaleString()}원 · {new Date(h.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div
           {...getRootProps()}
           className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
@@ -220,10 +241,40 @@ function RevenueTypeCard({ revenueType, onUploadComplete }: { revenueType: Reven
 const REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
 
 export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {
+  const { selectedMonth } = useSettlementStore();
+  const [historyMap, setHistoryMap] = useState<Record<string, UploadHistoryItem[]>>({});
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await settlementFetch(`/api/accounting/settlement/upload?month=${selectedMonth}`);
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, UploadHistoryItem[]> = {};
+        for (const h of data.history || []) {
+          if (!map[h.revenue_type]) map[h.revenue_type] = [];
+          map[h.revenue_type].push(h);
+        }
+        setHistoryMap(map);
+      }
+    } catch {}
+  }, [selectedMonth]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const handleUploadComplete = () => {
+    loadHistory();
+    onUploadComplete?.();
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {REVENUE_TYPES.map((type) => (
-        <RevenueTypeCard key={type} revenueType={type} onUploadComplete={onUploadComplete} />
+        <RevenueTypeCard
+          key={type}
+          revenueType={type}
+          history={historyMap[type] || []}
+          onUploadComplete={handleUploadComplete}
+        />
       ))}
     </div>
   );
