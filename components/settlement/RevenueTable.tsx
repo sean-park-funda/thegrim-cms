@@ -5,9 +5,10 @@ import { RsRevenue } from '@/lib/types/settlement';
 interface RevenueTableProps {
   revenues: RsRevenue[];
   loading?: boolean;
+  search?: string;
 }
 
-export function RevenueTable({ revenues, loading }: RevenueTableProps) {
+export function RevenueTable({ revenues, loading, search = '' }: RevenueTableProps) {
   if (loading) {
     return <div className="text-sm text-muted-foreground py-8 text-center">로딩 중...</div>;
   }
@@ -16,7 +17,11 @@ export function RevenueTable({ revenues, loading }: RevenueTableProps) {
     return <div className="text-sm text-muted-foreground py-8 text-center">수익 데이터가 없습니다.</div>;
   }
 
-  const totalAll = revenues.reduce((s, r) => s + Number(r.total), 0);
+  const filtered = search
+    ? revenues.filter(r => (r.work?.name || '').toLowerCase().includes(search.toLowerCase()))
+    : revenues;
+
+  const totalAll = filtered.reduce((s, r) => s + Number(r.total), 0);
 
   return (
     <div className="overflow-x-auto">
@@ -33,7 +38,7 @@ export function RevenueTable({ revenues, loading }: RevenueTableProps) {
           </tr>
         </thead>
         <tbody>
-          {revenues.map((r) => (
+          {filtered.map((r) => (
             <tr key={r.id} className="border-b hover:bg-muted/50">
               <td className="py-2 px-3">{r.work?.name || r.work_id}</td>
               <td className="py-2 px-3 text-right tabular-nums">{Number(r.domestic_paid).toLocaleString()}</td>
@@ -47,12 +52,12 @@ export function RevenueTable({ revenues, loading }: RevenueTableProps) {
         </tbody>
         <tfoot>
           <tr className="border-t-2 font-semibold">
-            <td className="py-2 px-3">합계</td>
-            <td className="py-2 px-3 text-right tabular-nums">{revenues.reduce((s, r) => s + Number(r.domestic_paid), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{revenues.reduce((s, r) => s + Number(r.global_paid), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{revenues.reduce((s, r) => s + Number(r.domestic_ad), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{revenues.reduce((s, r) => s + Number(r.global_ad), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{revenues.reduce((s, r) => s + Number(r.secondary), 0).toLocaleString()}</td>
+            <td className="py-2 px-3">합계{search ? ` (${filtered.length}건)` : ''}</td>
+            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.domestic_paid), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.global_paid), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.domestic_ad), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.global_ad), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.secondary), 0).toLocaleString()}</td>
             <td className="py-2 px-3 text-right tabular-nums">{totalAll.toLocaleString()}</td>
           </tr>
         </tfoot>

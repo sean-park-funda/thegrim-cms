@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Trash2, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Link2, Search } from 'lucide-react';
 import { RsWork, RsPartner, RsWorkPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -34,6 +34,8 @@ export default function WorksPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editWork, setEditWork] = useState<RsWork | null>(null);
+
+  const [search, setSearch] = useState('');
 
   // Work-Partner linking dialog
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -155,7 +157,16 @@ export default function WorksPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>작품 관리</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="작품 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 w-48"
+              />
+            </div>
             {canManage && (
               <>
                 <Button variant="outline" onClick={() => setLinkDialogOpen(true)}>
@@ -177,7 +188,16 @@ export default function WorksPage() {
             <div className="text-sm text-muted-foreground py-8 text-center">등록된 작품이 없습니다.</div>
           ) : (
             <div className="space-y-4">
-              {works.map((w) => {
+              {works
+              .filter(w => {
+                if (!search) return true;
+                const q = search.toLowerCase();
+                const wps = workPartners.filter(wp => wp.work_id === w.id);
+                return w.name.toLowerCase().includes(q)
+                  || (w.naver_name || '').toLowerCase().includes(q)
+                  || wps.some(wp => (wp.partner?.name || '').toLowerCase().includes(q));
+              })
+              .map((w) => {
                 const wps = workPartners.filter(wp => wp.work_id === w.id);
                 return (
                   <div key={w.id} className="border rounded-lg p-4">

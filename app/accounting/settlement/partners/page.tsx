@@ -12,7 +12,8 @@ import { PartnerForm } from '@/components/settlement/PartnerForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, FileText } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
 import { RsPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -37,6 +38,7 @@ export default function PartnersPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<RsPartner | null>(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (profile && !canViewAccounting(profile.role)) {
@@ -124,8 +126,15 @@ export default function PartnersPage() {
 
   const canManage = canManageAccounting(profile.role);
 
-  const grandTotalRevenue = partners.reduce((s, p) => s + p.total_revenue, 0);
-  const grandTotalShare = partners.reduce((s, p) => s + p.total_revenue_share, 0);
+  const filtered = search
+    ? partners.filter(p =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.company_name || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : partners;
+
+  const grandTotalRevenue = filtered.reduce((s, p) => s + p.total_revenue, 0);
+  const grandTotalShare = filtered.reduce((s, p) => s + p.total_revenue_share, 0);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -136,12 +145,23 @@ export default function PartnersPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>파트너 ({selectedMonth})</CardTitle>
-          {canManage && (
-            <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1" />
-              파트너 추가
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="이름, 거래처 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 w-52"
+              />
+            </div>
+            {canManage && (
+              <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1" />
+                파트너 추가
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -164,7 +184,7 @@ export default function PartnersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {partners.map((p) => (
+                  {filtered.map((p) => (
                     <tr key={p.id} className="border-b hover:bg-muted/50">
                       <td className="py-2 px-3 font-medium">{p.name}</td>
                       <td className="py-2 px-3 text-muted-foreground">{p.company_name || '-'}</td>
@@ -205,7 +225,7 @@ export default function PartnersPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 font-semibold">
-                    <td className="py-2 px-3">합계 ({partners.length}명)</td>
+                    <td className="py-2 px-3">합계 ({filtered.length}명{search ? ` / ${partners.length}명` : ''})</td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3"></td>
