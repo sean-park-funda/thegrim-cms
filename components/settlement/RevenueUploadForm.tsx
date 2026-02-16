@@ -18,6 +18,21 @@ const REVENUE_TYPE_LABELS: Record<RevenueType, string> = {
   secondary: '2차사업',
 };
 
+/**
+ * 파일명에서 수익 유형 자동 감지
+ */
+function detectRevenueType(fileName: string): RevenueType | null {
+  const name = fileName.toLowerCase();
+  if (name.includes('super like') || name.includes('superlike')) return 'secondary';
+  if (name.includes('매니지먼트') || name.includes('management')) return 'secondary';
+  if (name.includes('kr webtoon ad') || name.includes('kr series ad') || name.includes('시리즈광고')) return 'domestic_ad';
+  if (name.includes('정산리포트') && name.includes('광고')) return 'domestic_ad';
+  if (name.includes('linewebtoon_ad') || name.includes('linewebtoon ad') || (name.includes('글로벌광고') || (name.includes('global') && name.includes('ad')))) return 'global_ad';
+  if (name.includes('linewebtoon invoice') || name.includes('linewebtoon_invoice')) return 'global_paid';
+  if (name.includes('국내유상이용권') || name.includes('국내유상')) return 'domestic_paid';
+  return null;
+}
+
 interface UploadResult {
   matched: { work_name: string; work_id: string; amount: number }[];
   auto_created: { work_name: string; work_id: string; amount: number }[];
@@ -39,6 +54,12 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
       setFiles(prev => [...prev, ...acceptedFiles]);
       setResult(null);
       setError(null);
+
+      // 첫 파일에서 수익 유형 자동 감지
+      const detected = detectRevenueType(acceptedFiles[0].name);
+      if (detected) {
+        setRevenueType(detected);
+      }
     }
   }, []);
 
@@ -94,7 +115,7 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
     <div className="space-y-4">
       <div className="flex gap-4 items-end">
         <div>
-          <label className="text-sm font-medium mb-1 block">수익 유형</label>
+          <label className="text-sm font-medium mb-1 block">수익 유형 (파일명에서 자동 감지)</label>
           <Select value={revenueType} onValueChange={(v) => setRevenueType(v as RevenueType)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue />
