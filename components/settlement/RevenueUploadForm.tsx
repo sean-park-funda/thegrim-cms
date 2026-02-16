@@ -63,6 +63,7 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
 
       const res = await fetch('/api/accounting/settlement/upload', {
         method: 'POST',
+        credentials: 'include',
         body: formData,
       });
 
