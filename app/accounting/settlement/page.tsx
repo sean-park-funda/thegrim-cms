@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { MonthSelector } from '@/components/settlement/MonthSelector';
+import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -76,10 +76,7 @@ export default function SettlementDashboardPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">RS 정산</h1>
-        <MonthSelector />
-      </div>
+      <SettlementHeader />
 
       <SettlementNav />
 

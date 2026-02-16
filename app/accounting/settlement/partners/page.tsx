@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { MonthSelector } from '@/components/settlement/MonthSelector';
+import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { PartnerForm } from '@/components/settlement/PartnerForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -92,10 +92,7 @@ export default function PartnersPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">RS 정산</h1>
-        <MonthSelector />
-      </div>
+      <SettlementHeader />
 
       <SettlementNav />
 

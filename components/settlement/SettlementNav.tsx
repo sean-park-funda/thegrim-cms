@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/accounting/settlement', label: '대시보드' },
-  { href: '/accounting/settlement/upload', label: '업로드' },
   { href: '/accounting/settlement/revenue', label: '수익' },
   { href: '/accounting/settlement/settlements', label: '정산' },
   { href: '/accounting/settlement/mg', label: 'MG' },
