@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
+import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { SettlementHeader } from '@/components/settlement/SettlementHeader';
@@ -10,7 +12,7 @@ import { PartnerForm } from '@/components/settlement/PartnerForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText } from 'lucide-react';
 import { RsPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -21,10 +23,17 @@ const PARTNER_TYPE_LABELS: Record<string, string> = {
   naver: '네이버',
 };
 
+interface PartnerWithRevenue extends RsPartner {
+  total_revenue: number;
+  total_revenue_share: number;
+  work_count: number;
+}
+
 export default function PartnersPage() {
   const router = useRouter();
   const { profile } = useStore();
-  const [partners, setPartners] = useState<RsPartner[]>([]);
+  const { selectedMonth } = useSettlementStore();
+  const [partners, setPartners] = useState<PartnerWithRevenue[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<RsPartner | null>(null);
@@ -38,9 +47,34 @@ export default function PartnersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await settlementFetch('/api/accounting/settlement/partners');
-      const data = await res.json();
-      setPartners(data.partners || []);
+      const [partnersRes, revenueRes] = await Promise.all([
+        settlementFetch('/api/accounting/settlement/partners'),
+        settlementFetch(`/api/accounting/settlement/partner-revenue?month=${selectedMonth}`),
+      ]);
+      const partnersData = await partnersRes.json();
+      const revenueData = await revenueRes.json();
+
+      const revenueMap = new Map<string, { total_revenue: number; total_revenue_share: number; work_count: number }>();
+      for (const pr of revenueData.partner_revenues || []) {
+        revenueMap.set(pr.partner_id, {
+          total_revenue: pr.total_revenue,
+          total_revenue_share: pr.total_revenue_share,
+          work_count: pr.works.length,
+        });
+      }
+
+      const merged: PartnerWithRevenue[] = (partnersData.partners || []).map((p: RsPartner) => {
+        const rev = revenueMap.get(p.id);
+        return {
+          ...p,
+          total_revenue: rev?.total_revenue || 0,
+          total_revenue_share: rev?.total_revenue_share || 0,
+          work_count: rev?.work_count || 0,
+        };
+      });
+
+      merged.sort((a, b) => b.total_revenue_share - a.total_revenue_share);
+      setPartners(merged);
     } catch (e) {
       console.error('파트너 로드 오류:', e);
     } finally {
@@ -52,7 +86,7 @@ export default function PartnersPage() {
     if (profile && canViewAccounting(profile.role)) {
       load();
     }
-  }, [profile]);
+  }, [profile, selectedMonth]);
 
   const handleCreate = async (data: Partial<RsPartner>) => {
     const res = await settlementFetch('/api/accounting/settlement/partners', {
@@ -90,6 +124,9 @@ export default function PartnersPage() {
 
   const canManage = canManageAccounting(profile.role);
 
+  const grandTotalRevenue = partners.reduce((s, p) => s + p.total_revenue, 0);
+  const grandTotalShare = partners.reduce((s, p) => s + p.total_revenue_share, 0);
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <SettlementHeader />
@@ -98,7 +135,7 @@ export default function PartnersPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>파트너 관리</CardTitle>
+          <CardTitle>파트너 ({selectedMonth})</CardTitle>
           {canManage && (
             <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
               <Plus className="h-4 w-4 mr-1" />
@@ -117,10 +154,12 @@ export default function PartnersPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="py-2 px-3 font-medium">이름</th>
-                    <th className="py-2 px-3 font-medium">회사명</th>
-                    <th className="py-2 px-3 font-medium">유형</th>
-                    <th className="py-2 px-3 font-medium">세율</th>
-                    <th className="py-2 px-3 font-medium">이메일</th>
+                    <th className="py-2 px-3 font-medium">거래처</th>
+                    <th className="py-2 px-3 font-medium">구분</th>
+                    <th className="py-2 px-3 font-medium text-right">작품 수</th>
+                    <th className="py-2 px-3 font-medium text-right">총 매출</th>
+                    <th className="py-2 px-3 font-medium text-right">수익분배금</th>
+                    <th className="py-2 px-3 font-medium text-center">정산서</th>
                     {canManage && <th className="py-2 px-3 font-medium"></th>}
                   </tr>
                 </thead>
@@ -128,12 +167,27 @@ export default function PartnersPage() {
                   {partners.map((p) => (
                     <tr key={p.id} className="border-b hover:bg-muted/50">
                       <td className="py-2 px-3 font-medium">{p.name}</td>
-                      <td className="py-2 px-3">{p.company_name || '-'}</td>
+                      <td className="py-2 px-3 text-muted-foreground">{p.company_name || '-'}</td>
                       <td className="py-2 px-3">
                         <Badge variant="secondary">{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</Badge>
                       </td>
-                      <td className="py-2 px-3 tabular-nums">{(Number(p.tax_rate) * 100).toFixed(1)}%</td>
-                      <td className="py-2 px-3">{p.email || '-'}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{p.work_count || '-'}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">
+                        {p.total_revenue > 0 ? p.total_revenue.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums font-semibold">
+                        {p.total_revenue_share > 0 ? p.total_revenue_share.toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {p.total_revenue_share > 0 && (
+                          <Link href={`/accounting/settlement/partners/${p.id}/statement`}>
+                            <Button variant="outline" size="sm">
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              정산서
+                            </Button>
+                          </Link>
+                        )}
+                      </td>
                       {canManage && (
                         <td className="py-2 px-3">
                           <div className="flex gap-1">
@@ -149,6 +203,18 @@ export default function PartnersPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 font-semibold">
+                    <td className="py-2 px-3">합계 ({partners.length}명)</td>
+                    <td className="py-2 px-3"></td>
+                    <td className="py-2 px-3"></td>
+                    <td className="py-2 px-3"></td>
+                    <td className="py-2 px-3 text-right tabular-nums">{grandTotalRevenue.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{grandTotalShare.toLocaleString()}</td>
+                    <td className="py-2 px-3"></td>
+                    {canManage && <td className="py-2 px-3"></td>}
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
