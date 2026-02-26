@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -14,6 +14,11 @@ interface UploadHistoryItem {
   total_amount: number;
   matched_count: number;
   created_at: string;
+}
+
+interface UploadedStatus {
+  count: number;
+  total: number;
 }
 
 const REVENUE_TYPE_CONFIG: Record<RevenueType, { label: string; description: string; color: string }> = {
@@ -32,7 +37,14 @@ interface UploadResult {
   errors: string[];
 }
 
-function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueType: RevenueType; history: UploadHistoryItem[]; onUploadComplete?: () => void }) {
+interface RevenueTypeCardProps {
+  revenueType: RevenueType;
+  history: UploadHistoryItem[];
+  uploaded?: UploadedStatus;
+  onUploadComplete?: () => void;
+}
+
+function RevenueTypeCard({ revenueType, history, uploaded, onUploadComplete }: RevenueTypeCardProps) {
   const { selectedMonth } = useSettlementStore();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -97,6 +109,17 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
     }
   };
 
+  // 최신 업로드 파일명 (중복 제거)
+  const latestFiles = useMemo(() => {
+    const seen = new Set<string>();
+    for (const h of history) {
+      for (const name of h.file_name.split(',').map(s => s.trim()).filter(Boolean)) {
+        seen.add(name);
+      }
+    }
+    return [...seen];
+  }, [history]);
+
   const colorMap: Record<string, string> = {
     blue: 'border-l-blue-500',
     emerald: 'border-l-emerald-500',
@@ -118,9 +141,9 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">{config.label}</CardTitle>
-          {result && (
+          {uploaded && (
             <span className={`text-xs px-2 py-0.5 rounded-full ${badgeColorMap[config.color]}`}>
-              {result.total_amount.toLocaleString()}원
+              {uploaded.count}건 · {uploaded.total.toLocaleString()}원
             </span>
           )}
         </div>
@@ -140,14 +163,21 @@ function RevenueTypeCard({ revenueType, history, onUploadComplete }: { revenueTy
           </p>
         </div>
 
-        {history.length > 0 && !result && (
+        {latestFiles.length > 0 && (
           <div className="space-y-0.5">
-            {history.map((h, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {latestFiles.map((name) => (
+              <div key={name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-                <span className="truncate" title={h.file_name}>{h.file_name}</span>
+                <span className="truncate" title={name}>{name}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {!latestFiles.length && uploaded && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+            <span>업로드됨 ({uploaded.count}개 작품)</span>
           </div>
         )}
 
@@ -240,6 +270,7 @@ const REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_
 export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {
   const { selectedMonth } = useSettlementStore();
   const [historyMap, setHistoryMap] = useState<Record<string, UploadHistoryItem[]>>({});
+  const [uploadedMap, setUploadedMap] = useState<Record<string, UploadedStatus>>({});
 
   const loadHistory = useCallback(async () => {
     try {
@@ -252,6 +283,7 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
           map[h.revenue_type].push(h);
         }
         setHistoryMap(map);
+        setUploadedMap(data.uploaded || {});
       }
     } catch {}
   }, [selectedMonth]);
@@ -270,6 +302,7 @@ export function RevenueUploadForm({ onUploadComplete }: { onUploadComplete?: () 
           key={type}
           revenueType={type}
           history={historyMap[type] || []}
+          uploaded={uploadedMap[type]}
           onUploadComplete={handleUploadComplete}
         />
       ))}

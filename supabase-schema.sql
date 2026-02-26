@@ -404,3 +404,58 @@ CREATE TABLE IF NOT EXISTS movie_scenes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_movie_scenes_project_id ON movie_scenes(project_id);
+
+-- =============================================
+-- 웹툰 애니메이션 (영상 프롬프트 생성) 테이블
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS webtoonanimation_projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255) DEFAULT '새 프로젝트',
+  created_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS webtoonanimation_cuts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES webtoonanimation_projects(id) ON DELETE CASCADE,
+  order_index INTEGER NOT NULL,
+  file_name VARCHAR(255),
+  file_path TEXT,
+  storage_path TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wa_cuts_project_order ON webtoonanimation_cuts(project_id, order_index);
+
+CREATE TABLE IF NOT EXISTS webtoonanimation_prompt_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES webtoonanimation_projects(id) ON DELETE CASCADE,
+  range_start INTEGER NOT NULL,
+  range_end INTEGER NOT NULL,
+  storyboard_image_path TEXT,
+  aspect_ratio VARCHAR(10) DEFAULT '16:9',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wa_prompt_groups_project ON webtoonanimation_prompt_groups(project_id);
+
+CREATE TABLE IF NOT EXISTS webtoonanimation_cut_prompts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES webtoonanimation_prompt_groups(id) ON DELETE CASCADE,
+  cut_index INTEGER NOT NULL,
+  prompt TEXT NOT NULL,
+  camera TEXT,
+  continuity TEXT DEFAULT 'new scene',
+  duration NUMERIC(4,1) DEFAULT 4 CHECK (duration > 0 AND duration <= 12),
+  is_edited BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(group_id, cut_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wa_cut_prompts_group ON webtoonanimation_cut_prompts(group_id, cut_index);
+
+CREATE TRIGGER update_webtoonanimation_projects_updated_at BEFORE UPDATE ON webtoonanimation_projects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_webtoonanimation_cut_prompts_updated_at BEFORE UPDATE ON webtoonanimation_cut_prompts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

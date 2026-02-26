@@ -303,3 +303,49 @@ export interface FreeCreationRecentReference {
 export interface FreeCreationRecentReferenceWithFile extends FreeCreationRecentReference {
   reference_file?: ReferenceFile;
 }
+
+// 웹툰 애니메이션 타입
+export interface WebtoonAnimationProject {
+  id: string;
+  title: string;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebtoonAnimationCut {
+  id: string;
+  project_id: string;
+  order_index: number;
+  file_name: string;
+  file_path: string;
+  storage_path: string;
+  created_at: string;
+}
+
+export interface WebtoonAnimationPromptGroup {
+  id: string;
+  project_id: string;
+  range_start: number;
+  range_end: number;
+  storyboard_image_path?: string | null;
+  aspect_ratio: string;
+  created_at: string;
+}
+
+export interface WebtoonAnimationCutPrompt {
+  id: string;
+  group_id: string;
+  cut_index: number;
+  prompt: string;
+  camera?: string | null;
+  continuity: string;
+  duration: number; // 초 단위 (0.5 ~ 12)
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebtoonAnimationPromptGroupWithCuts extends WebtoonAnimationPromptGroup {
+  cut_prompts?: WebtoonAnimationCutPrompt[];
+}

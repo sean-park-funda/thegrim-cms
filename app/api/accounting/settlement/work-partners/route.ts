@@ -98,15 +98,27 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, rs_rate, role, is_mg_applied, note } = body;
+    const { id, rs_rate, role, is_mg_applied, note,
+      pen_name, vat_type, mg_rs_rate, contract_category,
+      contract_doc_name, contract_signed_date, contract_period, contract_end_date } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
     }
 
+    const updateData: Record<string, unknown> = { rs_rate, role, is_mg_applied, note };
+    if (pen_name !== undefined) updateData.pen_name = pen_name;
+    if (vat_type !== undefined) updateData.vat_type = vat_type;
+    if (mg_rs_rate !== undefined) updateData.mg_rs_rate = mg_rs_rate;
+    if (contract_category !== undefined) updateData.contract_category = contract_category;
+    if (contract_doc_name !== undefined) updateData.contract_doc_name = contract_doc_name;
+    if (contract_signed_date !== undefined) updateData.contract_signed_date = contract_signed_date;
+    if (contract_period !== undefined) updateData.contract_period = contract_period;
+    if (contract_end_date !== undefined) updateData.contract_end_date = contract_end_date;
+
     const { data, error } = await supabase
       .from('rs_work_partners')
-      .update({ rs_rate, role, is_mg_applied, note })
+      .update(updateData)
       .eq('id', id)
       .select('*, work:rs_works(*), partner:rs_partners(*)')
       .single();

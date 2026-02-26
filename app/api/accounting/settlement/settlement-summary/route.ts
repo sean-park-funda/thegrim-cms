@@ -1,0 +1,171 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { canViewAccounting } from '@/lib/utils/permissions';
+import { getAuthenticatedClient } from '@/lib/settlement/auth';
+
+// GET /api/accounting/settlement/settlement-summary?month=YYYY-MM
+// 파트너별 정산 집계 (수익정산금 집계 시트 대응)
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
+    const { supabase } = auth;
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
+    if (!profile || !canViewAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const month = searchParams.get('month');
+    if (!month) {
+      return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
+    }
+
+    // 1) 해당 월 정산 데이터 (파트너+작품 join)
+    const { data: settlements, error: sErr } = await supabase
+      .from('rs_settlements')
+      .select('*, partner:rs_partners(*), work:rs_works(name)')
+      .eq('month', month);
+
+    if (sErr) {
+      console.error('정산 조회 오류:', sErr);
+      return NextResponse.json({ error: '조회 실패' }, { status: 500 });
+    }
+
+    if (!settlements || settlements.length === 0) {
+      return NextResponse.json({ summary: [] });
+    }
+
+    // 2) 세금 계산 헬퍼 — 정산 건별로 계산 후 합산
+    function calcTaxes(partnerType: string, amount: number) {
+      let vat = 0, income_tax = 0, local_tax = 0;
+      if (partnerType === 'domestic_corp') {
+        // 사업자(국내): 부가세 10%
+        vat = Math.round(amount * 0.1);
+      } else if (partnerType === 'individual') {
+        // 개인: 소득세 3% + 지방세 0.3%
+        income_tax = Math.round(amount * 0.03);
+        local_tax = Math.round(income_tax * 0.1); // 지방세 = 소득세의 10%
+      } else if (partnerType === 'foreign_corp') {
+        // 해외사업자: 소득세 20% + 지방세 2%
+        income_tax = Math.round(amount * 0.20);
+        local_tax = Math.round(income_tax * 0.1);
+      }
+      return { vat, income_tax, local_tax };
+    }
+
+    // 3) 파트너별 그룹핑 — 건별 세금 계산 후 합산
+    const partnerMap = new Map<string, {
+      partner_id: string;
+      partner_name: string;
+      company_name: string;
+      partner_type: string;
+      tax_id: string;
+      works: string[];
+      revenue_share: number;
+      production_cost: number;
+      adjustment: number;
+      vat: number;
+      income_tax: number;
+      local_tax: number;
+      mg_deduction: number;
+      final_payment: number;
+    }>();
+
+    for (const s of settlements) {
+      const partner = s.partner as { id: string; name: string; company_name: string; partner_type: string; tax_id: string; tax_rate: number } | null;
+      const work = s.work as { name: string } | null;
+      if (!partner) continue;
+
+      if (!partnerMap.has(partner.id)) {
+        partnerMap.set(partner.id, {
+          partner_id: partner.id,
+          partner_name: partner.name,
+          company_name: partner.company_name || '',
+          partner_type: partner.partner_type || 'individual',
+          tax_id: partner.tax_id || '',
+          works: [],
+          revenue_share: 0,
+          production_cost: 0,
+          adjustment: 0,
+          vat: 0,
+          income_tax: 0,
+          local_tax: 0,
+          mg_deduction: 0,
+          final_payment: 0,
+        });
+      }
+
+      const entry = partnerMap.get(partner.id)!;
+      if (work?.name && !entry.works.includes(work.name)) {
+        entry.works.push(work.name);
+      }
+
+      const revenueShare = Number(s.revenue_share) || 0;
+      const prodCost = Number(s.production_cost) || 0;
+      const adj = Number(s.adjustment) || 0;
+      const rowSettlement = revenueShare + prodCost + adj;
+
+      // 건별 세금 계산
+      const taxes = calcTaxes(partner.partner_type || 'individual', rowSettlement);
+
+      entry.revenue_share += revenueShare;
+      entry.production_cost += prodCost;
+      entry.adjustment += adj;
+      entry.vat += taxes.vat;
+      entry.income_tax += taxes.income_tax;
+      entry.local_tax += taxes.local_tax;
+      entry.mg_deduction += Number(s.mg_deduction) || 0;
+      entry.final_payment += Number(s.final_payment) || 0;
+    }
+
+    // 4) 응답 생성
+    const incomeTypeMap: Record<string, string> = {
+      individual: '개인',
+      domestic_corp: '사업자(국내)',
+      foreign_corp: '사업자(해외)',
+      naver: '네이버',
+    };
+
+    const reportTypeMap: Record<string, string> = {
+      individual: '기타소득',
+      domestic_corp: '세금계산서',
+      foreign_corp: '기타소득',
+      naver: '-',
+    };
+
+    const summary = Array.from(partnerMap.values()).map((entry, idx) => {
+      const settlementAmount = entry.revenue_share + entry.production_cost + entry.adjustment;
+      const taxTotal = -(entry.income_tax + entry.local_tax); // 세금은 차감이므로 음수
+      const paymentAmount = settlementAmount + entry.vat + taxTotal + entry.mg_deduction;
+
+      return {
+        no: idx + 1,
+        month,
+        partner_id: entry.partner_id,
+        partner_name: entry.partner_name,
+        company_name: entry.company_name,
+        income_type: incomeTypeMap[entry.partner_type] || '기타',
+        report_type: reportTypeMap[entry.partner_type] || '-',
+        tax_id: entry.tax_id,
+        works_list: entry.works.join(', '),
+        revenue_share: entry.revenue_share,
+        production_cost: entry.production_cost,
+        adjustment: entry.adjustment,
+        settlement_amount: settlementAmount,
+        vat: entry.vat,
+        income_tax: -entry.income_tax, // 차감 표시
+        local_tax: -entry.local_tax,   // 차감 표시
+        mg_deduction: entry.mg_deduction,
+        final_payment: entry.final_payment || paymentAmount,
+      };
+    }).sort((a, b) => Math.abs(b.final_payment) - Math.abs(a.final_payment));
+
+    return NextResponse.json({ summary });
+  } catch (error) {
+    console.error('정산 집계 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}

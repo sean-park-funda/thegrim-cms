@@ -28,7 +28,7 @@ export function SettlementHeader() {
                 업로드
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>매출 엑셀 업로드 — {selectedMonth}</DialogTitle>
               </DialogHeader>

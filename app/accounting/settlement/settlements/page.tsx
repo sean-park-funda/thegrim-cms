@@ -8,22 +8,29 @@ import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions'
 import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { SettlementTable } from '@/components/settlement/SettlementTable';
+import { SettlementSummaryTable } from '@/components/settlement/SettlementSummaryTable';
 import { SettlementDetailDialog } from '@/components/settlement/SettlementDetailDialog';
+import { VerificationTable } from '@/components/settlement/VerificationTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Calculator, Download } from 'lucide-react';
 import { RsSettlement, SettlementStatus } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
+type ViewMode = 'summary' | 'detail' | 'verification';
+
 export default function SettlementsPage() {
   const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [settlements, setSettlements] = useState<RsSettlement[]>([]);
+  const [summaryData, setSummaryData] = useState([]);
+  const [verificationData, setVerificationData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [selected, setSelected] = useState<RsSettlement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('summary');
 
   useEffect(() => {
     if (profile && !canViewAccounting(profile.role)) {
@@ -34,9 +41,17 @@ export default function SettlementsPage() {
   const loadSettlements = async () => {
     setLoading(true);
     try {
-      const res = await settlementFetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`);
-      const data = await res.json();
-      setSettlements(data.settlements || []);
+      const [detailRes, summaryRes, verificationRes] = await Promise.all([
+        settlementFetch(`/api/accounting/settlement/settlements?month=${selectedMonth}`),
+        settlementFetch(`/api/accounting/settlement/settlement-summary?month=${selectedMonth}`),
+        settlementFetch(`/api/accounting/settlement/verification?month=${selectedMonth}`),
+      ]);
+      const detailData = await detailRes.json();
+      const sumData = await summaryRes.json();
+      const veriData = await verificationRes.json();
+      setSettlements(detailData.settlements || []);
+      setSummaryData(sumData.summary || []);
+      setVerificationData(veriData.verification || []);
     } catch (e) {
       console.error('정산 로드 오류:', e);
     } finally {
@@ -87,7 +102,12 @@ export default function SettlementsPage() {
   };
 
   const handleExport = () => {
-    window.open(`/api/accounting/settlement/export?month=${selectedMonth}&type=settlement`, '_blank');
+    const exportTypeMap: Record<ViewMode, string> = {
+      summary: 'settlement-summary',
+      detail: 'settlement',
+      verification: 'verification',
+    };
+    window.open(`/api/accounting/settlement/export?month=${selectedMonth}&type=${exportTypeMap[viewMode]}`, '_blank');
   };
 
   if (!profile) {
@@ -98,6 +118,12 @@ export default function SettlementsPage() {
 
   const canManage = canManageAccounting(profile.role);
 
+  const viewModes: { key: ViewMode; label: string }[] = [
+    { key: 'summary', label: '집계' },
+    { key: 'detail', label: '상세' },
+    { key: 'verification', label: 'RS검증' },
+  ];
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <SettlementHeader />
@@ -106,7 +132,20 @@ export default function SettlementsPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>정산 내역 ({selectedMonth})</CardTitle>
+          <div className="flex items-center gap-4">
+            <CardTitle>정산 내역 ({selectedMonth})</CardTitle>
+            <div className="flex rounded-md border overflow-hidden text-sm">
+              {viewModes.map((vm) => (
+                <button
+                  key={vm.key}
+                  onClick={() => setViewMode(vm.key)}
+                  className={`px-3 py-1 ${viewMode === vm.key ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                >
+                  {vm.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2">
             {canManage && (
               <Button onClick={handleCalculate} disabled={calculating}>
@@ -114,14 +153,22 @@ export default function SettlementsPage() {
                 {calculating ? '계산 중...' : '정산 계산'}
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={settlements.length === 0}>
+            <Button variant="outline" size="sm" onClick={handleExport}>
               <Download className="h-4 w-4 mr-1" />
               엑셀 내보내기
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <SettlementTable settlements={settlements} loading={loading} onSelect={handleSelect} />
+          {viewMode === 'summary' && (
+            <SettlementSummaryTable data={summaryData} loading={loading} />
+          )}
+          {viewMode === 'detail' && (
+            <SettlementTable settlements={settlements} loading={loading} onSelect={handleSelect} />
+          )}
+          {viewMode === 'verification' && (
+            <VerificationTable data={verificationData} loading={loading} />
+          )}
         </CardContent>
       </Card>
 

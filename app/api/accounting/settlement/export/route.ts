@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
-    const type = searchParams.get('type') || 'settlement'; // 'settlement' or 'revenue'
+    const type = searchParams.get('type') || 'settlement';
 
     if (!month) {
       return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
@@ -75,10 +75,193 @@ export async function GET(request: NextRequest) {
       XLSX.utils.book_append_sheet(workbook, ws, '정산 내역');
     }
 
+    if (type === 'settlement-summary') {
+      // 정산 집계 내보내기
+      const { data: settlements } = await supabase
+        .from('rs_settlements')
+        .select('*, partner:rs_partners(name, company_name, partner_type, business_number), work:rs_works(name)')
+        .eq('month', month)
+        .order('partner_id');
+
+      // Group by partner
+      const allSettlements = settlements || [];
+      const byPartner = new Map<string, (typeof allSettlements)>();
+      for (const s of allSettlements) {
+        const pid = s.partner_id;
+        const list = byPartner.get(pid) || [];
+        list.push(s);
+        byPartner.set(pid, list);
+      }
+
+      const incomeTypeMap: Record<string, string> = {
+        individual: '개인', domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '네이버',
+      };
+      const reportTypeMap: Record<string, string> = {
+        individual: '기타소득', domestic_corp: '세금계산서', foreign_corp: '기타소득', naver: '-',
+      };
+
+      function calcTaxes(partnerType: string, amount: number) {
+        let vat = 0, income_tax = 0, local_tax = 0;
+        if (partnerType === 'domestic_corp') {
+          vat = Math.round(amount * 0.1);
+        } else if (partnerType === 'individual') {
+          income_tax = Math.round(amount * 0.03);
+          local_tax = Math.round(income_tax * 0.1);
+        } else if (partnerType === 'foreign_corp') {
+          income_tax = Math.round(amount * 0.20);
+          local_tax = Math.round(income_tax * 0.1);
+        }
+        return { vat, income_tax, local_tax };
+      }
+
+      const rows: Record<string, unknown>[] = [];
+      let no = 1;
+      for (const [, items] of byPartner) {
+        if (!items || items.length === 0) continue;
+        const p = items[0].partner;
+        const pt = p?.partner_type || 'individual';
+        const workNames = items.map((s: Record<string, unknown>) => (s.work as Record<string, string>)?.name || '').join(', ');
+
+        let revenueShare = 0, prodCost = 0, adjustment = 0, vat = 0, incomeTax = 0, localTax = 0, mgDeduction = 0, finalPayment = 0;
+        for (const i of items) {
+          const rs = Number(i.revenue_share) || 0;
+          const pc = Number(i.production_cost) || 0;
+          const adj = Number(i.adjustment) || 0;
+          const rowAmt = rs + pc + adj;
+          const taxes = calcTaxes(pt, rowAmt);
+          revenueShare += rs;
+          prodCost += pc;
+          adjustment += adj;
+          vat += taxes.vat;
+          incomeTax += taxes.income_tax;
+          localTax += taxes.local_tax;
+          mgDeduction += Number(i.mg_deduction) || 0;
+          finalPayment += Number(i.final_payment) || 0;
+        }
+        const settlementAmt = revenueShare + prodCost + adjustment;
+
+        rows.push({
+          'NO': no++,
+          '대상자': p?.name || '',
+          '거래처명': p?.company_name || '',
+          '소득구분': incomeTypeMap[pt] || '기타',
+          '신고구분': reportTypeMap[pt] || '-',
+          '사업자번호': p?.business_number || '',
+          '작품명': workNames,
+          '수익분배금': revenueShare,
+          '제작비': prodCost,
+          '조정': adjustment,
+          '수익정산금': settlementAmt,
+          '부가세': vat,
+          '소득세': -incomeTax,
+          '지방세': -localTax,
+          'MG차감': mgDeduction,
+          '지급금액': finalPayment,
+        });
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, ws, '수익정산금 집계');
+    } else if (type === 'verification') {
+      // RS 검증 내보내기
+      const { data: revenues } = await supabase
+        .from('rs_revenues')
+        .select('*, work:rs_works(name)')
+        .eq('month', month);
+
+      const { data: workPartners } = await supabase
+        .from('rs_work_partners')
+        .select('*, partner:rs_partners(name, company_name, partner_type)');
+
+      const { data: settlements } = await supabase
+        .from('rs_settlements')
+        .select('*')
+        .eq('month', month);
+
+      const rows: Record<string, unknown>[] = [];
+      for (const wp of (workPartners || [])) {
+        const rev = (revenues || []).find(r => r.work_id === wp.work_id);
+        if (!rev) continue;
+        const gross = Number(rev.total);
+        const computed = Math.round(gross * wp.rs_rate);
+        const settle = (settlements || []).find(s => s.work_id === wp.work_id && s.partner_id === wp.partner_id);
+        const dbValue = settle ? Number(settle.revenue_share) : null;
+        const diff = dbValue != null ? computed - dbValue : null;
+
+        rows.push({
+          '대상자': wp.partner?.name || '',
+          '거래처명': wp.partner?.company_name || '',
+          '소득구분': wp.partner?.partner_type === 'individual' ? '개인' : wp.partner?.partner_type === 'domestic_corp' ? '사업자' : '',
+          '작품명': rev.work?.name || '',
+          '매출액': gross,
+          'RS요율': `${(wp.rs_rate * 100).toFixed(1)}%`,
+          '산출분배금': computed,
+          'DB분배금': dbValue,
+          '차이': diff,
+          'MG적용': wp.is_mg_applied ? 'Y' : '',
+        });
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, ws, '개별RS 검증');
+    } else if (type === 'contracts') {
+      // 계약 테이블 내보내기
+      const { data: workPartners } = await supabase
+        .from('rs_work_partners')
+        .select('*, work:rs_works(name), partner:rs_partners(name, partner_type)')
+        .order('created_at');
+
+      const rows = (workPartners || []).map(wp => ({
+        '작품명': wp.work?.name || '',
+        '파트너명': wp.partner?.name || '',
+        '필명': wp.pen_name || '',
+        '파트너구분': wp.partner?.partner_type || '',
+        '부가세': wp.vat_type || '',
+        'RS요율': `${(wp.rs_rate * 100).toFixed(1)}%`,
+        'MG RS요율': wp.mg_rs_rate != null ? `${(wp.mg_rs_rate * 100).toFixed(1)}%` : '',
+        '계약구분': wp.contract_category || '',
+        '계약서명': wp.contract_doc_name || '',
+        '체결일': wp.contract_signed_date || '',
+        '계약기간': wp.contract_period || '',
+        '종료일': wp.contract_end_date || '',
+        'MG': wp.is_mg_applied ? 'Y' : '',
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, ws, '계약 테이블');
+    } else if (type === 'mg-summary') {
+      // MG 현황 내보내기
+      const { data: mgBalances } = await supabase
+        .from('rs_mg_balances')
+        .select('*, partner:rs_partners(name, company_name, partner_type), work:rs_works(name)')
+        .order('partner_id');
+
+      const rows = (mgBalances || []).map((mg, i) => ({
+        'NO': i + 1,
+        '대상자': mg.partner?.name || '',
+        '거래처명': mg.partner?.company_name || '',
+        '소득구분': mg.partner?.partner_type === 'individual' ? '개인' : mg.partner?.partner_type === 'domestic_corp' ? '사업자' : '',
+        '작품명': mg.work?.name || '',
+        'MG 잔액': Number(mg.remaining_balance),
+        '총 MG': Number(mg.total_mg),
+        '회수액': Number(mg.total_recovered),
+        '특이사항': mg.note || '',
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, ws, 'MG 현황');
+    }
+
     const buf = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    const fileName = type === 'revenue'
-      ? `매출액_집계_${month}.xlsx`
-      : `RS_정산_${month}.xlsx`;
+    const fileNames: Record<string, string> = {
+      revenue: `매출액_집계_${month}.xlsx`,
+      settlement: `RS_정산_${month}.xlsx`,
+      'settlement-summary': `수익정산금_집계_${month}.xlsx`,
+      verification: `RS_검증_${month}.xlsx`,
+      contracts: `계약_테이블.xlsx`,
+      'mg-summary': `MG_현황_${month}.xlsx`,
+    };
+    const fileName = fileNames[type] || `정산_${month}.xlsx`;
 
     return new NextResponse(buf, {
       headers: {

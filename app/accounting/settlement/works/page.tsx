@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
+import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { SettlementHeader } from '@/components/settlement/SettlementHeader';
@@ -10,41 +11,25 @@ import { WorkForm } from '@/components/settlement/WorkForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Trash2, Link2, Search } from 'lucide-react';
-import { RsWork, RsPartner, RsWorkPartner } from '@/lib/types/settlement';
+import { Plus, Search, Download } from 'lucide-react';
+import { RsWork, RsWorkPartner, RsRevenue } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
-const CONTRACT_TYPE_LABELS: Record<string, string> = {
-  exclusive: '독점',
-  non_exclusive: '비독점',
-  management: '매니지먼트',
-};
+const fmt = (n: number) => n > 0 ? n.toLocaleString() : '-';
 
 export default function WorksPage() {
   const router = useRouter();
   const { profile } = useStore();
+  const { selectedMonth } = useSettlementStore();
   const [works, setWorks] = useState<RsWork[]>([]);
-  const [partners, setPartners] = useState<RsPartner[]>([]);
   const [workPartners, setWorkPartners] = useState<RsWorkPartner[]>([]);
+  const [revenues, setRevenues] = useState<RsRevenue[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editWork, setEditWork] = useState<RsWork | null>(null);
 
   const [search, setSearch] = useState('');
-
-  // Work-Partner linking dialog
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkWorkId, setLinkWorkId] = useState('');
-  const [linkPartnerId, setLinkPartnerId] = useState('');
-  const [linkRate, setLinkRate] = useState('0.7');
-  const [linkRole, setLinkRole] = useState('author');
-  const [linkMg, setLinkMg] = useState(false);
-  const [linkSaving, setLinkSaving] = useState(false);
 
   useEffect(() => {
     if (profile && !canViewAccounting(profile.role)) {
@@ -55,17 +40,17 @@ export default function WorksPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [workRes, partnerRes, wpRes] = await Promise.all([
+      const [workRes, wpRes, revRes] = await Promise.all([
         settlementFetch('/api/accounting/settlement/works?active=false'),
-        settlementFetch('/api/accounting/settlement/partners'),
         settlementFetch('/api/accounting/settlement/work-partners'),
+        settlementFetch(`/api/accounting/settlement/revenue?month=${selectedMonth}`),
       ]);
       const workData = await workRes.json();
-      const partnerData = await partnerRes.json();
       const wpData = await wpRes.json();
+      const revData = await revRes.json();
       setWorks(workData.works || []);
-      setPartners(partnerData.partners || []);
       setWorkPartners(wpData.work_partners || []);
+      setRevenues(revData.revenues || []);
     } catch (e) {
       console.error('작품 로드 오류:', e);
     } finally {
@@ -77,7 +62,7 @@ export default function WorksPage() {
     if (profile && canViewAccounting(profile.role)) {
       load();
     }
-  }, [profile]);
+  }, [profile, selectedMonth]);
 
   const handleCreate = async (data: Partial<RsWork>) => {
     const res = await settlementFetch('/api/accounting/settlement/works', {
@@ -101,43 +86,8 @@ export default function WorksPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/works/${id}`, { method: 'DELETE' });
-    if (res.ok) await load();
-  };
-
-  const handleLink = async () => {
-    if (!linkWorkId || !linkPartnerId) return;
-    setLinkSaving(true);
-    try {
-      const res = await settlementFetch('/api/accounting/settlement/work-partners', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          work_id: linkWorkId,
-          partner_id: linkPartnerId,
-          rs_rate: Number(linkRate),
-          role: linkRole,
-          is_mg_applied: linkMg,
-        }),
-      });
-      if (res.ok) {
-        setLinkDialogOpen(false);
-        await load();
-      } else {
-        const data = await res.json();
-        alert(data.error || '연결 실패');
-      }
-    } finally {
-      setLinkSaving(false);
-    }
-  };
-
-  const handleUnlink = async (id: string) => {
-    if (!confirm('연결을 해제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/work-partners?id=${id}`, { method: 'DELETE' });
-    if (res.ok) await load();
+  const handleExport = () => {
+    window.open(`/api/accounting/settlement/export?month=${selectedMonth}&type=revenue`, '_blank');
   };
 
   if (!profile) {
@@ -148,6 +98,33 @@ export default function WorksPage() {
 
   const canManage = canManageAccounting(profile.role);
 
+  const revenueMap = new Map<string, RsRevenue>();
+  for (const r of revenues) {
+    revenueMap.set(r.work_id, r);
+  }
+
+  const filtered = works.filter(w => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const wps = workPartners.filter(wp => wp.work_id === w.id);
+    return w.name.toLowerCase().includes(q)
+      || (w.naver_name || '').toLowerCase().includes(q)
+      || wps.some(wp => (wp.partner?.name || '').toLowerCase().includes(q));
+  });
+
+  const totals = filtered.reduce((acc, w) => {
+    const rev = revenueMap.get(w.id);
+    if (!rev) return acc;
+    return {
+      domestic_paid: acc.domestic_paid + (rev.domestic_paid || 0),
+      global_paid: acc.global_paid + (rev.global_paid || 0),
+      domestic_ad: acc.domestic_ad + (rev.domestic_ad || 0),
+      global_ad: acc.global_ad + (rev.global_ad || 0),
+      secondary: acc.secondary + (rev.secondary || 0),
+      total: acc.total + (rev.total || 0),
+    };
+  }, { domestic_paid: 0, global_paid: 0, domestic_ad: 0, global_ad: 0, secondary: 0, total: 0 });
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <SettlementHeader />
@@ -156,7 +133,7 @@ export default function WorksPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>작품 관리</CardTitle>
+          <CardTitle>작품 ({selectedMonth})</CardTitle>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -167,17 +144,15 @@ export default function WorksPage() {
                 className="pl-9 h-9 w-48"
               />
             </div>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={revenues.length === 0}>
+              <Download className="h-4 w-4 mr-1" />
+              엑셀 내보내기
+            </Button>
             {canManage && (
-              <>
-                <Button variant="outline" onClick={() => setLinkDialogOpen(true)}>
-                  <Link2 className="h-4 w-4 mr-1" />
-                  파트너 연결
-                </Button>
-                <Button onClick={() => { setEditWork(null); setFormOpen(true); }}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  작품 추가
-                </Button>
-              </>
+              <Button onClick={() => { setEditWork(null); setFormOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1" />
+                작품 추가
+              </Button>
             )}
           </div>
         </CardHeader>
@@ -187,60 +162,63 @@ export default function WorksPage() {
           ) : works.length === 0 ? (
             <div className="text-sm text-muted-foreground py-8 text-center">등록된 작품이 없습니다.</div>
           ) : (
-            <div className="space-y-4">
-              {works
-              .filter(w => {
-                if (!search) return true;
-                const q = search.toLowerCase();
-                const wps = workPartners.filter(wp => wp.work_id === w.id);
-                return w.name.toLowerCase().includes(q)
-                  || (w.naver_name || '').toLowerCase().includes(q)
-                  || wps.some(wp => (wp.partner?.name || '').toLowerCase().includes(q));
-              })
-              .map((w) => {
-                const wps = workPartners.filter(wp => wp.work_id === w.id);
-                return (
-                  <div key={w.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{w.name}</span>
-                        {w.naver_name && w.naver_name !== w.name && (
-                          <span className="text-xs text-muted-foreground">({w.naver_name})</span>
-                        )}
-                        <Badge variant="secondary">{CONTRACT_TYPE_LABELS[w.contract_type] || w.contract_type}</Badge>
-                        {!w.is_active && <Badge variant="outline">비활성</Badge>}
-                      </div>
-                      {canManage && (
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => { setEditWork(w); setFormOpen(true); }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(w.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    {wps.length > 0 && (
-                      <div className="ml-4 space-y-1">
-                        {wps.map((wp) => (
-                          <div key={wp.id} className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>{wp.partner?.name || wp.partner_id}</span>
-                            <span className="tabular-nums">RS {(Number(wp.rs_rate) * 100).toFixed(1)}%</span>
-                            <Badge variant="outline" className="text-xs">{wp.role}</Badge>
-                            {wp.is_mg_applied && <Badge variant="outline" className="text-xs">MG</Badge>}
-                            {canManage && (
-                              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleUnlink(wp.id)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2 px-3 font-medium">작품명</th>
+                    <th className="py-2 px-3 font-medium text-center">파트너</th>
+                    <th className="py-2 px-3 font-medium text-right">국내유료</th>
+                    <th className="py-2 px-3 font-medium text-right">글로벌유료</th>
+                    <th className="py-2 px-3 font-medium text-right">국내광고</th>
+                    <th className="py-2 px-3 font-medium text-right">글로벌광고</th>
+                    <th className="py-2 px-3 font-medium text-right">2차사업</th>
+                    <th className="py-2 px-3 font-medium text-right">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((w) => {
+                    const rev = revenueMap.get(w.id);
+                    const wps = workPartners.filter(wp => wp.work_id === w.id);
+                    return (
+                      <tr
+                        key={w.id}
+                        className="border-b hover:bg-muted/50 cursor-pointer"
+                        onClick={() => router.push(`/accounting/settlement/works/${w.id}`)}
+                      >
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{w.name}</span>
+                            {w.naver_name && w.naver_name !== w.name && (
+                              <span className="text-xs text-muted-foreground">({w.naver_name})</span>
                             )}
+                            {!w.is_active && <Badge variant="outline" className="text-xs">비활성</Badge>}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                        </td>
+                        <td className="py-2 px-3 text-center tabular-nums">{wps.length || '-'}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.domestic_paid || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.global_paid || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.domestic_ad || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.global_ad || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.secondary || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(rev?.total || 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 font-semibold">
+                    <td className="py-2 px-3">합계 ({filtered.length}건)</td>
+                    <td className="py-2 px-3"></td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.domestic_paid)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.global_paid)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.domestic_ad)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.global_ad)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.secondary)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </CardContent>
@@ -253,59 +231,6 @@ export default function WorksPage() {
         onSave={editWork ? handleUpdate : handleCreate}
       />
 
-      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>작품-파트너 연결</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>작품</Label>
-              <Select value={linkWorkId} onValueChange={setLinkWorkId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="작품 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {works.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>파트너</Label>
-              <Select value={linkPartnerId} onValueChange={setLinkPartnerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="파트너 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {partners.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>RS 비율 (0~1)</Label>
-              <Input type="number" step="0.01" min="0" max="1" value={linkRate} onChange={(e) => setLinkRate(e.target.value)} />
-            </div>
-            <div>
-              <Label>역할</Label>
-              <Input value={linkRole} onChange={(e) => setLinkRole(e.target.value)} placeholder="author" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox checked={linkMg} onCheckedChange={(c) => setLinkMg(c === true)} id="mg-check" />
-              <Label htmlFor="mg-check">MG 적용</Label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>취소</Button>
-              <Button onClick={handleLink} disabled={linkSaving || !linkWorkId || !linkPartnerId}>
-                {linkSaving ? '연결 중...' : '연결'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

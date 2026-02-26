@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
-export default function RevenuePage() {
+export default function ContractsPage() {
   redirect('/accounting/settlement/works');
 }

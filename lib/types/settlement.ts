@@ -42,6 +42,14 @@ export interface RsWorkPartner {
   role: string;
   is_mg_applied: boolean;
   note: string | null;
+  pen_name: string | null;
+  vat_type: string | null;
+  mg_rs_rate: number | null;
+  contract_category: string | null;
+  contract_doc_name: string | null;
+  contract_signed_date: string | null;
+  contract_period: string | null;
+  contract_end_date: string | null;
   created_at: string;
   updated_at: string;
   // joined
@@ -128,4 +136,6 @@ export interface ExcelParseResult {
   rows: ParsedRevenueRow[];
   total_amount: number;
   errors: string[];
+  /** 글로벌유료 소급분 (Prior Period Adjustment) 작품별 금액 */
+  adjustments?: ParsedRevenueRow[];
 }

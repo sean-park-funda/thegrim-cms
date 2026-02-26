@@ -2,6 +2,26 @@ import * as XLSX from 'xlsx';
 import { RevenueType, ExcelParseResult, ParsedRevenueRow } from '@/lib/types/settlement';
 
 /**
+ * 작품명 정규화: 부제 제거, 공백 제거, 끝 느낌표/물음표 제거
+ * "캐슬2:만인지상" → "캐슬2"
+ * "매지컬 급식:암살법사" → "매지컬급식"
+ * "쇼미더럭키짱!" → "쇼미더럭키짱"
+ */
+export function normalizeWorkName(name: string): string {
+  let normalized = name.trim();
+  // 콜론 뒤 부제 제거
+  const colonIdx = normalized.indexOf(':');
+  if (colonIdx > 0) {
+    normalized = normalized.substring(0, colonIdx);
+  }
+  // 공백 제거
+  normalized = normalized.replace(/\s+/g, '');
+  // 끝 느낌표/물음표 제거
+  normalized = normalized.replace(/[!?！？]+$/, '');
+  return normalized;
+}
+
+/**
  * 네이버 매출 엑셀 파일을 파싱하여 작품별 수익을 추출
  * Python aggregate_revenue.py 포팅
  */
@@ -14,6 +34,7 @@ export function parseRevenueExcel(
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const errors: string[] = [];
   let rows: ParsedRevenueRow[] = [];
+  const adjustments: ParsedRevenueRow[] = [];
 
   try {
     switch (revenueType) {
@@ -21,7 +42,7 @@ export function parseRevenueExcel(
         rows = parseDomesticPaid(workbook, fileName, errors);
         break;
       case 'global_paid':
-        rows = parseGlobalPaid(workbook, fileName, errors);
+        rows = parseGlobalPaid(workbook, fileName, errors, adjustments);
         break;
       case 'domestic_ad':
         rows = parseDomesticAd(workbook, fileName, errors);
@@ -41,7 +62,12 @@ export function parseRevenueExcel(
 
   const total_amount = rows.reduce((sum, r) => sum + r.amount, 0);
 
-  return { rows, total_amount, errors };
+  return {
+    rows,
+    total_amount,
+    errors,
+    ...(adjustments.length > 0 ? { adjustments } : {}),
+  };
 }
 
 /**
@@ -150,23 +176,29 @@ function extractWorkNameFromDomesticPaidFileName(fileName: string): string | nul
  * 글로벌유료수익 파싱
  * 시트: invoice (또는 첫 시트)
  * 7행부터 데이터: col B (idx 1) = 작품명, col I (idx 8) = Payment (KRW)
+ *
+ * Payment에는 수수료 10%가 포함되어 있으므로 행별 /1.1 처리.
+ * "Prior Period Adjustment" 합산 행은 스킵.
+ * "Prior Period Adjustment_상세" 시트의 추가지급액(col 10)은 수수료 미포함이므로 그대로 합산.
  */
 function parseGlobalPaid(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  adjustments?: ParsedRevenueRow[]
 ): ParsedRevenueRow[] {
-  const rows: ParsedRevenueRow[] = [];
   const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('invoice')) || workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) {
     errors.push(`시트를 찾을 수 없습니다: ${fileName}`);
-    return rows;
+    return [];
   }
 
   const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  // 7행부터 (0-indexed: 6)
+  // 행별로 Payment / 1.1 처리 후 작품별 합산
+  const workAmounts = new Map<string, number>();
+
   for (let i = 6; i < data.length; i++) {
     const row = data[i];
     if (!row || !row[1]) continue;
@@ -176,7 +208,40 @@ function parseGlobalPaid(
 
     const payment = parseNumber(row[8]);
     if (payment !== 0) {
-      rows.push({ work_name: itemName, amount: payment });
+      // 수수료 10% 제외 (행별 반올림)
+      const net = Math.round(payment / 1.1);
+      workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
+    }
+  }
+
+  // "Prior Period Adjustment_상세" 시트에서 소급 추가지급액 합산
+  const adjSheetName = workbook.SheetNames.find(n => n.includes('Prior Period Adjustment') && n.includes('상세'));
+  if (adjSheetName) {
+    const adjSheet = workbook.Sheets[adjSheetName];
+    const adjData: (string | number | null)[][] = XLSX.utils.sheet_to_json(adjSheet, { header: 1 });
+
+    for (let i = 2; i < adjData.length; i++) {
+      const row = adjData[i];
+      if (!row || !row[1]) continue;
+
+      const itemName = String(row[1]).trim();
+      if (!itemName) continue;
+
+      // col 10 = 추가지급액 (수수료 미포함 순액)
+      const adjAmount = parseNumber(row[10]);
+      if (adjAmount !== 0) {
+        workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + adjAmount);
+        if (adjustments) {
+          adjustments.push({ work_name: itemName, amount: adjAmount });
+        }
+      }
+    }
+  }
+
+  const rows: ParsedRevenueRow[] = [];
+  for (const [name, amount] of workAmounts) {
+    if (amount !== 0) {
+      rows.push({ work_name: name, amount });
     }
   }
 
@@ -234,7 +299,7 @@ function parseDomesticAd(
     const row = data[i];
     if (!row || !row[nameColIdx]) continue;
 
-    const workName = String(row[nameColIdx]).trim();
+    const workName = normalizeWorkName(String(row[nameColIdx]).trim());
     if (!workName) continue;
 
     const revenue = parseNumber(row[revenueColIdx]);
@@ -330,6 +395,8 @@ function parseSecondary(
 
     // 개별 항목 파싱: 번호(idx 0) + 구분(idx 1) + 설명(idx 2) + 금액(idx 9)
     const workAmounts = new Map<string, number>();
+    let publishingTotal = 0; // [출판] 항목 별도 합산
+    let inUnpaidSection = false; // "미지급 항목" 섹션 진입 여부
 
     for (let i = 10; i < data.length; i++) {
       const row = data[i];
@@ -339,15 +406,37 @@ function parseSecondary(
       const anyCell = row.map(c => String(c || '')).join('');
       if (anyCell.includes('실 지급 총 합계')) break;
 
+      // "미지급 항목" 섹션 감지 → 이후 항목은 스킵
+      const col2Str = String(row[2] || '');
+      if (col2Str.includes('미지급')) {
+        inUnpaidSection = true;
+        continue;
+      }
+
+      // 미지급 섹션 내 항목은 건너뜀 (정산서에서 미반영)
+      if (inUnpaidSection) continue;
+
       // 번호가 있고 금액이 있는 행만 처리
       if (typeof row[0] !== 'number') continue;
       const amount = parseNumber(row[9]);
       if (amount === 0) continue;
 
-      const desc = String(row[2] || '');
+      const desc = col2Str;
       const workName = extractWorkNameFromMgDescription(desc);
       if (workName) {
         workAmounts.set(workName, (workAmounts.get(workName) || 0) + amount);
+      } else if (desc.includes('[출판]')) {
+        // 출판 항목은 작품명 추출 불가 → 별도 합산 후 파일명 기준 배분
+        publishingTotal += amount;
+      }
+    }
+
+    // 출판 합산액을 파일명의 마지막 작품에 전액 배정
+    if (publishingTotal !== 0) {
+      const names = extractWorkNamesFromMgFileName(fileName);
+      if (names.length > 0) {
+        const targetName = names[names.length - 1];
+        workAmounts.set(targetName, (workAmounts.get(targetName) || 0) + publishingTotal);
       }
     }
 

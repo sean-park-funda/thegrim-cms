@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
-import { parseRevenueExcel } from '@/lib/settlement/excel-parser';
+import { parseRevenueExcel, normalizeWorkName } from '@/lib/settlement/excel-parser';
+import { deduplicateWorks } from '@/lib/settlement/dedup-works';
 import { RevenueType } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
@@ -42,7 +43,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '이력 조회 실패' }, { status: 500 });
     }
 
-    return NextResponse.json({ history: data });
+    // 수익 유형별 실제 업로드 현황 (rs_revenues에서 값 존재 여부)
+    let uploaded: Record<string, { count: number; total: number }> = {};
+    if (month) {
+      const { data: revenues } = await supabase
+        .from('rs_revenues')
+        .select('domestic_paid, global_paid, domestic_ad, global_ad, secondary')
+        .eq('month', month);
+
+      if (revenues) {
+        const types = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'] as const;
+        for (const t of types) {
+          const rows = revenues.filter(r => Number(r[t]) !== 0);
+          if (rows.length > 0) {
+            uploaded[t] = {
+              count: rows.length,
+              total: rows.reduce((sum, r) => sum + Number(r[t]), 0),
+            };
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ history: data, uploaded });
   } catch {
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
@@ -94,14 +117,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2) 작품 목록 조회
+    // 2) 중복 작품 자동 병합 후 작품 목록 조회
+    const dedup = await deduplicateWorks(supabase);
+    if (dedup.merged.length > 0) {
+      console.log(`중복 작품 ${dedup.merged.length}건 병합:`, dedup.merged.map(m => `${m.removed_name} → ${m.kept_name}`));
+    }
     const { data: works } = await supabase.from('rs_works').select('id, name, naver_name');
     const workMap = new Map<string, string>();
     if (works) {
       for (const w of works) {
         workMap.set(w.name, w.id);
+        const normalizedName = normalizeWorkName(w.name);
+        if (normalizedName !== w.name) {
+          workMap.set(normalizedName, w.id);
+        }
         if (w.naver_name) {
           workMap.set(w.naver_name, w.id);
+          const normalizedNaver = normalizeWorkName(w.naver_name);
+          if (normalizedNaver !== w.naver_name) {
+            workMap.set(normalizedNaver, w.id);
+          }
         }
       }
     }
@@ -112,7 +147,8 @@ export async function POST(request: NextRequest) {
     const aggregated = new Map<string, { work_name: string; work_id: string; amount: number }>();
 
     for (const row of allRows) {
-      let workId: string | undefined = workMap.get(row.work_name);
+      let workId: string | undefined = workMap.get(row.work_name)
+        || workMap.get(normalizeWorkName(row.work_name));
 
       if (!workId) {
         const { data: newWork } = await supabase
