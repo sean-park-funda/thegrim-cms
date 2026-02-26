@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
         work_name: work.name,
         gross_revenue: grossRevenue,
         rs_rate: rsRate,
+        mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
         computed_share: computedShare,
         db_share: dbShare,
         has_discrepancy: hasDiscrepancy,

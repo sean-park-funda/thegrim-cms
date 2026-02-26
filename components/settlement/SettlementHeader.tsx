@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canManageAccounting } from '@/lib/utils/permissions';
@@ -8,7 +9,7 @@ import { MonthSelector } from './MonthSelector';
 import { RevenueUploadForm } from './RevenueUploadForm';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Upload } from 'lucide-react';
+import { Upload, HelpCircle } from 'lucide-react';
 
 export function SettlementHeader() {
   const { profile } = useStore();
@@ -19,6 +20,12 @@ export function SettlementHeader() {
     <div className="flex items-center justify-between">
       <h1 className="text-3xl font-bold">RS 정산</h1>
       <div className="flex items-center gap-2">
+        <Link href="/accounting/settlement/guide">
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            <HelpCircle className="h-4 w-4 mr-1" />
+            서비스 설명서
+          </Button>
+        </Link>
         <MonthSelector />
         {profile && canManageAccounting(profile.role) && (
           <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>

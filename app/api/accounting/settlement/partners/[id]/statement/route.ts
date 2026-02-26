@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { calculateTax } from '@/lib/settlement/calculator';
 
 const REVENUE_TYPE_LABELS: Record<string, string> = {
   domestic_paid: '국내유료수익',
@@ -86,6 +87,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('partner_id', id)
       .in('work_id', workIds);
 
+    // 4-1) MG 전체 이력 (해당 파트너의 모든 월)
+    const { data: mgHistory } = await supabase
+      .from('rs_mg_balances')
+      .select('*, work:rs_works(name)')
+      .eq('partner_id', id)
+      .in('work_id', workIds)
+      .order('month', { ascending: true });
+
     // 5) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
       const work = wp.work as unknown as { id: string; name: string } | null;
@@ -123,14 +132,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const grand_total_revenue = works.reduce((s, w) => s + w.work_total_revenue, 0);
     const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
 
-    // 세금 계산
-    const taxRate = Number(partner.tax_rate);
-    const tax_amount = Math.round(grand_total_share * taxRate);
+    // 세금 계산 (파트너 유형별 분리)
+    const tax_breakdown = calculateTax(grand_total_share, partner.partner_type);
+    const tax_amount = tax_breakdown.total;
 
     // MG 차감 합계
     const total_mg_deduction = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
 
     const final_payment = grand_total_share - tax_amount - total_mg_deduction;
+
+    // MG 전체 이력을 작품별로 그룹핑
+    const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
+    for (const mg of (mgHistory || [])) {
+      const workName = (mg.work as { name: string } | null)?.name || mg.work_id;
+      const list = mgHistoryByWork.get(workName) || [];
+      list.push({
+        month: mg.month,
+        previous_balance: Number(mg.previous_balance),
+        mg_added: Number(mg.mg_added),
+        mg_deducted: Number(mg.mg_deducted),
+        current_balance: Number(mg.current_balance),
+        note: mg.note || '',
+      });
+      mgHistoryByWork.set(workName, list);
+    }
+
+    const mg_history = Array.from(mgHistoryByWork.entries()).map(([work_name, history]) => ({
+      work_name,
+      history,
+    }));
 
     return NextResponse.json({
       partner,
@@ -138,10 +168,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       works,
       grand_total_revenue,
       grand_total_share,
-      tax_rate: taxRate,
+      tax_breakdown,
       tax_amount,
       total_mg_deduction,
       final_payment,
+      mg_history,
     });
   } catch (error) {
     console.error('정산서 조회 오류:', error);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { calculateTax, calculateInsurance } from '@/lib/settlement/calculator';
 
 // GET /api/accounting/settlement/settlement-summary?month=YYYY-MM
 // 파트너별 정산 집계 (수익정산금 집계 시트 대응)
@@ -38,25 +39,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ summary: [] });
     }
 
-    // 2) 세금 계산 헬퍼 — 정산 건별로 계산 후 합산
-    function calcTaxes(partnerType: string, amount: number) {
-      let vat = 0, income_tax = 0, local_tax = 0;
-      if (partnerType === 'domestic_corp') {
-        // 사업자(국내): 부가세 10%
-        vat = Math.round(amount * 0.1);
-      } else if (partnerType === 'individual') {
-        // 개인: 소득세 3% + 지방세 0.3%
-        income_tax = Math.round(amount * 0.03);
-        local_tax = Math.round(income_tax * 0.1); // 지방세 = 소득세의 10%
-      } else if (partnerType === 'foreign_corp') {
-        // 해외사업자: 소득세 20% + 지방세 2%
-        income_tax = Math.round(amount * 0.20);
-        local_tax = Math.round(income_tax * 0.1);
+    // 2) 작품-파트너 연결 (특이사항 note 조회)
+    const { data: workPartners } = await supabase
+      .from('rs_work_partners')
+      .select('partner_id, note');
+
+    // 파트너별 특이사항 맵
+    const partnerNotesMap = new Map<string, string[]>();
+    for (const wp of (workPartners || [])) {
+      if (wp.note) {
+        const notes = partnerNotesMap.get(wp.partner_id) || [];
+        if (!notes.includes(wp.note)) notes.push(wp.note);
+        partnerNotesMap.set(wp.partner_id, notes);
       }
-      return { vat, income_tax, local_tax };
     }
 
-    // 3) 파트너별 그룹핑 — 건별 세금 계산 후 합산
+    // 3) 세금 계산 — calculateTax (10원 미만 절사) 사용
+    const calcTaxes = (partnerType: string, amount: number) => calculateTax(amount, partnerType);
+
+    // 4) 파트너별 그룹핑 — 건별 세금 계산 후 합산
     const partnerMap = new Map<string, {
       partner_id: string;
       partner_name: string;
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
       entry.final_payment += Number(s.final_payment) || 0;
     }
 
-    // 4) 응답 생성
+    // 5) 응답 생성
     const incomeTypeMap: Record<string, string> = {
       individual: '개인',
       domestic_corp: '사업자(국내)',
@@ -138,8 +139,9 @@ export async function GET(request: NextRequest) {
 
     const summary = Array.from(partnerMap.values()).map((entry, idx) => {
       const settlementAmount = entry.revenue_share + entry.production_cost + entry.adjustment;
+      const insurance = calculateInsurance(settlementAmount, entry.partner_type);
       const taxTotal = -(entry.income_tax + entry.local_tax); // 세금은 차감이므로 음수
-      const paymentAmount = settlementAmount + entry.vat + taxTotal + entry.mg_deduction;
+      const paymentAmount = settlementAmount + entry.vat + taxTotal - insurance + entry.mg_deduction;
 
       return {
         no: idx + 1,
@@ -158,8 +160,10 @@ export async function GET(request: NextRequest) {
         vat: entry.vat,
         income_tax: -entry.income_tax, // 차감 표시
         local_tax: -entry.local_tax,   // 차감 표시
+        insurance: -insurance,          // 예고료 차감 표시
         mg_deduction: entry.mg_deduction,
         final_payment: entry.final_payment || paymentAmount,
+        notes: partnerNotesMap.get(entry.partner_id)?.join('; ') || '',
       };
     }).sort((a, b) => Math.abs(b.final_payment) - Math.abs(a.final_payment));
 

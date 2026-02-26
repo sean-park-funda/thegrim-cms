@@ -13,6 +13,7 @@ interface VerificationRow {
   work_name: string;
   gross_revenue: number;
   rs_rate: number;
+  mg_rs_rate: number | null;
   computed_share: number;
   db_share: number | null;
   has_discrepancy: boolean;
@@ -91,6 +92,7 @@ export function VerificationTable({ data, loading }: Props) {
               <th className="px-3 py-2 text-left">작품명</th>
               <th className="px-3 py-2 text-right">매출액</th>
               <th className="px-3 py-2 text-right">RS요율</th>
+              <th className="px-3 py-2 text-right">MG요율</th>
               <th className="px-3 py-2 text-right">수익분배(계산)</th>
               <th className="px-3 py-2 text-right">수익분배(DB)</th>
               <th className="px-3 py-2 text-center">MG</th>
@@ -100,7 +102,7 @@ export function VerificationTable({ data, loading }: Props) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={12} className="py-8 text-center text-muted-foreground">
+                <td colSpan={13} className="py-8 text-center text-muted-foreground">
                   데이터가 없습니다.
                 </td>
               </tr>
@@ -122,6 +124,9 @@ export function VerificationTable({ data, loading }: Props) {
                   <td className="px-3 py-2 whitespace-nowrap">{r.work_name}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.gross_revenue)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{pct(r.rs_rate)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-purple-600">
+                    {r.mg_rs_rate != null ? pct(r.mg_rs_rate) : '-'}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.computed_share)}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${r.has_discrepancy ? 'text-amber-600 font-medium' : ''}`}>
                     {r.db_share !== null ? fmt(r.db_share) : '-'}
@@ -137,6 +142,7 @@ export function VerificationTable({ data, loading }: Props) {
               <tr className="border-t-2 font-semibold">
                 <td colSpan={6} className="px-3 py-2">합계 ({filtered.length}건)</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.gross_revenue)}</td>
+                <td></td>
                 <td></td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.computed_share)}</td>
                 <td colSpan={3}></td>

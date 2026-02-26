@@ -17,9 +17,64 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+
+interface TaxBreakdown {
+  income_tax: number;
+  local_tax: number;
+  vat: number;
+  total: number;
+}
+
+interface WorkDetail {
+  revenue_type: string;
+  revenue_type_label: string;
+  gross_revenue: number;
+  revenue_share: number;
+  rs_rate: number;
+}
+
+interface WorkStatement {
+  work_name: string;
+  work_id: string;
+  rs_rate: number;
+  is_mg_applied: boolean;
+  details: WorkDetail[];
+  work_total_revenue: number;
+  work_total_share: number;
+  mg_balance: number;
+  mg_deduction: number;
+  mg_remaining: number;
+}
+
+interface MgHistoryEntry {
+  month: string;
+  previous_balance: number;
+  mg_added: number;
+  mg_deducted: number;
+  current_balance: number;
+  note: string;
+}
+
+interface MgWorkHistory {
+  work_name: string;
+  history: MgHistoryEntry[];
+}
+
+interface StatementData {
+  partner: { id: string; name: string; company_name: string | null; partner_type: string; };
+  month: string;
+  works: WorkStatement[];
+  grand_total_revenue: number;
+  grand_total_share: number;
+  tax_breakdown: TaxBreakdown;
+  tax_amount: number;
+  total_mg_deduction: number;
+  final_payment: number;
+  mg_history?: MgWorkHistory[];
+}
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   individual: '개인',
@@ -43,11 +98,14 @@ export default function PartnerDetailPage() {
   const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
   const [works, setWorks] = useState<RsWork[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statement, setStatement] = useState<StatementData | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
+  const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
   const [mgWorkId, setMgWorkId] = useState('');
   const [mgAmount, setMgAmount] = useState('');
@@ -97,6 +155,25 @@ export default function PartnerDetailPage() {
       load();
     }
   }, [profile, partnerId]);
+
+  useEffect(() => {
+    if (!profile || !canViewAccounting(profile.role) || !partnerId) return;
+    async function loadStatement() {
+      setStatementLoading(true);
+      try {
+        const res = await settlementFetch(
+          `/api/accounting/settlement/partners/${partnerId}/statement?month=${selectedMonth}`
+        );
+        const json = await res.json();
+        setStatement(json);
+      } catch (e) {
+        console.error('정산서 로드 오류:', e);
+      } finally {
+        setStatementLoading(false);
+      }
+    }
+    loadStatement();
+  }, [profile, partnerId, selectedMonth]);
 
   const handleUpdate = async (data: Partial<RsPartner>) => {
     const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}`, {
@@ -287,7 +364,7 @@ export default function PartnerDetailPage() {
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">작품명</th>
                         <th className="py-2 px-3 font-medium text-right">RS 요율</th>
-                        <th className="py-2 px-3 font-medium text-center">MG</th>
+                        <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
                         <th className="py-2 px-3 font-medium">계약구분</th>
                         <th className="py-2 px-3 font-medium">계약기간</th>
                       </tr>
@@ -314,8 +391,13 @@ export default function PartnerDetailPage() {
                             </Link>
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums">{(wp.rs_rate * 100).toFixed(1)}%</td>
-                          <td className="py-2 px-3 text-center">
-                            {wp.is_mg_applied && <Badge variant="secondary" className="text-xs">MG</Badge>}
+                          <td className="py-2 px-3 text-right tabular-nums">
+                            {(() => {
+                              const latestMg = mgBalances
+                                .filter(mg => mg.work_id === wp.work_id)
+                                .sort((a, b) => b.month.localeCompare(a.month))[0];
+                              return latestMg ? fmt(latestMg.current_balance) : '-';
+                            })()}
                           </td>
                           <td className="py-2 px-3 text-xs">{wp.contract_category || '-'}</td>
                           <td className="py-2 px-3 text-xs">{wp.contract_period || '-'}</td>
@@ -323,6 +405,200 @@ export default function PartnerDetailPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 정산서 (선택 월 기준) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">정산서 — {selectedMonth}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statementLoading ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">로딩 중...</div>
+              ) : !statement || statement.works.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">
+                  해당 월의 정산 데이터가 없습니다.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* 1. 정산상세내역 */}
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold">1. 정산상세내역</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left bg-muted/50">
+                            <th className="py-2 px-3 font-medium">작품 구분</th>
+                            <th className="py-2 px-3 font-medium">수익구분</th>
+                            <th className="py-2 px-3 font-medium text-right">더그림수익</th>
+                            <th className="py-2 px-3 font-medium text-right">수익정산</th>
+                            <th className="py-2 px-3 font-medium text-right">수익배분율</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {statement.works.map((work) =>
+                            work.details
+                              .filter(d => d.gross_revenue > 0)
+                              .map((d, i) => (
+                                <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
+                                  <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
+                                  <td className="py-1.5 px-3">{d.revenue_type_label}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{d.gross_revenue.toLocaleString()}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{d.rs_rate}</td>
+                                </tr>
+                              ))
+                          )}
+                          <tr className="border-t-2 font-semibold">
+                            <td className="py-2 px-3">합계</td>
+                            <td className="py-2 px-3"></td>
+                            <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_revenue.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
+                            <td className="py-2 px-3"></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 2. 지급상세내역 */}
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold">2. 지급상세내역</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left bg-muted/50">
+                            <th className="py-2 px-3 font-medium text-right">수익정산금</th>
+                            {statement.partner.partner_type === 'domestic_corp' ? (
+                              <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
+                            ) : (
+                              <>
+                                <th className="py-2 px-3 font-medium text-right">
+                                  {statement.partner.partner_type === 'foreign_corp' ? '소득세 (20%)' : '사업소득세 (3%)'}
+                                </th>
+                                <th className="py-2 px-3 font-medium text-right">지방세 (10%)</th>
+                              </>
+                            )}
+                            {statement.total_mg_deduction > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">MG 차감</th>
+                            )}
+                            <th className="py-2 px-3 font-medium text-right">지급액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b font-semibold">
+                            <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
+                            {statement.partner.partner_type === 'domestic_corp' ? (
+                              <td className="py-2 px-3 text-right tabular-nums">
+                                {statement.tax_breakdown.vat > 0 ? statement.tax_breakdown.vat.toLocaleString() : '0'}
+                              </td>
+                            ) : (
+                              <>
+                                <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                  {statement.tax_breakdown.income_tax > 0 ? `-${statement.tax_breakdown.income_tax.toLocaleString()}` : '0'}
+                                </td>
+                                <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                  {statement.tax_breakdown.local_tax > 0 ? `-${statement.tax_breakdown.local_tax.toLocaleString()}` : '0'}
+                                </td>
+                              </>
+                            )}
+                            {statement.total_mg_deduction > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.total_mg_deduction.toLocaleString()}
+                              </td>
+                            )}
+                            <td className="py-2 px-3 text-right tabular-nums text-lg">{statement.final_payment.toLocaleString()}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 3. MG 정산 */}
+                  {statement.works.some(w => w.is_mg_applied && w.mg_balance > 0) && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold">3. MG 정산</h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left bg-muted/50">
+                              <th className="py-2 px-3 font-medium">작품명</th>
+                              <th className="py-2 px-3 font-medium text-right">잔액</th>
+                              <th className="py-2 px-3 font-medium text-right">MG 차감</th>
+                              <th className="py-2 px-3 font-medium text-right">차감 후 잔액</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {statement.works
+                              .filter(w => w.is_mg_applied && w.mg_balance > 0)
+                              .map(w => (
+                                <tr key={w.work_id} className="border-b">
+                                  <td className="py-1.5 px-3">{w.work_name}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{w.mg_balance.toLocaleString()}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
+                                    {w.mg_deduction !== 0 ? w.mg_deduction.toLocaleString() : '0'}
+                                  </td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{w.mg_remaining.toLocaleString()}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* MG 전체 이력 (접기/펼치기) */}
+                      {statement.mg_history && statement.mg_history.length > 0 && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => setMgHistoryOpen(!mgHistoryOpen)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {mgHistoryOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            MG 전체 이력 {mgHistoryOpen ? '접기' : '펼치기'}
+                          </button>
+                          {mgHistoryOpen && (
+                            <div className="mt-2 space-y-3">
+                              {statement.mg_history.map((wh) => (
+                                <div key={wh.work_name}>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{wh.work_name}</p>
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b bg-muted/30">
+                                        <th className="py-1 px-2 text-left">월</th>
+                                        <th className="py-1 px-2 text-right">전월이월</th>
+                                        <th className="py-1 px-2 text-right">MG 추가</th>
+                                        <th className="py-1 px-2 text-right">MG 차감</th>
+                                        <th className="py-1 px-2 text-right">잔액</th>
+                                        <th className="py-1 px-2 text-left">비고</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {wh.history.map((h) => (
+                                        <tr key={h.month} className="border-b">
+                                          <td className="py-1 px-2">{h.month}</td>
+                                          <td className="py-1 px-2 text-right tabular-nums">{h.previous_balance.toLocaleString()}</td>
+                                          <td className="py-1 px-2 text-right tabular-nums text-blue-600">
+                                            {h.mg_added > 0 ? `+${h.mg_added.toLocaleString()}` : '-'}
+                                          </td>
+                                          <td className="py-1 px-2 text-right tabular-nums text-red-600">
+                                            {h.mg_deducted > 0 ? `-${h.mg_deducted.toLocaleString()}` : '-'}
+                                          </td>
+                                          <td className="py-1 px-2 text-right tabular-nums font-medium">{h.current_balance.toLocaleString()}</td>
+                                          <td className="py-1 px-2 text-muted-foreground">{h.note}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -353,7 +629,7 @@ export default function PartnerDetailPage() {
                         <th className="py-2 px-3 font-medium text-right">추가</th>
                         <th className="py-2 px-3 font-medium text-right">차감</th>
                         <th className="py-2 px-3 font-medium text-right">현재잔액</th>
-                        <th className="py-2 px-3 font-medium">메모</th>
+                        <th className="py-2 px-3 font-medium">특이사항</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -371,9 +647,40 @@ export default function PartnerDetailPage() {
                           <td className={`py-2 px-3 text-right tabular-nums font-semibold ${mg.current_balance > 0 ? 'text-orange-600' : ''}`}>
                             {fmt(mg.current_balance)}
                           </td>
-                          <td className="py-2 px-3 text-xs text-muted-foreground">{mg.note || ''}</td>
+                          <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate" title={mg.note || ''}>
+                            {mg.note || ''}
+                          </td>
                         </tr>
                       ))}
+                      {/* 합계행 - 최신 월 기준 */}
+                      {(() => {
+                        const latestMonth = mgBalances[0]?.month;
+                        if (!latestMonth) return null;
+                        const latestItems = mgBalances.filter(mg => mg.month === latestMonth);
+                        const totals = latestItems.reduce((acc, mg) => ({
+                          previous_balance: acc.previous_balance + mg.previous_balance,
+                          mg_added: acc.mg_added + mg.mg_added,
+                          mg_deducted: acc.mg_deducted + mg.mg_deducted,
+                          current_balance: acc.current_balance + mg.current_balance,
+                        }), { previous_balance: 0, mg_added: 0, mg_deducted: 0, current_balance: 0 });
+                        return (
+                          <tr className="border-t-2 bg-muted/30 font-semibold">
+                            <td className="py-2 px-3">{latestMonth}</td>
+                            <td className="py-2 px-3">합계</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.previous_balance)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums text-blue-600">
+                              {totals.mg_added > 0 ? `+${totals.mg_added.toLocaleString()}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                              {totals.mg_deducted > 0 ? `-${totals.mg_deducted.toLocaleString()}` : '-'}
+                            </td>
+                            <td className={`py-2 px-3 text-right tabular-nums ${totals.current_balance > 0 ? 'text-orange-600' : ''}`}>
+                              {fmt(totals.current_balance)}
+                            </td>
+                            <td className="py-2 px-3"></td>
+                          </tr>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -408,8 +715,10 @@ export default function PartnerDetailPage() {
                       <SelectValue placeholder="작품 선택" />
                     </SelectTrigger>
                     <SelectContent>
-                      {works.map((w) => (
-                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                      {workPartners.map((wp) => (
+                        <SelectItem key={wp.work_id} value={wp.work_id}>
+                          {wp.work?.name || wp.work_id}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

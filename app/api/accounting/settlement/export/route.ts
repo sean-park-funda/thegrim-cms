@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { calculateTax, calculateInsurance } from '@/lib/settlement/calculator';
 import * as XLSX from 'xlsx';
 
 // GET /api/accounting/settlement/export - 엑셀 내보내기
@@ -100,19 +101,7 @@ export async function GET(request: NextRequest) {
         individual: '기타소득', domestic_corp: '세금계산서', foreign_corp: '기타소득', naver: '-',
       };
 
-      function calcTaxes(partnerType: string, amount: number) {
-        let vat = 0, income_tax = 0, local_tax = 0;
-        if (partnerType === 'domestic_corp') {
-          vat = Math.round(amount * 0.1);
-        } else if (partnerType === 'individual') {
-          income_tax = Math.round(amount * 0.03);
-          local_tax = Math.round(income_tax * 0.1);
-        } else if (partnerType === 'foreign_corp') {
-          income_tax = Math.round(amount * 0.20);
-          local_tax = Math.round(income_tax * 0.1);
-        }
-        return { vat, income_tax, local_tax };
-      }
+      const calcTaxes = (partnerType: string, amount: number) => calculateTax(amount, partnerType);
 
       const rows: Record<string, unknown>[] = [];
       let no = 1;
@@ -139,6 +128,7 @@ export async function GET(request: NextRequest) {
           finalPayment += Number(i.final_payment) || 0;
         }
         const settlementAmt = revenueShare + prodCost + adjustment;
+        const insurance = calculateInsurance(settlementAmt, pt);
 
         rows.push({
           'NO': no++,
@@ -155,6 +145,7 @@ export async function GET(request: NextRequest) {
           '부가세': vat,
           '소득세': -incomeTax,
           '지방세': -localTax,
+          '예고료': -insurance,
           'MG차감': mgDeduction,
           '지급금액': finalPayment,
         });
@@ -234,17 +225,23 @@ export async function GET(request: NextRequest) {
       const { data: mgBalances } = await supabase
         .from('rs_mg_balances')
         .select('*, partner:rs_partners(name, company_name, partner_type), work:rs_works(name)')
+        .eq('month', month)
         .order('partner_id');
+
+      const incomeTypeMap: Record<string, string> = {
+        individual: '개인', domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '사업자(네이버)',
+      };
 
       const rows = (mgBalances || []).map((mg, i) => ({
         'NO': i + 1,
-        '대상자': mg.partner?.name || '',
+        '파트너명': mg.partner?.name || '',
         '거래처명': mg.partner?.company_name || '',
-        '소득구분': mg.partner?.partner_type === 'individual' ? '개인' : mg.partner?.partner_type === 'domestic_corp' ? '사업자' : '',
+        '소득구분': incomeTypeMap[mg.partner?.partner_type] || '',
         '작품명': mg.work?.name || '',
-        'MG 잔액': Number(mg.remaining_balance),
-        '총 MG': Number(mg.total_mg),
-        '회수액': Number(mg.total_recovered),
+        '전월이월': Number(mg.previous_balance),
+        '당월 MG 추가': Number(mg.mg_added),
+        '당월 MG 차감': Number(mg.mg_deducted),
+        'MG잔액': Number(mg.current_balance),
         '특이사항': mg.note || '',
       }));
 
