@@ -42,6 +42,13 @@ interface WorkStatement {
   mg_remaining: number;
 }
 
+interface TaxBreakdown {
+  income_tax: number;
+  local_tax: number;
+  vat: number;
+  total: number;
+}
+
 interface StatementData {
   partner: {
     id: string;
@@ -54,7 +61,7 @@ interface StatementData {
   works: WorkStatement[];
   grand_total_revenue: number;
   grand_total_share: number;
-  tax_rate: number;
+  tax_breakdown: TaxBreakdown;
   tax_amount: number;
   total_mg_deduction: number;
   final_payment: number;
@@ -104,7 +111,7 @@ export default function StatementPage() {
   const workNames = data?.works.map(w => w.work_name).join(', ') || '';
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
       <SettlementNav />
 
@@ -125,13 +132,13 @@ export default function StatementPage() {
         <Card>
           <CardContent className="p-8 space-y-8">
             {/* Header */}
-            <div className="flex items-start justify-between border-b pb-6">
+            <div className="flex flex-col md:flex-row items-start justify-between border-b pb-6 gap-2">
               <h2 className="text-2xl font-bold tracking-wide">정 산 서</h2>
               <span className="text-sm text-muted-foreground">더그림엔터테인먼트</span>
             </div>
 
             {/* Partner info */}
-            <div className="grid grid-cols-2 gap-y-2 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm">
               <div>
                 <span className="text-muted-foreground">대 상 : </span>
                 <span className="font-medium">
@@ -168,10 +175,10 @@ export default function StatementPage() {
                       <tr className="border-b text-left bg-muted/50">
                         <th className="py-2 px-3 font-medium">작품 구분</th>
                         <th className="py-2 px-3 font-medium">수익구분</th>
-                        <th className="py-2 px-3 font-medium text-right">더그림수익</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">더그림수익</th>
                         <th className="py-2 px-3 font-medium text-right">수익정산</th>
-                        <th className="py-2 px-3 font-medium text-right">수익배분율</th>
-                        <th className="py-2 px-3 font-medium">비고</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분율</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">비고</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -182,16 +189,16 @@ export default function StatementPage() {
                             <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
                               <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
                               <td className="py-1.5 px-3">{d.revenue_type_label}</td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">
+                              <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
                                 {d.gross_revenue.toLocaleString()}
                               </td>
                               <td className="py-1.5 px-3 text-right tabular-nums">
                                 {d.revenue_share.toLocaleString()}
                               </td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">
-                                {d.rs_rate}
+                              <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                {(d.rs_rate * 100).toFixed(1)}%
                               </td>
-                              <td className="py-1.5 px-3 text-muted-foreground text-xs">
+                              <td className="py-1.5 px-3 text-muted-foreground text-xs hidden md:table-cell">
                                 {work.is_mg_applied ? 'MG차감' : ''}
                               </td>
                             </tr>
@@ -200,14 +207,14 @@ export default function StatementPage() {
                       <tr className="border-t-2 font-semibold">
                         <td className="py-2 px-3">합계</td>
                         <td className="py-2 px-3"></td>
-                        <td className="py-2 px-3 text-right tabular-nums">
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
                           {data.grand_total_revenue.toLocaleString()}
                         </td>
                         <td className="py-2 px-3 text-right tabular-nums">
                           {data.grand_total_share.toLocaleString()}
                         </td>
-                        <td className="py-2 px-3"></td>
-                        <td className="py-2 px-3"></td>
+                        <td className="py-2 px-3 hidden md:table-cell"></td>
+                        <td className="py-2 px-3 hidden md:table-cell"></td>
                       </tr>
                     </tbody>
                   </table>
@@ -222,10 +229,17 @@ export default function StatementPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left bg-muted/50">
-                      <th className="py-2 px-3 font-medium text-right">수익정산</th>
-                      <th className="py-2 px-3 font-medium text-right">
-                        {data.tax_rate > 0 ? `원천징수 (${(data.tax_rate * 100).toFixed(1)}%)` : '세금'}
-                      </th>
+                      <th className="py-2 px-3 font-medium text-right">수익정산금</th>
+                      {data.partner.partner_type === 'domestic_corp' ? (
+                        <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
+                      ) : (
+                        <>
+                          <th className="py-2 px-3 font-medium text-right">
+                            {data.partner.partner_type === 'foreign_corp' ? '소득세 (20%)' : '사업소득세 (3%)'}
+                          </th>
+                          <th className="py-2 px-3 font-medium text-right">지방세 (10%)</th>
+                        </>
+                      )}
                       {data.total_mg_deduction > 0 && (
                         <th className="py-2 px-3 font-medium text-right">MG 차감</th>
                       )}
@@ -237,9 +251,20 @@ export default function StatementPage() {
                       <td className="py-2 px-3 text-right tabular-nums">
                         {data.grand_total_share.toLocaleString()}
                       </td>
-                      <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                        {data.tax_amount > 0 ? `-${data.tax_amount.toLocaleString()}` : '0'}
-                      </td>
+                      {data.partner.partner_type === 'domestic_corp' ? (
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {data.tax_breakdown.vat > 0 ? data.tax_breakdown.vat.toLocaleString() : '0'}
+                        </td>
+                      ) : (
+                        <>
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                            {data.tax_breakdown.income_tax > 0 ? `-${data.tax_breakdown.income_tax.toLocaleString()}` : '0'}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                            {data.tax_breakdown.local_tax > 0 ? `-${data.tax_breakdown.local_tax.toLocaleString()}` : '0'}
+                          </td>
+                        </>
+                      )}
                       {data.total_mg_deduction > 0 && (
                         <td className="py-2 px-3 text-right tabular-nums text-red-600">
                           -{data.total_mg_deduction.toLocaleString()}

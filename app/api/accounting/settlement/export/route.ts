@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         '파트너': s.partner?.name || '',
         '회사명': s.partner?.company_name || '',
         '총매출': Number(s.gross_revenue),
-        'RS비율': Number(s.rs_rate),
+        'RS비율': `${(Number(s.rs_rate) * 100).toFixed(1)}%`,
         '수익배분': Number(s.revenue_share),
         '제작비': Number(s.production_cost),
         '조정액': Number(s.adjustment),

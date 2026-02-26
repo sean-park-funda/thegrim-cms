@@ -47,11 +47,11 @@ export function RevenueTable({ revenues, loading, search = '', workPartners = []
           <tr className="border-b text-left">
             <th className="py-2 px-3 font-medium w-6"></th>
             <th className="py-2 px-3 font-medium">작품명</th>
-            <th className="py-2 px-3 font-medium text-right">국내유료</th>
-            <th className="py-2 px-3 font-medium text-right">글로벌유료</th>
-            <th className="py-2 px-3 font-medium text-right">국내광고</th>
-            <th className="py-2 px-3 font-medium text-right">글로벌광고</th>
-            <th className="py-2 px-3 font-medium text-right">2차사업</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내유료</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌유료</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내광고</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
             <th className="py-2 px-3 font-medium text-right">합계</th>
           </tr>
         </thead>
@@ -74,11 +74,11 @@ export function RevenueTable({ revenues, loading, search = '', workPartners = []
                     )}
                   </td>
                   <td className="py-2 px-3">{r.work?.name || r.work_id}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{Number(r.domestic_paid).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{Number(r.global_paid).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{Number(r.domestic_ad).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{Number(r.global_ad).toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{Number(r.secondary).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(r.domestic_paid).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(r.global_paid).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(r.domestic_ad).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(r.global_ad).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(r.secondary).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right tabular-nums font-semibold">{total.toLocaleString()}</td>
                 </tr>
                 {isExpanded && wps.map((wp) => (
@@ -89,7 +89,7 @@ export function RevenueTable({ revenues, loading, search = '', workPartners = []
                       <span className="ml-2 text-primary">({(wp.rs_rate * 100).toFixed(1)}%)</span>
                       {wp.is_mg_applied && <span className="ml-1 text-amber-600">MG</span>}
                     </td>
-                    <td colSpan={5}></td>
+                    <td colSpan={5} className="hidden md:table-cell"></td>
                     <td className="py-1.5 px-3 text-right tabular-nums text-muted-foreground">
                       {Math.round(total * wp.rs_rate).toLocaleString()}
                     </td>
@@ -103,11 +103,11 @@ export function RevenueTable({ revenues, loading, search = '', workPartners = []
           <tr className="border-t-2 font-semibold">
             <td></td>
             <td className="py-2 px-3">합계{search ? ` (${filtered.length}건)` : ''}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.domestic_paid), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.global_paid), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.domestic_ad), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.global_ad), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, r) => s + Number(r.secondary), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{filtered.reduce((s, r) => s + Number(r.domestic_paid), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{filtered.reduce((s, r) => s + Number(r.global_paid), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{filtered.reduce((s, r) => s + Number(r.domestic_ad), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{filtered.reduce((s, r) => s + Number(r.global_ad), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{filtered.reduce((s, r) => s + Number(r.secondary), 0).toLocaleString()}</td>
             <td className="py-2 px-3 text-right tabular-nums">{totalAll.toLocaleString()}</td>
           </tr>
         </tfoot>

@@ -31,11 +31,11 @@ export function SettlementTable({ settlements, loading, onSelect }: SettlementTa
           <tr className="border-b text-left">
             <th className="py-2 px-3 font-medium">파트너</th>
             <th className="py-2 px-3 font-medium">작품</th>
-            <th className="py-2 px-3 font-medium text-right">총매출</th>
-            <th className="py-2 px-3 font-medium text-right">RS비율</th>
-            <th className="py-2 px-3 font-medium text-right">수익배분</th>
-            <th className="py-2 px-3 font-medium text-right">세액</th>
-            <th className="py-2 px-3 font-medium text-right">MG차감</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">총매출</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">RS비율</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">세액</th>
+            <th className="py-2 px-3 font-medium text-right hidden md:table-cell">MG차감</th>
             <th className="py-2 px-3 font-medium text-right">최종지급</th>
             <th className="py-2 px-3 font-medium">상태</th>
           </tr>
@@ -51,11 +51,11 @@ export function SettlementTable({ settlements, loading, onSelect }: SettlementTa
               >
                 <td className="py-2 px-3">{s.partner?.name || s.partner_id}</td>
                 <td className="py-2 px-3">{s.work?.name || s.work_id}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{Number(s.gross_revenue).toLocaleString()}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{(Number(s.rs_rate) * 100).toFixed(1)}%</td>
-                <td className="py-2 px-3 text-right tabular-nums">{Number(s.revenue_share).toLocaleString()}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{Number(s.tax_amount).toLocaleString()}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{Number(s.mg_deduction).toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(s.gross_revenue).toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{(Number(s.rs_rate) * 100).toFixed(1)}%</td>
+                <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(s.revenue_share).toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(s.tax_amount).toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{Number(s.mg_deduction).toLocaleString()}</td>
                 <td className="py-2 px-3 text-right tabular-nums font-semibold">{Number(s.final_payment).toLocaleString()}</td>
                 <td className="py-2 px-3">
                   <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
@@ -67,11 +67,11 @@ export function SettlementTable({ settlements, loading, onSelect }: SettlementTa
         <tfoot>
           <tr className="border-t-2 font-semibold">
             <td className="py-2 px-3" colSpan={2}>합계</td>
-            <td className="py-2 px-3 text-right tabular-nums">{settlements.reduce((s, r) => s + Number(r.gross_revenue), 0).toLocaleString()}</td>
-            <td className="py-2 px-3"></td>
-            <td className="py-2 px-3 text-right tabular-nums">{settlements.reduce((s, r) => s + Number(r.revenue_share), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{settlements.reduce((s, r) => s + Number(r.tax_amount), 0).toLocaleString()}</td>
-            <td className="py-2 px-3 text-right tabular-nums">{settlements.reduce((s, r) => s + Number(r.mg_deduction), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{settlements.reduce((s, r) => s + Number(r.gross_revenue), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 hidden md:table-cell"></td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{settlements.reduce((s, r) => s + Number(r.revenue_share), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{settlements.reduce((s, r) => s + Number(r.tax_amount), 0).toLocaleString()}</td>
+            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{settlements.reduce((s, r) => s + Number(r.mg_deduction), 0).toLocaleString()}</td>
             <td className="py-2 px-3 text-right tabular-nums">{settlements.reduce((s, r) => s + Number(r.final_payment), 0).toLocaleString()}</td>
             <td className="py-2 px-3"></td>
           </tr>

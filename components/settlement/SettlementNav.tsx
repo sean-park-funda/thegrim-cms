@@ -9,6 +9,7 @@ const navItems = [
   { href: '/accounting/settlement/works', label: '작품' },
   { href: '/accounting/settlement/partners', label: '파트너' },
   { href: '/accounting/settlement/settlements', label: '정산' },
+  { href: '/accounting/settlement/mg', label: 'MG현황' },
 ];
 
 export function SettlementNav() {
@@ -25,7 +26,7 @@ export function SettlementNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              'px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors',
+              'px-2 md:px-3 py-2 rounded-md text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
               isActive
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted'

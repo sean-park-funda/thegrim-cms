@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
-import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
+import { canViewAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { SettlementTable } from '@/components/settlement/SettlementTable';
@@ -13,7 +13,7 @@ import { SettlementDetailDialog } from '@/components/settlement/SettlementDetail
 import { VerificationTable } from '@/components/settlement/VerificationTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Calculator, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { RsSettlement, SettlementStatus } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -27,7 +27,6 @@ export default function SettlementsPage() {
   const [summaryData, setSummaryData] = useState([]);
   const [verificationData, setVerificationData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [calculating, setCalculating] = useState(false);
   const [selected, setSelected] = useState<RsSettlement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
@@ -64,27 +63,6 @@ export default function SettlementsPage() {
     loadSettlements();
   }, [profile, selectedMonth]);
 
-  const handleCalculate = async () => {
-    setCalculating(true);
-    try {
-      const res = await settlementFetch('/api/accounting/settlement/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selectedMonth }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        await loadSettlements();
-      } else {
-        alert(data.error || '정산 계산 실패');
-      }
-    } catch {
-      alert('정산 계산 중 오류가 발생했습니다.');
-    } finally {
-      setCalculating(false);
-    }
-  };
-
   const handleSelect = (s: RsSettlement) => {
     setSelected(s);
     setDialogOpen(true);
@@ -116,8 +94,6 @@ export default function SettlementsPage() {
 
   if (!canViewAccounting(profile.role)) return null;
 
-  const canManage = canManageAccounting(profile.role);
-
   const viewModes: { key: ViewMode; label: string }[] = [
     { key: 'summary', label: '집계' },
     { key: 'detail', label: '상세' },
@@ -125,13 +101,13 @@ export default function SettlementsPage() {
   ];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
 
       <SettlementNav />
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <CardTitle>정산 내역 ({selectedMonth})</CardTitle>
             <div className="flex rounded-md border overflow-hidden text-sm">
@@ -146,18 +122,10 @@ export default function SettlementsPage() {
               ))}
             </div>
           </div>
-          <div className="flex gap-2">
-            {canManage && (
-              <Button onClick={handleCalculate} disabled={calculating}>
-                <Calculator className="h-4 w-4 mr-1" />
-                {calculating ? '계산 중...' : '정산 계산'}
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="h-4 w-4 mr-1" />
-              엑셀 내보내기
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-1" />
+            엑셀 내보내기
+          </Button>
         </CardHeader>
         <CardContent>
           {viewMode === 'summary' && (

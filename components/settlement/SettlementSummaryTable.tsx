@@ -70,7 +70,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="relative w-64">
+      <div className="relative w-full md:w-64">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="파트너/작품 검색..."
@@ -80,7 +80,52 @@ export function SettlementSummaryTable({ data, loading }: Props) {
         />
       </div>
 
-      <div className="overflow-x-auto border rounded-lg">
+      {/* Mobile card view */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">데이터가 없습니다.</div>
+        ) : (
+          <>
+            {filtered.map((r, i) => (
+              <div key={r.partner_id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">{r.partner_name}</span>
+                    <span className="text-xs text-muted-foreground ml-1">{r.company_name}</span>
+                  </div>
+                  <Link
+                    href={`/accounting/settlement/partners/${r.partner_id}/statement`}
+                    className="text-primary hover:underline text-xs"
+                  >
+                    정산서
+                  </Link>
+                </div>
+                <p className="text-xs text-muted-foreground truncate" title={r.works_list}>{r.works_list}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-xs">수익정산금</span>
+                    <span className="tabular-nums font-medium">{fmt(r.settlement_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-xs">지급금액</span>
+                    <span className="tabular-nums font-semibold">{fmt(r.final_payment)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="border-t-2 pt-3 px-1 flex justify-between font-semibold text-sm">
+              <span>합계 ({filtered.length}건)</span>
+              <div className="flex gap-4">
+                <span className="tabular-nums">{fmt(totals.settlement_amount)}</span>
+                <span className="tabular-nums">{fmt(totals.final_payment)}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden md:block overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">

@@ -56,8 +56,8 @@ export function VerificationTable({ data, loading }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="relative w-64">
+      <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4">
+        <div className="relative w-full md:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="파트너/작품 검색..."
@@ -80,7 +80,51 @@ export function VerificationTable({ data, loading }: Props) {
         </label>
       </div>
 
-      <div className="overflow-x-auto border rounded-lg">
+      {/* Mobile card view */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">데이터가 없습니다.</div>
+        ) : (
+          <>
+            {filtered.map((r, i) => (
+              <div
+                key={`${r.partner_name}-${r.work_name}`}
+                className={`border rounded-lg p-3 space-y-2 ${r.has_discrepancy ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/20' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{r.partner_name}</span>
+                  {r.has_discrepancy && <span className="text-xs text-amber-600 font-medium">불일치</span>}
+                </div>
+                <p className="text-xs text-muted-foreground">{r.work_name}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-xs">매출액</span>
+                    <span className="tabular-nums">{fmt(r.gross_revenue)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-xs">수익분배(계산)</span>
+                    <span className="tabular-nums">{fmt(r.computed_share)}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3 text-xs text-muted-foreground">
+                  <span>RS {pct(r.rs_rate)}</span>
+                  {r.is_mg === 'Y' && <span className="text-amber-600">MG</span>}
+                </div>
+              </div>
+            ))}
+            <div className="border-t-2 pt-3 px-1 flex justify-between font-semibold text-sm">
+              <span>합계 ({filtered.length}건)</span>
+              <div className="flex gap-4">
+                <span className="tabular-nums">{fmt(totals.gross_revenue)}</span>
+                <span className="tabular-nums">{fmt(totals.computed_share)}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden md:block overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">

@@ -13,11 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
-import { RsPartner, RsWork } from '@/lib/types/settlement';
+import { RsPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
@@ -43,13 +40,6 @@ export default function PartnersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<RsPartner | null>(null);
   const [search, setSearch] = useState('');
-  const [works, setWorks] = useState<RsWork[]>([]);
-  const [mgDialogOpen, setMgDialogOpen] = useState(false);
-  const [mgWorkId, setMgWorkId] = useState('');
-  const [mgPartnerId, setMgPartnerId] = useState('');
-  const [mgAmount, setMgAmount] = useState('');
-  const [mgNote, setMgNote] = useState('');
-  const [mgSaving, setMgSaving] = useState(false);
 
   useEffect(() => {
     if (profile && !canViewAccounting(profile.role)) {
@@ -60,18 +50,14 @@ export default function PartnersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [partnersRes, revenueRes, mgRes, worksRes] = await Promise.all([
+      const [partnersRes, revenueRes, mgRes] = await Promise.all([
         settlementFetch('/api/accounting/settlement/partners'),
         settlementFetch(`/api/accounting/settlement/partner-revenue?month=${selectedMonth}`),
         settlementFetch(`/api/accounting/settlement/mg?month=${selectedMonth}`),
-        settlementFetch('/api/accounting/settlement/works'),
       ]);
       const partnersData = await partnersRes.json();
       const revenueData = await revenueRes.json();
       const mgData = await mgRes.json();
-      const worksData = await worksRes.json();
-
-      setWorks(worksData.works || []);
 
       const revenueMap = new Map<string, { total_revenue: number; total_revenue_share: number; work_count: number }>();
       for (const pr of revenueData.partner_revenues || []) {
@@ -162,36 +148,9 @@ export default function PartnersPage() {
   const grandTotalShare = filtered.reduce((s, p) => s + p.total_revenue_share, 0);
   const grandTotalMg = filtered.reduce((s, p) => s + p.mg_balance, 0);
 
-  const handleMgAdd = async () => {
-    if (!mgWorkId || !mgPartnerId || !mgAmount) return;
-    setMgSaving(true);
-    try {
-      const res = await settlementFetch('/api/accounting/settlement/mg', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: selectedMonth,
-          work_id: mgWorkId,
-          partner_id: mgPartnerId,
-          mg_added: Number(mgAmount),
-          note: mgNote || undefined,
-        }),
-      });
-      if (res.ok) {
-        setMgDialogOpen(false);
-        setMgWorkId('');
-        setMgPartnerId('');
-        setMgAmount('');
-        setMgNote('');
-        await load();
-      }
-    } finally {
-      setMgSaving(false);
-    }
-  };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
 
       <SettlementNav />
@@ -206,20 +165,14 @@ export default function PartnersPage() {
                 placeholder="이름, 거래처 검색..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 w-52"
+                className="pl-9 h-9 w-full md:w-52"
               />
             </div>
             {canManage && (
-              <>
-                <Button variant="outline" onClick={() => setMgDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  MG 추가
-                </Button>
-                <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  파트너 추가
-                </Button>
-              </>
+              <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1" />
+                파트너 추가
+              </Button>
             )}
           </div>
         </CardHeader>
@@ -234,14 +187,14 @@ export default function PartnersPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="py-2 px-3 font-medium">이름</th>
-                    <th className="py-2 px-3 font-medium">거래처</th>
-                    <th className="py-2 px-3 font-medium">구분</th>
-                    <th className="py-2 px-3 font-medium text-right">작품 수</th>
-                    <th className="py-2 px-3 font-medium text-right">총 매출</th>
+                    <th className="py-2 px-3 font-medium hidden md:table-cell">거래처</th>
+                    <th className="py-2 px-3 font-medium hidden md:table-cell">구분</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">작품 수</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">총 매출</th>
                     <th className="py-2 px-3 font-medium text-right">수익분배금</th>
-                    <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">MG 잔액</th>
                     <th className="py-2 px-3 font-medium text-center">정산서</th>
-                    {canManage && <th className="py-2 px-3 font-medium"></th>}
+                    {canManage && <th className="py-2 px-3 font-medium hidden md:table-cell"></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -252,18 +205,18 @@ export default function PartnersPage() {
                       onClick={() => router.push(`/accounting/settlement/partners/${p.id}`)}
                     >
                       <td className="py-2 px-3 font-medium">{p.name}</td>
-                      <td className="py-2 px-3 text-muted-foreground">{p.company_name || '-'}</td>
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{p.company_name || '-'}</td>
+                      <td className="py-2 px-3 hidden md:table-cell">
                         <Badge variant="secondary">{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</Badge>
                       </td>
-                      <td className="py-2 px-3 text-right tabular-nums">{p.work_count || '-'}</td>
-                      <td className="py-2 px-3 text-right tabular-nums">
+                      <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{p.work_count || '-'}</td>
+                      <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
                         {p.total_revenue > 0 ? p.total_revenue.toLocaleString() : '-'}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-semibold">
                         {p.total_revenue_share > 0 ? p.total_revenue_share.toLocaleString() : '-'}
                       </td>
-                      <td className={`py-2 px-3 text-right tabular-nums ${p.mg_balance > 0 ? 'text-orange-600 font-medium' : ''}`}>
+                      <td className={`py-2 px-3 text-right tabular-nums hidden md:table-cell ${p.mg_balance > 0 ? 'text-orange-600 font-medium' : ''}`}>
                         {p.mg_balance > 0 ? p.mg_balance.toLocaleString() : '-'}
                       </td>
                       <td className="py-2 px-3 text-center">
@@ -280,7 +233,7 @@ export default function PartnersPage() {
                         )}
                       </td>
                       {canManage && (
-                        <td className="py-2 px-3">
+                        <td className="py-2 px-3 hidden md:table-cell">
                           <div className="flex gap-1">
                             <Button
                               variant="ghost"
@@ -305,14 +258,14 @@ export default function PartnersPage() {
                 <tfoot>
                   <tr className="border-t-2 font-semibold">
                     <td className="py-2 px-3">합계 ({filtered.length}명{search ? ` / ${partners.length}명` : ''})</td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3 text-right tabular-nums">{grandTotalRevenue.toLocaleString()}</td>
+                    <td className="py-2 px-3 hidden md:table-cell"></td>
+                    <td className="py-2 px-3 hidden md:table-cell"></td>
+                    <td className="py-2 px-3 hidden md:table-cell"></td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{grandTotalRevenue.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{grandTotalShare.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{grandTotalMg > 0 ? grandTotalMg.toLocaleString() : '-'}</td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{grandTotalMg > 0 ? grandTotalMg.toLocaleString() : '-'}</td>
                     <td className="py-2 px-3"></td>
-                    {canManage && <td className="py-2 px-3"></td>}
+                    {canManage && <td className="py-2 px-3 hidden md:table-cell"></td>}
                   </tr>
                 </tfoot>
               </table>
@@ -328,55 +281,6 @@ export default function PartnersPage() {
         onSave={editPartner ? handleUpdate : handleCreate}
       />
 
-      <Dialog open={mgDialogOpen} onOpenChange={setMgDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>MG 추가</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>작품</Label>
-              <Select value={mgWorkId} onValueChange={setMgWorkId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="작품 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {works.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>파트너</Label>
-              <Select value={mgPartnerId} onValueChange={setMgPartnerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="파트너 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {partners.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>MG 금액</Label>
-              <Input type="number" value={mgAmount} onChange={(e) => setMgAmount(e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <Label>메모</Label>
-              <Input value={mgNote} onChange={(e) => setMgNote(e.target.value)} />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setMgDialogOpen(false)}>취소</Button>
-              <Button onClick={handleMgAdd} disabled={mgSaving || !mgWorkId || !mgPartnerId || !mgAmount}>
-                {mgSaving ? '저장 중...' : '추가'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

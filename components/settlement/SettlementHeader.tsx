@@ -17,8 +17,8 @@ export function SettlementHeader() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
-    <div className="flex items-center justify-between">
-      <h1 className="text-3xl font-bold">RS 정산</h1>
+    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+      <h1 className="text-2xl md:text-3xl font-bold">RS 정산</h1>
       <div className="flex items-center gap-2">
         <Link href="/accounting/settlement/guide">
           <Button variant="ghost" size="sm" className="text-muted-foreground">

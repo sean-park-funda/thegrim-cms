@@ -126,7 +126,7 @@ export default function WorksPage() {
   }, { domestic_paid: 0, global_paid: 0, domestic_ad: 0, global_ad: 0, secondary: 0, total: 0 });
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
 
       <SettlementNav />
@@ -141,7 +141,7 @@ export default function WorksPage() {
                 placeholder="작품 검색..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 w-48"
+                className="pl-9 h-9 w-full md:w-48"
               />
             </div>
             <Button variant="outline" size="sm" onClick={handleExport} disabled={revenues.length === 0}>
@@ -167,12 +167,12 @@ export default function WorksPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="py-2 px-3 font-medium">작품명</th>
-                    <th className="py-2 px-3 font-medium text-center">파트너</th>
-                    <th className="py-2 px-3 font-medium text-right">국내유료</th>
-                    <th className="py-2 px-3 font-medium text-right">글로벌유료</th>
-                    <th className="py-2 px-3 font-medium text-right">국내광고</th>
-                    <th className="py-2 px-3 font-medium text-right">글로벌광고</th>
-                    <th className="py-2 px-3 font-medium text-right">2차사업</th>
+                    <th className="py-2 px-3 font-medium text-center hidden md:table-cell">파트너</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내유료</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌유료</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내광고</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
+                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
                     <th className="py-2 px-3 font-medium text-right">합계</th>
                   </tr>
                 </thead>
@@ -195,12 +195,12 @@ export default function WorksPage() {
                             {!w.is_active && <Badge variant="outline" className="text-xs">비활성</Badge>}
                           </div>
                         </td>
-                        <td className="py-2 px-3 text-center tabular-nums">{wps.length || '-'}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.domestic_paid || 0)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.global_paid || 0)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.domestic_ad || 0)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.global_ad || 0)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(rev?.secondary || 0)}</td>
+                        <td className="py-2 px-3 text-center tabular-nums hidden md:table-cell">{wps.length || '-'}</td>
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(rev?.domestic_paid || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(rev?.global_paid || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(rev?.domestic_ad || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(rev?.global_ad || 0)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(rev?.secondary || 0)}</td>
                         <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(rev?.total || 0)}</td>
                       </tr>
                     );
@@ -209,12 +209,12 @@ export default function WorksPage() {
                 <tfoot>
                   <tr className="border-t-2 font-semibold">
                     <td className="py-2 px-3">합계 ({filtered.length}건)</td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.domestic_paid)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.global_paid)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.domestic_ad)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.global_ad)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.secondary)}</td>
+                    <td className="py-2 px-3 hidden md:table-cell"></td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_paid)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_paid)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_ad)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_ad)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.secondary)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.total)}</td>
                   </tr>
                 </tfoot>

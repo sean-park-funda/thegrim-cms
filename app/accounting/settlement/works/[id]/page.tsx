@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Pencil, Trash2, Plus } from 'lucide-react';
-import { RsWork, RsWorkPartner, RsRevenue, RsPartner } from '@/lib/types/settlement';
+import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -39,6 +39,7 @@ export default function WorkDetailPage() {
   const [workPartners, setWorkPartners] = useState<RsWorkPartner[]>([]);
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
+  const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -60,20 +61,23 @@ export default function WorkDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [workRes, wpRes, revRes, partnersRes] = await Promise.all([
+      const [workRes, wpRes, revRes, partnersRes, mgRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/works/${workId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/revenue?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/partners`),
+        settlementFetch(`/api/accounting/settlement/mg?workId=${workId}`),
       ]);
       const workData = await workRes.json();
       const wpData = await wpRes.json();
       const revData = await revRes.json();
       const partnersData = await partnersRes.json();
+      const mgData = await mgRes.json();
       setWork(workData.work || null);
       setWorkPartners(wpData.work_partners || []);
       setRevenues((revData.revenues || []).sort((a: RsRevenue, b: RsRevenue) => b.month.localeCompare(a.month)));
       setPartners(partnersData.partners || []);
+      setMgBalances((mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month)));
     } catch (e) {
       console.error('작품 상세 로드 오류:', e);
     } finally {
@@ -145,7 +149,7 @@ export default function WorkDetailPage() {
   const canManage = canManageAccounting(profile.role);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
       <SettlementNav />
 
@@ -203,11 +207,11 @@ export default function WorkDetailPage() {
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">월</th>
-                        <th className="py-2 px-3 font-medium text-right">국내유료</th>
-                        <th className="py-2 px-3 font-medium text-right">글로벌유료</th>
-                        <th className="py-2 px-3 font-medium text-right">국내광고</th>
-                        <th className="py-2 px-3 font-medium text-right">글로벌광고</th>
-                        <th className="py-2 px-3 font-medium text-right">2차사업</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내유료</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌유료</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내광고</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
                         <th className="py-2 px-3 font-medium text-right">합계</th>
                       </tr>
                     </thead>
@@ -215,11 +219,11 @@ export default function WorkDetailPage() {
                       {revenues.map((r) => (
                         <tr key={r.month} className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3 font-medium">{r.month}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(r.domestic_paid)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(r.global_paid)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(r.domestic_ad)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(r.global_ad)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(r.secondary)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_paid)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_paid)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_ad)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_ad)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.secondary)}</td>
                           <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
                         </tr>
                       ))}
@@ -250,11 +254,11 @@ export default function WorkDetailPage() {
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">파트너</th>
-                        <th className="py-2 px-3 font-medium">필명</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">필명</th>
                         <th className="py-2 px-3 font-medium text-right">RS 요율</th>
-                        <th className="py-2 px-3 font-medium text-center">MG</th>
-                        <th className="py-2 px-3 font-medium">계약구분</th>
-                        <th className="py-2 px-3 font-medium">계약기간</th>
+                        <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">계약구분</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">계약기간</th>
                         {canManage && <th className="py-2 px-3 font-medium"></th>}
                       </tr>
                     </thead>
@@ -279,13 +283,18 @@ export default function WorkDetailPage() {
                               {wp.partner?.name || wp.partner_id}
                             </Link>
                           </td>
-                          <td className="py-2 px-3 text-muted-foreground">{wp.pen_name || '-'}</td>
+                          <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{wp.pen_name || '-'}</td>
                           <td className="py-2 px-3 text-right tabular-nums">{(wp.rs_rate * 100).toFixed(1)}%</td>
-                          <td className="py-2 px-3 text-center">
-                            {wp.is_mg_applied && <Badge variant="secondary" className="text-xs">MG</Badge>}
+                          <td className="py-2 px-3 text-right tabular-nums">
+                            {(() => {
+                              const latestMg = mgBalances
+                                .filter(mg => mg.partner_id === wp.partner_id)
+                                .sort((a, b) => b.month.localeCompare(a.month))[0];
+                              return latestMg ? fmt(latestMg.current_balance) : '-';
+                            })()}
                           </td>
-                          <td className="py-2 px-3 text-xs">{wp.contract_category || '-'}</td>
-                          <td className="py-2 px-3 text-xs">{wp.contract_period || '-'}</td>
+                          <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_category || '-'}</td>
+                          <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_period || '-'}</td>
                           {canManage && (
                             <td className="py-2 px-3">
                               <Button

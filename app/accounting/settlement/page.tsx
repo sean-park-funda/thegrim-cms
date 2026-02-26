@@ -75,7 +75,7 @@ export default function SettlementDashboardPage() {
   if (!canViewAccounting(profile.role)) return null;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
 
       <SettlementNav />

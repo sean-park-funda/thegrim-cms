@@ -127,6 +127,13 @@ MG차감 = min(MG잔액, max(0, 세후금액))
 > 최신순. 커밋 해시 + 한줄 요약. 세부 사항은 `git show <hash>` 참조.
 
 ### 2026-02-26
+- (uncommitted) **정산 페이지 모바일 최적화**
+  - 19컬럼 집계/13컬럼 검증/12컬럼 MG → 모바일 카드 레이아웃 (`md:hidden` / `hidden md:block`)
+  - 작품·파트너·정산·매출 목록 → `hidden md:table-cell`로 비필수 컬럼 숨김
+  - 상세 페이지(works/[id], partners/[id], statement) 컬럼 숨김
+  - SettlementHeader flex-col, SettlementNav text-xs, 전 페이지 p-3 md:p-6
+  - 수정 파일 15개, 데스크톱 레이아웃 변경 없음
+
 - `cd78905` **정산 Excel 탭별 차이 해소 + 서비스 설명서 페이지**
   - settlement-summary API에 calculateTax(10원절사) 적용
   - 예고료(고용보험) 계산 추가: `calculateInsurance()` in calculator.ts

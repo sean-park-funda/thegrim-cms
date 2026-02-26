@@ -237,7 +237,7 @@ export default function PartnerDetailPage() {
     .sort(([a], [b]) => b.localeCompare(a));
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-6">
       <SettlementHeader />
       <SettlementNav />
 
@@ -365,8 +365,8 @@ export default function PartnerDetailPage() {
                         <th className="py-2 px-3 font-medium">작품명</th>
                         <th className="py-2 px-3 font-medium text-right">RS 요율</th>
                         <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
-                        <th className="py-2 px-3 font-medium">계약구분</th>
-                        <th className="py-2 px-3 font-medium">계약기간</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">계약구분</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">계약기간</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -399,8 +399,8 @@ export default function PartnerDetailPage() {
                               return latestMg ? fmt(latestMg.current_balance) : '-';
                             })()}
                           </td>
-                          <td className="py-2 px-3 text-xs">{wp.contract_category || '-'}</td>
-                          <td className="py-2 px-3 text-xs">{wp.contract_period || '-'}</td>
+                          <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_category || '-'}</td>
+                          <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_period || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -448,7 +448,7 @@ export default function PartnerDetailPage() {
                                   <td className="py-1.5 px-3">{d.revenue_type_label}</td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{d.gross_revenue.toLocaleString()}</td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums">{d.rs_rate}</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums">{(d.rs_rate * 100).toFixed(1)}%</td>
                                 </tr>
                               ))
                           )}
@@ -567,18 +567,18 @@ export default function PartnerDetailPage() {
                                     <thead>
                                       <tr className="border-b bg-muted/30">
                                         <th className="py-1 px-2 text-left">월</th>
-                                        <th className="py-1 px-2 text-right">전월이월</th>
+                                        <th className="py-1 px-2 text-right hidden md:table-cell">전월이월</th>
                                         <th className="py-1 px-2 text-right">MG 추가</th>
                                         <th className="py-1 px-2 text-right">MG 차감</th>
                                         <th className="py-1 px-2 text-right">잔액</th>
-                                        <th className="py-1 px-2 text-left">비고</th>
+                                        <th className="py-1 px-2 text-left hidden md:table-cell">비고</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {wh.history.map((h) => (
                                         <tr key={h.month} className="border-b">
                                           <td className="py-1 px-2">{h.month}</td>
-                                          <td className="py-1 px-2 text-right tabular-nums">{h.previous_balance.toLocaleString()}</td>
+                                          <td className="py-1 px-2 text-right tabular-nums hidden md:table-cell">{h.previous_balance.toLocaleString()}</td>
                                           <td className="py-1 px-2 text-right tabular-nums text-blue-600">
                                             {h.mg_added > 0 ? `+${h.mg_added.toLocaleString()}` : '-'}
                                           </td>
@@ -586,7 +586,7 @@ export default function PartnerDetailPage() {
                                             {h.mg_deducted > 0 ? `-${h.mg_deducted.toLocaleString()}` : '-'}
                                           </td>
                                           <td className="py-1 px-2 text-right tabular-nums font-medium">{h.current_balance.toLocaleString()}</td>
-                                          <td className="py-1 px-2 text-muted-foreground">{h.note}</td>
+                                          <td className="py-1 px-2 text-muted-foreground hidden md:table-cell">{h.note}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -625,11 +625,11 @@ export default function PartnerDetailPage() {
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">월</th>
                         <th className="py-2 px-3 font-medium">작품</th>
-                        <th className="py-2 px-3 font-medium text-right">이전잔액</th>
-                        <th className="py-2 px-3 font-medium text-right">추가</th>
-                        <th className="py-2 px-3 font-medium text-right">차감</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">이전잔액</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">추가</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">차감</th>
                         <th className="py-2 px-3 font-medium text-right">현재잔액</th>
-                        <th className="py-2 px-3 font-medium">특이사항</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">특이사항</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -637,17 +637,17 @@ export default function PartnerDetailPage() {
                         <tr key={mg.id} className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3 font-medium">{mg.month}</td>
                           <td className="py-2 px-3">{mg.work?.name || '-'}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.previous_balance)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums text-blue-600">
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(mg.previous_balance)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
                             {mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : '-'}
                           </td>
-                          <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                             {mg.mg_deducted > 0 ? `-${mg.mg_deducted.toLocaleString()}` : '-'}
                           </td>
                           <td className={`py-2 px-3 text-right tabular-nums font-semibold ${mg.current_balance > 0 ? 'text-orange-600' : ''}`}>
                             {fmt(mg.current_balance)}
                           </td>
-                          <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate" title={mg.note || ''}>
+                          <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate hidden md:table-cell" title={mg.note || ''}>
                             {mg.note || ''}
                           </td>
                         </tr>
@@ -667,17 +667,17 @@ export default function PartnerDetailPage() {
                           <tr className="border-t-2 bg-muted/30 font-semibold">
                             <td className="py-2 px-3">{latestMonth}</td>
                             <td className="py-2 px-3">합계</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.previous_balance)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-blue-600">
+                            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.previous_balance)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
                               {totals.mg_added > 0 ? `+${totals.mg_added.toLocaleString()}` : '-'}
                             </td>
-                            <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                            <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                               {totals.mg_deducted > 0 ? `-${totals.mg_deducted.toLocaleString()}` : '-'}
                             </td>
                             <td className={`py-2 px-3 text-right tabular-nums ${totals.current_balance > 0 ? 'text-orange-600' : ''}`}>
                               {fmt(totals.current_balance)}
                             </td>
-                            <td className="py-2 px-3"></td>
+                            <td className="py-2 px-3 hidden md:table-cell"></td>
                           </tr>
                         );
                       })()}
