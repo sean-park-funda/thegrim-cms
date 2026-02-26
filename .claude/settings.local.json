@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm view *)",
+      "Bash(npx *)",
+      "Bash(ls *)",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Bash(node:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(curl -s -X POST \"https://fnwdvfapcgtqfcqowdaf.supabase.co/rest/v1/rpc\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud2R2ZmFwY2d0cWZjcW93ZGFmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjQwNDE1MywiZXhwIjoyMDc3OTgwMTUzfQ.vvFUVJpNcajyUfufIi2UPZIZdbnVMM15z1dUcNDoQOs\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud2R2ZmFwY2d0cWZjcW93ZGFmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjQwNDE1MywiZXhwIjoyMDc3OTgwMTUzfQ.vvFUVJpNcajyUfufIi2UPZIZdbnVMM15z1dUcNDoQOs\" -H \"Content-Type: application/json\" -d '{\"\"query\"\": \"\"SELECT column_name FROM information_schema.columns WHERE table_name = ''''rs_work_partners'''' ORDER BY ordinal_position\"\"}')",
+      "Bash(file:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

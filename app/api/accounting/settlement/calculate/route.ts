@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
           production_cost: 0,
           adjustment: 0,
           tax_rate: Number(wp.partner.tax_rate),
+          partner_type: wp.partner.partner_type,
           is_mg_applied: wp.is_mg_applied,
           mg_balance: mgBalance,
         });

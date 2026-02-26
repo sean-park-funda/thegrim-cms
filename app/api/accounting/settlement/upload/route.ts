@@ -3,6 +3,7 @@ import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions'
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel, normalizeWorkName } from '@/lib/settlement/excel-parser';
 import { deduplicateWorks } from '@/lib/settlement/dedup-works';
+import { calculateSettlement } from '@/lib/settlement/calculator';
 import { RevenueType } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
@@ -209,6 +210,82 @@ export async function POST(request: NextRequest) {
       unmatched_count: 0,
       uploaded_by: auth.userId,
     });
+
+    // 6) 정산 자동 계산 — 해당 월의 모든 수익 + 작품-파트너 조합으로 rs_settlements 갱신
+    try {
+      const { data: revenues } = await supabase
+        .from('rs_revenues')
+        .select('*')
+        .eq('month', month);
+
+      const { data: workPartners } = await supabase
+        .from('rs_work_partners')
+        .select('*, partner:rs_partners(*)');
+
+      if (revenues && workPartners) {
+        for (const rev of revenues) {
+          const partners = workPartners.filter(wp => wp.work_id === rev.work_id);
+          for (const wp of partners) {
+            let mgBalance = 0;
+            if (wp.is_mg_applied) {
+              const { data: mgData } = await supabase
+                .from('rs_mg_balances')
+                .select('current_balance')
+                .eq('partner_id', wp.partner_id)
+                .eq('work_id', wp.work_id)
+                .order('month', { ascending: false })
+                .limit(1)
+                .single();
+              if (mgData) mgBalance = Number(mgData.current_balance);
+            }
+
+            // 기존 정산 레코드에서 수동 편집 필드 보존
+            const { data: existing } = await supabase
+              .from('rs_settlements')
+              .select('production_cost, adjustment, status, note')
+              .eq('month', month)
+              .eq('partner_id', wp.partner_id)
+              .eq('work_id', wp.work_id)
+              .single();
+
+            const productionCost = existing ? Number(existing.production_cost) : 0;
+            const adjustment = existing ? Number(existing.adjustment) : 0;
+
+            const calc = calculateSettlement({
+              gross_revenue: Number(rev.total),
+              rs_rate: Number(wp.rs_rate),
+              production_cost: productionCost,
+              adjustment,
+              tax_rate: Number(wp.partner.tax_rate),
+              partner_type: wp.partner.partner_type,
+              is_mg_applied: wp.is_mg_applied,
+              mg_balance: mgBalance,
+            });
+
+            await supabase
+              .from('rs_settlements')
+              .upsert({
+                month,
+                partner_id: wp.partner_id,
+                work_id: wp.work_id,
+                gross_revenue: Number(rev.total),
+                rs_rate: Number(wp.rs_rate),
+                revenue_share: calc.revenue_share,
+                production_cost: productionCost,
+                adjustment,
+                tax_rate: Number(wp.partner.tax_rate),
+                tax_amount: calc.tax_amount,
+                mg_deduction: calc.mg_deduction,
+                final_payment: calc.final_payment,
+                ...(existing ? {} : { status: 'draft' as const }),
+              }, { onConflict: 'month,partner_id,work_id' });
+          }
+        }
+      }
+    } catch (calcError) {
+      console.error('자동 정산 계산 오류:', calcError);
+      // 업로드 자체는 성공이므로 에러를 무시하고 응답에 경고 포함
+    }
 
     return NextResponse.json({
       matched,

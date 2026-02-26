@@ -167,14 +167,7 @@ export default function AdminPage() {
   const copyInvitationLink = (token: string) => {
     if (typeof window === 'undefined') return;
     
-    // 환경 변수 사용 (빌드 시 오류 방지)
-    const origin = process.env.NEXT_PUBLIC_APP_URL || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
-    
-    if (!origin) {
-      console.warn('NEXT_PUBLIC_APP_URL 또는 VERCEL_URL 환경 변수가 설정되지 않았습니다.');
-      return;
-    }
+    const origin = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     
     const link = `${origin}/signup?token=${token}`;
     navigator.clipboard.writeText(link);
