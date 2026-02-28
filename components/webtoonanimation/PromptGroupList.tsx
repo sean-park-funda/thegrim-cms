@@ -33,7 +33,7 @@ export function PromptGroupList({ groups, activeGroupId, onSelect, onDelete }: P
                   컷 {g.range_start}~{g.range_end}
                 </span>
                 <span className="text-xs text-muted-foreground ml-2">
-                  {g.aspect_ratio}
+                  {g.aspect_ratio} · {g.video_duration || 10}초
                 </span>
                 <span className="text-xs text-muted-foreground ml-2">
                   {new Date(g.created_at).toLocaleString('ko-KR', {

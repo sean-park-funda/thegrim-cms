@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 
 export type Pace = 'slow' | 'normal' | 'fast';
+export type VideoDuration = 6 | 8 | 10 | 12 | 15;
 
 const PACE_OPTIONS: { value: Pace; label: string; desc: string }[] = [
   { value: 'slow', label: '느린', desc: '감성적, 긴 호흡' },
@@ -13,13 +14,23 @@ const PACE_OPTIONS: { value: Pace; label: string; desc: string }[] = [
   { value: 'fast', label: '빠른', desc: '액션, 짧은 컷' },
 ];
 
+const DURATION_OPTIONS: { value: VideoDuration; label: string }[] = [
+  { value: 6, label: '6초' },
+  { value: 8, label: '8초' },
+  { value: 10, label: '10초' },
+  { value: 12, label: '12초' },
+  { value: 15, label: '15초' },
+];
+
 interface RangeSelectorProps {
   totalCuts: number;
   rangeStart: number;
   rangeEnd: number;
   pace: Pace;
+  videoDuration: VideoDuration;
   onRangeChange: (start: number, end: number) => void;
   onPaceChange: (pace: Pace) => void;
+  onVideoDurationChange: (duration: VideoDuration) => void;
   onGenerate: () => void;
   generating: boolean;
 }
@@ -29,8 +40,10 @@ export function RangeSelector({
   rangeStart,
   rangeEnd,
   pace,
+  videoDuration,
   onRangeChange,
   onPaceChange,
+  onVideoDurationChange,
   onGenerate,
   generating,
 }: RangeSelectorProps) {
@@ -105,13 +118,33 @@ export function RangeSelector({
         </div>
       </div>
 
+      {/* 영상 길이 */}
+      <div>
+        <Label className="text-xs text-muted-foreground">영상 길이</Label>
+        <div className="flex h-9 rounded-md border overflow-hidden">
+          {DURATION_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onVideoDurationChange(opt.value)}
+              className={`px-2.5 text-xs font-medium transition-colors border-r last:border-r-0
+                ${videoDuration === opt.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background hover:bg-accent text-muted-foreground'
+                }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Button
         onClick={onGenerate}
         disabled={generating || totalCuts === 0}
         className="h-9 ml-auto"
       >
         <Sparkles className="h-4 w-4 mr-1.5" />
-        {generating ? '생성 중...' : '프롬프트 생성'}
+        {generating ? '생성 중...' : 'Seedance 프롬프트 생성'}
       </Button>
     </div>
   );

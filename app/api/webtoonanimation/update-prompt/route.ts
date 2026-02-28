@@ -9,14 +9,21 @@ const supabase = createClient(
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, prompt, camera, continuity, duration, groupId, aspect_ratio } = body;
+    const { id, prompt, camera, continuity, duration, groupId, aspect_ratio, seedance_prompt, video_duration } = body;
 
-    if (groupId && aspect_ratio !== undefined) {
-      const { error } = await supabase
-        .from('webtoonanimation_prompt_groups')
-        .update({ aspect_ratio })
-        .eq('id', groupId);
-      if (error) throw error;
+    if (groupId) {
+      const groupUpdates: Record<string, unknown> = {};
+      if (aspect_ratio !== undefined) groupUpdates.aspect_ratio = aspect_ratio;
+      if (seedance_prompt !== undefined) groupUpdates.seedance_prompt = seedance_prompt;
+      if (video_duration !== undefined) groupUpdates.video_duration = video_duration;
+
+      if (Object.keys(groupUpdates).length > 0) {
+        const { error } = await supabase
+          .from('webtoonanimation_prompt_groups')
+          .update(groupUpdates)
+          .eq('id', groupId);
+        if (error) throw error;
+      }
     }
 
     if (id) {

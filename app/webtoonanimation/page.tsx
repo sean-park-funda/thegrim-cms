@@ -14,8 +14,8 @@ import {
 } from '@/lib/supabase';
 import { CutUploader } from '@/components/webtoonanimation/CutUploader';
 import { SortableCutGrid } from '@/components/webtoonanimation/SortableCutGrid';
-import { RangeSelector, Pace } from '@/components/webtoonanimation/RangeSelector';
-import { CutPromptEditor } from '@/components/webtoonanimation/CutPromptEditor';
+import { RangeSelector, Pace, VideoDuration } from '@/components/webtoonanimation/RangeSelector';
+import { SeedancePromptEditor } from '@/components/webtoonanimation/SeedancePromptEditor';
 import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
 
 export default function WebtoonAnimationPage() {
@@ -31,10 +31,11 @@ export default function WebtoonAnimationPage() {
   // State: 업로드
   const [uploading, setUploading] = useState(false);
 
-  // State: 범위 선택 + 전개 속도
+  // State: 범위 선택 + 전개 속도 + 영상 길이
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
   const [pace, setPace] = useState<Pace>('fast');
+  const [videoDuration, setVideoDuration] = useState<VideoDuration>(10);
 
   // State: 프롬프트 생성
   const [generating, setGenerating] = useState(false);
@@ -210,7 +211,7 @@ export default function WebtoonAnimationPage() {
     }
   };
 
-  // ===== 프롬프트 생성 =====
+  // ===== Seedance 프롬프트 생성 =====
   const handleGenerate = async () => {
     if (!selectedProject) return;
     setGenerating(true);
@@ -223,6 +224,7 @@ export default function WebtoonAnimationPage() {
           rangeStart,
           rangeEnd,
           pace,
+          videoDuration,
         }),
       });
 
@@ -272,57 +274,36 @@ export default function WebtoonAnimationPage() {
     }
   };
 
-  // ===== 프롬프트 수정 (debounced) =====
-  const handleUpdatePrompt = useCallback((id: string, field: string, value: string | number) => {
-    setActiveGroup((prev) => {
-      if (!prev?.cut_prompts) return prev;
-      return {
-        ...prev,
-        cut_prompts: prev.cut_prompts.map((p) =>
-          p.id === id ? { ...p, [field]: value } : p
-        ),
-      };
-    });
+  // ===== 그룹 수정 (debounced) =====
+  const handleUpdateGroup = useCallback((groupId: string, field: string, value: string | number) => {
+    setActiveGroup((prev) => prev ? { ...prev, [field]: value } : prev);
 
-    if (debounceRef.current[id]) clearTimeout(debounceRef.current[id]);
-    debounceRef.current[id] = setTimeout(async () => {
+    const key = `group-${field}`;
+    if (debounceRef.current[key]) clearTimeout(debounceRef.current[key]);
+    debounceRef.current[key] = setTimeout(async () => {
       try {
         await fetch('/api/webtoonanimation/update-prompt', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, [field]: value }),
+          body: JSON.stringify({ groupId, [field]: value }),
         });
       } catch (e) {
-        console.error('프롬프트 수정 실패:', e);
+        console.error('그룹 수정 실패:', e);
       }
     }, 500);
   }, []);
 
-  const handleUpdateGroup = useCallback((groupId: string, field: string, value: string) => {
-    setActiveGroup((prev) => prev ? { ...prev, [field]: value } : prev);
-    fetch('/api/webtoonanimation/update-prompt', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId, [field]: value }),
-    }).catch(console.error);
-  }, []);
-
-  const handleRefinePrompt = useCallback(async (
-    promptId: string,
-    instruction: string,
-    currentValues: { prompt: string; camera: string | null; continuity: string; duration: number },
-  ) => {
+  // ===== Seedance 프롬프트 AI 수정 =====
+  const handleRefineSeedancePrompt = useCallback(async (instruction: string) => {
+    if (!activeGroup) return;
     try {
       const res = await fetch('/api/webtoonanimation/refine-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instruction,
-          currentPrompt: currentValues.prompt,
-          currentCamera: currentValues.camera,
-          currentContinuity: currentValues.continuity,
-          currentDuration: currentValues.duration,
-          storyboardImageUrl: activeGroup?.storyboard_image_path || null,
+          currentSeedancePrompt: activeGroup.seedance_prompt,
+          storyboardImageUrl: activeGroup.storyboard_image_path || null,
         }),
       });
 
@@ -332,53 +313,19 @@ export default function WebtoonAnimationPage() {
         return;
       }
 
-      const refined = await res.json();
-
-      setActiveGroup((prev) => {
-        if (!prev?.cut_prompts) return prev;
-        return {
-          ...prev,
-          cut_prompts: prev.cut_prompts.map((p) =>
-            p.id === promptId
-              ? { ...p, prompt: refined.prompt, camera: refined.camera, continuity: refined.continuity, duration: refined.duration, is_edited: true }
-              : p
-          ),
-        };
-      });
+      const { seedance_prompt } = await res.json();
+      setActiveGroup((prev) => prev ? { ...prev, seedance_prompt } : prev);
 
       await fetch('/api/webtoonanimation/update-prompt', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: promptId,
-          prompt: refined.prompt,
-          camera: refined.camera,
-          continuity: refined.continuity,
-          duration: refined.duration,
-        }),
+        body: JSON.stringify({ groupId: activeGroup.id, seedance_prompt }),
       });
     } catch (e) {
       console.error('AI 수정 실패:', e);
       alert('AI 수정 중 오류가 발생했습니다.');
     }
-  }, [activeGroup?.storyboard_image_path]);
-
-  const handleDeletePrompt = async (id: string) => {
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      await supabase.from('webtoonanimation_cut_prompts').delete().eq('id', id);
-      setActiveGroup((prev) => {
-        if (!prev?.cut_prompts) return prev;
-        return { ...prev, cut_prompts: prev.cut_prompts.filter((p) => p.id !== id) };
-      });
-    } catch (e) {
-      console.error('프롬프트 삭제 실패:', e);
-    }
-  };
+  }, [activeGroup]);
 
   // ===== 렌더: 프로젝트 목록 =====
   if (!selectedProject) {
@@ -387,7 +334,7 @@ export default function WebtoonAnimationPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold">웹툰 애니메이션</h1>
-            <p className="text-sm text-muted-foreground mt-1">웹툰 컷을 영상 프롬프트로 변환</p>
+            <p className="text-sm text-muted-foreground mt-1">웹툰 컷 → Seedance 2.0 프롬프트 생성</p>
           </div>
           <Button onClick={createProject}>
             <Plus className="h-4 w-4 mr-1.5" />
@@ -482,7 +429,7 @@ export default function WebtoonAnimationPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        {/* 좌측: 컷 그리드 + 프롬프트 에디터 */}
+        {/* 좌측: 컷 그리드 + Seedance 프롬프트 에디터 */}
         <div className="space-y-6">
           {/* 업로드 */}
           <CutUploader
@@ -510,25 +457,25 @@ export default function WebtoonAnimationPage() {
                 rangeStart={rangeStart}
                 rangeEnd={rangeEnd}
                 pace={pace}
+                videoDuration={videoDuration}
                 onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
                 onPaceChange={setPace}
+                onVideoDurationChange={setVideoDuration}
                 onGenerate={handleGenerate}
                 generating={generating}
               />
             </>
           ) : null}
 
-          {/* 프롬프트 에디터 */}
+          {/* Seedance 프롬프트 에디터 */}
           {activeGroup && (
             <div className="pt-4 border-t">
-              <CutPromptEditor
+              <SeedancePromptEditor
                 group={activeGroup}
                 cuts={cuts}
                 projectId={selectedProject.id}
-                onUpdatePrompt={handleUpdatePrompt}
                 onUpdateGroup={handleUpdateGroup}
-                onDeletePrompt={handleDeletePrompt}
-                onRefinePrompt={handleRefinePrompt}
+                onRefineSeedancePrompt={handleRefineSeedancePrompt}
               />
             </div>
           )}

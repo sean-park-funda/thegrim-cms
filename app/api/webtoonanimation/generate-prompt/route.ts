@@ -21,9 +21,10 @@ interface CutPromptResult {
   duration: number;
 }
 
-interface GeminiPromptResponse {
+interface GeminiSeedanceResponse {
   aspect_ratio: string;
   cuts: CutPromptResult[];
+  seedance_prompt: string;
 }
 
 function createLabelSvg(cutNumber: number, width: number): Buffer {
@@ -34,6 +35,14 @@ function createLabelSvg(cutNumber: number, width: number): Buffer {
   return Buffer.from(svg);
 }
 
+function calculateTimeSegments(numCuts: number, totalDuration: number): { start: number; end: number }[] {
+  const segDuration = totalDuration / numCuts;
+  return Array.from({ length: numCuts }, (_, i) => ({
+    start: parseFloat((i * segDuration).toFixed(1)),
+    end: parseFloat(((i + 1) * segDuration).toFixed(1)),
+  }));
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!GEMINI_API_KEY) {
@@ -41,8 +50,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { projectId, rangeStart, rangeEnd, pace } = body;
+    const { projectId, rangeStart, rangeEnd, pace, videoDuration } = body;
     const paceValue: 'slow' | 'normal' | 'fast' = pace || 'normal';
+    const duration: number = videoDuration || 10;
 
     if (!projectId || rangeStart === undefined || rangeEnd === undefined) {
       return NextResponse.json(
@@ -65,7 +75,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '해당 범위에 컷이 없습니다.' }, { status: 400 });
     }
 
-    console.log(`[generate-prompt] ${cuts.length}개 컷 이미지 합치기 시작 (${rangeStart}~${rangeEnd})`);
+    const numCuts = cuts.length;
+    console.log(`[generate-prompt] ${numCuts}개 컷 이미지 합치기 시작 (${rangeStart}~${rangeEnd}, ${duration}초)`);
 
     // 2. 이미지 다운로드 및 리사이즈
     const panelBuffers: { buffer: Buffer; height: number }[] = [];
@@ -150,87 +161,94 @@ export async function POST(request: NextRequest) {
       storyboardUrl = publicUrl;
     }
 
-    // 5. Gemini API 호출 (@google/genai 라이브러리)
+    // 5. Gemini API 호출
     const imageBase64 = combinedImage.toString('base64');
+    const timeSegments = calculateTimeSegments(numCuts, duration);
 
     const paceGuide = {
-      slow: 'This is a SLOW-PACED scene. Each cut should have long, lingering descriptions with subtle movements and emotional beats. Suggest longer durations (6-12 seconds).',
-      normal: 'This is a NORMAL-PACED scene. Balance between action and atmosphere. Use moderate durations (2-6 seconds).',
-      fast: 'This is a FAST-PACED, action-heavy scene. Each cut should be short and punchy with rapid, dynamic movements. Suggest very short durations (0.5-2 seconds). Emphasize explosive motion, impact, and speed.',
+      slow: 'SLOW-PACED: Lingering, emotional beats with subtle movements. Weight toward longer per-cut durations.',
+      normal: 'NORMAL-PACED: Balanced action and atmosphere. Moderate timing per cut.',
+      fast: 'FAST-PACED: Rapid, explosive action. Short punchy cuts with maximum kinetic energy.',
     }[paceValue];
 
-    const systemPrompt = `You are an expert video prompt engineer. You are analyzing a webtoon storyboard image. Each panel is labeled with a cut number at the top.
+    const timeSegmentGuide = timeSegments
+      .map((seg, i) => `  Cut ${i}: ${seg.start}s ~ ${seg.end}s`)
+      .join('\n');
 
-For each cut, generate video production parameters for a video generation AI.
+    const imageRefs = Array.from({ length: numCuts }, (_, i) => `@Image${i + 1}`).join(' ');
 
-PACING: ${paceGuide}
+    const systemPrompt = `You are an expert prompt engineer for Seedance 2.0, ByteDance's multimodal AI video generation model.
 
-=== PROMPT WRITING RULES ===
+You are analyzing a webtoon storyboard image with ${numCuts} panels (labeled Cut ${rangeStart} through Cut ${rangeEnd}).
 
-Write vivid, motion-focused descriptions that convey physical energy and dynamics.
+Your task: Generate TWO outputs:
+1. Per-cut structured analysis (JSON "cuts" array)
+2. A SINGLE unified Seedance 2.0 prompt that treats ALL cuts as keyframes in ONE continuous video
 
-STRUCTURE:
-1. Lead with a concise action phrase that sets the kinetic tone (e.g. "Sudden halt!", "Quick stride forward", "Powerful overhead swing")
-2. Describe the primary action with clear motion details — direction, speed, body mechanics
-3. Add secondary physics: cloth/hair movement, dust, debris, wind, light changes
-4. Even calm scenes should have subtle motion: breathing, wind, flickering light
+=== PACING ===
+${paceGuide}
 
-IMPORTANT — CONTENT SAFETY:
-- NEVER use graphic violence words: "violent", "viciously", "bone-crushing", "blood", "gore", "gruesome", "brutal", "terrifying", "horrifying"
-- NEVER describe injury details, bodily harm, or graphic physical damage to characters
-- Instead of graphic terms, use NEUTRAL MOTION descriptors:
-  - "forceful impact" instead of "violent slam"
-  - "powerful strike" instead of "bone-crushing punch"
-  - "strong momentum" instead of "terrifying speed"
-  - "red particles scatter" instead of "blood splatters"
-  - "heavy collision" instead of "brutal crash"
-- Describe the PHYSICS and MOTION, not the pain or damage
-- Think of it as describing choreography or animation keyframes, not depicting harm
-- The tone should be like a storyboard artist's notes: technical, precise, motion-focused
+Total video duration: ${duration} seconds.
+Suggested time distribution (you may adjust based on scene analysis):
+${timeSegmentGuide}
 
-GOOD EXAMPLES:
-- "Powerful forward stride! A foot in a dark shoe steps onto cracked stone. Dust rises from the surface, pant leg swaying with momentum."
-- "Swift punch connects! A large fist meets the man's face with strong impact. Sunglasses shatter into fragments, motion blur emphasizing the speed."
-- "Forceful ground strike! The creature drives its fist downward with immense weight. The stone surface cracks outward, dust and debris launching into the air."
-- "The creature lifts the man upside down by his ankles. Suit jacket and tie hang with gravity, body swinging with residual momentum."
+=== OUTPUT 1: PER-CUT ANALYSIS ===
 
-BAD EXAMPLES (DO NOT USE):
-- "Violently slams with bone-crushing force" (too graphic)
-- "Blood erupts from the impact" (graphic injury)
-- "Terrifying speed, brutal impact" (triggering words)
+For each cut, analyze:
+- "prompt": Vivid motion description in English. Lead with an action phrase. Describe body mechanics, physics, cloth/hair/debris movement. Even calm scenes need subtle motion.
+- "camera": Camera work SEPARATE from action (e.g. "low angle, rapid push in with shake", "whip pan right", "slow dolly out")
+- "continuity": "new scene" or "continues from previous cut"
+- "duration": seconds allocated to this cut
 
-ADDITIONAL RULES:
-- Must be in English
-- Focus ENTIRELY on character actions, movements, and physical interactions — NOT camera work
-- Describe body mechanics: which limb moves, in what direction, with what speed
-- Use strong but safe action verbs: strikes, connects, collides, launches, swings, hurls, sweeps, dashes, leaps
+=== OUTPUT 2: SEEDANCE PROMPT ===
 
-=== OTHER FIELDS ===
-- "reference_image": each cut gets a reference image tag in order: "@cut01" for cut_index 0, "@cut02" for cut_index 1, etc. This tells the video AI which source image file to use for that cut.
-- "camera" describes camera work and lens SEPARATELY from the action (e.g. "low angle, rapid zoom in with shake", "dramatic dolly push", "whip pan following motion")
-- "continuity" must be "new scene" or "continues from cut N" (referencing the cut number shown in the image)
-- "duration" is a number in seconds (can be decimal, e.g. 0.5, 1, 2, 4, 8). Based on the pacing guidance above, analyze each cut's action and suggest how many seconds it would naturally take to play out as video. A quick punch might be 0.5s, a slow emotional gaze might be 8s.
-- "aspect_ratio" is a shared value for all cuts
+Write a SINGLE unified Seedance 2.0 prompt following this EXACT structure:
 
-Respond ONLY with valid JSON in this exact format:
+LINE 1 (Header):
+"${imageRefs} as keyframe positions for a one-take [genre] sequence. Characters should have dynamic, exaggerated movement. Overall visual style: [style inferred from the webtoon art]."
+
+BODY (Time segments — one line per cut):
+Each line: "{start}-{end}s: @ImageN [role]. [Vivid action with strong motion verbs, emphasizing MOVEMENT BETWEEN this keyframe and the next]. [Camera direction].—"
+
+CRITICAL RULES for the Seedance prompt:
+- First cut MUST say "as the first frame"
+- Last cut MUST say "as the last frame"
+- Between cuts, use TRANSITION language that forces fluid motion: "Motion flows into", "Momentum carries forward into", "Energy shifts as", "Whip pan reveals"
+- Describe what HAPPENS BETWEEN keyframes, not just static poses
+- Include camera movement in each segment (push in, track, whip pan, orbit, dolly, crane, etc.)
+- Camera movement AMPLIFIES the character motion
+- Each line must end with an em-dash (—) except the last line
+
+FINAL LINES:
+"Style: [visual style, e.g. anime action, dynamic motion blur, cel-shaded, ink and wash]"
+"Sound: [impact effects, environmental sounds, music style matching the mood]"
+
+=== CONTENT SAFETY ===
+- NEVER use: "violent", "viciously", "bone-crushing", "blood", "gore", "brutal", "terrifying", "horrifying"
+- Use neutral motion descriptors: "forceful impact", "powerful strike", "strong momentum", "heavy collision"
+- Describe PHYSICS and MOTION, not pain or damage
+
+=== RESPONSE FORMAT ===
+
+Respond ONLY with valid JSON:
 {
   "aspect_ratio": "16:9",
   "cuts": [
     {
       "cut_index": 0,
-      "reference_image": "@cut01",
       "prompt": "...",
       "camera": "...",
       "continuity": "new scene",
       "duration": 1.5
     }
-  ]
+  ],
+  "seedance_prompt": "The full unified Seedance 2.0 prompt as a single string with newlines"
 }`;
 
-    console.log(`[generate-prompt] Gemini API 호출 시작 (pace: ${paceValue})...`);
+    console.log(`[generate-prompt] Gemini API 호출 시작 (pace: ${paceValue}, duration: ${duration}s)...`);
 
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    const model = 'gemini-3.1-pro-preview';
+    const model = 'gemini-2.5-flash';
 
     const response = await ai.models.generateContent({
       model,
@@ -253,7 +271,7 @@ Respond ONLY with valid JSON in this exact format:
       return NextResponse.json({ error: 'Gemini 응답이 비어 있습니다.' }, { status: 500 });
     }
 
-    let result: GeminiPromptResponse;
+    let result: GeminiSeedanceResponse;
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       result = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
@@ -274,6 +292,8 @@ Respond ONLY with valid JSON in this exact format:
         range_end: rangeEnd,
         storyboard_image_path: storyboardUrl,
         aspect_ratio: result.aspect_ratio || '16:9',
+        seedance_prompt: result.seedance_prompt || null,
+        video_duration: duration,
       })
       .select()
       .single();
@@ -286,7 +306,7 @@ Respond ONLY with valid JSON in this exact format:
       prompt: cut.prompt,
       camera: cut.camera || null,
       continuity: cut.continuity || 'new scene',
-      duration: (cut.duration > 0 && cut.duration <= 12) ? cut.duration : 4,
+      duration: (cut.duration > 0 && cut.duration <= 15) ? cut.duration : 4,
     }));
 
     const { data: savedPrompts, error: promptsError } = await supabase
@@ -296,7 +316,7 @@ Respond ONLY with valid JSON in this exact format:
 
     if (promptsError) throw promptsError;
 
-    console.log(`[generate-prompt] 완료: ${savedPrompts?.length}개 컷 프롬프트 저장`);
+    console.log(`[generate-prompt] 완료: ${savedPrompts?.length}개 컷 프롬프트 + Seedance 프롬프트 저장`);
 
     return NextResponse.json({
       group: { ...group, cut_prompts: savedPrompts },

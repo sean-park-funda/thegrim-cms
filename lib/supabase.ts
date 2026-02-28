@@ -330,6 +330,8 @@ export interface WebtoonAnimationPromptGroup {
   range_end: number;
   storyboard_image_path?: string | null;
   aspect_ratio: string;
+  seedance_prompt?: string | null;
+  video_duration?: number | null;
   created_at: string;
 }
 

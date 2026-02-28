@@ -132,6 +132,14 @@ export async function POST(req: NextRequest) {
       })),
     };
 
+    // Seedance 프롬프트 (기본 출력)
+    if (group.seedance_prompt) {
+      archive.append(group.seedance_prompt, {
+        name: `${folderName}/seedance_prompt.txt`,
+      });
+    }
+
+    // 구조화된 참고 데이터
     archive.append(JSON.stringify(promptJson, null, 2), {
       name: `${folderName}/prompt.json`,
     });
