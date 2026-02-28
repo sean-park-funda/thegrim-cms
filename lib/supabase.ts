@@ -351,3 +351,21 @@ export interface WebtoonAnimationCutPrompt {
 export interface WebtoonAnimationPromptGroupWithCuts extends WebtoonAnimationPromptGroup {
   cut_prompts?: WebtoonAnimationCutPrompt[];
 }
+
+export interface WebtoonAnimationVideoSegment {
+  id: string;
+  group_id: string;
+  segment_index: number;
+  start_cut_index: number;
+  end_cut_index: number | null;
+  prompt: string;
+  api_provider: string;
+  duration_seconds: number;
+  aspect_ratio: string;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  video_path: string | null;
+  video_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}

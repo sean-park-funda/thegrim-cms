@@ -17,6 +17,7 @@ import { SortableCutGrid } from '@/components/webtoonanimation/SortableCutGrid';
 import { RangeSelector, Pace, VideoDuration } from '@/components/webtoonanimation/RangeSelector';
 import { SeedancePromptEditor } from '@/components/webtoonanimation/SeedancePromptEditor';
 import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
+import { SegmentPlanner } from '@/components/webtoonanimation/SegmentPlanner';
 
 export default function WebtoonAnimationPage() {
   // State: 프로젝트 목록
@@ -41,6 +42,9 @@ export default function WebtoonAnimationPage() {
   const [generating, setGenerating] = useState(false);
   const [promptGroups, setPromptGroups] = useState<WebtoonAnimationPromptGroup[]>([]);
   const [activeGroup, setActiveGroup] = useState<WebtoonAnimationPromptGroupWithCuts | null>(null);
+
+  // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
+  const [activeTab, setActiveTab] = useState<'seedance' | 'segment'>('segment');
 
   // Debounce timer
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -334,7 +338,7 @@ export default function WebtoonAnimationPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold">웹툰 애니메이션</h1>
-            <p className="text-sm text-muted-foreground mt-1">웹툰 컷 → Seedance 2.0 프롬프트 생성</p>
+            <p className="text-sm text-muted-foreground mt-1">웹툰 컷 → 세그먼트 영상 생성 / Seedance 프롬프트</p>
           </div>
           <Button onClick={createProject}>
             <Plus className="h-4 w-4 mr-1.5" />
@@ -452,23 +456,50 @@ export default function WebtoonAnimationPage() {
                 onRemove={handleRemoveCut}
               />
 
-              <RangeSelector
-                totalCuts={cuts.length}
-                rangeStart={rangeStart}
-                rangeEnd={rangeEnd}
-                pace={pace}
-                videoDuration={videoDuration}
-                onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
-                onPaceChange={setPace}
-                onVideoDurationChange={setVideoDuration}
-                onGenerate={handleGenerate}
-                generating={generating}
-              />
+              {/* 탭 전환 */}
+              <div className="flex rounded-lg border p-1 bg-muted/50">
+                <button
+                  onClick={() => setActiveTab('segment')}
+                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'segment'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  세그먼트 영상
+                </button>
+                <button
+                  onClick={() => setActiveTab('seedance')}
+                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'seedance'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Seedance 프롬프트
+                </button>
+              </div>
+
+              {/* Seedance 프롬프트 모드 */}
+              {activeTab === 'seedance' && (
+                <RangeSelector
+                  totalCuts={cuts.length}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                  pace={pace}
+                  videoDuration={videoDuration}
+                  onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
+                  onPaceChange={setPace}
+                  onVideoDurationChange={setVideoDuration}
+                  onGenerate={handleGenerate}
+                  generating={generating}
+                />
+              )}
             </>
           ) : null}
 
           {/* Seedance 프롬프트 에디터 */}
-          {activeGroup && (
+          {activeTab === 'seedance' && activeGroup && (
             <div className="pt-4 border-t">
               <SeedancePromptEditor
                 group={activeGroup}
@@ -478,6 +509,16 @@ export default function WebtoonAnimationPage() {
                 onRefineSeedancePrompt={handleRefineSeedancePrompt}
               />
             </div>
+          )}
+
+          {/* 세그먼트 영상 생성 */}
+          {activeTab === 'segment' && cuts.length > 0 && (
+            <SegmentPlanner
+              cuts={cuts}
+              projectId={selectedProject.id}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+            />
           )}
         </div>
 
