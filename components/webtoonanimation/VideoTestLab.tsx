@@ -378,16 +378,10 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
         className="w-full"
         size="lg"
       >
-        {generatingIds.size > 0 ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {generatingIds.size}개 생성 중 — 추가 요청 가능
-          </>
-        ) : (
-          <>
-            <Play className="w-4 h-4 mr-2" />
-            {currentProvider?.name || ''} 영상 생성
-          </>
+        <Play className="w-4 h-4 mr-2" />
+        {currentProvider?.name || ''} 영상 생성
+        {generatingIds.size > 0 && (
+          <span className="ml-2 text-xs opacity-70">({generatingIds.size}개 진행중)</span>
         )}
       </Button>
 
