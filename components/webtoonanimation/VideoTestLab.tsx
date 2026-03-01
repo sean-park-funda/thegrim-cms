@@ -10,7 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Play, Sparkles, Loader2 } from 'lucide-react';
+import {
+  Play, Sparkles, Loader2,
+  Image, ArrowRightLeft, Images,
+  Monitor, Cloud, Cpu,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
 import type { ProviderCapabilities, InputMode } from '@/lib/video-generation/providers';
 import { CutPicker } from './CutPicker';
@@ -23,16 +28,22 @@ interface VideoTestLabProps {
   rangeEnd: number;
 }
 
-const INPUT_MODE_LABELS: Record<InputMode, string> = {
-  single_image: '단일 이미지',
-  start_end_frame: '시작+끝 프레임',
-  multi_reference: '다중 레퍼런스',
+const INPUT_MODE_CONFIG: Record<InputMode, { label: string; icon: typeof Image; desc: string }> = {
+  single_image: { label: '1장', icon: Image, desc: '단일 이미지' },
+  start_end_frame: { label: 'S+E', icon: ArrowRightLeft, desc: '시작+끝 프레임' },
+  multi_reference: { label: '다중', icon: Images, desc: '여러 프레임' },
 };
 
-const SAFETY_BADGE: Record<string, { label: string; class: string }> = {
-  lenient: { label: '관대', class: 'bg-green-100 text-green-800' },
-  moderate: { label: '보통', class: 'bg-yellow-100 text-yellow-800' },
-  strict: { label: '엄격', class: 'bg-red-100 text-red-800' },
+const SAFETY_STYLE: Record<string, { label: string; dot: string; bg: string }> = {
+  lenient: { label: '관대', dot: 'bg-green-500', bg: 'border-green-200 bg-green-50/50' },
+  moderate: { label: '보통', dot: 'bg-yellow-500', bg: 'border-yellow-200 bg-yellow-50/50' },
+  strict: { label: '엄격', dot: 'bg-red-500', bg: 'border-red-200 bg-red-50/50' },
+};
+
+const PLATFORM_ICON: Record<string, typeof Monitor> = {
+  direct: Monitor,
+  'fal.ai': Cloud,
+  comfyui: Cpu,
 };
 
 export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTestLabProps) {
@@ -40,7 +51,6 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
   const [tests, setTests] = useState<WebtoonAnimationVideoTest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Form state
   const [selectedProvider, setSelectedProvider] = useState<string>('');
   const [inputMode, setInputMode] = useState<InputMode>('single_image');
   const [selectedCuts, setSelectedCuts] = useState<number[]>([]);
@@ -52,7 +62,6 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
 
-  // Load providers + test history
   const loadData = useCallback(async () => {
     try {
       const res = await fetch(`/api/webtoonanimation/video-tests?projectId=${projectId}`);
@@ -71,7 +80,6 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Provider 변경 시 입력모드 자동 설정
   useEffect(() => {
     if (!currentProvider) return;
     if (!currentProvider.inputModes.includes(inputMode)) {
@@ -86,7 +94,6 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
     setSelectedCuts([]);
   }, [selectedProvider]);
 
-  // AI 프롬프트 생성
   const handleGeneratePrompt = async () => {
     if (!selectedCuts.length) return;
     setGeneratingPrompt(true);
@@ -94,13 +101,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
       const res = await fetch('/api/webtoonanimation/generate-test-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          cutIndices: selectedCuts,
-          inputMode,
-          provider: selectedProvider,
-          duration,
-        }),
+        body: JSON.stringify({ projectId, cutIndices: selectedCuts, inputMode, provider: selectedProvider, duration }),
       });
       const data = await res.json();
       if (data.prompt) setPrompt(data.prompt);
@@ -113,7 +114,6 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
     }
   };
 
-  // 영상 생성
   const handleGenerate = async () => {
     if (!selectedCuts.length || !selectedProvider) return;
     setGenerating(true);
@@ -121,22 +121,11 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
       const res = await fetch('/api/webtoonanimation/generate-test-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          provider: selectedProvider,
-          inputMode,
-          cutIndices: selectedCuts,
-          prompt,
-          duration,
-          aspectRatio,
-        }),
+        body: JSON.stringify({ projectId, provider: selectedProvider, inputMode, cutIndices: selectedCuts, prompt, duration, aspectRatio }),
       });
       const data = await res.json();
-      if (data.error) {
-        alert(data.error);
-      } else {
-        setTests((prev) => [data, ...prev]);
-      }
+      if (data.error) alert(data.error);
+      else setTests((prev) => [data, ...prev]);
     } catch (e) {
       console.error(e);
       alert('영상 생성 실패');
@@ -145,13 +134,11 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
     }
   };
 
-  // 삭제
   const handleDelete = async (testId: string) => {
     await fetch(`/api/webtoonanimation/video-tests?testId=${testId}`, { method: 'DELETE' });
     setTests((prev) => prev.filter((t) => t.id !== testId));
   };
 
-  // 재생성
   const handleRegenerate = (test: WebtoonAnimationVideoTest) => {
     setSelectedProvider(test.provider);
     setInputMode(test.input_mode as InputMode);
@@ -170,89 +157,109 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
   }
 
   return (
-    <div className="space-y-4">
-      {/* 모델 + 입력모드 선택 */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-xs font-medium mb-1 block">모델</label>
-          <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-            <SelectTrigger>
-              <SelectValue placeholder="모델 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {providers.map((p) => {
-                const safety = SAFETY_BADGE[p.contentSafety];
-                return (
-                  <SelectItem key={p.id} value={p.id}>
-                    <div className="flex items-center gap-2">
-                      <span>{p.name}</span>
-                      <span className={`text-[10px] px-1 py-0.5 rounded ${safety.class}`}>
-                        {safety.label}
+    <div className="space-y-5">
+      {/* 모델 선택 — 카드 그리드 */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">모델</label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {providers.map((p) => {
+            const isActive = selectedProvider === p.id;
+            const safety = SAFETY_STYLE[p.contentSafety];
+            const PlatformIcon = PLATFORM_ICON[p.platform] || Cloud;
+            const modeIcons = p.inputModes.map((m) => INPUT_MODE_CONFIG[m]);
+
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelectedProvider(p.id)}
+                className={cn(
+                  'relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all',
+                  isActive
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                    : 'border-border hover:border-muted-foreground/50 hover:bg-muted/30'
+                )}
+              >
+                {/* 모델명 + 플랫폼 */}
+                <div className="flex items-center gap-1.5 w-full">
+                  <PlatformIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm font-medium truncate">{p.name}</span>
+                </div>
+
+                {/* 입력 모드 아이콘 + 안전성 + 비용 */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* 지원 모드 칩 */}
+                  {modeIcons.map((m) => {
+                    const MIcon = m.icon;
+                    return (
+                      <span
+                        key={m.label}
+                        className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                        title={m.desc}
+                      >
+                        <MIcon className="w-2.5 h-2.5" />
+                        {m.label}
                       </span>
-                      {p.costPerSec !== undefined && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {p.costPerSec === 0 ? '무료' : `$${p.costPerSec}/s`}
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
+                    );
+                  })}
+                  {/* 안전성 */}
+                  <span className={cn('inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', safety.bg)}>
+                    <span className={cn('w-1.5 h-1.5 rounded-full', safety.dot)} />
+                    {safety.label}
+                  </span>
+                </div>
 
-        <div className="min-w-[160px]">
-          <label className="text-xs font-medium mb-1 block">입력 모드</label>
-          <Select
-            value={inputMode}
-            onValueChange={(v) => { setInputMode(v as InputMode); setSelectedCuts([]); }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {currentProvider?.inputModes.map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  {INPUT_MODE_LABELS[mode]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="min-w-[80px]">
-          <label className="text-xs font-medium mb-1 block">길이</label>
-          <Select value={String(duration)} onValueChange={(v) => setDuration(Number(v))}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {currentProvider?.durations.map((d) => (
-                <SelectItem key={d} value={String(d)}>
-                  {d}초
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="min-w-[80px]">
-          <label className="text-xs font-medium mb-1 block">비율</label>
-          <Select value={aspectRatio} onValueChange={setAspectRatio}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {currentProvider?.aspectRatios.map((ar) => (
-                <SelectItem key={ar} value={ar}>
-                  {ar}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {/* 비용 + max 이미지 */}
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {p.costPerSec !== undefined && (
+                    <span>{p.costPerSec === 0 ? 'Free' : `$${p.costPerSec}/s`}</span>
+                  )}
+                  {p.maxImages && p.maxImages > 1 && (
+                    <span>max {p.maxImages}장</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* 입력 모드 — 토글 버튼 */}
+      {currentProvider && (
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">입력 모드</label>
+          <div className="flex gap-2">
+            {currentProvider.inputModes.map((mode) => {
+              const cfg = INPUT_MODE_CONFIG[mode];
+              const ModeIcon = cfg.icon;
+              const isActive = inputMode === mode;
+              const maxImg = mode === 'multi_reference' ? currentProvider.maxImages : mode === 'start_end_frame' ? 2 : 1;
+
+              return (
+                <button
+                  key={mode}
+                  onClick={() => { setInputMode(mode); setSelectedCuts([]); }}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all',
+                    isActive
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
+                  )}
+                >
+                  <ModeIcon className="w-4 h-4" />
+                  <div className="text-left">
+                    <div>{cfg.desc}</div>
+                    <div className="text-[10px] font-normal opacity-70">
+                      {mode === 'single_image' && '컷 1장'}
+                      {mode === 'start_end_frame' && '컷 2장 (시작→끝)'}
+                      {mode === 'multi_reference' && `컷 최대 ${maxImg}장`}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 컷 선택 */}
       <CutPicker
@@ -268,7 +275,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
       {/* 프롬프트 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium">프롬프트</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">프롬프트</label>
           <Button
             variant="outline"
             size="sm"
@@ -293,24 +300,69 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
         />
       </div>
 
+      {/* 설정 (길이 + 비율) — 인라인 칩 */}
+      <div className="flex gap-4 flex-wrap">
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">길이</label>
+          <div className="flex gap-1">
+            {currentProvider?.durations.map((d) => (
+              <button
+                key={d}
+                onClick={() => setDuration(d)}
+                className={cn(
+                  'px-3 py-1 text-sm rounded-md border transition-all',
+                  duration === d
+                    ? 'border-primary bg-primary/5 text-primary font-medium'
+                    : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                )}
+              >
+                {d}초
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">비율</label>
+          <div className="flex gap-1">
+            {currentProvider?.aspectRatios.map((ar) => (
+              <button
+                key={ar}
+                onClick={() => setAspectRatio(ar)}
+                className={cn(
+                  'px-3 py-1 text-sm rounded-md border transition-all',
+                  aspectRatio === ar
+                    ? 'border-primary bg-primary/5 text-primary font-medium'
+                    : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                )}
+              >
+                {ar}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* 생성 버튼 */}
       <Button
         onClick={handleGenerate}
         disabled={generating || !selectedCuts.length || !selectedProvider}
         className="w-full"
+        size="lg"
       >
         {generating ? (
           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
         ) : (
           <Play className="w-4 h-4 mr-2" />
         )}
-        {generating ? '생성 중...' : '영상 생성'}
+        {generating ? '생성 중...' : `${currentProvider?.name || ''} 영상 생성`}
       </Button>
 
       {/* 결과 갤러리 */}
       {tests.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium">결과 ({tests.length})</h3>
+        <div className="space-y-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            결과 ({tests.length})
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {tests.map((test) => (
               <VideoTestCard

@@ -45,6 +45,7 @@ export const ltx2Provider: VideoProvider = {
     inputModes: ['single_image'],
     durations: [3, 5, 8],
     aspectRatios: ['16:9', '9:16'],
+    maxImages: 1,
     contentSafety: 'lenient',
     costPerSec: 0,
     platform: 'comfyui',
