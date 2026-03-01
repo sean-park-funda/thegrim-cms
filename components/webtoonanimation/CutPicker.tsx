@@ -1,9 +1,10 @@
 'use client';
 
+import { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut } from '@/lib/supabase';
 import type { InputMode } from '@/lib/video-generation/providers';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Plus, Loader2 } from 'lucide-react';
 
 interface CutPickerProps {
   cuts: WebtoonAnimationCut[];
@@ -13,6 +14,8 @@ interface CutPickerProps {
   onSelectionChange: (indices: number[]) => void;
   rangeStart: number;
   rangeEnd: number;
+  onFilesSelected?: (files: File[]) => void;
+  uploading?: boolean;
 }
 
 export function CutPicker({
@@ -23,7 +26,10 @@ export function CutPicker({
   onSelectionChange,
   rangeStart,
   rangeEnd,
+  onFilesSelected,
+  uploading,
 }: CutPickerProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const rangeCuts = cuts
     .filter((c) => c.order_index >= rangeStart && c.order_index <= rangeEnd)
     .sort((a, b) => a.order_index - b.order_index);
@@ -109,6 +115,41 @@ export function CutPicker({
             </button>
           );
         })}
+        {onFilesSelected && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) {
+                  onFilesSelected(Array.from(e.target.files));
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                'flex-shrink-0 rounded-lg border-2 border-dashed w-20 h-28',
+                'flex flex-col items-center justify-center gap-1 transition-all',
+                uploading
+                  ? 'border-muted opacity-50 cursor-not-allowed'
+                  : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+              )}
+            >
+              {uploading ? (
+                <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+              ) : (
+                <Plus className="w-5 h-5 text-muted-foreground" />
+              )}
+              <span className="text-[10px] text-muted-foreground">추가</span>
+            </button>
+          </>
+        )}
       </div>
       {inputMode === 'start_end_frame' && selectedIndices.length === 2 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">

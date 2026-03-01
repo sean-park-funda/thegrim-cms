@@ -461,13 +461,9 @@ export default function WebtoonAnimationPage() {
             </div>
           )}
 
-          {/* Video Lab — 모델→입력모드→애셋(업로드+컷)→프롬프트→생성 */}
+          {/* Video Lab — 모델→입력모드→애셋(컷+업로드)→프롬프트→생성 */}
           {activeTab === 'testlab' && (
             <>
-              <CutUploader
-                onFilesSelected={handleFilesSelected}
-                uploading={uploading}
-              />
               {loadingCuts ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -478,8 +474,15 @@ export default function WebtoonAnimationPage() {
                   projectId={selectedProject.id}
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
+                  onFilesSelected={handleFilesSelected}
+                  uploading={uploading}
                 />
-              ) : null}
+              ) : (
+                <CutUploader
+                  onFilesSelected={handleFilesSelected}
+                  uploading={uploading}
+                />
+              )}
             </>
           )}
 
