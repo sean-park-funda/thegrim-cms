@@ -286,9 +286,10 @@ const wan21FlF2VConfig: FalModelConfig = {
     const endImg = req.images.find((i) => i.role === 'end');
     return {
       prompt: req.prompt,
-      first_frame_url: startImg ? getImageUrl(startImg) : undefined,
-      last_frame_url: endImg ? getImageUrl(endImg) : undefined,
+      start_image_url: startImg ? getImageUrl(startImg) : undefined,
+      end_image_url: endImg ? getImageUrl(endImg) : undefined,
       resolution: '480p',
+      enable_safety_checker: false,
     };
   },
 };
