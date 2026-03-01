@@ -123,7 +123,14 @@ function createFalProvider(config: FalModelConfig): VideoProvider {
       const result = await falRequest(config.endpoint, payload);
 
       console.log(`[fal.ai][${id}] extractVideo from result keys: ${Object.keys(result).join(', ')}`);
-      const { url } = config.extractVideo(result);
+      console.log(`[fal.ai][${id}] result snapshot: ${JSON.stringify(result).slice(0, 500)}`);
+      let url: string;
+      try {
+        ({ url } = config.extractVideo(result));
+      } catch (e) {
+        console.error(`[fal.ai][${id}] extractVideo FAILED. Full result: ${JSON.stringify(result).slice(0, 1000)}`);
+        throw e;
+      }
       console.log(`[fal.ai][${id}] video URL: ${url.slice(0, 100)}`);
 
       // Download video
