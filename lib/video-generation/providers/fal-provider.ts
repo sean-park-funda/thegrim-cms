@@ -14,6 +14,14 @@ function extractVideoUrl(result: Record<string, unknown>, modelId: string): stri
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const r = result as any;
 
+  // fal.ai 에러 응답 감지 — { detail: "..." } 또는 { detail: [{msg: "..."}] }
+  if (r.detail) {
+    const detail = r.detail;
+    if (typeof detail === 'string') throw new Error(`${modelId}: ${detail}`);
+    if (Array.isArray(detail) && detail[0]?.msg) throw new Error(`${modelId}: ${detail[0].msg}`);
+    throw new Error(`${modelId}: ${JSON.stringify(detail).slice(0, 300)}`);
+  }
+
   // 가장 흔한 패턴: { video: { url: "..." } }
   if (r.video?.url) return r.video.url;
 
@@ -272,15 +280,15 @@ const wan21FlF2VConfig: FalModelConfig = {
     costPerSec: 0.03,
     platform: 'fal.ai',
   },
-  endpoint: 'fal-ai/wan/v2.1/first-last-frame-to-video',
+  endpoint: 'fal-ai/wan-flf2v',
   buildPayload: (req) => {
     const startImg = req.images.find((i) => i.role === 'start');
     const endImg = req.images.find((i) => i.role === 'end');
     return {
       prompt: req.prompt,
-      first_frame_image_url: startImg ? getImageUrl(startImg) : undefined,
-      last_frame_image_url: endImg ? getImageUrl(endImg) : undefined,
-      num_frames: Math.round(req.duration * 16),
+      first_frame_url: startImg ? getImageUrl(startImg) : undefined,
+      last_frame_url: endImg ? getImageUrl(endImg) : undefined,
+      resolution: '480p',
     };
   },
 };
