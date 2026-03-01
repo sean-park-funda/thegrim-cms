@@ -306,13 +306,14 @@ const wan21I2VConfig: FalModelConfig = {
     costPerSec: 0.03,
     platform: 'fal.ai',
   },
-  endpoint: 'fal-ai/wan/v2.1/image-to-video',
+  endpoint: 'fal-ai/wan-i2v',
   buildPayload: (req) => {
     const img = req.images[0];
     return {
       prompt: req.prompt,
       image_url: img ? getImageUrl(img) : undefined,
-      num_frames: Math.round(req.duration * 16),
+      resolution: '480p',
+      enable_safety_checker: false,
     };
   },
 };
@@ -329,13 +330,12 @@ const hunyuanConfig: FalModelConfig = {
     costPerSec: 0.04,
     platform: 'fal.ai',
   },
-  endpoint: 'fal-ai/hunyuan-video/image-to-video',
+  endpoint: 'fal-ai/hunyuan-video-image-to-video',
   buildPayload: (req) => {
     const img = req.images[0];
     return {
       prompt: req.prompt,
       image_url: img ? getImageUrl(img) : undefined,
-      num_frames: Math.round(req.duration * 24),
     };
   },
 };
