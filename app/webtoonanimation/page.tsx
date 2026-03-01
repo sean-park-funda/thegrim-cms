@@ -433,92 +433,102 @@ export default function WebtoonAnimationPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        {/* 좌측: 컷 그리드 + Seedance 프롬프트 에디터 */}
+        {/* 좌측 */}
         <div className="space-y-6">
-          {/* 업로드 */}
-          <CutUploader
-            onFilesSelected={handleFilesSelected}
-            uploading={uploading}
-          />
-
-          {/* 컷 그리드 */}
-          {loadingCuts ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : cuts.length > 0 ? (
-            <>
-              <SortableCutGrid
-                cuts={cuts}
-                rangeStart={rangeStart}
-                rangeEnd={rangeEnd}
-                onReorder={handleReorder}
-                onRemove={handleRemoveCut}
-              />
-
-              {/* 탭 전환 */}
-              <div className="flex rounded-lg border p-1 bg-muted/50">
-                <button
-                  onClick={() => setActiveTab('testlab')}
-                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === 'testlab'
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Video Lab
-                </button>
-                <button
-                  onClick={() => setActiveTab('seedance')}
-                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === 'seedance'
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Seedance 프롬프트
-                </button>
-              </div>
-
-              {/* Seedance 프롬프트 모드 */}
-              {activeTab === 'seedance' && (
-                <RangeSelector
-                  totalCuts={cuts.length}
-                  rangeStart={rangeStart}
-                  rangeEnd={rangeEnd}
-                  pace={pace}
-                  videoDuration={videoDuration}
-                  onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
-                  onPaceChange={setPace}
-                  onVideoDurationChange={setVideoDuration}
-                  onGenerate={handleGenerate}
-                  generating={generating}
-                />
-              )}
-            </>
-          ) : null}
-
-          {/* Seedance 프롬프트 에디터 */}
-          {activeTab === 'seedance' && activeGroup && (
-            <div className="pt-4 border-t">
-              <SeedancePromptEditor
-                group={activeGroup}
-                cuts={cuts}
-                projectId={selectedProject.id}
-                onUpdateGroup={handleUpdateGroup}
-                onRefineSeedancePrompt={handleRefineSeedancePrompt}
-              />
+          {/* 탭 전환 — 맨 위 */}
+          {cuts.length > 0 && (
+            <div className="flex rounded-lg border p-1 bg-muted/50">
+              <button
+                onClick={() => setActiveTab('testlab')}
+                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'testlab'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Video Lab
+              </button>
+              <button
+                onClick={() => setActiveTab('seedance')}
+                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'seedance'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Seedance 프롬프트
+              </button>
             </div>
           )}
 
-          {/* Video Test Lab */}
-          {activeTab === 'testlab' && cuts.length > 0 && (
-            <VideoTestLab
-              cuts={cuts}
-              projectId={selectedProject.id}
-              rangeStart={rangeStart}
-              rangeEnd={rangeEnd}
-            />
+          {/* Video Lab — 모델→입력모드→애셋(업로드+컷)→프롬프트→생성 */}
+          {activeTab === 'testlab' && (
+            <>
+              <CutUploader
+                onFilesSelected={handleFilesSelected}
+                uploading={uploading}
+              />
+              {loadingCuts ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : cuts.length > 0 ? (
+                <VideoTestLab
+                  cuts={cuts}
+                  projectId={selectedProject.id}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                />
+              ) : null}
+            </>
+          )}
+
+          {/* Seedance 모드 — 기존 레이아웃 유지 */}
+          {activeTab === 'seedance' && (
+            <>
+              <CutUploader
+                onFilesSelected={handleFilesSelected}
+                uploading={uploading}
+              />
+              {loadingCuts ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : cuts.length > 0 ? (
+                <>
+                  <SortableCutGrid
+                    cuts={cuts}
+                    rangeStart={rangeStart}
+                    rangeEnd={rangeEnd}
+                    onReorder={handleReorder}
+                    onRemove={handleRemoveCut}
+                  />
+                  <RangeSelector
+                    totalCuts={cuts.length}
+                    rangeStart={rangeStart}
+                    rangeEnd={rangeEnd}
+                    pace={pace}
+                    videoDuration={videoDuration}
+                    onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
+                    onPaceChange={setPace}
+                    onVideoDurationChange={setVideoDuration}
+                    onGenerate={handleGenerate}
+                    generating={generating}
+                  />
+                </>
+              ) : null}
+              {activeGroup && (
+                <div className="pt-4 border-t">
+                  <SeedancePromptEditor
+                    group={activeGroup}
+                    cuts={cuts}
+                    projectId={selectedProject.id}
+                    onUpdateGroup={handleUpdateGroup}
+                    onRefineSeedancePrompt={handleRefineSeedancePrompt}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
 
