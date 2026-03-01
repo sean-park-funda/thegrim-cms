@@ -57,7 +57,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
   const [prompt, setPrompt] = useState('');
   const [duration, setDuration] = useState(4);
   const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [generating, setGenerating] = useState(false);
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
@@ -116,7 +116,31 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
 
   const handleGenerate = async () => {
     if (!selectedCuts.length || !selectedProvider) return;
-    setGenerating(true);
+
+    // 임시 ID로 placeholder 추가 (생성중 표시)
+    const tempId = `temp-${Date.now()}`;
+    const placeholder: WebtoonAnimationVideoTest = {
+      id: tempId,
+      project_id: projectId,
+      provider: selectedProvider,
+      input_mode: inputMode,
+      prompt,
+      input_cut_indices: selectedCuts,
+      duration_seconds: duration,
+      aspect_ratio: aspectRatio,
+      status: 'generating',
+      video_path: null,
+      video_url: null,
+      error_message: null,
+      elapsed_ms: null,
+      metadata: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setTests((prev) => [placeholder, ...prev]);
+    setGeneratingIds((prev) => new Set(prev).add(tempId));
+
     try {
       const res = await fetch('/api/webtoonanimation/generate-test-video', {
         method: 'POST',
@@ -124,13 +148,18 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
         body: JSON.stringify({ projectId, provider: selectedProvider, inputMode, cutIndices: selectedCuts, prompt, duration, aspectRatio }),
       });
       const data = await res.json();
-      if (data.error) alert(data.error);
-      else setTests((prev) => [data, ...prev]);
+      if (data.error) {
+        // placeholder를 실패로 업데이트
+        setTests((prev) => prev.map((t) => t.id === tempId ? { ...t, status: 'failed' as const, error_message: data.error } : t));
+      } else {
+        // placeholder를 실제 결과로 교체
+        setTests((prev) => prev.map((t) => t.id === tempId ? data : t));
+      }
     } catch (e) {
       console.error(e);
-      alert('영상 생성 실패');
+      setTests((prev) => prev.map((t) => t.id === tempId ? { ...t, status: 'failed' as const, error_message: '네트워크 오류' } : t));
     } finally {
-      setGenerating(false);
+      setGeneratingIds((prev) => { const next = new Set(prev); next.delete(tempId); return next; });
     }
   };
 
@@ -345,16 +374,21 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd }: VideoTes
       {/* 생성 버튼 */}
       <Button
         onClick={handleGenerate}
-        disabled={generating || !selectedCuts.length || !selectedProvider}
+        disabled={!selectedCuts.length || !selectedProvider}
         className="w-full"
         size="lg"
       >
-        {generating ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        {generatingIds.size > 0 ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            {generatingIds.size}개 생성 중 — 추가 요청 가능
+          </>
         ) : (
-          <Play className="w-4 h-4 mr-2" />
+          <>
+            <Play className="w-4 h-4 mr-2" />
+            {currentProvider?.name || ''} 영상 생성
+          </>
         )}
-        {generating ? '생성 중...' : `${currentProvider?.name || ''} 영상 생성`}
       </Button>
 
       {/* 결과 갤러리 */}
