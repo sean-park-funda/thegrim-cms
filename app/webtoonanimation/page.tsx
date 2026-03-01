@@ -476,6 +476,8 @@ export default function WebtoonAnimationPage() {
                   rangeEnd={rangeEnd}
                   onFilesSelected={handleFilesSelected}
                   uploading={uploading}
+                  onReorder={handleReorder}
+                  onRemove={handleRemoveCut}
                 />
               ) : (
                 <CutUploader

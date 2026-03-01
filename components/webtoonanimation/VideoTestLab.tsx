@@ -28,6 +28,8 @@ interface VideoTestLabProps {
   rangeEnd: number;
   onFilesSelected?: (files: File[]) => void;
   uploading?: boolean;
+  onReorder?: (newCuts: WebtoonAnimationCut[]) => void;
+  onRemove?: (cutId: string) => void;
 }
 
 const INPUT_MODE_CONFIG: Record<InputMode, { label: string; icon: typeof Image; desc: string }> = {
@@ -48,7 +50,7 @@ const PLATFORM_ICON: Record<string, typeof Monitor> = {
   comfyui: Cpu,
 };
 
-export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSelected, uploading }: VideoTestLabProps) {
+export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSelected, uploading, onReorder, onRemove }: VideoTestLabProps) {
   const [providers, setProviders] = useState<ProviderCapabilities[]>([]);
   const [tests, setTests] = useState<WebtoonAnimationVideoTest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -303,6 +305,8 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
         rangeEnd={rangeEnd}
         onFilesSelected={onFilesSelected}
         uploading={uploading}
+        onReorder={onReorder}
+        onRemove={onRemove}
       />
 
       {/* 프롬프트 */}

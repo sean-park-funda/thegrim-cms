@@ -10,6 +10,15 @@ interface FalModelConfig {
   extractVideo: (result: Record<string, unknown>) => { url: string };
 }
 
+async function safeFalJson(res: Response, label: string): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`fal.ai ${label}: invalid JSON (${res.status}) — ${text.slice(0, 500)}`);
+  }
+}
+
 async function falRequest(endpoint: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   // 1. Submit
   const submitRes = await fetch(`${FAL_BASE}/${endpoint}`, {
@@ -23,17 +32,22 @@ async function falRequest(endpoint: string, payload: Record<string, unknown>): P
 
   if (!submitRes.ok) {
     const err = await submitRes.text();
-    throw new Error(`fal.ai submit failed (${submitRes.status}): ${err}`);
+    throw new Error(`fal.ai submit failed (${submitRes.status}): ${err.slice(0, 500)}`);
   }
 
-  const { request_id, status: initStatus } = await submitRes.json();
+  const submitData = await safeFalJson(submitRes, 'submit');
+  const request_id = submitData.request_id as string;
+  const initStatus = submitData.status as string;
+
+  if (!request_id) {
+    throw new Error(`fal.ai: no request_id in response: ${JSON.stringify(submitData).slice(0, 500)}`);
+  }
 
   if (initStatus === 'COMPLETED') {
-    // 동기 결과 (queue bypass)
     const resultRes = await fetch(`${FAL_BASE}/${endpoint}/requests/${request_id}`, {
       headers: { 'Authorization': `Key ${FAL_KEY}` },
     });
-    return resultRes.json();
+    return safeFalJson(resultRes, 'result');
   }
 
   // 2. Poll
@@ -45,14 +59,14 @@ async function falRequest(endpoint: string, payload: Record<string, unknown>): P
       `${FAL_BASE}/${endpoint}/requests/${request_id}/status`,
       { headers: { 'Authorization': `Key ${FAL_KEY}` } }
     );
-    const statusData = await statusRes.json();
+    const statusData = await safeFalJson(statusRes, 'status');
 
     if (statusData.status === 'COMPLETED') {
       const resultRes = await fetch(
         `${FAL_BASE}/${endpoint}/requests/${request_id}`,
         { headers: { 'Authorization': `Key ${FAL_KEY}` } }
       );
-      return resultRes.json();
+      return safeFalJson(resultRes, 'result');
     }
 
     if (statusData.status === 'FAILED') {
@@ -99,22 +113,20 @@ const klingConfig: FalModelConfig = {
   capabilities: {
     id: 'kling',
     name: 'Kling 2.0',
-    inputModes: ['single_image', 'start_end_frame'],
+    inputModes: ['single_image'],
     durations: [5, 10],
     aspectRatios: ['16:9', '9:16', '1:1'],
-    maxImages: 2,
+    maxImages: 1,
     contentSafety: 'moderate',
     costPerSec: 0.04,
     platform: 'fal.ai',
   },
   endpoint: 'fal-ai/kling-video/v2/master/image-to-video',
   buildPayload: (req) => {
-    const startImg = req.images.find((i) => i.role === 'start' || i.role === 'reference');
-    const endImg = req.images.find((i) => i.role === 'end');
+    const img = req.images.find((i) => i.role === 'start' || i.role === 'reference');
     return {
       prompt: req.prompt,
-      image_url: startImg ? imageToDataUrl(startImg.base64, startImg.mimeType) : undefined,
-      tail_image_url: endImg ? imageToDataUrl(endImg.base64, endImg.mimeType) : undefined,
+      image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
       duration: req.duration <= 5 ? '5' : '10',
       aspect_ratio: req.aspectRatio,
     };
@@ -130,10 +142,10 @@ const pika22Config: FalModelConfig = {
   capabilities: {
     id: 'pika22',
     name: 'Pika 2.2',
-    inputModes: ['single_image', 'multi_reference'],
-    durations: [3, 5],
+    inputModes: ['single_image'],
+    durations: [5, 10],
     aspectRatios: ['16:9', '9:16', '1:1'],
-    maxImages: 5,
+    maxImages: 1,
     contentSafety: 'moderate',
     costPerSec: 0.07,
     platform: 'fal.ai',
@@ -144,8 +156,8 @@ const pika22Config: FalModelConfig = {
     return {
       prompt: req.prompt,
       image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
-      duration: req.duration,
-      aspect_ratio: req.aspectRatio,
+      duration: req.duration <= 5 ? 5 : 10,
+      resolution: '720p',
     };
   },
   extractVideo: (result) => {
