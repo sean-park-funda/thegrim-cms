@@ -284,7 +284,16 @@ Respond ONLY with valid JSON:
     const responseText = response.text;
 
     if (!responseText) {
-      return NextResponse.json({ error: 'Gemini 응답이 비어 있습니다.' }, { status: 500 });
+      // 차단 사유 로깅
+      const raw = JSON.stringify(response, null, 2).slice(0, 3000);
+      console.error('[generate-prompt] Gemini 응답 비어있음. 전체 응답:', raw);
+      const blockReason = (response as unknown as Record<string, unknown>).promptFeedback
+        || (response as unknown as Record<string, unknown>).candidates
+        || 'unknown';
+      return NextResponse.json({
+        error: 'Gemini 응답이 비어 있습니다 (콘텐츠 안전 필터 차단 가능성)',
+        detail: JSON.stringify(blockReason).slice(0, 500),
+      }, { status: 500 });
     }
 
     let result: GeminiSeedanceResponse;

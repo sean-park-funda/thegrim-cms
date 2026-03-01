@@ -352,6 +352,25 @@ export interface WebtoonAnimationPromptGroupWithCuts extends WebtoonAnimationPro
   cut_prompts?: WebtoonAnimationCutPrompt[];
 }
 
+export interface WebtoonAnimationVideoTest {
+  id: string;
+  project_id: string;
+  provider: string;
+  input_mode: string;
+  prompt: string;
+  input_cut_indices: number[];
+  duration_seconds: number;
+  aspect_ratio: string;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  video_path: string | null;
+  video_url: string | null;
+  error_message: string | null;
+  elapsed_ms: number | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface WebtoonAnimationVideoSegment {
   id: string;
   group_id: string;

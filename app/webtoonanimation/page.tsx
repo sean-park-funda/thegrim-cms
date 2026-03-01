@@ -17,7 +17,7 @@ import { SortableCutGrid } from '@/components/webtoonanimation/SortableCutGrid';
 import { RangeSelector, Pace, VideoDuration } from '@/components/webtoonanimation/RangeSelector';
 import { SeedancePromptEditor } from '@/components/webtoonanimation/SeedancePromptEditor';
 import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
-import { SegmentPlanner } from '@/components/webtoonanimation/SegmentPlanner';
+import { VideoTestLab } from '@/components/webtoonanimation/VideoTestLab';
 
 export default function WebtoonAnimationPage() {
   // State: 프로젝트 목록
@@ -44,7 +44,7 @@ export default function WebtoonAnimationPage() {
   const [activeGroup, setActiveGroup] = useState<WebtoonAnimationPromptGroupWithCuts | null>(null);
 
   // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
-  const [activeTab, setActiveTab] = useState<'seedance' | 'segment'>('segment');
+  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab'>('testlab');
 
   // Debounce timer
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -459,14 +459,14 @@ export default function WebtoonAnimationPage() {
               {/* 탭 전환 */}
               <div className="flex rounded-lg border p-1 bg-muted/50">
                 <button
-                  onClick={() => setActiveTab('segment')}
+                  onClick={() => setActiveTab('testlab')}
                   className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    activeTab === 'segment'
+                    activeTab === 'testlab'
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  세그먼트 영상
+                  Video Lab
                 </button>
                 <button
                   onClick={() => setActiveTab('seedance')}
@@ -511,9 +511,9 @@ export default function WebtoonAnimationPage() {
             </div>
           )}
 
-          {/* 세그먼트 영상 생성 */}
-          {activeTab === 'segment' && cuts.length > 0 && (
-            <SegmentPlanner
+          {/* Video Test Lab */}
+          {activeTab === 'testlab' && cuts.length > 0 && (
+            <VideoTestLab
               cuts={cuts}
               projectId={selectedProject.id}
               rangeStart={rangeStart}
