@@ -38,13 +38,16 @@ async function falRequest(endpoint: string, payload: Record<string, unknown>): P
   const submitData = await safeFalJson(submitRes, 'submit');
   const request_id = submitData.request_id as string;
   const initStatus = submitData.status as string;
+  // Use URLs from response (fal.ai includes them), fallback to constructed URLs
+  const statusUrl = (submitData.status_url as string) || `${FAL_BASE}/${endpoint}/requests/${request_id}/status`;
+  const responseUrl = (submitData.response_url as string) || `${FAL_BASE}/${endpoint}/requests/${request_id}`;
 
   if (!request_id) {
     throw new Error(`fal.ai: no request_id in response: ${JSON.stringify(submitData).slice(0, 500)}`);
   }
 
   if (initStatus === 'COMPLETED') {
-    const resultRes = await fetch(`${FAL_BASE}/${endpoint}/requests/${request_id}`, {
+    const resultRes = await fetch(responseUrl, {
       headers: { 'Authorization': `Key ${FAL_KEY}` },
     });
     return safeFalJson(resultRes, 'result');
@@ -55,17 +58,15 @@ async function falRequest(endpoint: string, payload: Record<string, unknown>): P
   while (Date.now() < timeout) {
     await new Promise((r) => setTimeout(r, 5000));
 
-    const statusRes = await fetch(
-      `${FAL_BASE}/${endpoint}/requests/${request_id}/status`,
-      { headers: { 'Authorization': `Key ${FAL_KEY}` } }
-    );
+    const statusRes = await fetch(statusUrl, {
+      headers: { 'Authorization': `Key ${FAL_KEY}` },
+    });
     const statusData = await safeFalJson(statusRes, 'status');
 
     if (statusData.status === 'COMPLETED') {
-      const resultRes = await fetch(
-        `${FAL_BASE}/${endpoint}/requests/${request_id}`,
-        { headers: { 'Authorization': `Key ${FAL_KEY}` } }
-      );
+      const resultRes = await fetch(responseUrl, {
+        headers: { 'Authorization': `Key ${FAL_KEY}` },
+      });
       return safeFalJson(resultRes, 'result');
     }
 
