@@ -7,7 +7,43 @@ interface FalModelConfig {
   capabilities: ProviderCapabilities;
   endpoint: string;
   buildPayload: (req: VideoGenRequest) => Record<string, unknown>;
-  extractVideo: (result: Record<string, unknown>) => { url: string };
+}
+
+// 범용 비디오 URL 추출 — fal.ai 모델마다 응답 구조가 다를 수 있음
+function extractVideoUrl(result: Record<string, unknown>, modelId: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = result as any;
+
+  // 가장 흔한 패턴: { video: { url: "..." } }
+  if (r.video?.url) return r.video.url;
+
+  // 배열: { video: [{ url: "..." }] }
+  if (Array.isArray(r.video) && r.video[0]?.url) return r.video[0].url;
+
+  // videos 배열: { videos: [{ url: "..." }] }
+  if (Array.isArray(r.videos) && r.videos[0]?.url) return r.videos[0].url;
+
+  // output 래퍼: { output: { video: { url: "..." } } }
+  if (r.output?.video?.url) return r.output.video.url;
+  if (r.output?.url) return r.output.url;
+  if (typeof r.output === 'string' && r.output.startsWith('http')) return r.output;
+
+  // data 래퍼
+  if (r.data?.video?.url) return r.data.video.url;
+
+  // 직접 url
+  if (r.url && typeof r.url === 'string') return r.url;
+
+  // 모든 키를 순회하며 .url을 가진 객체 찾기
+  for (const key of Object.keys(result)) {
+    const val = result[key];
+    if (val && typeof val === 'object' && 'url' in (val as Record<string, unknown>)) {
+      const url = (val as Record<string, unknown>).url;
+      if (typeof url === 'string' && url.startsWith('http')) return url;
+    }
+  }
+
+  throw new Error(`${modelId}: no video URL found in response. Keys: ${Object.keys(result).join(', ')}. Snapshot: ${JSON.stringify(result).slice(0, 500)}`);
 }
 
 async function safeFalJson(res: Response, label: string): Promise<Record<string, unknown>> {
@@ -122,15 +158,9 @@ function createFalProvider(config: FalModelConfig): VideoProvider {
       const payload = config.buildPayload(req);
       const result = await falRequest(config.endpoint, payload);
 
-      console.log(`[fal.ai][${id}] extractVideo from result keys: ${Object.keys(result).join(', ')}`);
+      console.log(`[fal.ai][${id}] result keys: ${Object.keys(result).join(', ')}`);
       console.log(`[fal.ai][${id}] result snapshot: ${JSON.stringify(result).slice(0, 500)}`);
-      let url: string;
-      try {
-        ({ url } = config.extractVideo(result));
-      } catch (e) {
-        console.error(`[fal.ai][${id}] extractVideo FAILED. Full result: ${JSON.stringify(result).slice(0, 1000)}`);
-        throw e;
-      }
+      const url = extractVideoUrl(result, id);
       console.log(`[fal.ai][${id}] video URL: ${url.slice(0, 100)}`);
 
       // Download video
@@ -176,11 +206,6 @@ const klingConfig: FalModelConfig = {
       aspect_ratio: req.aspectRatio,
     };
   },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Kling: no video in response');
-    return { url: video.url };
-  },
 };
 
 const pika22Config: FalModelConfig = {
@@ -204,11 +229,6 @@ const pika22Config: FalModelConfig = {
       duration: req.duration <= 5 ? 5 : 10,
       resolution: '720p',
     };
-  },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Pika: no video in response');
-    return { url: video.url };
   },
 };
 
@@ -235,11 +255,6 @@ const lumaRay2Config: FalModelConfig = {
       aspect_ratio: req.aspectRatio,
     };
   },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Luma: no video in response');
-    return { url: video.url };
-  },
 };
 
 const wan21FlF2VConfig: FalModelConfig = {
@@ -265,11 +280,6 @@ const wan21FlF2VConfig: FalModelConfig = {
       num_frames: Math.round(req.duration * 16),
     };
   },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Wan FLF2V: no video in response');
-    return { url: video.url };
-  },
 };
 
 const wan21I2VConfig: FalModelConfig = {
@@ -293,11 +303,6 @@ const wan21I2VConfig: FalModelConfig = {
       num_frames: Math.round(req.duration * 16),
     };
   },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Wan I2V: no video in response');
-    return { url: video.url };
-  },
 };
 
 const hunyuanConfig: FalModelConfig = {
@@ -320,11 +325,6 @@ const hunyuanConfig: FalModelConfig = {
       image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
       num_frames: Math.round(req.duration * 24),
     };
-  },
-  extractVideo: (result) => {
-    const video = (result as { video?: { url: string } }).video;
-    if (!video?.url) throw new Error('Hunyuan: no video in response');
-    return { url: video.url };
   },
 };
 
