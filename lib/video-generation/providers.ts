@@ -14,11 +14,18 @@ export interface ProviderCapabilities {
   platform: 'direct' | 'fal.ai' | 'comfyui';
 }
 
+export interface VideoGenImage {
+  role: 'start' | 'end' | 'reference';
+  url?: string;          // 공개 URL (fal.ai 직접 전달)
+  base64?: string;       // base64 fallback (Veo 등)
+  mimeType: string;
+}
+
 export interface VideoGenRequest {
   provider: string;
   prompt: string;
   inputMode: InputMode;
-  images: { base64: string; mimeType: string; role: 'start' | 'end' | 'reference' }[];
+  images: VideoGenImage[];
   duration: number;
   aspectRatio: string;
 }

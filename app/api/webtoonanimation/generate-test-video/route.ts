@@ -54,13 +54,9 @@ export async function POST(request: NextRequest) {
     if (!cuts?.length) throw new Error('컷 이미지를 찾을 수 없습니다');
 
     const mode = (inputMode || 'single_image') as InputMode;
-    const images: { base64: string; mimeType: string; role: 'start' | 'end' | 'reference' }[] = [];
+    const images: { url: string; mimeType: string; role: 'start' | 'end' | 'reference' }[] = [];
 
     for (let i = 0; i < cuts.length; i++) {
-      const res = await fetch(cuts[i].file_path);
-      if (!res.ok) throw new Error(`이미지 다운로드 실패: cut ${cuts[i].order_index}`);
-      const base64 = Buffer.from(await res.arrayBuffer()).toString('base64');
-
       let role: 'start' | 'end' | 'reference' = 'reference';
       if (mode === 'start_end_frame') {
         role = i === 0 ? 'start' : i === cuts.length - 1 ? 'end' : 'reference';
@@ -68,7 +64,7 @@ export async function POST(request: NextRequest) {
         role = i === 0 ? 'start' : 'reference';
       }
 
-      images.push({ base64, mimeType: 'image/png', role });
+      images.push({ url: cuts[i].file_path, mimeType: 'image/png', role });
     }
 
     // 3. Provider 호출

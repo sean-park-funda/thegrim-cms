@@ -60,9 +60,18 @@ export const ltx2Provider: VideoProvider = {
     const [width, height] = req.aspectRatio === '9:16' ? [480, 848] : [848, 480];
 
     // 1. Upload image to ComfyUI
+    let imageBuffer: Buffer;
+    if (img.base64) {
+      imageBuffer = Buffer.from(img.base64, 'base64');
+    } else if (img.url) {
+      const imgRes = await fetch(img.url);
+      if (!imgRes.ok) throw new Error(`이미지 다운로드 실패: ${imgRes.status}`);
+      imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+    } else {
+      throw new Error('LTX-2: 이미지에 url 또는 base64가 필요합니다');
+    }
     const formData = new FormData();
-    const imageBuffer = Buffer.from(img.base64, 'base64');
-    formData.append('image', new Blob([imageBuffer], { type: img.mimeType }), 'input.png');
+    formData.append('image', new Blob([new Uint8Array(imageBuffer)], { type: img.mimeType }), 'input.png');
     formData.append('overwrite', 'true');
 
     const uploadRes = await fetch(`${COMFYUI_HOST}/upload/image`, {

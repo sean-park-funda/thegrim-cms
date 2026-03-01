@@ -141,8 +141,11 @@ async function falRequest(endpoint: string, payload: Record<string, unknown>): P
   throw new Error('fal.ai timeout (10min)');
 }
 
-function imageToDataUrl(base64: string, mimeType: string): string {
-  return `data:${mimeType};base64,${base64}`;
+// 이미지 URL 추출 — URL 우선, base64 fallback
+function getImageUrl(img: { url?: string; base64?: string; mimeType: string }): string {
+  if (img.url) return img.url;
+  if (img.base64) return `data:${img.mimeType};base64,${img.base64}`;
+  throw new Error('이미지에 url 또는 base64가 필요합니다');
 }
 
 function createFalProvider(config: FalModelConfig): VideoProvider {
@@ -201,7 +204,7 @@ const klingConfig: FalModelConfig = {
     const img = req.images.find((i) => i.role === 'start' || i.role === 'reference');
     return {
       prompt: req.prompt,
-      image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
+      image_url: img ? getImageUrl(img) : undefined,
       duration: req.duration <= 5 ? '5' : '10',
       aspect_ratio: req.aspectRatio,
     };
@@ -225,7 +228,7 @@ const pika22Config: FalModelConfig = {
     const img = req.images[0];
     return {
       prompt: req.prompt,
-      image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
+      image_url: img ? getImageUrl(img) : undefined,
       duration: req.duration <= 5 ? 5 : 10,
       resolution: '720p',
     };
@@ -250,8 +253,8 @@ const lumaRay2Config: FalModelConfig = {
     const endImg = req.images.find((i) => i.role === 'end');
     return {
       prompt: req.prompt,
-      image_url: startImg ? imageToDataUrl(startImg.base64, startImg.mimeType) : undefined,
-      end_image_url: endImg ? imageToDataUrl(endImg.base64, endImg.mimeType) : undefined,
+      image_url: startImg ? getImageUrl(startImg) : undefined,
+      end_image_url: endImg ? getImageUrl(endImg) : undefined,
       aspect_ratio: req.aspectRatio,
     };
   },
@@ -275,8 +278,8 @@ const wan21FlF2VConfig: FalModelConfig = {
     const endImg = req.images.find((i) => i.role === 'end');
     return {
       prompt: req.prompt,
-      first_frame_image_url: startImg ? imageToDataUrl(startImg.base64, startImg.mimeType) : undefined,
-      last_frame_image_url: endImg ? imageToDataUrl(endImg.base64, endImg.mimeType) : undefined,
+      first_frame_image_url: startImg ? getImageUrl(startImg) : undefined,
+      last_frame_image_url: endImg ? getImageUrl(endImg) : undefined,
       num_frames: Math.round(req.duration * 16),
     };
   },
@@ -299,7 +302,7 @@ const wan21I2VConfig: FalModelConfig = {
     const img = req.images[0];
     return {
       prompt: req.prompt,
-      image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
+      image_url: img ? getImageUrl(img) : undefined,
       num_frames: Math.round(req.duration * 16),
     };
   },
@@ -322,7 +325,7 @@ const hunyuanConfig: FalModelConfig = {
     const img = req.images[0];
     return {
       prompt: req.prompt,
-      image_url: img ? imageToDataUrl(img.base64, img.mimeType) : undefined,
+      image_url: img ? getImageUrl(img) : undefined,
       num_frames: Math.round(req.duration * 24),
     };
   },
