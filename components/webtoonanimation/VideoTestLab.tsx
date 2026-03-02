@@ -79,6 +79,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [beforeAttachedCuts, setBeforeAttachedCuts] = useState<number[]>([]);
   const [showCutPicker, setShowCutPicker] = useState(false);
+  const [generatingBeforePrompt, setGeneratingBeforePrompt] = useState(false);
 
   const BEFORE_PROMPTS = {
     from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
@@ -194,6 +195,33 @@ Rules:
       alert('직전 프레임 생성 실패');
     } finally {
       setGeneratingBefore(false);
+    }
+  };
+
+  const handleGenerateBeforePrompt = async () => {
+    if (beforeAttachedCuts.length === 0) return;
+    setGeneratingBeforePrompt(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/generate-before-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          imageCutIndices: beforeAttachedCuts,
+          mode: beforeMode,
+        }),
+      });
+      const data = await res.json();
+      if (data.prompt) {
+        setBeforePrompt(data.prompt);
+      } else {
+        alert(data.error || '프롬프트 생성 실패');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('프롬프트 생성 실패');
+    } finally {
+      setGeneratingBeforePrompt(false);
     }
   };
 
@@ -543,13 +571,29 @@ Rules:
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 프롬프트</label>
-              <button
-                onClick={() => setPromptDialogOpen(true)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                title="크게 보기"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateBeforePrompt}
+                  disabled={generatingBeforePrompt || beforeAttachedCuts.length === 0}
+                  className="h-6 text-[10px] px-2"
+                >
+                  {generatingBeforePrompt ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3 mr-1" />
+                  )}
+                  AI 프롬프트 생성
+                </Button>
+                <button
+                  onClick={() => setPromptDialogOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="크게 보기"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             <Textarea
               value={beforePrompt}
@@ -572,13 +616,28 @@ Rules:
                 rows={16}
                 className="text-sm font-mono"
               />
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setBeforePrompt('')}>
-                  기본값으로 리셋
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateBeforePrompt}
+                  disabled={generatingBeforePrompt || beforeAttachedCuts.length === 0}
+                >
+                  {generatingBeforePrompt ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3 mr-1" />
+                  )}
+                  AI 프롬프트 생성
                 </Button>
-                <Button size="sm" onClick={() => setPromptDialogOpen(false)}>
-                  확인
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setBeforePrompt('')}>
+                    기본값으로 리셋
+                  </Button>
+                  <Button size="sm" onClick={() => setPromptDialogOpen(false)}>
+                    확인
+                  </Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
