@@ -14,6 +14,7 @@ import {
   Play, Sparkles, Loader2,
   Image, ArrowRightLeft, Images,
   Monitor, Cloud, Cpu,
+  Wand2, ArrowRight, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
@@ -63,6 +64,9 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [beforeFrameUrl, setBeforeFrameUrl] = useState<string | null>(null);
+  const [beforeFrameCutIndex, setBeforeFrameCutIndex] = useState<number | null>(null);
+  const [generatingBefore, setGeneratingBefore] = useState(false);
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
 
@@ -97,6 +101,39 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
     }
     setSelectedCuts([]);
   }, [selectedProvider]);
+
+  // 컷 선택이 바뀌면 before frame 초기화
+  useEffect(() => {
+    if (beforeFrameCutIndex !== null && !selectedCuts.includes(beforeFrameCutIndex)) {
+      setBeforeFrameUrl(null);
+      setBeforeFrameCutIndex(null);
+    }
+  }, [selectedCuts, beforeFrameCutIndex]);
+
+  const handleGenerateBefore = async () => {
+    const targetCutIndex = selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0];
+    if (targetCutIndex === undefined) return;
+    setGeneratingBefore(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/generate-before-frame', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, cutIndex: targetCutIndex }),
+      });
+      const data = await res.json();
+      if (data.imageUrl) {
+        setBeforeFrameUrl(data.imageUrl);
+        setBeforeFrameCutIndex(targetCutIndex);
+      } else {
+        alert(data.error || '직전 프레임 생성 실패');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('직전 프레임 생성 실패');
+    } finally {
+      setGeneratingBefore(false);
+    }
+  };
 
   const handleGeneratePrompt = async () => {
     if (!selectedCuts.length) return;
@@ -149,7 +186,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
       const res = await fetch('/api/webtoonanimation/generate-test-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, provider: selectedProvider, inputMode, cutIndices: selectedCuts, prompt, duration, aspectRatio }),
+        body: JSON.stringify({ projectId, provider: selectedProvider, inputMode, cutIndices: selectedCuts, prompt, duration, aspectRatio, beforeFrameUrl }),
       });
       const data = await res.json();
       if (data.error) {
@@ -308,6 +345,65 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
         onReorder={onReorder}
         onRemove={onRemove}
       />
+
+      {/* 직전 프레임 생성 */}
+      {selectedCuts.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">직전 프레임</label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateBefore}
+              disabled={generatingBefore || !selectedCuts.length}
+              className="h-7 text-xs"
+            >
+              {generatingBefore ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Wand2 className="w-3 h-3 mr-1" />
+              )}
+              {generatingBefore ? '생성 중...' : '직전 프레임 생성'}
+            </Button>
+          </div>
+
+          {beforeFrameUrl && beforeFrameCutIndex !== null && (
+            <div className="relative flex items-center gap-2 p-3 rounded-lg border border-dashed border-primary/30 bg-primary/5">
+              <button
+                onClick={() => { setBeforeFrameUrl(null); setBeforeFrameCutIndex(null); }}
+                className="absolute top-1 right-1 p-0.5 rounded-full hover:bg-muted"
+              >
+                <X className="w-3 h-3 text-muted-foreground" />
+              </button>
+              {/* 생성된 직전 프레임 */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="relative w-20 h-28 rounded border overflow-hidden">
+                  <img src={beforeFrameUrl} alt="직전 프레임" className="w-full h-full object-cover" />
+                  <span className="absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded bg-primary text-primary-foreground font-medium">
+                    AI 생성
+                  </span>
+                </div>
+                <span className="text-[10px] text-muted-foreground">START</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              {/* 원본 컷 */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-20 h-28 rounded border overflow-hidden">
+                  <img
+                    src={cuts.find(c => c.order_index === beforeFrameCutIndex)?.file_path || ''}
+                    alt={`컷 ${beforeFrameCutIndex}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="text-[10px] text-muted-foreground">END (컷 {beforeFrameCutIndex})</span>
+              </div>
+              <span className="ml-2 text-xs text-muted-foreground">
+                직전 프레임이 시작 이미지로, 원본 컷이 끝 이미지로 사용됩니다
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 프롬프트 */}
       <div className="space-y-2">

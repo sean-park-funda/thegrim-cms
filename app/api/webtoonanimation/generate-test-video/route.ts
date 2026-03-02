@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   let testId: string | null = null;
 
   try {
-    const { projectId, provider: providerId, inputMode, cutIndices, prompt, duration, aspectRatio } = await request.json();
+    const { projectId, provider: providerId, inputMode, cutIndices, prompt, duration, aspectRatio, beforeFrameUrl } = await request.json();
 
     if (!projectId || !providerId || !cutIndices?.length) {
       return NextResponse.json({ error: 'projectId, provider, cutIndices 필요' }, { status: 400 });
@@ -53,18 +53,28 @@ export async function POST(request: NextRequest) {
     if (cutsError) throw cutsError;
     if (!cuts?.length) throw new Error('컷 이미지를 찾을 수 없습니다');
 
-    const mode = (inputMode || 'single_image') as InputMode;
+    let mode = (inputMode || 'single_image') as InputMode;
     const images: { url: string; mimeType: string; role: 'start' | 'end' | 'reference' }[] = [];
 
-    for (let i = 0; i < cuts.length; i++) {
-      let role: 'start' | 'end' | 'reference' = 'reference';
-      if (mode === 'start_end_frame') {
-        role = i === 0 ? 'start' : i === cuts.length - 1 ? 'end' : 'reference';
-      } else if (mode === 'single_image') {
-        role = i === 0 ? 'start' : 'reference';
-      }
+    if (beforeFrameUrl) {
+      // 직전 프레임이 있으면 start_end_frame 모드로 강제
+      mode = 'start_end_frame';
+      images.push({ url: beforeFrameUrl, mimeType: 'image/png', role: 'start' });
+      // 선택된 컷 중 마지막 것을 end로
+      const endCut = cuts[cuts.length - 1];
+      images.push({ url: endCut.file_path, mimeType: 'image/png', role: 'end' });
+      console.log(`[generate-test-video] beforeFrame 모드: start=${beforeFrameUrl}, end=컷${endCut.order_index}`);
+    } else {
+      for (let i = 0; i < cuts.length; i++) {
+        let role: 'start' | 'end' | 'reference' = 'reference';
+        if (mode === 'start_end_frame') {
+          role = i === 0 ? 'start' : i === cuts.length - 1 ? 'end' : 'reference';
+        } else if (mode === 'single_image') {
+          role = i === 0 ? 'start' : 'reference';
+        }
 
-      images.push({ url: cuts[i].file_path, mimeType: 'image/png', role });
+        images.push({ url: cuts[i].file_path, mimeType: 'image/png', role });
+      }
     }
 
     // 3. Provider 호출
