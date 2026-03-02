@@ -55,6 +55,7 @@ export interface RsWorkPartner {
   contract_signed_date: string | null;
   contract_period: string | null;
   contract_end_date: string | null;
+  included_revenue_types: RevenueType[] | null;
   created_at: string;
   updated_at: string;
   // joined

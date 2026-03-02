@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { calculateSettlement } from '@/lib/settlement/calculator';
+import { RevenueType } from '@/lib/types/settlement';
+
+const DEFAULT_REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
 
 // POST /api/accounting/settlement/calculate - 정산 계산 실행
 export async function POST(request: NextRequest) {
@@ -104,8 +107,12 @@ export async function POST(request: NextRequest) {
           ? Number(wp.mg_rs_rate)
           : Number(wp.rs_rate);
 
+        // 특약: 포함된 수익유형만 합산 (미설정 시 전체)
+        const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
+        const grossRevenue = types.reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
+
         const calc = calculateSettlement({
-          gross_revenue: Number(rev.total),
+          gross_revenue: grossRevenue,
           rs_rate: Number(wp.rs_rate),
           mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
           production_cost: productionCost,
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
           month,
           partner_id: wp.partner_id,
           work_id: wp.work_id,
-          gross_revenue: Number(rev.total),
+          gross_revenue: grossRevenue,
           rs_rate: effectiveRsRate,
           revenue_share: calc.revenue_share,
           production_cost: productionCost,
@@ -164,7 +171,7 @@ export async function POST(request: NextRequest) {
         results.push({
           work_id: wp.work_id,
           partner_id: wp.partner_id,
-          gross_revenue: Number(rev.total),
+          gross_revenue: grossRevenue,
           rs_rate: effectiveRsRate,
           revenue_share: calc.revenue_share,
           production_cost: productionCost,

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, work:rs_works(id, name)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, work:rs_works(id, name)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -115,14 +115,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ? Number(wp.mg_rs_rate)
         : Number(wp.rs_rate);
 
+      const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
       const details = REVENUE_COLUMNS.map(col => {
-        const amount = rev ? Number(rev[col]) : 0;
+        const included = includedTypes.includes(col);
+        const amount = (rev && included) ? Number(rev[col]) : 0;
         return {
           revenue_type: col,
           revenue_type_label: REVENUE_TYPE_LABELS[col],
           gross_revenue: amount,
           revenue_share: Math.round(amount * effectiveRate),
           rs_rate: effectiveRate,
+          excluded: !included,
         };
       });
 

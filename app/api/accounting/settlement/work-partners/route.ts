@@ -56,15 +56,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { work_id, partner_id, rs_rate, role, is_mg_applied, note } = body;
+    const { work_id, partner_id, rs_rate, role, is_mg_applied, note, included_revenue_types } = body;
 
     if (!work_id || !partner_id || rs_rate === undefined) {
       return NextResponse.json({ error: '작품, 파트너, RS 비율은 필수입니다.' }, { status: 400 });
     }
 
+    const insertData: Record<string, unknown> = { work_id, partner_id, rs_rate, role: role || 'author', is_mg_applied: is_mg_applied || false, note };
+    if (included_revenue_types !== undefined) insertData.included_revenue_types = included_revenue_types;
+
     const { data, error } = await supabase
       .from('rs_work_partners')
-      .insert({ work_id, partner_id, rs_rate, role: role || 'author', is_mg_applied: is_mg_applied || false, note })
+      .insert(insertData)
       .select('*, work:rs_works(*), partner:rs_partners(*)')
       .single();
 
@@ -100,7 +103,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, rs_rate, role, is_mg_applied, note,
       pen_name, vat_type, mg_rs_rate, contract_category,
-      contract_doc_name, contract_signed_date, contract_period, contract_end_date } = body;
+      contract_doc_name, contract_signed_date, contract_period, contract_end_date,
+      included_revenue_types } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
@@ -115,6 +119,7 @@ export async function PUT(request: NextRequest) {
     if (contract_signed_date !== undefined) updateData.contract_signed_date = contract_signed_date;
     if (contract_period !== undefined) updateData.contract_period = contract_period;
     if (contract_end_date !== undefined) updateData.contract_end_date = contract_end_date;
+    if (included_revenue_types !== undefined) updateData.included_revenue_types = included_revenue_types;
 
     const { data, error } = await supabase
       .from('rs_work_partners')

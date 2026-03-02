@@ -5,8 +5,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { RsWorkPartner } from '@/lib/types/settlement';
+import { RsWorkPartner, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+import { Checkbox } from '@/components/ui/checkbox';
+
+const ALL_REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
+const REVENUE_TYPE_LABELS: Record<RevenueType, string> = {
+  domestic_paid: '국내유료수익',
+  global_paid: '글로벌유료수익',
+  domestic_ad: '국내 광고',
+  global_ad: '글로벌 광고',
+  secondary: '2차 사업',
+};
 
 interface Props {
   wp: RsWorkPartner | null;
@@ -24,6 +34,7 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
   const [contractSignedDate, setContractSignedDate] = useState('');
   const [contractPeriod, setContractPeriod] = useState('');
   const [contractEndDate, setContractEndDate] = useState('');
+  const [includedRevenueTypes, setIncludedRevenueTypes] = useState<RevenueType[]>(ALL_REVENUE_TYPES);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -36,6 +47,7 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
       setContractSignedDate(wp.contract_signed_date || '');
       setContractPeriod(wp.contract_period || '');
       setContractEndDate(wp.contract_end_date || '');
+      setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
     }
   }, [wp]);
 
@@ -60,6 +72,7 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
           contract_signed_date: contractSignedDate || null,
           contract_period: contractPeriod || null,
           contract_end_date: contractEndDate || null,
+          included_revenue_types: includedRevenueTypes,
         }),
       });
       if (res.ok) {
@@ -115,6 +128,26 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
           <div className="col-span-2">
             <Label>계약기간</Label>
             <Input value={contractPeriod} onChange={(e) => setContractPeriod(e.target.value)} placeholder="예: 마지막업로드~5년" />
+          </div>
+          <div className="col-span-2">
+            <Label className="mb-2 block">정산 대상 수익유형</Label>
+            <div className="flex flex-wrap gap-3">
+              {ALL_REVENUE_TYPES.map(type => (
+                <label key={type} className="flex items-center gap-1.5 text-sm">
+                  <Checkbox
+                    checked={includedRevenueTypes.includes(type)}
+                    onCheckedChange={(checked) => {
+                      setIncludedRevenueTypes(prev => {
+                        if (checked) return [...prev, type];
+                        const next = prev.filter(t => t !== type);
+                        return next.length > 0 ? next : prev;
+                      });
+                    }}
+                  />
+                  {REVENUE_TYPE_LABELS[type]}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-3">
