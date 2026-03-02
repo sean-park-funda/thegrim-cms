@@ -20,7 +20,7 @@ import {
   Play, Sparkles, Loader2,
   Image, ArrowRightLeft, Images,
   Monitor, Cloud, Cpu,
-  Wand2, ArrowRight, X, Maximize2,
+  Wand2, ArrowRight, X, Maximize2, Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
@@ -77,6 +77,8 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [beforeMode, setBeforeMode] = useState<'from_self' | 'from_prev'>('from_self');
   const [beforePrompt, setBeforePrompt] = useState('');
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [beforeAttachedCuts, setBeforeAttachedCuts] = useState<number[]>([]);
+  const [showCutPicker, setShowCutPicker] = useState(false);
 
   const BEFORE_PROMPTS = {
     from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
@@ -135,28 +137,35 @@ Rules:
     setSelectedCuts([]);
   }, [selectedProvider]);
 
-  // 컷 선택이 바뀌면 before frame 초기화
+  // 컷 선택이 바뀌면 before frame 초기화 + 첨부 이미지 자동 설정
   useEffect(() => {
     if (beforeFrameCutIndex !== null && !selectedCuts.includes(beforeFrameCutIndex)) {
       setBeforeFrameUrl(null);
       setBeforeFrameCutIndex(null);
     }
-  }, [selectedCuts, beforeFrameCutIndex]);
+    // 첨부 이미지 자동 설정
+    if (selectedCuts.length > 0) {
+      const targetCutIndex = selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0];
+      if (beforeMode === 'from_prev') {
+        const sortedIndices = cuts.map(c => c.order_index).sort((a, b) => a - b);
+        const pos = sortedIndices.indexOf(targetCutIndex);
+        if (pos > 0) {
+          setBeforeAttachedCuts([sortedIndices[pos - 1], targetCutIndex]);
+        } else {
+          setBeforeAttachedCuts([targetCutIndex]);
+        }
+      } else {
+        setBeforeAttachedCuts([targetCutIndex]);
+      }
+    }
+  }, [selectedCuts, beforeFrameCutIndex, beforeMode, cuts]);
 
   const handleGenerateBefore = async () => {
     const targetCutIndex = selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0];
     if (targetCutIndex === undefined) return;
-
-    // from_prev 모드일 때 직전 컷 찾기
-    let prevCutIndex: number | undefined;
-    if (beforeMode === 'from_prev') {
-      const sortedIndices = cuts.map(c => c.order_index).sort((a, b) => a - b);
-      const pos = sortedIndices.indexOf(targetCutIndex);
-      if (pos <= 0) {
-        alert('직전 컷이 없습니다 (첫 번째 컷)');
-        return;
-      }
-      prevCutIndex = sortedIndices[pos - 1];
+    if (beforeAttachedCuts.length === 0) {
+      alert('첨부할 이미지가 없습니다');
+      return;
     }
 
     setGeneratingBefore(true);
@@ -170,7 +179,7 @@ Rules:
           cutIndex: targetCutIndex,
           model: beforeModel,
           prompt: effectivePrompt,
-          ...(prevCutIndex !== undefined && { prevCutIndex }),
+          imageCutIndices: beforeAttachedCuts,
         }),
       });
       const data = await res.json();
@@ -453,6 +462,80 @@ Rules:
                   {m.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* 첨부 이미지 */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+              첨부 이미지 ({beforeAttachedCuts.length}장)
+            </label>
+            <div className="flex gap-2 items-end flex-wrap">
+              {beforeAttachedCuts.map((cutIdx, i) => {
+                const cut = cuts.find(c => c.order_index === cutIdx);
+                if (!cut) return null;
+                return (
+                  <div key={`${cutIdx}-${i}`} className="relative flex-shrink-0 group/attached">
+                    <div className="w-16 h-22 rounded border overflow-hidden">
+                      <img src={cut.file_path} alt={`컷 ${cutIdx}`} className="w-full h-full object-cover" />
+                    </div>
+                    <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] text-center py-0.5">
+                      컷 {cutIdx}
+                    </span>
+                    <button
+                      onClick={() => setBeforeAttachedCuts(prev => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 bg-destructive/80 text-white rounded-full p-0.5 opacity-0 group-hover/attached:opacity-100 hover:bg-destructive transition-opacity"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                    {beforeAttachedCuts.length > 1 && (
+                      <span className="absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded bg-black/60 text-white">
+                        {i + 1}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              {/* 이미지 추가 버튼 */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowCutPicker(!showCutPicker)}
+                  className="w-16 h-22 rounded border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 flex flex-col items-center justify-center gap-0.5 transition-all"
+                >
+                  <Plus className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-[9px] text-muted-foreground">추가</span>
+                </button>
+                {showCutPicker && (
+                  <div className="absolute top-full left-0 mt-1 z-20 bg-popover border rounded-lg shadow-lg p-2 max-w-[320px]">
+                    <div className="flex gap-1.5 flex-wrap max-h-[200px] overflow-y-auto">
+                      {cuts
+                        .filter(c => !beforeAttachedCuts.includes(c.order_index))
+                        .sort((a, b) => a.order_index - b.order_index)
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setBeforeAttachedCuts(prev => [...prev, c.order_index]);
+                              setShowCutPicker(false);
+                            }}
+                            className="w-12 h-16 rounded border overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all flex-shrink-0 relative"
+                          >
+                            <img src={c.file_path} alt={`컷 ${c.order_index}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] text-center">
+                              {c.order_index}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                    <button
+                      onClick={() => setShowCutPicker(false)}
+                      className="mt-1 text-[10px] text-muted-foreground hover:text-foreground w-full text-center"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

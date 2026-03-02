@@ -25,28 +25,41 @@ const DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
 
 export async function POST(request: NextRequest) {
   try {
-    const { projectId, cutIndex, model, prompt: userPrompt, prevCutIndex } = await request.json();
+    const { projectId, cutIndex, model, prompt: userPrompt, imageCutIndices, prevCutIndex } = await request.json();
 
     if (!projectId || cutIndex === undefined) {
       return NextResponse.json({ error: 'projectId, cutIndex 필요' }, { status: 400 });
     }
 
-    // 1. 컷 이미지 조회
-    const cutIndices = prevCutIndex !== undefined ? [prevCutIndex, cutIndex] : [cutIndex];
+    // 1. 첨부할 컷 이미지 결정 (imageCutIndices 우선, 없으면 레거시 prevCutIndex 호환)
+    let attachIndices: number[];
+    if (imageCutIndices?.length) {
+      attachIndices = imageCutIndices;
+    } else if (prevCutIndex !== undefined) {
+      attachIndices = [prevCutIndex, cutIndex];
+    } else {
+      attachIndices = [cutIndex];
+    }
+
     const { data: fetchedCuts, error: cutError } = await supabase
       .from('webtoonanimation_cuts')
       .select('order_index, file_path')
       .eq('project_id', projectId)
-      .in('order_index', cutIndices)
+      .in('order_index', attachIndices)
       .order('order_index');
 
     if (cutError || !fetchedCuts?.length) {
       return NextResponse.json({ error: '컷을 찾을 수 없습니다' }, { status: 404 });
     }
 
+    // imageCutIndices 순서 유지 (order_index ASC가 아닌, 사용자가 지정한 순서)
+    const orderedCuts = attachIndices
+      .map(idx => fetchedCuts.find(c => c.order_index === idx))
+      .filter(Boolean) as typeof fetchedCuts;
+
     // 2. 이미지 다운로드 + 리사이즈
     const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
-    for (const c of fetchedCuts) {
+    for (const c of orderedCuts) {
       const imgRes = await fetch(c.file_path);
       if (!imgRes.ok) throw new Error(`컷 ${c.order_index} 이미지 다운로드 실패`);
       const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
@@ -60,8 +73,7 @@ export async function POST(request: NextRequest) {
     // 3. Gemini로 직전 프레임 생성
     const selectedModel = model || DEFAULT_MODEL;
     const selectedPrompt = userPrompt || DEFAULT_BEFORE_PROMPT;
-    const hasPrev = prevCutIndex !== undefined;
-    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작 (model: ${selectedModel}, mode: ${hasPrev ? 'from_prev(' + prevCutIndex + ')' : 'from_self'})`);
+    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작 (model: ${selectedModel}, images: [${attachIndices.join(',')}])`);
 
     const result = await generateGeminiImage({
       provider: 'gemini',
