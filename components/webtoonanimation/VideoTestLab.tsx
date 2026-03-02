@@ -68,8 +68,11 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [beforeFrameCutIndex, setBeforeFrameCutIndex] = useState<number | null>(null);
   const [generatingBefore, setGeneratingBefore] = useState(false);
   const [beforeModel, setBeforeModel] = useState('gemini-3.1-flash-image-preview');
-  const [beforePrompt, setBeforePrompt] = useState(
-    `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
+  const [beforeMode, setBeforeMode] = useState<'from_self' | 'from_prev'>('from_self');
+  const [beforePrompt, setBeforePrompt] = useState('');
+
+  const BEFORE_PROMPTS = {
+    from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
 Generate what this scene looked like exactly 0.5 seconds BEFORE this moment.
 
 Rules:
@@ -78,8 +81,18 @@ Rules:
 - Keep the EXACT same art style, line work, coloring, and character design
 - Keep similar composition and framing
 - No text, no speech bubbles, no sound effects
-- The image should flow naturally into the given panel as an animation sequence`
-  );
+- The image should flow naturally into the given panel as an animation sequence`,
+    from_prev: `Two webtoon panels are given. The FIRST image is the previous panel and the SECOND image is the current panel.
+Redraw the scene from the FIRST image using the camera angle, composition, and framing of the SECOND image.
+
+Rules:
+- Take the characters, poses, and action from the FIRST image
+- Apply the camera angle, perspective, and panel composition from the SECOND image
+- Keep the EXACT same art style, line work, coloring from both panels
+- The result should look like it belongs 0.5 seconds before the SECOND panel
+- No text, no speech bubbles, no sound effects
+- The output should flow naturally into the SECOND panel as an animation sequence`,
+  } as const;
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
 
@@ -126,12 +139,32 @@ Rules:
   const handleGenerateBefore = async () => {
     const targetCutIndex = selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0];
     if (targetCutIndex === undefined) return;
+
+    // from_prev 모드일 때 직전 컷 찾기
+    let prevCutIndex: number | undefined;
+    if (beforeMode === 'from_prev') {
+      const sortedIndices = cuts.map(c => c.order_index).sort((a, b) => a - b);
+      const pos = sortedIndices.indexOf(targetCutIndex);
+      if (pos <= 0) {
+        alert('직전 컷이 없습니다 (첫 번째 컷)');
+        return;
+      }
+      prevCutIndex = sortedIndices[pos - 1];
+    }
+
     setGeneratingBefore(true);
     try {
+      const effectivePrompt = beforePrompt || BEFORE_PROMPTS[beforeMode];
       const res = await fetch('/api/webtoonanimation/generate-before-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, cutIndex: targetCutIndex, model: beforeModel, prompt: beforePrompt }),
+        body: JSON.stringify({
+          projectId,
+          cutIndex: targetCutIndex,
+          model: beforeModel,
+          prompt: effectivePrompt,
+          ...(prevCutIndex !== undefined && { prevCutIndex }),
+        }),
       });
       const data = await res.json();
       if (data.imageUrl) {
@@ -366,6 +399,31 @@ Rules:
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">직전 프레임 생성</label>
           </div>
 
+          {/* 생성 방식 선택 */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">생성 방식</label>
+            <div className="flex gap-1.5">
+              {([
+                { id: 'from_self' as const, label: '해당 컷에서 추론', desc: '선택한 컷에서 0.5초 전 장면을 AI가 상상' },
+                { id: 'from_prev' as const, label: '직전 컷 앵글 변환', desc: '직전 컷의 장면을 현재 컷 앵글로 변환' },
+              ]).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => { setBeforeMode(m.id); setBeforePrompt(''); }}
+                  className={cn(
+                    'flex-1 px-3 py-2 text-left rounded-md border transition-all',
+                    beforeMode === m.id
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                  )}
+                >
+                  <div className="text-xs font-medium">{m.label}</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">{m.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 모델 선택 */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 모델</label>
@@ -397,7 +455,7 @@ Rules:
             <Textarea
               value={beforePrompt}
               onChange={(e) => setBeforePrompt(e.target.value)}
-              placeholder="직전 프레임 생성 프롬프트..."
+              placeholder={BEFORE_PROMPTS[beforeMode]}
               rows={4}
               className="text-xs"
             />
@@ -416,7 +474,9 @@ Rules:
             ) : (
               <Wand2 className="w-3 h-3 mr-1" />
             )}
-            {generatingBefore ? '생성 중...' : `컷 ${selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0]} 직전 프레임 생성`}
+            {generatingBefore ? '생성 중...' : beforeMode === 'from_prev'
+              ? `컷 ${selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0]} 직전 프레임 생성 (직전 컷 → 앵글 변환)`
+              : `컷 ${selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0]} 직전 프레임 생성 (해당 컷에서 추론)`}
           </Button>
 
           {/* 결과 미리보기 */}

@@ -25,40 +25,43 @@ const DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
 
 export async function POST(request: NextRequest) {
   try {
-    const { projectId, cutIndex, model, prompt: userPrompt } = await request.json();
+    const { projectId, cutIndex, model, prompt: userPrompt, prevCutIndex } = await request.json();
 
     if (!projectId || cutIndex === undefined) {
       return NextResponse.json({ error: 'projectId, cutIndex 필요' }, { status: 400 });
     }
 
     // 1. 컷 이미지 조회
-    const { data: cut, error: cutError } = await supabase
+    const cutIndices = prevCutIndex !== undefined ? [prevCutIndex, cutIndex] : [cutIndex];
+    const { data: fetchedCuts, error: cutError } = await supabase
       .from('webtoonanimation_cuts')
       .select('order_index, file_path')
       .eq('project_id', projectId)
-      .eq('order_index', cutIndex)
-      .single();
+      .in('order_index', cutIndices)
+      .order('order_index');
 
-    if (cutError || !cut) {
+    if (cutError || !fetchedCuts?.length) {
       return NextResponse.json({ error: '컷을 찾을 수 없습니다' }, { status: 404 });
     }
 
     // 2. 이미지 다운로드 + 리사이즈
-    const imgRes = await fetch(cut.file_path);
-    if (!imgRes.ok) throw new Error('컷 이미지 다운로드 실패');
-
-    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-    const resized = await sharp(imgBuffer)
-      .resize(800, undefined, { fit: 'inside' })
-      .png()
-      .toBuffer();
-
-    const imageBase64 = resized.toString('base64');
+    const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
+    for (const c of fetchedCuts) {
+      const imgRes = await fetch(c.file_path);
+      if (!imgRes.ok) throw new Error(`컷 ${c.order_index} 이미지 다운로드 실패`);
+      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+      const resized = await sharp(imgBuffer)
+        .resize(800, undefined, { fit: 'inside' })
+        .png()
+        .toBuffer();
+      imageParts.push({ inlineData: { mimeType: 'image/png', data: resized.toString('base64') } });
+    }
 
     // 3. Gemini로 직전 프레임 생성
     const selectedModel = model || DEFAULT_MODEL;
     const selectedPrompt = userPrompt || DEFAULT_BEFORE_PROMPT;
-    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작 (model: ${selectedModel})`);
+    const hasPrev = prevCutIndex !== undefined;
+    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작 (model: ${selectedModel}, mode: ${hasPrev ? 'from_prev(' + prevCutIndex + ')' : 'from_self'})`);
 
     const result = await generateGeminiImage({
       provider: 'gemini',
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
       contents: [{
         role: 'user',
         parts: [
-          { inlineData: { mimeType: 'image/png', data: imageBase64 } },
+          ...imageParts,
           { text: selectedPrompt },
         ],
       }],
