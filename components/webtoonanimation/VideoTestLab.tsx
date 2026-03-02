@@ -20,7 +20,7 @@ import {
   Play, Sparkles, Loader2,
   Image, ArrowRightLeft, Images,
   Monitor, Cloud, Cpu,
-  Wand2, ArrowRight, X, Maximize2, Plus,
+  Wand2, ArrowRight, X, Maximize2, Plus, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
@@ -80,6 +80,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [beforeAttachedCuts, setBeforeAttachedCuts] = useState<number[]>([]);
   const [showCutPicker, setShowCutPicker] = useState(false);
   const [generatingBeforePrompt, setGeneratingBeforePrompt] = useState(false);
+  const [beforeSectionOpen, setBeforeSectionOpen] = useState(false);
 
   const BEFORE_PROMPTS = {
     from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
@@ -462,10 +463,30 @@ Rules:
 
       {/* 직전 프레임 생성 */}
       {selectedCuts.length > 0 && (
-        <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/20">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">직전 프레임 생성</label>
-          </div>
+        <div>
+          <button
+            onClick={() => setBeforeSectionOpen(!beforeSectionOpen)}
+            className={cn(
+              'w-full flex items-center justify-between px-4 py-2.5 rounded-lg border text-left transition-all',
+              beforeSectionOpen
+                ? 'border-border bg-muted/20 rounded-b-none'
+                : beforeFrameUrl
+                  ? 'border-primary/30 bg-primary/5'
+                  : 'border-border hover:bg-muted/10'
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium">직전 프레임 생성</span>
+              {beforeFrameUrl && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">생성됨</span>
+              )}
+            </div>
+            <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', beforeSectionOpen && 'rotate-180')} />
+          </button>
+
+          {beforeSectionOpen && (
+          <div className="space-y-3 p-4 rounded-b-lg border border-t-0 border-border bg-muted/20">
 
           {/* 생성 방식 선택 */}
           <div className="space-y-1.5">
@@ -719,6 +740,8 @@ Rules:
                 직전 프레임이 시작 이미지로, 원본 컷이 끝 이미지로 사용됩니다
               </span>
             </div>
+          )}
+          </div>
           )}
         </div>
       )}
