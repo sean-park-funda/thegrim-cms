@@ -316,109 +316,144 @@ Rules:
   }
 
   return (
-    <div className="space-y-5">
-      {/* 모델 선택 — 카드 그리드 */}
-      <div className="space-y-2">
-        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">모델</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {providers.map((p) => {
-            const isActive = selectedProvider === p.id;
-            const safety = SAFETY_STYLE[p.contentSafety];
-            const PlatformIcon = PLATFORM_ICON[p.platform] || Cloud;
-            const modeIcons = p.inputModes.map((m) => INPUT_MODE_CONFIG[m]);
-
-            return (
-              <button
-                key={p.id}
-                onClick={() => setSelectedProvider(p.id)}
-                className={cn(
-                  'relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all',
-                  isActive
-                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                    : 'border-border hover:border-muted-foreground/50 hover:bg-muted/30'
-                )}
-              >
-                {/* 모델명 + 플랫폼 */}
-                <div className="flex items-center gap-1.5 w-full">
-                  <PlatformIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-sm font-medium truncate">{p.name}</span>
-                </div>
-
-                {/* 입력 모드 아이콘 + 안전성 + 비용 */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* 지원 모드 칩 */}
-                  {modeIcons.map((m) => {
-                    const MIcon = m.icon;
-                    return (
-                      <span
-                        key={m.label}
-                        className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
-                        title={m.desc}
-                      >
-                        <MIcon className="w-2.5 h-2.5" />
-                        {m.label}
-                      </span>
-                    );
-                  })}
-                  {/* 안전성 */}
-                  <span className={cn('inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', safety.bg)}>
-                    <span className={cn('w-1.5 h-1.5 rounded-full', safety.dot)} />
-                    {safety.label}
-                  </span>
-                </div>
-
-                {/* 비용 + max 이미지 */}
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {p.costPerSec !== undefined && (
-                    <span>{p.costPerSec === 0 ? 'Free' : `$${p.costPerSec}/s`}</span>
-                  )}
-                  {p.maxImages && p.maxImages > 1 && (
-                    <span>max {p.maxImages}장</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 입력 모드 — 토글 버튼 */}
-      {currentProvider && (
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">입력 모드</label>
-          <div className="flex gap-2">
-            {currentProvider.inputModes.map((mode) => {
-              const cfg = INPUT_MODE_CONFIG[mode];
-              const ModeIcon = cfg.icon;
-              const isActive = inputMode === mode;
-              const maxImg = mode === 'multi_reference' ? currentProvider.maxImages : mode === 'start_end_frame' ? 2 : 1;
+    <div className="flex flex-col lg:flex-row gap-5">
+      {/* ── 좌측 패널: 모델 + 입력 모드 ── */}
+      <div className="w-full lg:w-52 flex-shrink-0 lg:sticky lg:top-4 lg:self-start space-y-4">
+        {/* 모델 선택 — 세로 리스트 */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">영상 모델</label>
+          <div className="flex flex-row lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+            {providers.map((p) => {
+              const isActive = selectedProvider === p.id;
+              const safety = SAFETY_STYLE[p.contentSafety];
+              const PlatformIcon = PLATFORM_ICON[p.platform] || Cloud;
+              const modeIcons = p.inputModes.map((m) => INPUT_MODE_CONFIG[m]);
 
               return (
                 <button
-                  key={mode}
-                  onClick={() => { setInputMode(mode); setSelectedCuts([]); }}
+                  key={p.id}
+                  onClick={() => setSelectedProvider(p.id)}
                   className={cn(
-                    'flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all',
+                    'relative flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-all flex-shrink-0 lg:flex-shrink',
                     isActive
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'border-border hover:border-muted-foreground/50 hover:bg-muted/30'
                   )}
                 >
-                  <ModeIcon className="w-4 h-4" />
-                  <div className="text-left">
-                    <div>{cfg.desc}</div>
-                    <div className="text-[10px] font-normal opacity-70">
-                      {mode === 'single_image' && '컷 1장'}
-                      {mode === 'start_end_frame' && '컷 2장 (시작→끝)'}
-                      {mode === 'multi_reference' && `컷 최대 ${maxImg}장`}
-                    </div>
+                  <div className="flex items-center gap-1.5 w-full">
+                    <PlatformIcon className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs font-medium truncate">{p.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {modeIcons.map((m) => {
+                      const MIcon = m.icon;
+                      return (
+                        <span key={m.label} className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground" title={m.desc}>
+                          <MIcon className="w-2 h-2" />
+                          {m.label}
+                        </span>
+                      );
+                    })}
+                    <span className={cn('inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded border', safety.bg)}>
+                      <span className={cn('w-1.5 h-1.5 rounded-full', safety.dot)} />
+                      {safety.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
+                    {p.costPerSec !== undefined && (
+                      <span>{p.costPerSec === 0 ? 'Free' : `$${p.costPerSec}/s`}</span>
+                    )}
                   </div>
                 </button>
               );
             })}
           </div>
         </div>
-      )}
+
+        {/* 입력 모드 — 세로 리스트 */}
+        {currentProvider && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">입력 모드</label>
+            <div className="flex flex-row lg:flex-col gap-1.5">
+              {currentProvider.inputModes.map((mode) => {
+                const cfg = INPUT_MODE_CONFIG[mode];
+                const ModeIcon = cfg.icon;
+                const isActive = inputMode === mode;
+
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => { setInputMode(mode); setSelectedCuts([]); }}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all',
+                      isActive
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
+                    )}
+                  >
+                    <ModeIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <div>
+                      <div className="text-xs font-medium">{cfg.desc}</div>
+                      <div className="text-[9px] font-normal opacity-70">
+                        {mode === 'single_image' && '컷 1장'}
+                        {mode === 'start_end_frame' && '시작→끝'}
+                        {mode === 'multi_reference' && `최대 ${currentProvider.maxImages}장`}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 설정 (길이 + 비율) */}
+        {currentProvider && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">길이</label>
+              <div className="flex gap-1 flex-wrap">
+                {currentProvider.durations.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDuration(d)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs rounded-md border transition-all',
+                      duration === d
+                        ? 'border-primary bg-primary/5 text-primary font-medium'
+                        : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                    )}
+                  >
+                    {d}초
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">비율</label>
+              <div className="flex gap-1 flex-wrap">
+                {currentProvider.aspectRatios.map((ar) => (
+                  <button
+                    key={ar}
+                    onClick={() => setAspectRatio(ar)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs rounded-md border transition-all',
+                      aspectRatio === ar
+                        ? 'border-primary bg-primary/5 text-primary font-medium'
+                        : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                    )}
+                  >
+                    {ar}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── 우측 패널: 워크플로우 ── */}
+      <div className="flex-1 min-w-0 space-y-5">
 
       {/* 컷 선택 */}
       <CutPicker
@@ -726,48 +761,6 @@ Rules:
         />
       </div>
 
-      {/* 설정 (길이 + 비율) — 인라인 칩 */}
-      <div className="flex gap-4 flex-wrap">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">길이</label>
-          <div className="flex gap-1">
-            {currentProvider?.durations.map((d) => (
-              <button
-                key={d}
-                onClick={() => setDuration(d)}
-                className={cn(
-                  'px-3 py-1 text-sm rounded-md border transition-all',
-                  duration === d
-                    ? 'border-primary bg-primary/5 text-primary font-medium'
-                    : 'border-border text-muted-foreground hover:border-muted-foreground/50'
-                )}
-              >
-                {d}초
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">비율</label>
-          <div className="flex gap-1">
-            {currentProvider?.aspectRatios.map((ar) => (
-              <button
-                key={ar}
-                onClick={() => setAspectRatio(ar)}
-                className={cn(
-                  'px-3 py-1 text-sm rounded-md border transition-all',
-                  aspectRatio === ar
-                    ? 'border-primary bg-primary/5 text-primary font-medium'
-                    : 'border-border text-muted-foreground hover:border-muted-foreground/50'
-                )}
-              >
-                {ar}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* 생성 버튼 */}
       <Button
         onClick={handleGenerate}
@@ -800,6 +793,7 @@ Rules:
           </div>
         </div>
       )}
+      </div>{/* /우측 패널 */}
     </div>
   );
 }
