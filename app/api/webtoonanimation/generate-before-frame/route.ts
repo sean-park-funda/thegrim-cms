@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const BEFORE_FRAME_PROMPT = `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
+const DEFAULT_BEFORE_PROMPT = `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
 Generate what this scene looked like exactly 0.5 seconds BEFORE this moment.
 
 Rules:
@@ -21,9 +21,11 @@ Rules:
 - No text, no speech bubbles, no sound effects
 - The image should flow naturally into the given panel as an animation sequence`;
 
+const DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
+
 export async function POST(request: NextRequest) {
   try {
-    const { projectId, cutIndex } = await request.json();
+    const { projectId, cutIndex, model, prompt: userPrompt } = await request.json();
 
     if (!projectId || cutIndex === undefined) {
       return NextResponse.json({ error: 'projectId, cutIndex 필요' }, { status: 400 });
@@ -54,16 +56,18 @@ export async function POST(request: NextRequest) {
     const imageBase64 = resized.toString('base64');
 
     // 3. Gemini로 직전 프레임 생성
-    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작`);
+    const selectedModel = model || DEFAULT_MODEL;
+    const selectedPrompt = userPrompt || DEFAULT_BEFORE_PROMPT;
+    console.log(`[generate-before-frame] 컷 ${cutIndex} 직전 프레임 생성 시작 (model: ${selectedModel})`);
 
     const result = await generateGeminiImage({
       provider: 'gemini',
-      model: 'gemini-3.1-flash-image-preview',
+      model: selectedModel,
       contents: [{
         role: 'user',
         parts: [
           { inlineData: { mimeType: 'image/png', data: imageBase64 } },
-          { text: BEFORE_FRAME_PROMPT },
+          { text: selectedPrompt },
         ],
       }],
       config: {

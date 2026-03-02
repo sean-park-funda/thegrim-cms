@@ -67,6 +67,19 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [beforeFrameUrl, setBeforeFrameUrl] = useState<string | null>(null);
   const [beforeFrameCutIndex, setBeforeFrameCutIndex] = useState<number | null>(null);
   const [generatingBefore, setGeneratingBefore] = useState(false);
+  const [beforeModel, setBeforeModel] = useState('gemini-3.1-flash-image-preview');
+  const [beforePrompt, setBeforePrompt] = useState(
+    `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
+Generate what this scene looked like exactly 0.5 seconds BEFORE this moment.
+
+Rules:
+- Show the anticipation/wind-up pose right before the action happens
+- Use a front-facing camera angle
+- Keep the EXACT same art style, line work, coloring, and character design
+- Keep similar composition and framing
+- No text, no speech bubbles, no sound effects
+- The image should flow naturally into the given panel as an animation sequence`
+  );
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
 
@@ -118,7 +131,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
       const res = await fetch('/api/webtoonanimation/generate-before-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, cutIndex: targetCutIndex }),
+        body: JSON.stringify({ projectId, cutIndex: targetCutIndex, model: beforeModel, prompt: beforePrompt }),
       });
       const data = await res.json();
       if (data.imageUrl) {
@@ -348,25 +361,65 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
 
       {/* 직전 프레임 생성 */}
       {selectedCuts.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/20">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">직전 프레임</label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleGenerateBefore}
-              disabled={generatingBefore || !selectedCuts.length}
-              className="h-7 text-xs"
-            >
-              {generatingBefore ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <Wand2 className="w-3 h-3 mr-1" />
-              )}
-              {generatingBefore ? '생성 중...' : '직전 프레임 생성'}
-            </Button>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">직전 프레임 생성</label>
           </div>
 
+          {/* 모델 선택 */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 모델</label>
+            <div className="flex gap-1 flex-wrap">
+              {[
+                { id: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash' },
+                { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro' },
+                { id: 'gemini-2.0-flash-exp-image-generation', label: 'Gemini 2.0 Flash' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setBeforeModel(m.id)}
+                  className={cn(
+                    'px-3 py-1 text-xs rounded-md border transition-all',
+                    beforeModel === m.id
+                      ? 'border-primary bg-primary/5 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                  )}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 프롬프트 */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 프롬프트</label>
+            <Textarea
+              value={beforePrompt}
+              onChange={(e) => setBeforePrompt(e.target.value)}
+              placeholder="직전 프레임 생성 프롬프트..."
+              rows={4}
+              className="text-xs"
+            />
+          </div>
+
+          {/* 생성 버튼 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateBefore}
+            disabled={generatingBefore || !selectedCuts.length}
+            className="w-full"
+          >
+            {generatingBefore ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <Wand2 className="w-3 h-3 mr-1" />
+            )}
+            {generatingBefore ? '생성 중...' : `컷 ${selectedCuts[selectedCuts.length - 1] ?? selectedCuts[0]} 직전 프레임 생성`}
+          </Button>
+
+          {/* 결과 미리보기 */}
           {beforeFrameUrl && beforeFrameCutIndex !== null && (
             <div className="relative flex items-center gap-2 p-3 rounded-lg border border-dashed border-primary/30 bg-primary/5">
               <button
