@@ -50,11 +50,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const body = await request.json();
-    const { name, company_name, partner_type, tax_id, tax_rate, bank_name, bank_account, email, note } = body;
+    const { name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, note } = body;
 
     const { data, error } = await supabase
       .from('rs_partners')
-      .update({ name, company_name, partner_type, tax_id, tax_rate, bank_name, bank_account, email, note })
+      .update({ name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, note })
       .eq('id', id)
       .select()
       .single();

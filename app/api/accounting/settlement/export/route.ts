@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         '국내유료수익': Number(r.domestic_paid),
         '글로벌유료수익': Number(r.global_paid),
         '국내광고': Number(r.domestic_ad),
+        '국내광고차액': Number(r.domestic_ad_diff),
         '글로벌광고': Number(r.global_ad),
         '2차사업': Number(r.secondary),
         '합계': Number(r.total),
@@ -67,7 +68,9 @@ export async function GET(request: NextRequest) {
         '조정액': Number(s.adjustment),
         '세율': Number(s.tax_rate),
         '세액': Number(s.tax_amount),
+        '예고료': Number(s.insurance),
         'MG 차감': Number(s.mg_deduction),
+        '기타공제': Number(s.other_deduction),
         '최종 지급액': Number(s.final_payment),
         '상태': s.status === 'draft' ? '임시' : s.status === 'confirmed' ? '확정' : '지급완료',
       }));
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
       // 정산 집계 내보내기
       const { data: settlements } = await supabase
         .from('rs_settlements')
-        .select('*, partner:rs_partners(name, company_name, partner_type, business_number), work:rs_works(name)')
+        .select('*, partner:rs_partners(name, company_name, partner_type, report_type, business_number), work:rs_works(name)')
         .eq('month', month)
         .order('partner_id');
 
@@ -95,10 +98,20 @@ export async function GET(request: NextRequest) {
       }
 
       const incomeTypeMap: Record<string, string> = {
-        individual: '개인', domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '네이버',
+        individual: '개인',
+        individual_employee: '개인(임직원)',
+        individual_simple_tax: '개인(간이)',
+        domestic_corp: '사업자(국내)',
+        foreign_corp: '사업자(해외)',
+        naver: '네이버',
       };
-      const reportTypeMap: Record<string, string> = {
-        individual: '기타소득', domestic_corp: '세금계산서', foreign_corp: '기타소득', naver: '-',
+      const defaultReportTypeMap: Record<string, string> = {
+        individual: '기타소득',
+        individual_employee: '기타소득',
+        individual_simple_tax: '사업소득',
+        domestic_corp: '세금계산서',
+        foreign_corp: '기타소득',
+        naver: '세금계산서',
       };
 
       const calcTaxes = (partnerType: string, amount: number) => calculateTax(amount, partnerType);
@@ -111,7 +124,7 @@ export async function GET(request: NextRequest) {
         const pt = p?.partner_type || 'individual';
         const workNames = items.map((s: Record<string, unknown>) => (s.work as Record<string, string>)?.name || '').join(', ');
 
-        let revenueShare = 0, prodCost = 0, adjustment = 0, vat = 0, incomeTax = 0, localTax = 0, mgDeduction = 0, finalPayment = 0;
+        let revenueShare = 0, prodCost = 0, adjustment = 0, vat = 0, incomeTax = 0, localTax = 0, totalInsurance = 0, mgDeduction = 0, otherDeduction = 0, finalPayment = 0;
         for (const i of items) {
           const rs = Number(i.revenue_share) || 0;
           const pc = Number(i.production_cost) || 0;
@@ -124,18 +137,20 @@ export async function GET(request: NextRequest) {
           vat += taxes.vat;
           incomeTax += taxes.income_tax;
           localTax += taxes.local_tax;
+          totalInsurance += Number(i.insurance) || 0;
           mgDeduction += Number(i.mg_deduction) || 0;
+          otherDeduction += Number(i.other_deduction) || 0;
           finalPayment += Number(i.final_payment) || 0;
         }
         const settlementAmt = revenueShare + prodCost + adjustment;
-        const insurance = calculateInsurance(settlementAmt, pt);
+        const insurance = totalInsurance > 0 ? totalInsurance : calculateInsurance(settlementAmt, pt);
 
         rows.push({
           'NO': no++,
           '대상자': p?.name || '',
           '거래처명': p?.company_name || '',
           '소득구분': incomeTypeMap[pt] || '기타',
-          '신고구분': reportTypeMap[pt] || '-',
+          '신고구분': p?.report_type || defaultReportTypeMap[pt] || '-',
           '사업자번호': p?.business_number || '',
           '작품명': workNames,
           '수익분배금': revenueShare,
@@ -147,6 +162,7 @@ export async function GET(request: NextRequest) {
           '지방세': -localTax,
           '예고료': -insurance,
           'MG차감': mgDeduction,
+          '기타공제': -otherDeduction,
           '지급금액': finalPayment,
         });
       }
@@ -174,18 +190,26 @@ export async function GET(request: NextRequest) {
         const rev = (revenues || []).find(r => r.work_id === wp.work_id);
         if (!rev) continue;
         const gross = Number(rev.total);
-        const computed = Math.round(gross * wp.rs_rate);
+        const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+        const computed = Math.round(gross * effectiveRate);
         const settle = (settlements || []).find(s => s.work_id === wp.work_id && s.partner_id === wp.partner_id);
         const dbValue = settle ? Number(settle.revenue_share) : null;
         const diff = dbValue != null ? computed - dbValue : null;
 
+        const incomeTypeMap: Record<string, string> = {
+          individual: '개인', individual_employee: '개인(임직원)', individual_simple_tax: '개인(간이)',
+          domestic_corp: '사업자', foreign_corp: '해외', naver: '네이버',
+        };
+
         rows.push({
           '대상자': wp.partner?.name || '',
           '거래처명': wp.partner?.company_name || '',
-          '소득구분': wp.partner?.partner_type === 'individual' ? '개인' : wp.partner?.partner_type === 'domestic_corp' ? '사업자' : '',
+          '소득구분': incomeTypeMap[wp.partner?.partner_type] || '',
           '작품명': rev.work?.name || '',
           '매출액': gross,
-          'RS요율': `${(wp.rs_rate * 100).toFixed(1)}%`,
+          'RS요율': `${(Number(wp.rs_rate) * 100).toFixed(1)}%`,
+          'MG요율': wp.mg_rs_rate != null ? `${(Number(wp.mg_rs_rate) * 100).toFixed(1)}%` : '',
+          '적용요율': `${(effectiveRate * 100).toFixed(1)}%`,
           '산출분배금': computed,
           'DB분배금': dbValue,
           '차이': diff,
@@ -229,7 +253,8 @@ export async function GET(request: NextRequest) {
         .order('partner_id');
 
       const incomeTypeMap: Record<string, string> = {
-        individual: '개인', domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '사업자(네이버)',
+        individual: '개인', individual_employee: '개인(임직원)', individual_simple_tax: '개인(간이)',
+        domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '사업자(네이버)',
       };
 
       const rows = (mgBalances || []).map((mg, i) => ({

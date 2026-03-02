@@ -10,6 +10,7 @@ const navItems = [
   { href: '/accounting/settlement/partners', label: '파트너' },
   { href: '/accounting/settlement/settlements', label: '정산' },
   { href: '/accounting/settlement/mg', label: 'MG현황' },
+  { href: '/accounting/settlement/insurance', label: '예고료' },
 ];
 
 export function SettlementNav() {

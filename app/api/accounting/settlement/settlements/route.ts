@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, status, production_cost, adjustment, note } = body;
+    const { id, status, production_cost, adjustment, other_deduction, note } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
@@ -70,6 +70,7 @@ export async function PUT(request: NextRequest) {
     if (status !== undefined) updateData.status = status;
     if (production_cost !== undefined) updateData.production_cost = production_cost;
     if (adjustment !== undefined) updateData.adjustment = adjustment;
+    if (other_deduction !== undefined) updateData.other_deduction = other_deduction;
     if (note !== undefined) updateData.note = note;
 
     const { data, error } = await supabase

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, company_name, partner_type, tax_id, tax_rate, bank_name, bank_account, email, note } = body;
+    const { name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, note } = body;
 
     if (!name) {
       return NextResponse.json({ error: '파트너명은 필수입니다.' }, { status: 400 });
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('rs_partners')
-      .insert({ name, company_name, partner_type, tax_id, tax_rate, bank_name, bank_account, email, note })
+      .insert({ name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, note })
       .select()
       .single();
 

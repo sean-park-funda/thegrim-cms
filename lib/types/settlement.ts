@@ -4,7 +4,8 @@ export type RevenueType = 'domestic_paid' | 'global_paid' | 'domestic_ad' | 'glo
 
 export type ContractType = 'exclusive' | 'non_exclusive' | 'management';
 export type SettlementLevel = 'work' | 'partner';
-export type PartnerType = 'individual' | 'domestic_corp' | 'foreign_corp' | 'naver';
+export type PartnerType = 'individual' | 'individual_employee' | 'individual_simple_tax' | 'domestic_corp' | 'foreign_corp' | 'naver';
+export type ReportType = '세금계산서' | '사업소득' | '기타소득';
 export type SettlementStatus = 'draft' | 'confirmed' | 'paid';
 
 export interface RsWork {
@@ -14,6 +15,8 @@ export interface RsWork {
   contract_type: ContractType;
   settlement_level: SettlementLevel;
   is_active: boolean;
+  serial_start_date: string | null;
+  serial_end_date: string | null;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -26,6 +29,8 @@ export interface RsPartner {
   partner_type: PartnerType;
   tax_id: string | null;
   tax_rate: number;
+  salary_deduction: number;
+  report_type: ReportType | null;
   bank_name: string | null;
   bank_account: string | null;
   email: string | null;
@@ -64,6 +69,7 @@ export interface RsRevenue {
   domestic_paid: number;
   global_paid: number;
   domestic_ad: number;
+  domestic_ad_diff: number;
   global_ad: number;
   secondary: number;
   total: number; // generated column
@@ -86,7 +92,9 @@ export interface RsSettlement {
   adjustment: number;
   tax_rate: number;
   tax_amount: number;
+  insurance: number;
   mg_deduction: number;
+  other_deduction: number;
   final_payment: number;
   status: SettlementStatus;
   note: string | null;

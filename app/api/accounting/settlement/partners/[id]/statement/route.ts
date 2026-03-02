@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
-import { calculateTax } from '@/lib/settlement/calculator';
+import { calculateTax, calculateInsurance } from '@/lib/settlement/calculator';
 
 const REVENUE_TYPE_LABELS: Record<string, string> = {
   domestic_paid: '국내유료수익',
@@ -45,10 +45,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: '파트너를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 2) 파트너의 작품 연결 (RS비율)
+    // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, is_mg_applied, work:rs_works(id, name)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, work:rs_works(id, name)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         grand_total_revenue: 0,
         grand_total_share: 0,
         tax_amount: 0,
+        insurance: 0,
         final_payment: 0,
       });
     }
@@ -95,11 +96,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .in('work_id', workIds)
       .order('month', { ascending: true });
 
+    // 4-2) 정산 데이터에서 other_deduction 조회
+    const { data: settlements } = await supabase
+      .from('rs_settlements')
+      .select('work_id, other_deduction')
+      .eq('month', month)
+      .eq('partner_id', id)
+      .in('work_id', workIds);
+
     // 5) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
       const work = wp.work as unknown as { id: string; name: string } | null;
       const rev = revenues?.find(r => r.work_id === wp.work_id);
       const mg = mgBalances?.find(m => m.work_id === wp.work_id);
+
+      // MG 적용 시 mg_rs_rate 사용
+      const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
+        ? Number(wp.mg_rs_rate)
+        : Number(wp.rs_rate);
 
       const details = REVENUE_COLUMNS.map(col => {
         const amount = rev ? Number(rev[col]) : 0;
@@ -107,8 +121,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           revenue_type: col,
           revenue_type_label: REVENUE_TYPE_LABELS[col],
           gross_revenue: amount,
-          revenue_share: Math.round(amount * Number(wp.rs_rate)),
-          rs_rate: Number(wp.rs_rate),
+          revenue_share: Math.round(amount * effectiveRate),
+          rs_rate: effectiveRate,
         };
       });
 
@@ -119,6 +133,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         work_name: work?.name || '',
         work_id: wp.work_id,
         rs_rate: Number(wp.rs_rate),
+        mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
+        effective_rate: effectiveRate,
         is_mg_applied: wp.is_mg_applied,
         details,
         work_total_revenue,
@@ -132,14 +148,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const grand_total_revenue = works.reduce((s, w) => s + w.work_total_revenue, 0);
     const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
 
+    // 근로소득공제 (임직원)
+    const salaryDeduction = Number(partner.salary_deduction) || 0;
+    const subtotal = grand_total_share - salaryDeduction;
+
     // 세금 계산 (파트너 유형별 분리)
-    const tax_breakdown = calculateTax(grand_total_share, partner.partner_type);
+    const tax_breakdown = calculateTax(subtotal, partner.partner_type);
     const tax_amount = tax_breakdown.total;
+
+    // 예고료 계산
+    const insurance = calculateInsurance(subtotal, partner.partner_type);
 
     // MG 차감 합계
     const total_mg_deduction = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
 
-    const final_payment = grand_total_share - tax_amount - total_mg_deduction;
+    // 기타 공제 합계
+    const total_other_deduction = (settlements || []).reduce((s, st) => s + (Number(st.other_deduction) || 0), 0);
+
+    const final_payment = subtotal - tax_amount - insurance - total_mg_deduction - total_other_deduction;
 
     // MG 전체 이력을 작품별로 그룹핑
     const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
@@ -168,9 +194,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       works,
       grand_total_revenue,
       grand_total_share,
+      salary_deduction: salaryDeduction,
+      subtotal,
       tax_breakdown,
       tax_amount,
+      insurance,
       total_mg_deduction,
+      total_other_deduction,
       final_payment,
       mg_history,
     });

@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       partner_name: string;
       company_name: string;
       partner_type: string;
+      report_type: string | null;
       tax_id: string;
       works: string[];
       revenue_share: number;
@@ -71,12 +72,14 @@ export async function GET(request: NextRequest) {
       vat: number;
       income_tax: number;
       local_tax: number;
+      insurance: number;
       mg_deduction: number;
+      other_deduction: number;
       final_payment: number;
     }>();
 
     for (const s of settlements) {
-      const partner = s.partner as { id: string; name: string; company_name: string; partner_type: string; tax_id: string; tax_rate: number } | null;
+      const partner = s.partner as { id: string; name: string; company_name: string; partner_type: string; report_type: string | null; tax_id: string; tax_rate: number; salary_deduction: number } | null;
       const work = s.work as { name: string } | null;
       if (!partner) continue;
 
@@ -86,6 +89,7 @@ export async function GET(request: NextRequest) {
           partner_name: partner.name,
           company_name: partner.company_name || '',
           partner_type: partner.partner_type || 'individual',
+          report_type: partner.report_type || null,
           tax_id: partner.tax_id || '',
           works: [],
           revenue_share: 0,
@@ -94,7 +98,9 @@ export async function GET(request: NextRequest) {
           vat: 0,
           income_tax: 0,
           local_tax: 0,
+          insurance: 0,
           mg_deduction: 0,
+          other_deduction: 0,
           final_payment: 0,
         });
       }
@@ -118,30 +124,37 @@ export async function GET(request: NextRequest) {
       entry.vat += taxes.vat;
       entry.income_tax += taxes.income_tax;
       entry.local_tax += taxes.local_tax;
+      entry.insurance += Number(s.insurance) || 0;
       entry.mg_deduction += Number(s.mg_deduction) || 0;
+      entry.other_deduction += Number(s.other_deduction) || 0;
       entry.final_payment += Number(s.final_payment) || 0;
     }
 
     // 5) 응답 생성
     const incomeTypeMap: Record<string, string> = {
       individual: '개인',
+      individual_employee: '개인(임직원)',
+      individual_simple_tax: '개인(간이)',
       domestic_corp: '사업자(국내)',
       foreign_corp: '사업자(해외)',
       naver: '네이버',
     };
 
-    const reportTypeMap: Record<string, string> = {
+    const defaultReportTypeMap: Record<string, string> = {
       individual: '기타소득',
+      individual_employee: '기타소득',
+      individual_simple_tax: '사업소득',
       domestic_corp: '세금계산서',
       foreign_corp: '기타소득',
-      naver: '-',
+      naver: '세금계산서',
     };
 
     const summary = Array.from(partnerMap.values()).map((entry, idx) => {
       const settlementAmount = entry.revenue_share + entry.production_cost + entry.adjustment;
-      const insurance = calculateInsurance(settlementAmount, entry.partner_type);
+      // DB에 저장된 insurance 사용, 없으면 재계산
+      const insurance = entry.insurance > 0 ? entry.insurance : calculateInsurance(settlementAmount, entry.partner_type);
       const taxTotal = -(entry.income_tax + entry.local_tax); // 세금은 차감이므로 음수
-      const paymentAmount = settlementAmount + entry.vat + taxTotal - insurance + entry.mg_deduction;
+      const paymentAmount = settlementAmount + entry.vat + taxTotal - insurance + entry.mg_deduction - entry.other_deduction;
 
       return {
         no: idx + 1,
@@ -150,7 +163,7 @@ export async function GET(request: NextRequest) {
         partner_name: entry.partner_name,
         company_name: entry.company_name,
         income_type: incomeTypeMap[entry.partner_type] || '기타',
-        report_type: reportTypeMap[entry.partner_type] || '-',
+        report_type: entry.report_type || defaultReportTypeMap[entry.partner_type] || '-',
         tax_id: entry.tax_id,
         works_list: entry.works.join(', '),
         revenue_share: entry.revenue_share,
@@ -162,6 +175,7 @@ export async function GET(request: NextRequest) {
         local_tax: -entry.local_tax,   // 차감 표시
         insurance: -insurance,          // 예고료 차감 표시
         mg_deduction: entry.mg_deduction,
+        other_deduction: -entry.other_deduction, // 기타 공제 차감
         final_payment: entry.final_payment || paymentAmount,
         notes: partnerNotesMap.get(entry.partner_id)?.join('; ') || '',
       };

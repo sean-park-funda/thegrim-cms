@@ -26,6 +26,8 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
   const [naverName, setNaverName] = useState(work?.naver_name || '');
   const [contractType, setContractType] = useState<ContractType>(work?.contract_type || 'exclusive');
   const [settlementLevel, setSettlementLevel] = useState<SettlementLevel>(work?.settlement_level || 'work');
+  const [serialStartDate, setSerialStartDate] = useState(work?.serial_start_date || '');
+  const [serialEndDate, setSerialEndDate] = useState(work?.serial_end_date || '');
   const [note, setNote] = useState(work?.note || '');
   const [saving, setSaving] = useState(false);
 
@@ -38,6 +40,8 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
         naver_name: naverName || null,
         contract_type: contractType,
         settlement_level: settlementLevel,
+        serial_start_date: serialStartDate || null,
+        serial_end_date: serialEndDate || null,
         note: note || null,
       });
       onOpenChange(false);
@@ -85,6 +89,16 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
                 <SelectItem value="partner">파트너 단위</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>연재 시작일</Label>
+              <Input type="date" value={serialStartDate} onChange={(e) => setSerialStartDate(e.target.value)} />
+            </div>
+            <div>
+              <Label>연재 종료일</Label>
+              <Input type="date" value={serialEndDate} onChange={(e) => setSerialEndDate(e.target.value)} />
+            </div>
           </div>
           <div>
             <Label>메모</Label>

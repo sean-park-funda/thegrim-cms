@@ -16,6 +16,8 @@ import { settlementFetch } from '@/lib/settlement/api';
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   individual: '개인',
+  individual_employee: '개인(임직원)',
+  individual_simple_tax: '개인(간이)',
   domestic_corp: '사업자(국내)',
   foreign_corp: '사업자(해외)',
   naver: '네이버',
@@ -61,9 +63,13 @@ interface StatementData {
   works: WorkStatement[];
   grand_total_revenue: number;
   grand_total_share: number;
+  salary_deduction: number;
+  subtotal: number;
   tax_breakdown: TaxBreakdown;
   tax_amount: number;
+  insurance: number;
   total_mg_deduction: number;
+  total_other_deduction: number;
   final_payment: number;
 }
 
@@ -230,7 +236,10 @@ export default function StatementPage() {
                   <thead>
                     <tr className="border-b text-left bg-muted/50">
                       <th className="py-2 px-3 font-medium text-right">수익정산금</th>
-                      {data.partner.partner_type === 'domestic_corp' ? (
+                      {data.salary_deduction > 0 && (
+                        <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
+                      )}
+                      {(data.partner.partner_type === 'domestic_corp' || data.partner.partner_type === 'naver') ? (
                         <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
                       ) : (
                         <>
@@ -240,8 +249,14 @@ export default function StatementPage() {
                           <th className="py-2 px-3 font-medium text-right">지방세 (10%)</th>
                         </>
                       )}
+                      {data.insurance > 0 && (
+                        <th className="py-2 px-3 font-medium text-right">예고료</th>
+                      )}
                       {data.total_mg_deduction > 0 && (
                         <th className="py-2 px-3 font-medium text-right">MG 차감</th>
+                      )}
+                      {data.total_other_deduction > 0 && (
+                        <th className="py-2 px-3 font-medium text-right">기타 공제</th>
                       )}
                       <th className="py-2 px-3 font-medium text-right">지급액</th>
                     </tr>
@@ -251,7 +266,12 @@ export default function StatementPage() {
                       <td className="py-2 px-3 text-right tabular-nums">
                         {data.grand_total_share.toLocaleString()}
                       </td>
-                      {data.partner.partner_type === 'domestic_corp' ? (
+                      {data.salary_deduction > 0 && (
+                        <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                          -{data.salary_deduction.toLocaleString()}
+                        </td>
+                      )}
+                      {(data.partner.partner_type === 'domestic_corp' || data.partner.partner_type === 'naver') ? (
                         <td className="py-2 px-3 text-right tabular-nums">
                           {data.tax_breakdown.vat > 0 ? data.tax_breakdown.vat.toLocaleString() : '0'}
                         </td>
@@ -265,9 +285,19 @@ export default function StatementPage() {
                           </td>
                         </>
                       )}
+                      {data.insurance > 0 && (
+                        <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                          -{data.insurance.toLocaleString()}
+                        </td>
+                      )}
                       {data.total_mg_deduction > 0 && (
                         <td className="py-2 px-3 text-right tabular-nums text-red-600">
                           -{data.total_mg_deduction.toLocaleString()}
+                        </td>
+                      )}
+                      {data.total_other_deduction > 0 && (
+                        <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                          -{data.total_other_deduction.toLocaleString()}
                         </td>
                       )}
                       <td className="py-2 px-3 text-right tabular-nums text-lg">
