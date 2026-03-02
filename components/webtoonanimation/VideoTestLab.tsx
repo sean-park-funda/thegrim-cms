@@ -135,7 +135,6 @@ Rules:
     if (!currentProvider.aspectRatios.includes(aspectRatio)) {
       setAspectRatio(currentProvider.aspectRatios[0]);
     }
-    setSelectedCuts([]);
   }, [selectedProvider]);
 
   // 컷 선택이 바뀌면 before frame 초기화 + 첨부 이미지 자동 설정
