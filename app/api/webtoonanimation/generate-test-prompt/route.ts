@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY 필요' }, { status: 500 });
     }
 
-    const { projectId, cutIndices, inputMode, provider, duration } = await request.json();
+    const { projectId, cutIndices, inputMode, provider, duration, characterLabels } = await request.json();
 
     if (!projectId || !cutIndices?.length) {
       return NextResponse.json({ error: 'projectId, cutIndices 필요' }, { status: 400 });
@@ -71,17 +71,40 @@ export async function POST(request: NextRequest) {
     const imageBase64 = combined.toString('base64');
 
     // 2. Gemini 프롬프트 생성
-    const modeDesc = inputMode === 'start_end_frame'
-      ? `The first image is the START frame and the last image is the END frame. Generate a prompt that describes the smooth transition/animation between these frames.`
-      : inputMode === 'multi_reference'
-        ? `These are reference images. Generate a prompt that creates a cinematic video incorporating elements from all reference images.`
-        : `This is a single image. Generate a prompt that animates this scene with cinematic camera movement and subtle motion.`;
+    const isCharRef = inputMode === 'character_reference';
+    const isKlingRef = provider === 'kling_o1_ref';
+
+    let modeDesc: string;
+    if (isCharRef) {
+      const labels = (characterLabels as string[]) || [];
+      const elementList = labels.map((l: string, i: number) => `@Element${i + 1}(${l})`).join(', ');
+      if (isKlingRef) {
+        modeDesc = `This is a CHARACTER REFERENCE video generation task. The webtoon cut images show the SCENE to describe.
+The video model will receive separate character reference images: ${elementList || 'character images'}.
+In your prompt, reference characters using @Element1, @Element2, etc. format.
+Example: "@Element1 walks through the dark alley, @Element2 watches from the rooftop."
+Describe the scene action, character movements, and camera work based on what you see in the images.`;
+      } else {
+        modeDesc = `This is a CHARACTER REFERENCE video generation task. The webtoon cut images show the SCENE to describe.
+The video model will receive separate character reference images (${labels.join(', ') || 'characters'}).
+Do NOT use @Element syntax. Instead, describe characters by their appearance or role.
+Describe the scene action, character movements, and camera work based on what you see in the images.`;
+      }
+    } else if (inputMode === 'start_end_frame') {
+      modeDesc = `The first image is the START frame and the last image is the END frame. Generate a prompt that describes the smooth transition/animation between these frames.`;
+    } else if (inputMode === 'multi_reference') {
+      modeDesc = `These are reference images. Generate a prompt that creates a cinematic video incorporating elements from all reference images.`;
+    } else {
+      modeDesc = `This is a single image. Generate a prompt that animates this scene with cinematic camera movement and subtle motion.`;
+    }
 
     const providerTips = provider === 'ltx2'
       ? `Tips for LTX-2: Focus on camera movements (dolly, pan, zoom). Describe motion physics. Keep it as a single flowing paragraph. Use present tense.`
-      : provider === 'veo'
+      : provider === 'veo' || provider === 'veo31_ref'
         ? `Tips for Veo: Use cinematic production language. Describe choreography and physics, not narrative. Use shot types and lens terminology.`
-        : `Use cinematic, descriptive language focusing on motion and camera work.`;
+        : isKlingRef
+          ? `Tips for Kling O1 Reference: Use @Element1, @Element2 to refer to characters. Describe what each character does. Focus on action and camera.`
+          : `Use cinematic, descriptive language focusing on motion and camera work.`;
 
     const systemPrompt = `You are an expert video generation prompt writer.
 
@@ -95,11 +118,11 @@ Target duration: ${duration || 4} seconds.
 
 RULES:
 - Write a single paragraph, 2-4 sentences max
-- Focus on MOTION and CAMERA, not image description (the model already sees the image)
+- Focus on MOTION and CAMERA${isCharRef ? ', and CHARACTER ACTIONS' : ''}
 - Use present tense
 - Include one camera movement (dolly, pan, zoom, track, orbit)
 - Include subtle environmental motion (hair, cloth, dust, light)
-- NO character names, NO narrative, NO emotional description
+- NO narrative, NO emotional description
 - Keep it under 200 words
 
 Respond with ONLY the prompt text, no JSON, no explanation.`;

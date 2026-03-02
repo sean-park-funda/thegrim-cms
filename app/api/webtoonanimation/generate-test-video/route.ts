@@ -14,9 +14,10 @@ export async function POST(request: NextRequest) {
   let testId: string | null = null;
 
   try {
-    const { projectId, provider: providerId, inputMode, cutIndices, prompt, duration, aspectRatio, beforeFrameUrl } = await request.json();
+    const { projectId, provider: providerId, inputMode, cutIndices, prompt, duration, aspectRatio, beforeFrameUrl, characterRefs } = await request.json();
 
-    if (!projectId || !providerId || !cutIndices?.length) {
+    const isCharRef = inputMode === 'character_reference';
+    if (!projectId || !providerId || (!isCharRef && !cutIndices?.length)) {
       return NextResponse.json({ error: 'projectId, provider, cutIndices 필요' }, { status: 400 });
     }
 
@@ -42,16 +43,20 @@ export async function POST(request: NextRequest) {
     if (insertError) throw insertError;
     testId = test.id;
 
-    // 2. 컷 이미지 다운로드
-    const { data: cuts, error: cutsError } = await supabase
-      .from('webtoonanimation_cuts')
-      .select('order_index, file_path')
-      .eq('project_id', projectId)
-      .in('order_index', cutIndices)
-      .order('order_index');
+    // 2. 컷 이미지 다운로드 (character_reference 모드에서는 선택 사항)
+    let cuts: { order_index: number; file_path: string }[] = [];
+    if (cutIndices?.length) {
+      const { data: cutsData, error: cutsError } = await supabase
+        .from('webtoonanimation_cuts')
+        .select('order_index, file_path')
+        .eq('project_id', projectId)
+        .in('order_index', cutIndices)
+        .order('order_index');
 
-    if (cutsError) throw cutsError;
-    if (!cuts?.length) throw new Error('컷 이미지를 찾을 수 없습니다');
+      if (cutsError) throw cutsError;
+      cuts = cutsData || [];
+    }
+    if (!isCharRef && !cuts.length) throw new Error('컷 이미지를 찾을 수 없습니다');
 
     let mode = (inputMode || 'single_image') as InputMode;
     const images: { url: string; mimeType: string; role: 'start' | 'end' | 'reference' }[] = [];
@@ -78,13 +83,25 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Provider 호출
-    console.log(`[generate-test-video] ${providerId} 호출 (mode: ${mode}, cuts: ${cutIndices.join(',')}, ${duration}s)`);
+    // character_reference 모드: characterRefs를 characterImages로 변환
+    let characterImages: { url: string; mimeType: string; role: 'reference'; label?: string }[] | undefined;
+    if (isCharRef && characterRefs?.length) {
+      characterImages = characterRefs.map((r: { url: string; label?: string }, i: number) => ({
+        url: r.url,
+        mimeType: 'image/png',
+        role: 'reference' as const,
+        label: r.label || `Element${i + 1}`,
+      }));
+    }
+
+    console.log(`[generate-test-video] ${providerId} 호출 (mode: ${mode}, cuts: ${cutIndices?.join(',') || 'none'}, charRefs: ${characterImages?.length || 0}, ${duration}s)`);
 
     const result = await provider.generate({
       provider: providerId,
       prompt: prompt || 'Cinematic animation of the scene with subtle motion.',
       inputMode: mode,
       images,
+      characterImages,
       duration: duration || provider.capabilities.durations[0],
       aspectRatio: aspectRatio || '16:9',
     });

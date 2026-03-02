@@ -340,6 +340,84 @@ const hunyuanConfig: FalModelConfig = {
   },
 };
 
+// --- Reference-to-Video Models ---
+
+const klingO1RefConfig: FalModelConfig = {
+  capabilities: {
+    id: 'kling_o1_ref',
+    name: 'Kling O1 (Ref)',
+    inputModes: ['character_reference'],
+    durations: [5, 10],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    maxImages: 7,
+    contentSafety: 'moderate',
+    costPerSec: 0.112,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/kling-video/o1/reference-to-video',
+  buildPayload: (req) => {
+    const charImages = req.characterImages || [];
+    const elements = charImages.map((img) => ({
+      frontal_image_url: getImageUrl(img),
+    }));
+    return {
+      prompt: req.prompt,
+      elements,
+      duration: req.duration <= 5 ? '5' : '10',
+      aspect_ratio: req.aspectRatio,
+    };
+  },
+};
+
+const veo31RefConfig: FalModelConfig = {
+  capabilities: {
+    id: 'veo31_ref',
+    name: 'Veo 3.1 (Ref)',
+    inputModes: ['character_reference'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    maxImages: 7,
+    contentSafety: 'moderate',
+    costPerSec: 0.20,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/veo3.1/reference-to-video',
+  buildPayload: (req) => {
+    const charImages = req.characterImages || [];
+    const imageUrls = charImages.map((img) => getImageUrl(img));
+    return {
+      prompt: req.prompt,
+      image_urls: imageUrls,
+      duration: `${req.duration}s`,
+      aspect_ratio: req.aspectRatio,
+    };
+  },
+};
+
+const viduQ1RefConfig: FalModelConfig = {
+  capabilities: {
+    id: 'vidu_q1_ref',
+    name: 'Vidu Q1 (Ref)',
+    inputModes: ['character_reference'],
+    durations: [5],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    maxImages: 7,
+    contentSafety: 'moderate',
+    costPerSec: 0.08,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/vidu/q1/reference-to-video',
+  buildPayload: (req) => {
+    const charImages = req.characterImages || [];
+    const refUrls = charImages.map((img) => getImageUrl(img));
+    return {
+      prompt: req.prompt,
+      reference_image_urls: refUrls,
+      aspect_ratio: req.aspectRatio,
+    };
+  },
+};
+
 export function getFalProviders(): VideoProvider[] {
   return [
     klingConfig,
@@ -348,5 +426,8 @@ export function getFalProviders(): VideoProvider[] {
     wan21FlF2VConfig,
     wan21I2VConfig,
     hunyuanConfig,
+    klingO1RefConfig,
+    veo31RefConfig,
+    viduQ1RefConfig,
   ].map(createFalProvider);
 }

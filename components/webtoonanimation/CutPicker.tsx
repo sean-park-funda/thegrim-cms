@@ -171,7 +171,7 @@ export function CutPicker({
         onSelectionChange([index]);
       }
     } else {
-      // multi_reference
+      // multi_reference & character_reference
       if (selectedIndices.includes(index)) {
         onSelectionChange(selectedIndices.filter((i) => i !== index));
       } else if (selectedIndices.length < maxImages) {
@@ -185,7 +185,7 @@ export function CutPicker({
       if (selectedIndices[0] === index) return 'START';
       if (selectedIndices[1] === index) return 'END';
     }
-    if (inputMode === 'multi_reference') {
+    if (inputMode === 'multi_reference' || inputMode === 'character_reference') {
       const pos = selectedIndices.indexOf(index);
       if (pos >= 0) return `${pos + 1}`;
     }
@@ -265,6 +265,7 @@ export function CutPicker({
           {inputMode === 'single_image' && '컷 1개 선택'}
           {inputMode === 'start_end_frame' && '시작/끝 컷 2개 선택'}
           {inputMode === 'multi_reference' && `컷 최대 ${maxImages}개 선택`}
+          {inputMode === 'character_reference' && `프롬프트 분석용 컷 선택 (최대 ${maxImages}개)`}
         </span>
         {selectedIndices.length > 0 && (
           <span className="text-xs">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/dialog';
 import {
   Play, Sparkles, Loader2,
-  Image, ArrowRightLeft, Images,
+  Image, ArrowRightLeft, Images, User,
   Monitor, Cloud, Cpu,
-  Wand2, ArrowRight, X, Maximize2, Plus, ChevronDown,
+  Wand2, ArrowRight, X, Maximize2, Plus, ChevronDown, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
@@ -43,6 +43,7 @@ const INPUT_MODE_CONFIG: Record<InputMode, { label: string; icon: typeof Image; 
   single_image: { label: '1장', icon: Image, desc: '단일 이미지' },
   start_end_frame: { label: 'S+E', icon: ArrowRightLeft, desc: '시작+끝 프레임' },
   multi_reference: { label: '다중', icon: Images, desc: '여러 프레임' },
+  character_reference: { label: '캐릭터', icon: User, desc: '캐릭터 레퍼런스' },
 };
 
 const SAFETY_STYLE: Record<string, { label: string; dot: string; bg: string }> = {
@@ -81,6 +82,9 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [showCutPicker, setShowCutPicker] = useState(false);
   const [generatingBeforePrompt, setGeneratingBeforePrompt] = useState(false);
   const [beforeSectionOpen, setBeforeSectionOpen] = useState(false);
+  const [characterRefs, setCharacterRefs] = useState<Array<{ url: string; label: string; fromCutIndex?: number }>>([]);
+  const [showCharCutPicker, setShowCharCutPicker] = useState(false);
+  const charFileInputRef = useRef<HTMLInputElement>(null);
 
   const BEFORE_PROMPTS = {
     from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
@@ -226,13 +230,23 @@ Rules:
   };
 
   const handleGeneratePrompt = async () => {
-    if (!selectedCuts.length) return;
+    if (inputMode === 'character_reference') {
+      if (!selectedCuts.length && !characterRefs.length) return;
+    } else {
+      if (!selectedCuts.length) return;
+    }
     setGeneratingPrompt(true);
     try {
+      const body: Record<string, unknown> = {
+        projectId, cutIndices: selectedCuts, inputMode, provider: selectedProvider, duration,
+      };
+      if (inputMode === 'character_reference' && characterRefs.length > 0) {
+        body.characterLabels = characterRefs.map((r, i) => r.label || `Element${i + 1}`);
+      }
       const res = await fetch('/api/webtoonanimation/generate-test-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, cutIndices: selectedCuts, inputMode, provider: selectedProvider, duration }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.prompt) setPrompt(data.prompt);
@@ -246,7 +260,11 @@ Rules:
   };
 
   const handleGenerate = async () => {
-    if (!selectedCuts.length || !selectedProvider) return;
+    if (inputMode === 'character_reference') {
+      if (!characterRefs.length || !selectedProvider) return;
+    } else {
+      if (!selectedCuts.length || !selectedProvider) return;
+    }
 
     // 임시 ID로 placeholder 추가 (생성중 표시)
     const tempId = `temp-${Date.now()}`;
@@ -273,10 +291,17 @@ Rules:
     setGeneratingIds((prev) => new Set(prev).add(tempId));
 
     try {
+      const body: Record<string, unknown> = {
+        projectId, provider: selectedProvider, inputMode,
+        cutIndices: selectedCuts, prompt, duration, aspectRatio, beforeFrameUrl,
+      };
+      if (inputMode === 'character_reference') {
+        body.characterRefs = characterRefs.map((r) => ({ url: r.url, label: r.label }));
+      }
       const res = await fetch('/api/webtoonanimation/generate-test-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, provider: selectedProvider, inputMode, cutIndices: selectedCuts, prompt, duration, aspectRatio, beforeFrameUrl }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.error) {
@@ -446,23 +471,137 @@ Rules:
         </div>
       )}
 
-      {/* 컷 선택 */}
-      <CutPicker
-        cuts={cuts}
-        inputMode={inputMode}
-        maxImages={currentProvider?.maxImages || 4}
-        selectedIndices={selectedCuts}
-        onSelectionChange={setSelectedCuts}
-        rangeStart={rangeStart}
-        rangeEnd={rangeEnd}
-        onFilesSelected={onFilesSelected}
-        uploading={uploading}
-        onReorder={onReorder}
-        onRemove={onRemove}
-      />
+      {/* 캐릭터 레퍼런스 모드: 캐릭터 이미지 섹션 */}
+      {inputMode === 'character_reference' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              캐릭터 레퍼런스 ({characterRefs.length}/7)
+            </label>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 items-end">
+            {characterRefs.map((ref, idx) => (
+              <div key={idx} className="relative flex-shrink-0 group/char">
+                <div className="w-20 h-28 rounded-lg border-2 border-primary/30 overflow-hidden">
+                  <img src={ref.url} alt={ref.label || `Ref ${idx + 1}`} className="w-full h-full object-cover" />
+                </div>
+                <span className="absolute top-0 left-0 right-0 bg-primary text-primary-foreground text-[10px] font-bold text-center py-0.5">
+                  @Elem{idx + 1}
+                </span>
+                <button
+                  onClick={() => setCharacterRefs((prev) => prev.filter((_, i) => i !== idx))}
+                  className="absolute top-0.5 right-0.5 z-10 bg-destructive/80 text-white rounded-full p-0.5 opacity-0 group-hover/char:opacity-100 hover:bg-destructive transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                <input
+                  type="text"
+                  value={ref.label}
+                  onChange={(e) => setCharacterRefs((prev) => prev.map((r, i) => i === idx ? { ...r, label: e.target.value } : r))}
+                  placeholder={`캐릭터 ${idx + 1}`}
+                  className="w-20 mt-1 text-[10px] px-1 py-0.5 border rounded text-center bg-background"
+                />
+              </div>
+            ))}
+            {characterRefs.length < 7 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowCharCutPicker(!showCharCutPicker)}
+                  className="w-20 h-28 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 flex flex-col items-center justify-center gap-1 transition-all"
+                >
+                  <Plus className="w-5 h-5 text-muted-foreground" />
+                  <span className="text-[9px] text-muted-foreground">컷에서</span>
+                </button>
+                {showCharCutPicker && (
+                  <div className="absolute top-full left-0 mt-1 z-20 bg-popover border rounded-lg shadow-lg p-2 max-w-[320px]">
+                    <div className="flex gap-1.5 flex-wrap max-h-[200px] overflow-y-auto">
+                      {cuts
+                        .filter((c) => c.order_index >= rangeStart && c.order_index <= rangeEnd)
+                        .sort((a, b) => a.order_index - b.order_index)
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setCharacterRefs((prev) => [...prev, { url: c.file_path, label: '', fromCutIndex: c.order_index }]);
+                              setShowCharCutPicker(false);
+                            }}
+                            className="w-12 h-16 rounded border overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all flex-shrink-0 relative"
+                          >
+                            <img src={c.file_path} alt={`컷 ${c.order_index}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] text-center">
+                              {c.order_index}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                    <button
+                      onClick={() => setShowCharCutPicker(false)}
+                      className="mt-1 text-[10px] text-muted-foreground hover:text-foreground w-full text-center"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {characterRefs.length < 7 && (
+              <>
+                <input
+                  ref={charFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) {
+                      Array.from(e.target.files).forEach((file) => {
+                        const url = URL.createObjectURL(file);
+                        setCharacterRefs((prev) => prev.length < 7 ? [...prev, { url, label: '' }] : prev);
+                      });
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => charFileInputRef.current?.click()}
+                  className="w-20 h-28 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 flex flex-col items-center justify-center gap-1 transition-all"
+                >
+                  <Plus className="w-5 h-5 text-muted-foreground" />
+                  <span className="text-[9px] text-muted-foreground">업로드</span>
+                </button>
+              </>
+            )}
+          </div>
+          {characterRefs.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Kling O1: 프롬프트에서 @Element1, @Element2 등으로 캐릭터 참조 / Veo, Vidu: 자동 적용
+            </p>
+          )}
+        </div>
+      )}
 
-      {/* 직전 프레임 생성 */}
-      {selectedCuts.length > 0 && (
+      {/* 장면 분석용 컷 선택 */}
+      <div className="space-y-1">
+        {inputMode === 'character_reference' && (
+          <p className="text-[10px] text-amber-600">프롬프트 생성용 — 이 컷은 영상 모델에 전달되지 않습니다</p>
+        )}
+        <CutPicker
+          cuts={cuts}
+          inputMode={inputMode}
+          maxImages={currentProvider?.maxImages || 4}
+          selectedIndices={selectedCuts}
+          onSelectionChange={setSelectedCuts}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          onFilesSelected={onFilesSelected}
+          uploading={uploading}
+          onReorder={onReorder}
+          onRemove={onRemove}
+        />
+      </div>
+
+      {/* 직전 프레임 생성 (character_reference 모드에서는 숨김) */}
+      {selectedCuts.length > 0 && inputMode !== 'character_reference' && (
         <div>
           <button
             onClick={() => setBeforeSectionOpen(!beforeSectionOpen)}
@@ -777,7 +916,10 @@ Rules:
       {/* 생성 버튼 */}
       <Button
         onClick={handleGenerate}
-        disabled={!selectedCuts.length || !selectedProvider}
+        disabled={
+          !selectedProvider ||
+          (inputMode === 'character_reference' ? !characterRefs.length : !selectedCuts.length)
+        }
         className="w-full"
         size="lg"
       >
