@@ -15,10 +15,10 @@ export const veoProvider: VideoProvider = {
   capabilities: {
     id: 'veo',
     name: 'Veo 3.1 Fast',
-    inputModes: ['single_image', 'start_end_frame', 'multi_reference'],
+    inputModes: ['single_image'],
     durations: [4, 6, 8],
     aspectRatios: ['16:9', '9:16'],
-    maxImages: 4,
+    maxImages: 1,
     contentSafety: 'moderate',
     costPerSec: 0.15,
     platform: 'direct',
