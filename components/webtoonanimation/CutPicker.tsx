@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut } from '@/lib/supabase';
 import type { InputMode } from '@/lib/video-generation/providers';
-import { ArrowRight, Plus, Loader2, X, GripVertical } from 'lucide-react';
+import { ArrowRight, Plus, Loader2, X, GripVertical, ZoomIn } from 'lucide-react';
 
 interface CutPickerProps {
   cuts: WebtoonAnimationCut[];
@@ -43,12 +43,14 @@ function SortableCutThumb({
   label,
   onClick,
   onRemove,
+  onPreview,
 }: {
   cut: WebtoonAnimationCut;
   isSelected: boolean;
   label: string | null;
   onClick: () => void;
   onRemove?: (cutId: string) => void;
+  onPreview?: (cut: WebtoonAnimationCut) => void;
 }) {
   const {
     attributes,
@@ -86,6 +88,16 @@ function SortableCutThumb({
       >
         <GripVertical className="h-3 w-3" />
       </div>
+
+      {/* Zoom button */}
+      {onPreview && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPreview(cut); }}
+          className="absolute bottom-6 right-0.5 z-10 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
+        >
+          <ZoomIn className="h-3 w-3" />
+        </button>
+      )}
 
       {/* Delete button */}
       {onRemove && (
@@ -136,6 +148,7 @@ export function CutPicker({
   onRemove,
 }: CutPickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewCut, setPreviewCut] = useState<WebtoonAnimationCut | null>(null);
   const rangeCuts = cuts
     .filter((c) => c.order_index >= rangeStart && c.order_index <= rangeEnd)
     .sort((a, b) => a.order_index - b.order_index);
@@ -203,6 +216,7 @@ export function CutPicker({
             label={label}
             onClick={() => handleClick(cut.order_index)}
             onRemove={onRemove}
+            onPreview={setPreviewCut}
           />
         );
       })}
@@ -283,6 +297,54 @@ export function CutPicker({
           <span>컷 {selectedIndices[0]}</span>
           <ArrowRight className="w-3 h-3" />
           <span>컷 {selectedIndices[1]}</span>
+        </div>
+      )}
+
+      {/* 크게보기 오버레이 */}
+      {previewCut && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+          onClick={() => setPreviewCut(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2"
+            onClick={() => setPreviewCut(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/80 text-sm">
+            컷 {previewCut.order_index}
+          </div>
+          {/* 이전/다음 버튼 */}
+          {(() => {
+            const idx = rangeCuts.findIndex(c => c.id === previewCut.id);
+            return (
+              <>
+                {idx > 0 && (
+                  <button
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl px-3 py-6"
+                    onClick={(e) => { e.stopPropagation(); setPreviewCut(rangeCuts[idx - 1]); }}
+                  >
+                    ‹
+                  </button>
+                )}
+                {idx < rangeCuts.length - 1 && (
+                  <button
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl px-3 py-6"
+                    onClick={(e) => { e.stopPropagation(); setPreviewCut(rangeCuts[idx + 1]); }}
+                  >
+                    ›
+                  </button>
+                )}
+              </>
+            );
+          })()}
+          <img
+            src={previewCut.file_path}
+            alt={`컷 ${previewCut.order_index}`}
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

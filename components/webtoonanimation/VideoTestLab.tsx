@@ -11,10 +11,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Play, Sparkles, Loader2,
   Image, ArrowRightLeft, Images,
   Monitor, Cloud, Cpu,
-  Wand2, ArrowRight, X,
+  Wand2, ArrowRight, X, Maximize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WebtoonAnimationCut, WebtoonAnimationVideoTest } from '@/lib/supabase';
@@ -70,6 +76,7 @@ export function VideoTestLab({ cuts, projectId, rangeStart, rangeEnd, onFilesSel
   const [beforeModel, setBeforeModel] = useState('gemini-3.1-flash-image-preview');
   const [beforeMode, setBeforeMode] = useState<'from_self' | 'from_prev'>('from_self');
   const [beforePrompt, setBeforePrompt] = useState('');
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
 
   const BEFORE_PROMPTS = {
     from_self: `This webtoon/manhwa panel shows the RESULT of an action (impact, landing, collision, etc.).
@@ -451,7 +458,16 @@ Rules:
 
           {/* 프롬프트 */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 프롬프트</label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이미지 생성 프롬프트</label>
+              <button
+                onClick={() => setPromptDialogOpen(true)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title="크게 보기"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <Textarea
               value={beforePrompt}
               onChange={(e) => setBeforePrompt(e.target.value)}
@@ -460,6 +476,29 @@ Rules:
               className="text-xs"
             />
           </div>
+
+          {/* 프롬프트 크게보기 다이얼로그 */}
+          <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh]">
+              <DialogHeader>
+                <DialogTitle className="text-sm">직전 프레임 생성 프롬프트</DialogTitle>
+              </DialogHeader>
+              <Textarea
+                value={beforePrompt || BEFORE_PROMPTS[beforeMode]}
+                onChange={(e) => setBeforePrompt(e.target.value)}
+                rows={16}
+                className="text-sm font-mono"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setBeforePrompt('')}>
+                  기본값으로 리셋
+                </Button>
+                <Button size="sm" onClick={() => setPromptDialogOpen(false)}>
+                  확인
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* 생성 버튼 */}
           <Button
