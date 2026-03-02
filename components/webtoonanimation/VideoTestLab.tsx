@@ -370,11 +370,17 @@ Rules:
           </div>
         </div>
 
-        {/* 입력 모드 — 세로 리스트 */}
-        {currentProvider && (
+      </div>
+
+      {/* ── 우측 패널: 워크플로우 ── */}
+      <div className="flex-1 min-w-0 space-y-5">
+
+      {/* 입력 모드 + 설정 — 가로 인라인 */}
+      {currentProvider && (
+        <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">입력 모드</label>
-            <div className="flex flex-row lg:flex-col gap-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">입력 모드</label>
+            <div className="flex gap-1.5">
               {currentProvider.inputModes.map((mode) => {
                 const cfg = INPUT_MODE_CONFIG[mode];
                 const ModeIcon = cfg.icon;
@@ -385,75 +391,59 @@ Rules:
                     key={mode}
                     onClick={() => { setInputMode(mode); setSelectedCuts([]); }}
                     className={cn(
-                      'flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all',
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-left transition-all',
                       isActive
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
                     )}
                   >
                     <ModeIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-xs font-medium">{cfg.desc}</div>
-                      <div className="text-[9px] font-normal opacity-70">
-                        {mode === 'single_image' && '컷 1장'}
-                        {mode === 'start_end_frame' && '시작→끝'}
-                        {mode === 'multi_reference' && `최대 ${currentProvider.maxImages}장`}
-                      </div>
-                    </div>
+                    <span className="text-xs font-medium">{cfg.desc}</span>
                   </button>
                 );
               })}
             </div>
           </div>
-        )}
-
-        {/* 설정 (길이 + 비율) */}
-        {currentProvider && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">길이</label>
-              <div className="flex gap-1 flex-wrap">
-                {currentProvider.durations.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDuration(d)}
-                    className={cn(
-                      'px-2.5 py-1 text-xs rounded-md border transition-all',
-                      duration === d
-                        ? 'border-primary bg-primary/5 text-primary font-medium'
-                        : 'border-border text-muted-foreground hover:border-muted-foreground/50'
-                    )}
-                  >
-                    {d}초
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">비율</label>
-              <div className="flex gap-1 flex-wrap">
-                {currentProvider.aspectRatios.map((ar) => (
-                  <button
-                    key={ar}
-                    onClick={() => setAspectRatio(ar)}
-                    className={cn(
-                      'px-2.5 py-1 text-xs rounded-md border transition-all',
-                      aspectRatio === ar
-                        ? 'border-primary bg-primary/5 text-primary font-medium'
-                        : 'border-border text-muted-foreground hover:border-muted-foreground/50'
-                    )}
-                  >
-                    {ar}
-                  </button>
-                ))}
-              </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">길이</label>
+            <div className="flex gap-1">
+              {currentProvider.durations.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDuration(d)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-xs rounded-md border transition-all',
+                    duration === d
+                      ? 'border-primary bg-primary/5 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                  )}
+                >
+                  {d}초
+                </button>
+              ))}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* ── 우측 패널: 워크플로우 ── */}
-      <div className="flex-1 min-w-0 space-y-5">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">비율</label>
+            <div className="flex gap-1">
+              {currentProvider.aspectRatios.map((ar) => (
+                <button
+                  key={ar}
+                  onClick={() => setAspectRatio(ar)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-xs rounded-md border transition-all',
+                    aspectRatio === ar
+                      ? 'border-primary bg-primary/5 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                  )}
+                >
+                  {ar}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 컷 선택 */}
       <CutPicker
