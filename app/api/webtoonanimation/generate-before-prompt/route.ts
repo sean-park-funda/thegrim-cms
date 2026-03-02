@@ -97,25 +97,40 @@ export async function POST(request: NextRequest) {
     const systemPrompt = SYSTEM_PROMPTS[selectedMode];
 
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      config: { temperature: 0.7 },
-      contents: [{
-        role: 'user' as const,
-        parts: [
-          ...imageParts,
-          { text: systemPrompt },
-        ],
-      }],
-    });
+    const models = ['gemini-3.1-pro-preview', 'gemini-3-flash-preview'];
+    let prompt: string | undefined;
+    let usedModel: string | undefined;
 
-    const prompt = response.text?.trim();
+    for (const model of models) {
+      try {
+        console.log(`[generate-before-prompt] 시도: ${model}`);
+        const response = await ai.models.generateContent({
+          model,
+          config: { temperature: 0.7 },
+          contents: [{
+            role: 'user' as const,
+            parts: [
+              ...imageParts,
+              { text: systemPrompt },
+            ],
+          }],
+        });
+        prompt = response.text?.trim();
+        if (prompt) {
+          usedModel = model;
+          break;
+        }
+      } catch (e) {
+        console.warn(`[generate-before-prompt] ${model} 실패, 다음 모델로 폴백:`, e instanceof Error ? e.message : e);
+      }
+    }
+
     if (!prompt) {
       return NextResponse.json({ error: 'Gemini 응답이 비어 있습니다' }, { status: 500 });
     }
 
-    console.log(`[generate-before-prompt] 완료 (mode: ${selectedMode}, cuts: [${imageCutIndices.join(',')}])`);
-    return NextResponse.json({ prompt });
+    console.log(`[generate-before-prompt] 완료 (model: ${usedModel}, mode: ${selectedMode}, cuts: [${imageCutIndices.join(',')}])`);
+    return NextResponse.json({ prompt, model: usedModel });
   } catch (error) {
     console.error('[generate-before-prompt] 실패:', error);
     return NextResponse.json(
