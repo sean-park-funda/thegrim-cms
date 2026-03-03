@@ -12,7 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction }
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
-import { RsRevenue } from '@/lib/types/settlement';
+import { RsRevenue, RsSettlement } from '@/lib/types/settlement';
 import {
   BarChart,
   Bar,
@@ -170,6 +170,7 @@ export default function SettlementDashboardPage() {
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
+  const [settlements, setSettlements] = useState<RsSettlement[]>([]);
   const [workCount, setWorkCount] = useState(0);
   const [partnerCount, setPartnerCount] = useState(0);
   const [settlementTotal, setSettlementTotal] = useState(0);
@@ -193,11 +194,13 @@ export default function SettlementDashboardPage() {
         const [revData, settData, workData, partnerData] = await Promise.all([
           revRes.json(), settRes.json(), workRes.json(), partnerRes.json(),
         ]);
+        const settList: RsSettlement[] = settData.settlements || [];
         setRevenues(revData.revenues || []);
+        setSettlements(settList);
         setWorkCount((workData.works || []).length);
         setPartnerCount((partnerData.partners || []).length);
         setSettlementTotal(
-          (settData.settlements || []).reduce((s: number, r: { final_payment: number }) => s + Number(r.final_payment), 0)
+          settList.reduce((s, r) => s + Number(r.final_payment), 0)
         );
       } catch (e) {
         console.error('대시보드 로드 오류:', e);
@@ -255,6 +258,30 @@ export default function SettlementDashboardPage() {
     [...workRevenues].sort((a, b) => b.global_total - a.global_total).filter(w => w.global_total > 0).slice(0, 5),
     [workRevenues]
   );
+
+  // Partner rankings by revenue_share and final_payment
+  const partnerRankings = useMemo(() => {
+    const map = new Map<string, { partner_id: string; name: string; revenue_share: number; final_payment: number; work_count: number }>();
+    for (const s of settlements) {
+      const pid = s.partner_id;
+      const name = (s.partner as { name?: string } | null)?.name || pid;
+      const existing = map.get(pid);
+      if (existing) {
+        existing.revenue_share += Number(s.revenue_share) || 0;
+        existing.final_payment += Number(s.final_payment) || 0;
+        existing.work_count += 1;
+      } else {
+        map.set(pid, {
+          partner_id: pid,
+          name,
+          revenue_share: Number(s.revenue_share) || 0,
+          final_payment: Number(s.final_payment) || 0,
+          work_count: 1,
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => b.revenue_share - a.revenue_share);
+  }, [settlements]);
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
@@ -421,6 +448,43 @@ export default function SettlementDashboardPage() {
             </Card>
           </div>
         </div>
+      )}
+
+      {/* ── Partner ranking ── */}
+      {ready && partnerRankings.length > 0 && (
+        <Card>
+          <CardHeader className="border-b pb-4">
+            <CardTitle className="text-base">파트너별 정산 랭킹</CardTitle>
+            <CardAction>
+              <Badge variant="outline" className="text-[11px] tabular-nums font-normal">
+                {selectedMonth}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {partnerRankings.slice(0, 10).map((p, i) => (
+                <div key={p.partner_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
+                  <RankBadge rank={i + 1} />
+                  <Link href={`/accounting/settlement/partners/${p.partner_id}`} className="flex-1 truncate text-sm hover:underline">
+                    {p.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground tabular-nums hidden md:inline">
+                    {p.work_count}작품
+                  </span>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold tabular-nums">{fmtShort(p.revenue_share)}</div>
+                    {p.final_payment !== p.revenue_share && p.final_payment > 0 && (
+                      <div className="text-[10px] text-muted-foreground tabular-nums">
+                        지급 {fmtShort(p.final_payment)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
