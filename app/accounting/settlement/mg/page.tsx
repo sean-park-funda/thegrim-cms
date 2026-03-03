@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Pencil } from 'lucide-react';
+import { Search, Pencil, Users, BookOpen } from 'lucide-react';
 import { RsMgBalance, RsWorkPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -36,6 +36,7 @@ export default function MgPage() {
   const [workPartners, setWorkPartners] = useState<RsWorkPartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'partner' | 'work'>('partner');
 
   // 편집 다이얼로그
   const [editMg, setEditMg] = useState<RsMgBalance | null>(null);
@@ -59,11 +60,7 @@ export default function MgPage() {
       const mgData = await mgRes.json();
       const wpData = await wpRes.json();
 
-      setMgBalances(
-        (mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) =>
-          (a.partner?.name || '').localeCompare(b.partner?.name || '')
-        )
-      );
+      setMgBalances(mgData.mg_balances || []);
       setWorkPartners(wpData.work_partners || []);
     } catch (e) {
       console.error('MG 현황 로드 오류:', e);
@@ -137,13 +134,19 @@ export default function MgPage() {
 
   const canManage = canManageAccounting(profile.role);
 
-  const filtered = search
+  const searched = search
     ? mgBalances.filter(mg =>
         (mg.partner?.name || '').toLowerCase().includes(search.toLowerCase()) ||
         (mg.partner?.company_name || '').toLowerCase().includes(search.toLowerCase()) ||
         (mg.work?.name || '').toLowerCase().includes(search.toLowerCase())
       )
     : mgBalances;
+
+  const filtered = [...searched].sort((a, b) =>
+    viewMode === 'work'
+      ? (a.work?.name || '').localeCompare(b.work?.name || '', 'ko')
+      : (a.partner?.name || '').localeCompare(b.partner?.name || '', 'ko')
+  );
 
   const totals = filtered.reduce(
     (acc, mg) => ({
@@ -163,14 +166,36 @@ export default function MgPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>MG현황 집계 ({selectedMonth})</CardTitle>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="파트너, 거래처, 작품 검색..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 w-full md:w-60"
-            />
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border">
+              <Button
+                variant={viewMode === 'partner' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-r-none gap-1"
+                onClick={() => setViewMode('partner')}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">파트너별</span>
+              </Button>
+              <Button
+                variant={viewMode === 'work' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-l-none gap-1"
+                onClick={() => setViewMode('work')}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">작품별</span>
+              </Button>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="파트너, 거래처, 작품 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 w-full md:w-60"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -188,15 +213,28 @@ export default function MgPage() {
                   <div key={mg.id} className="border rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div>
-                        <Link
-                          href={`/accounting/settlement/partners/${mg.partner_id}`}
-                          className="text-primary hover:underline font-medium"
-                        >
-                          {mg.partner?.name || '-'}
-                        </Link>
-                        <Badge variant="secondary" className="text-xs ml-2">
-                          {PARTNER_TYPE_LABELS[mg.partner?.partner_type || ''] || '-'}
-                        </Badge>
+                        {viewMode === 'work' ? (
+                          <>
+                            <Link
+                              href={`/accounting/settlement/works/${mg.work_id}`}
+                              className="text-primary hover:underline font-medium"
+                            >
+                              {mg.work?.name || '-'}
+                            </Link>
+                          </>
+                        ) : (
+                          <>
+                            <Link
+                              href={`/accounting/settlement/partners/${mg.partner_id}`}
+                              className="text-primary hover:underline font-medium"
+                            >
+                              {mg.partner?.name || '-'}
+                            </Link>
+                            <Badge variant="secondary" className="text-xs ml-2">
+                              {PARTNER_TYPE_LABELS[mg.partner?.partner_type || ''] || '-'}
+                            </Badge>
+                          </>
+                        )}
                       </div>
                       {canManage && (
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(mg)}>
@@ -204,7 +242,9 @@ export default function MgPage() {
                         </Button>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">{mg.work?.name || '-'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {viewMode === 'work' ? (mg.partner?.name || '-') : (mg.work?.name || '-')}
+                    </p>
                     <div className="grid grid-cols-3 gap-2 text-sm">
                       <div>
                         <span className="text-xs text-muted-foreground block">전월이월</span>
@@ -238,10 +278,19 @@ export default function MgPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="py-2 px-3 font-medium w-8">NO</th>
-                    <th className="py-2 px-3 font-medium">파트너명</th>
-                    <th className="py-2 px-3 font-medium">거래처명</th>
-                    <th className="py-2 px-3 font-medium">소득구분</th>
-                    <th className="py-2 px-3 font-medium">작품명</th>
+                    {viewMode === 'work' ? (
+                      <>
+                        <th className="py-2 px-3 font-medium">작품명</th>
+                        <th className="py-2 px-3 font-medium">파트너명</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="py-2 px-3 font-medium">파트너명</th>
+                        <th className="py-2 px-3 font-medium">거래처명</th>
+                        <th className="py-2 px-3 font-medium">소득구분</th>
+                        <th className="py-2 px-3 font-medium">작품명</th>
+                      </>
+                    )}
                     <th className="py-2 px-3 font-medium text-right">전월이월</th>
                     <th className="py-2 px-3 font-medium text-right">당월 MG 추가</th>
                     <th className="py-2 px-3 font-medium text-right">당월 MG 차감</th>
@@ -257,21 +306,44 @@ export default function MgPage() {
                     return (
                       <tr key={mg.id} className="border-b hover:bg-muted/50">
                         <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
-                        <td className="py-2 px-3 font-medium">
-                          <Link
-                            href={`/accounting/settlement/partners/${mg.partner_id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {mg.partner?.name || '-'}
-                          </Link>
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground">{mg.partner?.company_name || '-'}</td>
-                        <td className="py-2 px-3">
-                          <Badge variant="secondary" className="text-xs">
-                            {PARTNER_TYPE_LABELS[mg.partner?.partner_type || ''] || '-'}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-3">{mg.work?.name || '-'}</td>
+                        {viewMode === 'work' ? (
+                          <>
+                            <td className="py-2 px-3 font-medium">
+                              <Link
+                                href={`/accounting/settlement/works/${mg.work_id}`}
+                                className="text-primary hover:underline"
+                              >
+                                {mg.work?.name || '-'}
+                              </Link>
+                            </td>
+                            <td className="py-2 px-3">
+                              <Link
+                                href={`/accounting/settlement/partners/${mg.partner_id}`}
+                                className="text-primary hover:underline"
+                              >
+                                {mg.partner?.name || '-'}
+                              </Link>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="py-2 px-3 font-medium">
+                              <Link
+                                href={`/accounting/settlement/partners/${mg.partner_id}`}
+                                className="text-primary hover:underline"
+                              >
+                                {mg.partner?.name || '-'}
+                              </Link>
+                            </td>
+                            <td className="py-2 px-3 text-muted-foreground">{mg.partner?.company_name || '-'}</td>
+                            <td className="py-2 px-3">
+                              <Badge variant="secondary" className="text-xs">
+                                {PARTNER_TYPE_LABELS[mg.partner?.partner_type || ''] || '-'}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3">{mg.work?.name || '-'}</td>
+                          </>
+                        )}
                         <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.previous_balance)}</td>
                         <td className="py-2 px-3 text-right tabular-nums text-blue-600">
                           {mg.mg_added !== 0 ? (mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : mg.mg_added.toLocaleString()) : '-'}
@@ -303,8 +375,7 @@ export default function MgPage() {
                   <tr className="border-t-2 font-semibold">
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3">합계 ({filtered.length}건)</td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3"></td>
+                    {viewMode === 'partner' && <><td className="py-2 px-3"></td><td className="py-2 px-3"></td></>}
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 text-right tabular-nums">{totals.previous_balance.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-blue-600">

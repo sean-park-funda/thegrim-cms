@@ -12,11 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Download } from 'lucide-react';
+import { Plus, Search, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { RsWork, RsWorkPartner, RsRevenue } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const fmt = (n: number) => n > 0 ? n.toLocaleString() : '-';
+
+type SortKey = 'name' | 'partners' | 'domestic_paid' | 'global_paid' | 'domestic_ad' | 'global_ad' | 'secondary' | 'total';
+type SortDir = 'asc' | 'desc';
 
 export default function WorksPage() {
   const router = useRouter();
@@ -30,6 +33,8 @@ export default function WorksPage() {
   const [editWork, setEditWork] = useState<RsWork | null>(null);
 
   const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('total');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
     if (profile && !canViewAccounting(profile.role)) {
@@ -103,6 +108,31 @@ export default function WorksPage() {
     revenueMap.set(r.work_id, r);
   }
 
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  const SortHeader = ({ k, children, className = '' }: { k: SortKey; children: React.ReactNode; className?: string }) => (
+    <th
+      className={`py-2 px-3 font-medium cursor-pointer select-none hover:text-foreground transition-colors ${className}`}
+      onClick={() => toggleSort(k)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortKey === k ? (
+          sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </span>
+    </th>
+  );
+
   const filtered = works.filter(w => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -110,6 +140,24 @@ export default function WorksPage() {
     return w.name.toLowerCase().includes(q)
       || (w.naver_name || '').toLowerCase().includes(q)
       || wps.some(wp => (wp.partner?.name || '').toLowerCase().includes(q));
+  });
+
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    const revA = revenueMap.get(a.id);
+    const revB = revenueMap.get(b.id);
+    let cmp = 0;
+    switch (sortKey) {
+      case 'name':
+        cmp = a.name.localeCompare(b.name, 'ko');
+        break;
+      case 'partners':
+        cmp = workPartners.filter(wp => wp.work_id === a.id).length - workPartners.filter(wp => wp.work_id === b.id).length;
+        break;
+      default:
+        cmp = (Number(revA?.[sortKey]) || 0) - (Number(revB?.[sortKey]) || 0);
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
   });
 
   const totals = filtered.reduce((acc, w) => {
@@ -166,18 +214,18 @@ export default function WorksPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="py-2 px-3 font-medium">작품명</th>
-                    <th className="py-2 px-3 font-medium text-center hidden md:table-cell">파트너</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내유료</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌유료</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">국내광고</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
-                    <th className="py-2 px-3 font-medium text-right">합계</th>
+                    <SortHeader k="name">작품명</SortHeader>
+                    <SortHeader k="partners" className="text-center hidden md:table-cell">파트너</SortHeader>
+                    <SortHeader k="domestic_paid" className="text-right hidden md:table-cell">국내유료</SortHeader>
+                    <SortHeader k="global_paid" className="text-right hidden md:table-cell">글로벌유료</SortHeader>
+                    <SortHeader k="domestic_ad" className="text-right hidden md:table-cell">국내광고</SortHeader>
+                    <SortHeader k="global_ad" className="text-right hidden md:table-cell">글로벌광고</SortHeader>
+                    <SortHeader k="secondary" className="text-right hidden md:table-cell">2차사업</SortHeader>
+                    <SortHeader k="total" className="text-right">합계</SortHeader>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((w) => {
+                  {sorted.map((w) => {
                     const rev = revenueMap.get(w.id);
                     const wps = workPartners.filter(wp => wp.work_id === w.id);
                     return (
