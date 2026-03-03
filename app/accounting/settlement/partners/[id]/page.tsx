@@ -17,8 +17,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight } from 'lucide-react';
-import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
+import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
+import { StaffForm } from '@/components/settlement/StaffForm';
+import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDialog';
+import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff, RsStaffAssignment } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface TaxBreakdown {
@@ -101,9 +103,19 @@ export default function PartnerDetailPage() {
   const [statement, setStatement] = useState<StatementData | null>(null);
   const [statementLoading, setStatementLoading] = useState(false);
 
+  const [staffList, setStaffList] = useState<RsStaff[]>([]);
+  const [staffAssignments, setStaffAssignments] = useState<RsStaffAssignment[]>([]);
+  const [partners, setPartners] = useState<RsPartner[]>([]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
+
+  const [staffFormOpen, setStaffFormOpen] = useState(false);
+  const [editStaff, setEditStaff] = useState<RsStaff | null>(null);
+  const [staffAssignDialogOpen, setStaffAssignDialogOpen] = useState(false);
+  const [editStaffAssignment, setEditStaffAssignment] = useState<RsStaffAssignment | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState('');
 
   const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
@@ -121,18 +133,22 @@ export default function PartnerDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [partnerRes, wpRes, settRes, mgRes, worksRes] = await Promise.all([
+      const [partnerRes, wpRes, settRes, mgRes, worksRes, staffRes, partnersRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/partners/${partnerId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/settlements?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}`),
         settlementFetch('/api/accounting/settlement/works'),
+        settlementFetch(`/api/accounting/settlement/staff?partnerId=${partnerId}&activeOnly=false`),
+        settlementFetch('/api/accounting/settlement/partners'),
       ]);
       const partnerData = await partnerRes.json();
       const wpData = await wpRes.json();
       const settData = await settRes.json();
       const mgData = await mgRes.json();
       const worksData = await worksRes.json();
+      const staffData = await staffRes.json();
+      const partnersData = await partnersRes.json();
 
       setPartner(partnerData.partner || null);
       setWorkPartners(wpData.work_partners || []);
@@ -143,6 +159,25 @@ export default function PartnerDetailPage() {
         (mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month))
       );
       setWorks(worksData.works || []);
+      setPartners(partnersData.partners || []);
+
+      const staffMembers: RsStaff[] = staffData.staff || [];
+      setStaffList(staffMembers);
+
+      // Load assignments for all staff members
+      if (staffMembers.length > 0) {
+        const assignResults = await Promise.all(
+          staffMembers.map(s => settlementFetch(`/api/accounting/settlement/staff-assignments?staffId=${s.id}`))
+        );
+        const allAssignments: RsStaffAssignment[] = [];
+        for (const r of assignResults) {
+          const d = await r.json();
+          allAssignments.push(...(d.assignments || []));
+        }
+        setStaffAssignments(allAssignments);
+      } else {
+        setStaffAssignments([]);
+      }
     } catch (e) {
       console.error('파트너 상세 로드 오류:', e);
     } finally {
@@ -181,6 +216,40 @@ export default function PartnerDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    if (res.ok) await load();
+  };
+
+  const handleCreateStaff = async (data: Partial<RsStaff>) => {
+    const res = await settlementFetch('/api/accounting/settlement/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, employer_partner_id: partnerId, employer_type: 'author' }),
+    });
+    if (res.ok) await load();
+  };
+
+  const handleUpdateStaff = async (data: Partial<RsStaff>) => {
+    if (!editStaff) return;
+    const res = await settlementFetch(`/api/accounting/settlement/staff/${editStaff.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      setEditStaff(null);
+      await load();
+    }
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    if (!confirm('이 인력을 삭제하시겠습니까? 모든 배정 정보도 함께 삭제됩니다.')) return;
+    const res = await settlementFetch(`/api/accounting/settlement/staff/${id}`, { method: 'DELETE' });
+    if (res.ok) await load();
+  };
+
+  const handleDeleteStaffAssignment = async (id: string) => {
+    if (!confirm('이 배정을 삭제하시겠습니까?')) return;
+    const res = await settlementFetch(`/api/accounting/settlement/staff-assignments?id=${id}`, { method: 'DELETE' });
     if (res.ok) await load();
   };
 
@@ -688,6 +757,131 @@ export default function PartnerDetailPage() {
             </CardContent>
           </Card>
 
+          {/* 소속 인력 */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  소속 인력 ({staffList.length}명)
+                </div>
+              </CardTitle>
+              {canManage && (
+                <Button variant="outline" size="sm" onClick={() => { setEditStaff(null); setStaffFormOpen(true); }}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  인력 추가
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {staffList.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
+              ) : (
+                <div className="space-y-4">
+                  {staffList.map((s) => {
+                    const sAssignments = staffAssignments.filter(a => a.staff_id === s.id);
+                    const totalCost = sAssignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0);
+                    return (
+                      <div key={s.id} className="border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/accounting/settlement/staff/${s.id}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {s.name}
+                            </Link>
+                            {!s.is_active && <Badge variant="outline">비활성</Badge>}
+                            {totalCost > 0 && (
+                              <span className="text-xs text-muted-foreground">월 {totalCost.toLocaleString()}원</span>
+                            )}
+                          </div>
+                          {canManage && (
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedStaffId(s.id);
+                                  setEditStaffAssignment(null);
+                                  setStaffAssignDialogOpen(true);
+                                }}
+                              >
+                                <Plus className="h-3.5 w-3.5 mr-1" />
+                                배정
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditStaff(s); setStaffFormOpen(true); }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteStaff(s.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {sAssignments.length > 0 && (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-xs text-muted-foreground">
+                                <th className="py-1 px-2 font-medium">작품</th>
+                                <th className="py-1 px-2 font-medium text-right">월 비용</th>
+                                <th className="py-1 px-2 font-medium hidden md:table-cell">기간</th>
+                                {canManage && <th className="py-1 px-2 font-medium w-8"></th>}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sAssignments.map((a) => (
+                                <tr
+                                  key={a.id}
+                                  className={`border-b last:border-0 hover:bg-muted/50 ${canManage ? 'cursor-pointer' : ''}`}
+                                  onClick={() => {
+                                    if (canManage) {
+                                      setSelectedStaffId(s.id);
+                                      setEditStaffAssignment(a);
+                                      setStaffAssignDialogOpen(true);
+                                    }
+                                  }}
+                                >
+                                  <td className="py-1 px-2">
+                                    <Link
+                                      href={`/accounting/settlement/works/${a.work_id}`}
+                                      className="text-primary hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {(a.work as { name?: string } | null)?.name || a.work_id}
+                                    </Link>
+                                  </td>
+                                  <td className="py-1 px-2 text-right tabular-nums">
+                                    {Number(a.monthly_cost) > 0 ? Number(a.monthly_cost).toLocaleString() : '-'}
+                                  </td>
+                                  <td className="py-1 px-2 text-xs text-muted-foreground hidden md:table-cell">
+                                    {a.start_month || '?'} ~ {a.end_month || '진행중'}
+                                  </td>
+                                  {canManage && (
+                                    <td className="py-1 px-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteStaffAssignment(a.id); }}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <PartnerForm
             partner={partner}
             open={formOpen}
@@ -701,6 +895,25 @@ export default function PartnerDetailPage() {
             onOpenChange={setContractDialogOpen}
             onSaved={load}
           />
+
+          <StaffForm
+            staff={editStaff}
+            partners={partners}
+            open={staffFormOpen}
+            onOpenChange={setStaffFormOpen}
+            onSave={editStaff ? handleUpdateStaff : handleCreateStaff}
+          />
+
+          {selectedStaffId && (
+            <StaffAssignmentDialog
+              staffId={selectedStaffId}
+              assignment={editStaffAssignment}
+              existingWorkIds={staffAssignments.filter(a => a.staff_id === selectedStaffId).map(a => a.work_id)}
+              open={staffAssignDialogOpen}
+              onOpenChange={setStaffAssignDialogOpen}
+              onSaved={load}
+            />
+          )}
 
           <Dialog open={mgDialogOpen} onOpenChange={setMgDialogOpen}>
             <DialogContent className="max-w-md">
