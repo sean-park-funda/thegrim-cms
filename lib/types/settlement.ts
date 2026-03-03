@@ -135,6 +135,42 @@ export interface RsUploadHistory {
   created_at: string;
 }
 
+// 스태프/어시스턴트
+export type EmployerType = 'author' | 'company';
+
+export interface RsStaff {
+  id: string;
+  name: string;
+  employer_type: EmployerType;
+  employer_partner_id: string | null;
+  phone: string | null;
+  email: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  is_active: boolean;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined
+  employer_partner?: RsPartner;
+}
+
+export interface RsStaffAssignment {
+  id: string;
+  staff_id: string;
+  work_id: string;
+  monthly_cost: number;
+  start_month: string | null;
+  end_month: string | null;
+  is_active: boolean;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined
+  staff?: RsStaff;
+  work?: RsWork;
+}
+
 // 파싱 결과 타입
 export interface ParsedRevenueRow {
   work_name: string;
