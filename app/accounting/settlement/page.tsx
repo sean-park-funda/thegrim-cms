@@ -8,9 +8,9 @@ import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { SettlementHeader } from '@/components/settlement/SettlementHeader';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Users, BookOpen, TrendingUp, BarChart3 } from 'lucide-react';
+import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
 import { RsRevenue } from '@/lib/types/settlement';
 import {
@@ -24,6 +24,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+const REVENUE_TYPES = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'] as const;
+
 const REVENUE_TYPE_LABELS: Record<string, string> = {
   domestic_paid: '국내유료',
   global_paid: '글로벌유료',
@@ -32,15 +34,21 @@ const REVENUE_TYPE_LABELS: Record<string, string> = {
   secondary: '2차사업',
 };
 
-const REVENUE_TYPE_COLORS: Record<string, string> = {
+const CHART_HEX: Record<string, string> = {
   domestic_paid: '#2563eb',
-  global_paid: '#7c3aed',
-  domestic_ad: '#059669',
-  global_ad: '#d97706',
-  secondary: '#dc2626',
+  global_paid: '#a855f7',
+  domestic_ad: '#0d9488',
+  global_ad: '#f59e0b',
+  secondary: '#6366f1',
 };
 
-const fmt = (n: number) => (n > 0 ? n.toLocaleString() : '-');
+const fmtShort = (n: number) => {
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
+  if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
+  return n.toLocaleString();
+};
+
+const fmtFull = (n: number) => (n > 0 ? n.toLocaleString() : '-');
 
 interface WorkRevenue {
   work_id: string;
@@ -55,22 +63,107 @@ interface WorkRevenue {
   global_total: number;
 }
 
-// Custom tooltip for the chart
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+/* ── Sub-components ──────────────────────────────── */
+
+function ChartTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+}) {
   if (!active || !payload?.length) return null;
+  const total = payload.reduce((s, p) => s + (p.value || 0), 0);
   return (
-    <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-medium mb-1">{label}</p>
+    <div className="rounded-lg border bg-card px-3 py-2.5 shadow-xl">
+      <p className="mb-1.5 text-sm font-semibold">{label}</p>
       {payload.filter(p => p.value > 0).map((p) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-medium tabular-nums">{p.value.toLocaleString()}</span>
+        <div key={p.name} className="flex items-center gap-2 text-xs leading-relaxed">
+          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.color }} />
+          <span className="text-muted-foreground">{p.name}</span>
+          <span className="ml-auto tabular-nums font-medium">{p.value.toLocaleString()}</span>
         </div>
       ))}
+      {payload.filter(p => p.value > 0).length > 1 && (
+        <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-xs font-semibold">
+          <span>합계</span>
+          <span className="tabular-nums">{total.toLocaleString()}</span>
+        </div>
+      )}
     </div>
   );
 }
+
+function RankBadge({ rank }: { rank: number }) {
+  const styles = [
+    'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
+    'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300',
+    'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300',
+  ];
+  return (
+    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
+      rank <= 3 ? styles[rank - 1] : 'text-muted-foreground'
+    }`}>
+      {rank}
+    </span>
+  );
+}
+
+function StatCard({ title, value, sub, icon: Icon, iconClass }: {
+  title: string;
+  value: string;
+  sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconClass: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-1">
+        <CardDescription className="text-xs font-medium">{title}</CardDescription>
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconClass}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tabular-nums">{value}</div>
+        {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BreakdownRow({ label, value, total, color }: {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+}) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+          <span className="text-muted-foreground">{label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="tabular-nums font-medium">{value > 0 ? fmtFull(value) : '-'}</span>
+          {value > 0 && (
+            <Badge variant="outline" className="h-4 px-1 text-[10px] tabular-nums font-normal">
+              {pct.toFixed(1)}%
+            </Badge>
+          )}
+        </div>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-all duration-700 ease-out"
+          style={{ width: `${Math.max(pct, value > 0 ? 0.5 : 0)}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── Main page ───────────────────────────────────── */
 
 export default function SettlementDashboardPage() {
   const router = useRouter();
@@ -83,14 +176,11 @@ export default function SettlementDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
+    if (profile && !canViewAccounting(profile.role)) router.push('/webtoons');
   }, [profile, router]);
 
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role)) return;
-
     async function load() {
       setLoading(true);
       try {
@@ -100,12 +190,9 @@ export default function SettlementDashboardPage() {
           settlementFetch('/api/accounting/settlement/works'),
           settlementFetch('/api/accounting/settlement/partners'),
         ]);
-
-        const revData = await revRes.json();
-        const settData = await settRes.json();
-        const workData = await workRes.json();
-        const partnerData = await partnerRes.json();
-
+        const [revData, settData, workData, partnerData] = await Promise.all([
+          revRes.json(), settRes.json(), workRes.json(), partnerRes.json(),
+        ]);
         setRevenues(revData.revenues || []);
         setWorkCount((workData.works || []).length);
         setPartnerCount((partnerData.partners || []).length);
@@ -118,29 +205,20 @@ export default function SettlementDashboardPage() {
         setLoading(false);
       }
     }
-
     load();
   }, [profile, selectedMonth]);
 
-  // Revenue breakdown by type
-  const revenueBreakdown = useMemo(() => {
-    const breakdown = {
-      domestic_paid: 0, global_paid: 0, domestic_ad: 0, global_ad: 0, secondary: 0, total: 0,
-    };
+  const breakdown = useMemo(() => {
+    const b = { domestic_paid: 0, global_paid: 0, domestic_ad: 0, global_ad: 0, secondary: 0, total: 0 };
     for (const r of revenues) {
-      breakdown.domestic_paid += Number(r.domestic_paid) || 0;
-      breakdown.global_paid += Number(r.global_paid) || 0;
-      breakdown.domestic_ad += Number(r.domestic_ad) || 0;
-      breakdown.global_ad += Number(r.global_ad) || 0;
-      breakdown.secondary += Number(r.secondary) || 0;
-      breakdown.total += Number(r.total) || 0;
+      for (const k of REVENUE_TYPES) b[k] += Number(r[k]) || 0;
+      b.total += Number(r.total) || 0;
     }
-    return breakdown;
+    return b;
   }, [revenues]);
 
-  // Per-work revenue for chart & rankings
-  const workRevenues: WorkRevenue[] = useMemo(() => {
-    return revenues
+  const workRevenues: WorkRevenue[] = useMemo(() =>
+    revenues
       .map((r) => ({
         work_id: r.work_id,
         work_name: (r.work as { name?: string } | null)?.name || r.work_id,
@@ -153,248 +231,195 @@ export default function SettlementDashboardPage() {
         domestic_total: (Number(r.domestic_paid) || 0) + (Number(r.domestic_ad) || 0),
         global_total: (Number(r.global_paid) || 0) + (Number(r.global_ad) || 0),
       }))
-      .sort((a, b) => b.total - a.total);
-  }, [revenues]);
+      .sort((a, b) => b.total - a.total),
+    [revenues]
+  );
 
-  // Chart data: top 10 works
-  const chartData = useMemo(() => {
-    return workRevenues.slice(0, 10).map((w) => ({
-      name: w.work_name.length > 8 ? w.work_name.slice(0, 8) + '…' : w.work_name,
+  const chartData = useMemo(() =>
+    workRevenues.slice(0, 10).map((w) => ({
+      name: w.work_name.length > 7 ? w.work_name.slice(0, 7) + '…' : w.work_name,
       국내유료: w.domestic_paid,
       글로벌유료: w.global_paid,
       국내광고: w.domestic_ad,
       글로벌광고: w.global_ad,
       '2차사업': w.secondary,
-    }));
-  }, [workRevenues]);
+    })),
+    [workRevenues]
+  );
 
-  // Top domestic / global rankings
   const topDomestic = useMemo(() =>
-    [...workRevenues].sort((a, b) => b.domestic_total - a.domestic_total).slice(0, 5),
+    [...workRevenues].sort((a, b) => b.domestic_total - a.domestic_total).filter(w => w.domestic_total > 0).slice(0, 5),
     [workRevenues]
   );
   const topGlobal = useMemo(() =>
-    [...workRevenues].sort((a, b) => b.global_total - a.global_total).slice(0, 5),
+    [...workRevenues].sort((a, b) => b.global_total - a.global_total).filter(w => w.global_total > 0).slice(0, 5),
     [workRevenues]
   );
 
-  if (!profile) {
-    return <div className="flex items-center justify-center h-full">Loading...</div>;
-  }
+  if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
 
+  const ready = !loading;
+
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
+    <div className="container mx-auto p-3 md:p-6 space-y-5">
       <SettlementHeader />
       <SettlementNav />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">총 매출</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {loading ? '...' : `${revenueBreakdown.total.toLocaleString()}원`}
-            </div>
-            <p className="text-xs text-muted-foreground">{selectedMonth}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">정산 합계</CardTitle>
-            <DollarSign className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {loading ? '...' : `${settlementTotal.toLocaleString()}원`}
-            </div>
-            <p className="text-xs text-muted-foreground">최종 지급액</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">등록 작품</CardTitle>
-            <BookOpen className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {loading ? '...' : `${workCount}개`}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">등록 파트너</CardTitle>
-            <Users className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {loading ? '...' : `${partnerCount}명`}
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Stat cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          title="총 매출"
+          value={ready ? fmtShort(breakdown.total) : '–'}
+          sub={selectedMonth}
+          icon={TrendingUp}
+          iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+        />
+        <StatCard
+          title="정산 합계"
+          value={ready ? fmtShort(settlementTotal) : '–'}
+          sub="최종 지급액"
+          icon={DollarSign}
+          iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+        />
+        <StatCard
+          title="등록 작품"
+          value={ready ? `${workCount}개` : '–'}
+          icon={BookOpen}
+          iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-400"
+        />
+        <StatCard
+          title="등록 파트너"
+          value={ready ? `${partnerCount}명` : '–'}
+          icon={Users}
+          iconClass="bg-orange-500/10 text-orange-600 dark:text-orange-400"
+        />
       </div>
 
-      {/* Revenue breakdown by type */}
-      {!loading && revenueBreakdown.total > 0 && (
+      {/* ── Revenue breakdown ── */}
+      {ready && breakdown.total > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">매출 유형별 분류 — {selectedMonth}</CardTitle>
+            <CardTitle className="text-base">매출 유형별 현황</CardTitle>
+            <CardAction>
+              <Badge variant="outline" className="text-[11px] tabular-nums font-normal">
+                {selectedMonth}
+              </Badge>
+            </CardAction>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {(Object.keys(REVENUE_TYPE_LABELS) as Array<keyof typeof REVENUE_TYPE_LABELS>).map((key) => {
-                const val = revenueBreakdown[key as keyof typeof revenueBreakdown];
-                const pct = revenueBreakdown.total > 0 ? ((val / revenueBreakdown.total) * 100).toFixed(1) : '0';
-                return (
-                  <div key={key} className="text-center">
-                    <div className="text-xs text-muted-foreground mb-1">{REVENUE_TYPE_LABELS[key]}</div>
-                    <div className="text-lg font-bold tabular-nums">{val > 0 ? val.toLocaleString() : '-'}</div>
-                    {val > 0 && (
-                      <div className="mt-1">
-                        <div className="w-full bg-muted rounded-full h-1.5">
-                          <div
-                            className="h-1.5 rounded-full"
-                            style={{ width: `${pct}%`, backgroundColor: REVENUE_TYPE_COLORS[key] }}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{pct}%</div>
+          <CardContent className="space-y-3">
+            {REVENUE_TYPES.map((key) => (
+              <BreakdownRow
+                key={key}
+                label={REVENUE_TYPE_LABELS[key]}
+                value={breakdown[key]}
+                total={breakdown.total}
+                color={CHART_HEX[key]}
+              />
+            ))}
+            <div className="flex items-center justify-between border-t pt-3 text-sm font-semibold">
+              <span>합계</span>
+              <span className="tabular-nums">{fmtFull(breakdown.total)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Chart + Rankings ── */}
+      {ready && chartData.length > 0 && (
+        <div className="grid gap-4 xl:grid-cols-5">
+          {/* Bar chart */}
+          <Card className="xl:col-span-3">
+            <CardHeader className="border-b pb-4">
+              <CardTitle className="text-base">작품별 매출 구성</CardTitle>
+              <CardDescription>상위 {Math.min(10, chartData.length)}개 작품</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-5">
+              <div className="h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11 }}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={55}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11 }}
+                      width={48}
+                      tickFormatter={(v: number) =>
+                        v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` :
+                        v >= 10_000 ? `${Math.round(v / 10_000)}만` : String(v)
+                      }
+                    />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-muted)', opacity: 0.4 }} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
+                    <Bar dataKey="국내유료" stackId="a" fill={CHART_HEX.domestic_paid} />
+                    <Bar dataKey="글로벌유료" stackId="a" fill={CHART_HEX.global_paid} />
+                    <Bar dataKey="국내광고" stackId="a" fill={CHART_HEX.domestic_ad} />
+                    <Bar dataKey="글로벌광고" stackId="a" fill={CHART_HEX.global_ad} />
+                    <Bar dataKey="2차사업" stackId="a" fill={CHART_HEX.secondary} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Rankings */}
+          <div className="flex flex-col gap-4 xl:col-span-2">
+            <Card className="flex-1">
+              <CardHeader className="border-b pb-4">
+                <CardTitle className="text-sm">국내 매출 TOP</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {topDomestic.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">데이터 없음</div>
+                ) : (
+                  <div className="divide-y">
+                    {topDomestic.map((w, i) => (
+                      <div key={w.work_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
+                        <RankBadge rank={i + 1} />
+                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="flex-1 truncate text-sm hover:underline">
+                          {w.work_name}
+                        </Link>
+                        <span className="text-sm font-semibold tabular-nums">{fmtShort(w.domestic_total)}</span>
                       </div>
-                    )}
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                )}
+              </CardContent>
+            </Card>
 
-      {/* Revenue chart by work */}
-      {!loading && chartData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              <CardTitle className="text-base">작품별 매출 — {selectedMonth}</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 11 }}
-                    interval={0}
-                    angle={-20}
-                    textAnchor="end"
-                    height={50}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(0)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="국내유료" stackId="a" fill="#2563eb" />
-                  <Bar dataKey="글로벌유료" stackId="a" fill="#7c3aed" />
-                  <Bar dataKey="국내광고" stackId="a" fill="#059669" />
-                  <Bar dataKey="글로벌광고" stackId="a" fill="#d97706" />
-                  <Bar dataKey="2차사업" stackId="a" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Rankings: domestic & global side by side */}
-      {!loading && workRevenues.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Domestic ranking */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">국내 매출 TOP 5</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="py-1.5 px-2 font-medium w-8">#</th>
-                    <th className="py-1.5 px-2 font-medium">작품</th>
-                    <th className="py-1.5 px-2 font-medium text-right">유료</th>
-                    <th className="py-1.5 px-2 font-medium text-right">광고</th>
-                    <th className="py-1.5 px-2 font-medium text-right">합계</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topDomestic.map((w, i) => (
-                    <tr key={w.work_id} className="border-b last:border-0 hover:bg-muted/50">
-                      <td className="py-1.5 px-2">
-                        <Badge variant={i < 3 ? 'default' : 'secondary'} className="w-6 h-6 p-0 justify-center text-xs">
-                          {i + 1}
-                        </Badge>
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="text-primary hover:underline text-xs">
+            <Card className="flex-1">
+              <CardHeader className="border-b pb-4">
+                <CardTitle className="text-sm">글로벌 매출 TOP</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {topGlobal.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">데이터 없음</div>
+                ) : (
+                  <div className="divide-y">
+                    {topGlobal.map((w, i) => (
+                      <div key={w.work_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
+                        <RankBadge rank={i + 1} />
+                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="flex-1 truncate text-sm hover:underline">
                           {w.work_name}
                         </Link>
-                      </td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-xs">{fmt(w.domestic_paid)}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-xs">{fmt(w.domestic_ad)}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-xs">{fmt(w.domestic_total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-
-          {/* Global ranking */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">글로벌 매출 TOP 5</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="py-1.5 px-2 font-medium w-8">#</th>
-                    <th className="py-1.5 px-2 font-medium">작품</th>
-                    <th className="py-1.5 px-2 font-medium text-right">유료</th>
-                    <th className="py-1.5 px-2 font-medium text-right">광고</th>
-                    <th className="py-1.5 px-2 font-medium text-right">합계</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topGlobal.map((w, i) => (
-                    <tr key={w.work_id} className="border-b last:border-0 hover:bg-muted/50">
-                      <td className="py-1.5 px-2">
-                        <Badge variant={i < 3 ? 'default' : 'secondary'} className="w-6 h-6 p-0 justify-center text-xs">
-                          {i + 1}
-                        </Badge>
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="text-primary hover:underline text-xs">
-                          {w.work_name}
-                        </Link>
-                      </td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-xs">{fmt(w.global_paid)}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-xs">{fmt(w.global_ad)}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-xs">{fmt(w.global_total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
+                        <span className="text-sm font-semibold tabular-nums">{fmtShort(w.global_total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
     </div>
