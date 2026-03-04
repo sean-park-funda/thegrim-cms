@@ -63,13 +63,25 @@ console.log('=== 1. 작품 목록 추출 (더그림 시트) ===');
 const dgSheet = wb.Sheets['더그림'];
 const dgData = XLSX.utils.sheet_to_json(dgSheet, { header: 1 });
 
-const workNames = [];
+/** Excel serial number → YYYY-MM-DD */
+function excelDateToISO(serial) {
+  if (!serial || typeof serial !== 'number') return null;
+  const d = new Date((serial - 25569) * 86400 * 1000);
+  return d.toISOString().split('T')[0];
+}
+
+const workEntries = []; // { name, serial_start_date, serial_end_date }
 for (let i = 6; i < dgData.length; i++) {
   const row = dgData[i];
   if (!row || !row[2]) continue;
   const name = String(row[2]).trim();
-  if (name) workNames.push(name);
+  if (name) workEntries.push({
+    name,
+    serial_start_date: excelDateToISO(row[23]),
+    serial_end_date: excelDateToISO(row[24]),
+  });
 }
+const workNames = workEntries.map(w => w.name);
 console.log(`  ${workNames.length}개 작품 발견`);
 
 // --- 2) 작가RS 시트에서 파트너 정보 + RS 비율 추출 ---
@@ -89,6 +101,7 @@ for (let i = 3; i < rsData.length; i++) {
   const partnerName = String(row[1]).trim();
   const partnerTypeRaw = String(row[3] || '').trim();
   const rsRate = Number(row[6]) || 0;
+  const mgRsRate = row[7] != null && row[7] !== '' ? Number(row[7]) : null;
   const contractType = String(row[9] || 'RS').trim();
 
   if (!workName || !partnerName || rsRate === 0) continue;
@@ -102,7 +115,7 @@ for (let i = 3; i < rsData.length; i++) {
     partnerSet.set(partnerName, { partner_type: partnerType });
   }
 
-  relationships.push({ workName, partnerName, rsRate, contractType });
+  relationships.push({ workName, partnerName, rsRate, mgRsRate, contractType });
 }
 
 console.log(`  ${partnerSet.size}개 파트너, ${relationships.length}개 작품-파트너 연결`);
@@ -129,24 +142,49 @@ for (const w of existingWorks) {
 console.log(`  기존 ${workMap.size}개 작품`);
 
 let newWorkCount = 0;
-for (const name of workNames) {
-  if (workMap.has(name)) continue;
+let updatedWorkCount = 0;
+for (const entry of workEntries) {
+  if (workMap.has(entry.name)) {
+    // 기존 작품 — 연재기간 업데이트
+    if (entry.serial_start_date || entry.serial_end_date) {
+      try {
+        const updateData = {};
+        if (entry.serial_start_date) updateData.serial_start_date = entry.serial_start_date;
+        if (entry.serial_end_date) updateData.serial_end_date = entry.serial_end_date;
+        const existingId = workMap.get(entry.name);
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/rs_works?id=eq.${existingId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SERVICE_KEY,
+            'Authorization': `Bearer ${SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(updateData),
+        });
+        if (res.ok) updatedWorkCount++;
+      } catch (e) { /* ignore update errors */ }
+    }
+    continue;
+  }
   try {
-    const [work] = await supabasePost('rs_works', {
-      name,
-      naver_name: name,
+    const workData = {
+      name: entry.name,
+      naver_name: entry.name,
       contract_type: 'exclusive',
       settlement_level: 'work',
       is_active: true,
-    });
-    workMap.set(name, work.id);
+    };
+    if (entry.serial_start_date) workData.serial_start_date = entry.serial_start_date;
+    if (entry.serial_end_date) workData.serial_end_date = entry.serial_end_date;
+    const [work] = await supabasePost('rs_works', workData);
+    workMap.set(entry.name, work.id);
     newWorkCount++;
     process.stdout.write('.');
   } catch (e) {
-    console.error(`\n  작품 등록 실패 [${name}]: ${e.message}`);
+    console.error(`\n  작품 등록 실패 [${entry.name}]: ${e.message}`);
   }
 }
-console.log(`\n  신규 ${newWorkCount}개 등록, 총 ${workMap.size}개`);
+console.log(`\n  신규 ${newWorkCount}개, 연재기간 업데이트 ${updatedWorkCount}개, 총 ${workMap.size}개`);
 
 // --- 4) DB에 파트너 등록 (기존 있으면 스킵) ---
 console.log('\n=== 4. 파트너 등록 ===');
@@ -220,12 +258,14 @@ for (const rel of relationships) {
   }
 
   try {
-    await supabasePost('rs_work_partners', {
+    const wpData = {
       work_id: workId,
       partner_id: partnerId,
       rs_rate: rel.rsRate,
       role: rel.contractType === 'MG' ? 'MG' : 'RS',
-    });
+    };
+    if (rel.mgRsRate != null) wpData.mg_rs_rate = rel.mgRsRate;
+    await supabasePost('rs_work_partners', wpData);
     wpCount++;
     wpExistSet.add(`${workId}:${partnerId}`);
     process.stdout.write('.');

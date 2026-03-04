@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, work:rs_works(id, name)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, work:rs_works(id, name, serial_start_date, serial_end_date)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // 5) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
-      const work = wp.work as unknown as { id: string; name: string } | null;
+      const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null } | null;
       const rev = revenues?.find(r => r.work_id === wp.work_id);
       const mg = mgBalances?.find(m => m.work_id === wp.work_id);
 
@@ -159,8 +159,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const tax_breakdown = calculateTax(subtotal, partner.partner_type);
     const tax_amount = tax_breakdown.total;
 
-    // 예고료 계산
-    const insurance = calculateInsurance(subtotal, partner.partner_type);
+    // 예고료 계산 — 연재 중인 작품이 하나라도 있으면 대상
+    const hasActiveSerial = works.some(w => {
+      const wk = workPartners.find(wp => wp.work_id === w.work_id);
+      const wkData = wk?.work as unknown as { serial_end_date: string | null } | null;
+      return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
+    });
+    const insurance = calculateInsurance(subtotal, partner.partner_type, {
+      serialEndDate: hasActiveSerial ? null : '1900-01-01',
+      reportType: partner.report_type ?? null,
+      month,
+    });
 
     // MG 차감 합계
     const total_mg_deduction = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);

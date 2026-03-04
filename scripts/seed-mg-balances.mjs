@@ -69,6 +69,7 @@ for (let i = 8; i < mgData.length; i++) {
   const mgAdded = Number(row[10]) || 0;
   const mgDeducted = Math.abs(Number(row[11]) || 0); // Excel has negative values
   const currentBalance = Number(row[12]) || 0;
+  const reportType = row[7] ? String(row[7]).trim() : null;
   const note = row[14] ? String(row[14]).trim() : null;
 
   // 쉼표로 구분된 작품명 → 여러 작품이 있어도 각 행이 별도 행(예: 하승범)
@@ -85,6 +86,7 @@ for (let i = 8; i < mgData.length; i++) {
     mgAdded,
     mgDeducted,
     currentBalance,
+    reportType,
     note,
   });
 }
@@ -95,9 +97,15 @@ const partners = await supaGet('rs_partners', 'id,name');
 const works = await supaGet('rs_works', 'id,name');
 
 const partnerMap = new Map();
+/** 파트너명 정규화 — ☆★ 제거, 괄호 내용 제거, 공백 정리 */
+function normalizePartner(name) {
+  return name.replace(/[☆★]/g, '').trim();
+}
 for (const p of partners) {
   partnerMap.set(p.name, p.id);
   partnerMap.set(p.name.toLowerCase(), p.id);
+  partnerMap.set(normalizePartner(p.name), p.id);
+  partnerMap.set(normalizePartner(p.name).toLowerCase(), p.id);
 }
 const workMap = new Map(works.map(w => [w.name, w.id]));
 
@@ -121,7 +129,8 @@ let success = 0;
 let failed = 0;
 
 for (const e of entries) {
-  const partnerId = partnerMap.get(e.partnerName) || partnerMap.get(e.partnerName.toLowerCase());
+  const partnerId = partnerMap.get(e.partnerName) || partnerMap.get(e.partnerName.toLowerCase())
+    || partnerMap.get(normalizePartner(e.partnerName)) || partnerMap.get(normalizePartner(e.partnerName).toLowerCase());
   if (!partnerId) {
     console.error(`  파트너 없음: "${e.partnerName}"`);
     failed++;
@@ -165,5 +174,60 @@ for (const e of entries) {
   }
 }
 
-console.log(`\n\n=== 완료 ===`);
-console.log(`성공: ${success}건, 실패: ${failed}건 (총 ${entries.length}건)`);
+// --- 4) MG 기록 있는 작품-파트너에 is_mg_applied=true 설정 ---
+console.log('\n\n=== 4. is_mg_applied 플래그 설정 ===');
+const mgPartnerWorkPairs = new Set();
+const partnerReportTypes = new Map(); // partnerId -> reportType
+
+for (const e of entries) {
+  const partnerId = partnerMap.get(e.partnerName) || partnerMap.get(e.partnerName.toLowerCase())
+    || partnerMap.get(normalizePartner(e.partnerName)) || partnerMap.get(normalizePartner(e.partnerName).toLowerCase());
+  const workId = workMap.get(e.workName) || normalizedWorkMap.get(normalize(e.workName));
+  if (partnerId && workId) {
+    mgPartnerWorkPairs.add(`${workId}:${partnerId}`);
+    if (e.reportType && !partnerReportTypes.has(partnerId)) {
+      partnerReportTypes.set(partnerId, e.reportType);
+    }
+  }
+}
+
+let mgFlagCount = 0;
+for (const pair of mgPartnerWorkPairs) {
+  const [workId, partnerId] = pair.split(':');
+  try {
+    const res = await fetch(`${SURL}/rest/v1/rs_work_partners?work_id=eq.${workId}&partner_id=eq.${partnerId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': KEY,
+        'Authorization': `Bearer ${KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ is_mg_applied: true }),
+    });
+    if (res.ok) mgFlagCount++;
+  } catch (e) { /* ignore */ }
+}
+console.log(`  is_mg_applied=true 설정: ${mgFlagCount}건`);
+
+// --- 5) 파트너 report_type 업데이트 ---
+console.log('\n=== 5. 파트너 신고구분(report_type) 업데이트 ===');
+let rtCount = 0;
+for (const [partnerId, reportType] of partnerReportTypes) {
+  try {
+    const res = await fetch(`${SURL}/rest/v1/rs_partners?id=eq.${partnerId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': KEY,
+        'Authorization': `Bearer ${KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ report_type: reportType }),
+    });
+    if (res.ok) rtCount++;
+  } catch (e) { /* ignore */ }
+}
+console.log(`  report_type 업데이트: ${rtCount}건`);
+
+console.log('\n=== 완료 ===');
+console.log(`MG 잔액: 성공 ${success}건, 실패 ${failed}건 (총 ${entries.length}건)`);
+console.log(`is_mg_applied: ${mgFlagCount}건, report_type: ${rtCount}건`);

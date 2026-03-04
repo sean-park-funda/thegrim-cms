@@ -83,8 +83,6 @@ export async function GET(request: NextRequest) {
     }
 
     const review = Array.from(partnerMap.values()).map(entry => {
-      const insurance = calculateInsurance(entry.total_settlement, entry.partner_type);
-
       // 예고료 적용 조건 검토
       const reasons: string[] = [];
       const hasActiveSerial = entry.works.some(w => !w.serial_end_date || new Date(w.serial_end_date) >= new Date(month + '-01'));
@@ -95,6 +93,13 @@ export async function GET(request: NextRequest) {
       if (entry.report_type === '세금계산서') reasons.push('세금계산서 발행자');
 
       const isEligible = hasActiveSerial && isAboveThreshold && entry.report_type !== '세금계산서';
+
+      // 조건을 calculateInsurance에 직접 전달 — 함수 내에서 동일 조건 적용
+      const insurance = calculateInsurance(entry.total_settlement, entry.partner_type, {
+        serialEndDate: hasActiveSerial ? null : '1900-01-01',
+        reportType: entry.report_type,
+        month,
+      });
 
       return {
         ...entry,

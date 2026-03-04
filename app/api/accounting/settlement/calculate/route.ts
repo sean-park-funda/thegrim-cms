@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // 작품-파트너 연결 조회
     const { data: workPartners } = await supabase
       .from('rs_work_partners')
-      .select('*, partner:rs_partners(*)');
+      .select('*, partner:rs_partners(*), work:rs_works(serial_start_date, serial_end_date)');
 
     if (!workPartners || workPartners.length === 0) {
       return NextResponse.json({ error: '작품-파트너 연결이 없습니다.' }, { status: 404 });
@@ -111,6 +111,8 @@ export async function POST(request: NextRequest) {
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
         const grossRevenue = types.reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
 
+        const workData = wp.work as { serial_start_date: string | null; serial_end_date: string | null } | null;
+
         const calc = calculateSettlement({
           gross_revenue: grossRevenue,
           rs_rate: Number(wp.rs_rate),
@@ -123,6 +125,9 @@ export async function POST(request: NextRequest) {
           partner_type: wp.partner.partner_type,
           is_mg_applied: wp.is_mg_applied,
           mg_balance: mgBalance,
+          serial_end_date: workData?.serial_end_date ?? null,
+          report_type: wp.partner.report_type ?? null,
+          month,
         });
 
         const settlement = {
