@@ -181,3 +181,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 .env*.local
+
+# Local experiment files
+public/download-ltx2.ps1
+public/references/
