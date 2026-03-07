@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       const partners = workPartners.filter(wp => wp.work_id === rev.work_id);
 
       for (const wp of partners) {
-        // MG 잔액 조회
+        // MG 잔액 조회 (현재 월 제외 — 이전 월까지만 참조)
         let mgBalance = 0;
         if (wp.is_mg_applied) {
           const { data: mgData } = await supabase
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
             .select('current_balance')
             .eq('partner_id', wp.partner_id)
             .eq('work_id', wp.work_id)
+            .lt('month', month)
             .order('month', { ascending: false })
             .limit(1)
             .single();
@@ -167,21 +168,7 @@ export async function POST(request: NextRequest) {
           console.error('정산 UPSERT 오류:', upsertError);
         }
 
-        // MG 잔액 갱신
-        if (wp.is_mg_applied && calc.mg_deduction > 0) {
-          const newBalance = mgBalance - calc.mg_deduction;
-          await supabase
-            .from('rs_mg_balances')
-            .upsert({
-              month,
-              partner_id: wp.partner_id,
-              work_id: wp.work_id,
-              previous_balance: mgBalance,
-              mg_added: 0,
-              mg_deducted: calc.mg_deduction,
-              current_balance: newBalance,
-            }, { onConflict: 'month,partner_id,work_id' });
-        }
+        // MG 잔액은 정산 확정(confirmed) 시 갱신됨 (settlements PUT)
 
         results.push({
           work_id: wp.work_id,

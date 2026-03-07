@@ -85,6 +85,46 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '정산 수정 실패' }, { status: 500 });
     }
 
+    // 정산 확정 시 MG 잔액 자동 갱신
+    if (status === 'confirmed' && data && Number(data.mg_deduction) > 0) {
+      // 이전 월 잔액 조회
+      const { data: prevMg } = await supabase
+        .from('rs_mg_balances')
+        .select('current_balance')
+        .eq('partner_id', data.partner_id)
+        .eq('work_id', data.work_id)
+        .lt('month', data.month)
+        .order('month', { ascending: false })
+        .limit(1)
+        .single();
+
+      const previousBalance = prevMg ? Number(prevMg.current_balance) : 0;
+      const mgDeducted = Number(data.mg_deduction);
+
+      // 현재 월 MG 잔액이 이미 있으면 mg_added 보존
+      const { data: currentMg } = await supabase
+        .from('rs_mg_balances')
+        .select('mg_added')
+        .eq('partner_id', data.partner_id)
+        .eq('work_id', data.work_id)
+        .eq('month', data.month)
+        .single();
+
+      const mgAdded = currentMg ? Number(currentMg.mg_added) : 0;
+
+      await supabase
+        .from('rs_mg_balances')
+        .upsert({
+          month: data.month,
+          partner_id: data.partner_id,
+          work_id: data.work_id,
+          previous_balance: previousBalance,
+          mg_added: mgAdded,
+          mg_deducted: mgDeducted,
+          current_balance: previousBalance + mgAdded - mgDeducted,
+        }, { onConflict: 'month,partner_id,work_id' });
+    }
+
     return NextResponse.json({ settlement: data });
   } catch (error) {
     console.error('정산 수정 오류:', error);

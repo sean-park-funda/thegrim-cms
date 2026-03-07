@@ -143,36 +143,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3) 작품 매칭 + 자동 등록 + 금액 합산
+    // 3) 작품 매칭 + 금액 합산 (DB에 없는 작품은 자동 생성하지 않고 경고)
     const matched: { work_name: string; work_id: string; amount: number }[] = [];
-    const autoCreated: { work_name: string; work_id: string; amount: number }[] = [];
+    const unmatchedWorks: { work_name: string; amount: number }[] = [];
     const aggregated = new Map<string, { work_name: string; work_id: string; amount: number }>();
 
     for (const row of allRows) {
-      let workId: string | undefined = workMap.get(row.work_name)
+      const workId: string | undefined = workMap.get(row.work_name)
         || workMap.get(normalizeWorkName(row.work_name));
 
       if (!workId) {
-        const { data: newWork } = await supabase
-          .from('rs_works')
-          .insert({ name: row.work_name, naver_name: row.work_name })
-          .select('id')
-          .single();
-
-        if (newWork) {
-          workId = newWork.id as string;
-          workMap.set(row.work_name, workId);
-          autoCreated.push({ work_name: row.work_name, work_id: workId, amount: row.amount });
-        }
+        unmatchedWorks.push({ work_name: row.work_name, amount: row.amount });
+        allErrors.push(`DB에 없는 작품: "${row.work_name}" (₩${row.amount.toLocaleString()}) — 먼저 작품을 등록하세요`);
+        continue;
       }
 
-      if (workId) {
-        const existing = aggregated.get(workId);
-        if (existing) {
-          existing.amount += row.amount;
-        } else {
-          aggregated.set(workId, { work_name: row.work_name, work_id: workId, amount: row.amount });
-        }
+      const existing = aggregated.get(workId);
+      if (existing) {
+        existing.amount += row.amount;
+      } else {
+        aggregated.set(workId, { work_name: row.work_name, work_id: workId, amount: row.amount });
       }
     }
 
@@ -303,7 +293,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       matched,
-      auto_created: autoCreated,
+      unmatched_works: unmatchedWorks,
       total_amount,
       file_results: fileResults,
       errors: allErrors,

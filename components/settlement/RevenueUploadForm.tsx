@@ -31,7 +31,7 @@ const REVENUE_TYPE_CONFIG: Record<RevenueType, { label: string; description: str
 
 interface UploadResult {
   matched: { work_name: string; work_id: string; amount: number }[];
-  auto_created: { work_name: string; work_id: string; amount: number }[];
+  unmatched_works?: { work_name: string; amount: number }[];
   total_amount: number;
   file_results?: { name: string; count: number; amount: number }[];
   errors: string[];
@@ -234,13 +234,13 @@ function RevenueTypeCard({ revenueType, history, uploaded, onUploadComplete }: R
                 </ul>
               </details>
             )}
-            {result.auto_created.length > 0 && (
-              <details className="group">
-                <summary className="cursor-pointer text-blue-600 font-medium">
-                  자동 등록 {result.auto_created.length}건
+            {result.unmatched_works && result.unmatched_works.length > 0 && (
+              <details className="group" open>
+                <summary className="cursor-pointer text-amber-600 font-medium">
+                  미등록 작품 {result.unmatched_works.length}건 (먼저 작품 등록 필요)
                 </summary>
-                <ul className="text-muted-foreground mt-1 space-y-0.5 pl-5">
-                  {result.auto_created.map((m, i) => (
+                <ul className="text-amber-600 mt-1 space-y-0.5 pl-5">
+                  {result.unmatched_works.map((m, i) => (
                     <li key={i}>{m.work_name}: {m.amount.toLocaleString()}원</li>
                   ))}
                 </ul>

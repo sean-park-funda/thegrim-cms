@@ -497,6 +497,11 @@ const partnerMap = new Map();
 for (const p of partners) {
   partnerMap.set(p.name, p);
   partnerMap.set(p.name.toLowerCase(), p);
+  const cleaned = p.name.replace(/[☆★]/g, '').trim();
+  if (cleaned !== p.name) {
+    partnerMap.set(cleaned, p);
+    partnerMap.set(cleaned.toLowerCase(), p);
+  }
 }
 const workMap = new Map();
 const normalizedWorkMap = new Map();
