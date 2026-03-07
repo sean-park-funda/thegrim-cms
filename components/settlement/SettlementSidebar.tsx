@@ -79,28 +79,30 @@ export function SettlementSidebar() {
   const canManage = profile && canManageAccounting(profile.role);
 
   return (
-    <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Calculator className="h-4 w-4" />
+    <Sidebar collapsible="icon" className="border-r-0">
+      <SidebarHeader className="px-4 pt-4 pb-3">
+        <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
+            <Calculator className="h-4 w-4 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold">RS 정산</span>
-            <span className="text-[10px] text-muted-foreground">더그림 CMS</span>
+            <span className="text-sm font-semibold text-sidebar-primary-foreground">RS 정산</span>
+            <span className="text-[10px] text-sidebar-foreground/50">더그림 CMS</span>
           </div>
         </div>
-        <div className="group-data-[collapsible=icon]:hidden">
+        <div className="mt-2 group-data-[collapsible=icon]:hidden">
           <MonthSelector />
         </div>
       </SidebarHeader>
 
-      <SidebarSeparator />
+      <SidebarSeparator className="opacity-30" />
 
-      <SidebarContent>
+      <SidebarContent className="px-2">
         {navGroups.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.label} className="py-2">
+            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 px-2">
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
@@ -108,11 +110,16 @@ export function SettlementSidebar() {
                     ? pathname === item.href
                     : pathname === item.href || pathname.startsWith(item.href + '/');
                   return (
-                    <SidebarMenuItem key={item.href}>
+                    <SidebarMenuItem key={item.href} className="relative">
+                      {isActive && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-cyan-400" />
+                      )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
                         <Link href={item.href}>
-                          <item.icon />
-                          <span>{item.label}</span>
+                          <item.icon className={isActive ? 'text-cyan-400' : ''} />
+                          <span className={isActive ? 'text-sidebar-primary-foreground font-medium' : ''}>
+                            {item.label}
+                          </span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -123,6 +130,8 @@ export function SettlementSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
+
+      <SidebarSeparator className="opacity-30" />
 
       <SidebarFooter className="p-2">
         <SidebarMenu>
