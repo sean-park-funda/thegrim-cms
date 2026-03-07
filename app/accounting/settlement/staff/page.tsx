@@ -138,6 +138,7 @@ export default function StaffPage() {
                     <th className="py-2 px-3 font-medium">이름</th>
                     <th className="py-2 px-3 font-medium">소속 구분</th>
                     <th className="py-2 px-3 font-medium hidden md:table-cell">소속 작가</th>
+                    <th className="py-2 px-3 font-medium text-right">월 급여</th>
                     <th className="py-2 px-3 font-medium text-right">배정 작품</th>
                     <th className="py-2 px-3 font-medium text-right">월 비용 합계</th>
                     <th className="py-2 px-3 font-medium text-center hidden md:table-cell">상태</th>
@@ -158,6 +159,9 @@ export default function StaffPage() {
                       </td>
                       <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">
                         {(s.employer_partner as { name?: string } | null)?.name || '-'}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums font-semibold">
+                        {s.monthly_salary > 0 ? Number(s.monthly_salary).toLocaleString() : '-'}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums">
                         {s.assignment_count || '-'}
@@ -180,6 +184,7 @@ export default function StaffPage() {
                     <td className="py-2 px-3">합계 ({filtered.length}명{search ? ` / ${staffList.length}명` : ''})</td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 hidden md:table-cell"></td>
+                    <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, st) => s + (Number(st.monthly_salary) || 0), 0).toLocaleString()}</td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 text-right tabular-nums">{totalMonthlyCost > 0 ? totalMonthlyCost.toLocaleString() : '-'}</td>
                     <td className="py-2 px-3 hidden md:table-cell"></td>

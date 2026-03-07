@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const body = await request.json();
-    const { name, employer_type, employer_partner_id, phone, email, bank_name, bank_account, is_active, note } = body;
+    const { name, employer_type, employer_partner_id, phone, email, bank_name, bank_account, is_active, note, monthly_salary } = body;
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -69,6 +69,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (bank_account !== undefined) updateData.bank_account = bank_account;
     if (is_active !== undefined) updateData.is_active = is_active;
     if (note !== undefined) updateData.note = note;
+    if (monthly_salary !== undefined) updateData.monthly_salary = monthly_salary;
 
     const { data, error } = await supabase
       .from('rs_staff')

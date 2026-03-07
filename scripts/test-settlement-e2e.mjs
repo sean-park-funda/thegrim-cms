@@ -364,7 +364,11 @@ function parseRevenueExcel(buffer, rawFileName, revenueType) {
 // ── Calculator (ported from calculator.ts) ──────────────────────────────────
 const truncate10 = (n) => Math.floor(n / 10) * 10;
 
-function calculateTax(amount, partnerType) {
+function calculateTax(amount, partnerType, reportType) {
+  // 세금계산서: partner handles own tax filing, no withholding
+  if (reportType === '세금계산서') {
+    return { income_tax: 0, local_tax: 0, vat: 0, total: 0 };
+  }
   if (partnerType === 'individual' || partnerType === 'individual_employee' || partnerType === 'individual_simple_tax') {
     const income_tax = truncate10(amount * 0.03);
     const local_tax = truncate10(income_tax * 0.1);
@@ -402,20 +406,23 @@ function calculateSettlement(input) {
   const effectiveRate = input.is_mg_applied && input.mg_rs_rate != null ? input.mg_rs_rate : input.rs_rate;
   const revenue_share = Math.round(input.gross_revenue * effectiveRate);
   const subtotal = revenue_share - input.production_cost + input.adjustment - input.salary_deduction;
-  const tax_breakdown = calculateTax(subtotal, input.partner_type);
-  const tax_amount = tax_breakdown.total;
   const insurance = calculateInsurance(subtotal, input.partner_type, {
     serialEndDate: input.serial_end_date,
     reportType: input.report_type,
     month: input.month,
   });
+  // MG deduction comes before tax (tax is on actual payment, not gross)
   let mg_deduction = 0;
   if (input.is_mg_applied && input.mg_balance > 0) {
-    const afterTaxAndInsurance = subtotal - tax_amount - insurance;
-    mg_deduction = Math.min(input.mg_balance, Math.max(0, afterTaxAndInsurance));
+    const afterInsurance = subtotal - insurance;
+    mg_deduction = Math.min(input.mg_balance, Math.max(0, afterInsurance));
   }
-  const final_payment = subtotal - tax_amount - insurance - mg_deduction - input.other_deduction;
-  return { revenue_share, subtotal, tax_amount, tax_breakdown, insurance, mg_deduction, final_payment };
+  const afterMg = subtotal - insurance - mg_deduction;
+  const tax_breakdown = calculateTax(Math.max(0, afterMg), input.partner_type, input.report_type);
+  const tax_amount = tax_breakdown.total;
+  const vat = input.vat || 0;  // VAT from Excel (added to payment for 세금계산서 partners)
+  const final_payment = afterMg - tax_amount + vat - input.other_deduction;
+  return { revenue_share, subtotal, tax_amount, tax_breakdown, insurance, mg_deduction, vat, final_payment };
 }
 
 // ── File Discovery ──────────────────────────────────────────────────────────
@@ -515,7 +522,11 @@ for (let i = 8; i < mgData.length; i++) {
   const currentBalance = Number(row[12]) || 0;
   const note = row[14] ? String(row[14]).trim() : null;
 
-  const partner = partnerMap.get(partnerName) || partnerMap.get(partnerName.toLowerCase());
+  let partner = partnerMap.get(partnerName) || partnerMap.get(partnerName.toLowerCase());
+  if (!partner) {
+    const clean = partnerName.replace(/[☆★]/g, '').trim();
+    partner = partnerMap.get(clean) || partnerMap.get(clean.toLowerCase());
+  }
   if (!partner) continue;
 
   const primaryWork = workNames.split(',')[0].trim();
@@ -622,6 +633,67 @@ const revenues = await supaGet('rs_revenues', `month=eq.${MONTH}&select=id`);
 console.log(`\n  rs_revenues 총 ${revenues.length}건 생성`);
 console.log('');
 
+// ── Step 3.5: 제작비용/추가조정/기타공제 파싱 ──────────────────────────────
+console.log('─'.repeat(80));
+console.log('[Step 3.5] 제작비용/추가조정/기타공제 파싱 (수익정산금 집계)');
+console.log('─'.repeat(80));
+
+const detailSheet = refWb.Sheets['수익정산금 집계'];
+const detailsMap = new Map(); // partnerId → { production_cost, adjustment, other_deduction, vat }
+if (detailSheet) {
+  const detailData = XLSX.utils.sheet_to_json(detailSheet, { header: 1 });
+  let detailCount = 0;
+  let reportCount = 0;
+  for (let i = 8; i < detailData.length; i++) {
+    const row = detailData[i];
+    if (!row || !row[3]) continue;
+    const pName = String(row[3]).trim();
+    if (pName.includes('합계') || pName.includes('총계')) continue;
+    const reportType = row[7] ? String(row[7]).trim() : null;
+    const productionCost = Math.abs(Number(row[11]) || 0);
+    const adjustment = Number(row[12]) || 0;
+    const vat = Number(row[14]) || 0;  // 부가세 (added to payment for 세금계산서)
+    const otherDeduction = Math.abs(Number(row[18]) || 0);
+
+    // Partner matching with ☆ fallback
+    let partner = partnerMap.get(pName) || partnerMap.get(pName.toLowerCase());
+    if (!partner) {
+      const clean = pName.replace(/[☆★]/g, '').trim();
+      partner = partnerMap.get(clean) || partnerMap.get(clean.toLowerCase());
+    }
+    if (!partner) {
+      const base = pName.split('(')[0].trim();
+      partner = partnerMap.get(base) || partnerMap.get(base.toLowerCase());
+    }
+    if (!partner) continue;
+
+    // Update report_type on partner
+    if (reportType) {
+      await supaPatch('rs_partners', `id=eq.${partner.id}`, { report_type: reportType });
+      // Also update local cache
+      partner.report_type = reportType;
+      reportCount++;
+    }
+
+    if (productionCost !== 0 || adjustment !== 0 || otherDeduction !== 0 || vat !== 0) {
+      const existing = detailsMap.get(partner.id);
+      if (existing) {
+        existing.production_cost += productionCost;
+        existing.adjustment += adjustment;
+        existing.other_deduction += otherDeduction;
+        existing.vat += vat;
+      } else {
+        detailsMap.set(partner.id, { production_cost: productionCost, adjustment, other_deduction: otherDeduction, vat });
+      }
+      detailCount++;
+    }
+  }
+  console.log(`  제작비/조정/기타/부가세: ${detailCount}건, 신고구분: ${reportCount}건`);
+} else {
+  console.log('  ⚠ 수익정산금 집계 시트 없음 — 스킵');
+}
+console.log('');
+
 // ── Step 4: 정산 계산 ──────────────────────────────────────────────────────
 console.log('─'.repeat(80));
 console.log('[Step 4] 정산 계산');
@@ -642,6 +714,7 @@ for (const mg of mgBalances) {
 }
 
 let calcCount = 0;
+const detailsUsed = new Set(); // Track which partners already got details applied (apply to first work only)
 for (const rev of allRevenues) {
   const wps = allWorkPartners.filter(wp => wp.work_id === rev.work_id);
   for (const wp of wps) {
@@ -649,21 +722,31 @@ for (const rev of allRevenues) {
     const salaryDeduction = Number(wp.partner?.salary_deduction) || 0;
 
     const workData = wp.work || {};
+    // Get details from Excel — apply only once per partner (first work encountered)
+    let details = { production_cost: 0, adjustment: 0, other_deduction: 0, vat: 0 };
+    if (detailsMap.has(wp.partner_id) && !detailsUsed.has(wp.partner_id)) {
+      details = detailsMap.get(wp.partner_id);
+      detailsUsed.add(wp.partner_id);
+    }
+    // Re-read partner for updated report_type (from Step 3.5)
+    const partnerObj = partners.find(p => p.id === wp.partner_id);
+
     const calc = calculateSettlement({
       gross_revenue: Number(rev.total),
       rs_rate: Number(wp.rs_rate),
       mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
-      production_cost: 0,
-      adjustment: 0,
+      production_cost: details.production_cost,
+      adjustment: details.adjustment,
       salary_deduction: salaryDeduction,
-      other_deduction: 0,
+      other_deduction: details.other_deduction,
       tax_rate: Number(wp.partner?.tax_rate || 0),
       partner_type: wp.partner?.partner_type || 'individual',
       is_mg_applied: wp.is_mg_applied,
       mg_balance: mgBalance,
       serial_end_date: workData.serial_end_date || null,
-      report_type: wp.partner?.report_type || null,
+      report_type: partnerObj?.report_type || wp.partner?.report_type || null,
       month: MONTH,
+      vat: details.vat,
     });
 
     await supaUpsert('rs_settlements', {
@@ -673,13 +756,13 @@ for (const rev of allRevenues) {
       gross_revenue: Number(rev.total),
       rs_rate: Number(wp.rs_rate),
       revenue_share: calc.revenue_share,
-      production_cost: 0,
-      adjustment: 0,
+      production_cost: details.production_cost,
+      adjustment: details.adjustment,
       tax_rate: Number(wp.partner?.tax_rate || 0),
       tax_amount: calc.tax_amount,
       insurance: calc.insurance,
       mg_deduction: calc.mg_deduction,
-      other_deduction: 0,
+      other_deduction: details.other_deduction,
       final_payment: calc.final_payment,
       status: 'draft',
     });

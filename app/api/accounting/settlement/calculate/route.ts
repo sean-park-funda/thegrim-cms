@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { calculateSettlement } from '@/lib/settlement/calculator';
+import { computeStaffSalaryDeductions } from '@/lib/settlement/staff-salary';
 import { RevenueType } from '@/lib/types/settlement';
 
 const DEFAULT_REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
@@ -59,6 +60,15 @@ export async function POST(request: NextRequest) {
         other_deduction: Number(es.other_deduction) || 0,
       });
     }
+
+    // 작품별 매출 맵 구성 (스태프 급여 배분용)
+    const revenueByWorkId = new Map<string, number>();
+    for (const rev of revenues) {
+      revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
+    }
+
+    // 스태프 급여 비례 배분 계산
+    const staffDeductions = await computeStaffSalaryDeductions(supabase, month, revenueByWorkId);
 
     const results: {
       work_id: string;
@@ -119,7 +129,7 @@ export async function POST(request: NextRequest) {
           mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
           production_cost: productionCost,
           adjustment: adjustment,
-          salary_deduction: Number(wp.partner.salary_deduction) || 0,
+          salary_deduction: staffDeductions.get(`${wp.partner_id}|${wp.work_id}`) || 0,
           other_deduction: otherDeduction,
           tax_rate: Number(wp.partner.tax_rate),
           partner_type: wp.partner.partner_type,

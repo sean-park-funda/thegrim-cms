@@ -147,6 +147,10 @@ export default function StaffDetailPage() {
                     </div>
                   </div>
                 )}
+                <div>
+                  <div className="text-muted-foreground">월 급여</div>
+                  <div className="font-medium">{Number(staff.monthly_salary) > 0 ? Number(staff.monthly_salary).toLocaleString() + '원' : '-'}</div>
+                </div>
                 {staff.phone && (
                   <div>
                     <div className="text-muted-foreground">연락처</div>

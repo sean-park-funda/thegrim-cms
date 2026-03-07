@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, employer_type, employer_partner_id, phone, email, bank_name, bank_account, note } = body;
+    const { name, employer_type, employer_partner_id, monthly_salary, phone, email, bank_name, bank_account, note } = body;
 
     if (!name) {
       return NextResponse.json({ error: '이름은 필수입니다.' }, { status: 400 });
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         name,
         employer_type: employer_type || 'author',
         employer_partner_id: employer_type === 'company' ? null : employer_partner_id,
+        monthly_salary: monthly_salary || 0,
         phone, email, bank_name, bank_account, note,
       })
       .select('*, employer_partner:rs_partners(id, name)')

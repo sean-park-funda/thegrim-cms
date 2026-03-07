@@ -24,6 +24,7 @@ export function StaffForm({ staff, partners, open, onOpenChange, onSave }: Staff
   const [email, setEmail] = useState('');
   const [bankName, setBankName] = useState('');
   const [bankAccount, setBankAccount] = useState('');
+  const [monthlySalary, setMonthlySalary] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +37,7 @@ export function StaffForm({ staff, partners, open, onOpenChange, onSave }: Staff
       setEmail(staff.email || '');
       setBankName(staff.bank_name || '');
       setBankAccount(staff.bank_account || '');
+      setMonthlySalary(staff.monthly_salary ? String(staff.monthly_salary) : '');
       setNote(staff.note || '');
     } else {
       setName('');
@@ -45,6 +47,7 @@ export function StaffForm({ staff, partners, open, onOpenChange, onSave }: Staff
       setEmail('');
       setBankName('');
       setBankAccount('');
+      setMonthlySalary('');
       setNote('');
     }
   }, [staff, open]);
@@ -57,6 +60,7 @@ export function StaffForm({ staff, partners, open, onOpenChange, onSave }: Staff
         name: name.trim(),
         employer_type: employerType,
         employer_partner_id: employerType === 'author' ? employerPartnerId || null : null,
+        monthly_salary: monthlySalary ? Number(monthlySalary) : 0,
         phone: phone || null,
         email: email || null,
         bank_name: bankName || null,
@@ -107,6 +111,15 @@ export function StaffForm({ staff, partners, open, onOpenChange, onSave }: Staff
               </Select>
             </div>
           )}
+          <div>
+            <Label>월 급여</Label>
+            <Input
+              type="number"
+              value={monthlySalary}
+              onChange={(e) => setMonthlySalary(e.target.value)}
+              placeholder="0"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>연락처</Label>

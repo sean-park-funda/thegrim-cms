@@ -143,6 +143,7 @@ export interface RsStaff {
   name: string;
   employer_type: EmployerType;
   employer_partner_id: string | null;
+  monthly_salary: number;
   phone: string | null;
   email: string | null;
   bank_name: string | null;
