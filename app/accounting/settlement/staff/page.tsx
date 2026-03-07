@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Search } from 'lucide-react';
-import { RsStaff, RsPartner, RsStaffAssignment } from '@/lib/types/settlement';
+import { Check, Pencil, Plus, Search, X } from 'lucide-react';
+import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+import { useSettlementStore } from '@/lib/store/useSettlementStore';
 
 interface StaffWithSummary extends RsStaff {
   assignment_count: number;
@@ -21,11 +22,32 @@ interface StaffWithSummary extends RsStaff {
 export default function StaffPage() {
   const router = useRouter();
   const { profile } = useStore();
+  const { selectedMonth } = useSettlementStore();
   const [staffList, setStaffList] = useState<StaffWithSummary[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [search, setSearch] = useState('');
+
+  const [salaryEditMode, setSalaryEditMode] = useState(false);
+  const [salaryEdits, setSalaryEdits] = useState<Record<string, string>>({});
+  const [salarySaving, setSalarySaving] = useState(false);
+  const [monthSalaries, setMonthSalaries] = useState<Record<string, number>>({});
+
+  const loadMonthSalaries = async (month: string) => {
+    try {
+      const res = await settlementFetch(`/api/accounting/settlement/staff-salaries?month=${month}`);
+      const data = await res.json();
+      const salaries: RsStaffSalary[] = data.salaries || [];
+      const map: Record<string, number> = {};
+      for (const sal of salaries) {
+        map[sal.staff_id] = Number(sal.amount);
+      }
+      setMonthSalaries(map);
+    } catch (e) {
+      console.error('월별 급여 로드 오류:', e);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -65,6 +87,50 @@ export default function StaffPage() {
       load();
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (profile && canViewAccounting(profile.role) && selectedMonth) {
+      loadMonthSalaries(selectedMonth);
+    }
+  }, [profile, selectedMonth]);
+
+  const handleEnterSalaryEdit = () => {
+    const edits: Record<string, string> = {};
+    for (const s of staffList) {
+      if (!s.is_active) continue;
+      edits[s.id] = monthSalaries[s.id] !== undefined
+        ? String(monthSalaries[s.id])
+        : String(s.monthly_salary || 0);
+    }
+    setSalaryEdits(edits);
+    setSalaryEditMode(true);
+  };
+
+  const handleCancelSalaryEdit = () => {
+    setSalaryEditMode(false);
+    setSalaryEdits({});
+  };
+
+  const handleSaveSalaries = async () => {
+    setSalarySaving(true);
+    try {
+      const promises = Object.entries(salaryEdits).map(([staffId, amount]) =>
+        settlementFetch('/api/accounting/settlement/staff-salaries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ staff_id: staffId, month: selectedMonth, amount: Number(amount) || 0 }),
+        })
+      );
+      await Promise.all(promises);
+      await loadMonthSalaries(selectedMonth);
+      setSalaryEditMode(false);
+      setSalaryEdits({});
+    } catch (e) {
+      console.error('급여 일괄 저장 오류:', e);
+    } finally {
+      setSalarySaving(false);
+    }
+  };
 
   const handleCreate = async (data: Partial<RsStaff>) => {
     const res = await settlementFetch('/api/accounting/settlement/staff', {
@@ -106,7 +172,25 @@ export default function StaffPage() {
                 className="pl-9 h-9 w-full md:w-52"
               />
             </div>
-            {canManage && (
+            {canManage && !salaryEditMode && (
+              <Button variant="outline" onClick={handleEnterSalaryEdit}>
+                <Pencil className="h-4 w-4 mr-1" />
+                {selectedMonth} 급여 수정
+              </Button>
+            )}
+            {canManage && salaryEditMode && (
+              <>
+                <Button onClick={handleSaveSalaries} disabled={salarySaving}>
+                  <Check className="h-4 w-4 mr-1" />
+                  {salarySaving ? '저장 중...' : '저장'}
+                </Button>
+                <Button variant="outline" onClick={handleCancelSalaryEdit} disabled={salarySaving}>
+                  <X className="h-4 w-4 mr-1" />
+                  취소
+                </Button>
+              </>
+            )}
+            {canManage && !salaryEditMode && (
               <Button onClick={() => setFormOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" />
                 인력 추가
@@ -127,7 +211,7 @@ export default function StaffPage() {
                     <th className="py-2 px-3 font-medium">이름</th>
                     <th className="py-2 px-3 font-medium">소속 구분</th>
                     <th className="py-2 px-3 font-medium hidden md:table-cell">소속 작가</th>
-                    <th className="py-2 px-3 font-medium text-right">월 급여</th>
+                    <th className="py-2 px-3 font-medium text-right">{selectedMonth} 급여</th>
                     <th className="py-2 px-3 font-medium text-right">배정 작품</th>
                     <th className="py-2 px-3 font-medium text-right">월 비용 합계</th>
                     <th className="py-2 px-3 font-medium text-center hidden md:table-cell">상태</th>
@@ -150,7 +234,20 @@ export default function StaffPage() {
                         {(s.employer_partner as { name?: string } | null)?.name || '-'}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                        {s.monthly_salary > 0 ? Number(s.monthly_salary).toLocaleString() : '-'}
+                        {salaryEditMode && s.is_active && salaryEdits[s.id] !== undefined ? (
+                          <Input
+                            type="number"
+                            value={salaryEdits[s.id]}
+                            onChange={(e) => setSalaryEdits(prev => ({ ...prev, [s.id]: e.target.value }))}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-8 w-32 text-right ml-auto tabular-nums"
+                          />
+                        ) : (
+                          (() => {
+                            const amt = monthSalaries[s.id] ?? Number(s.monthly_salary);
+                            return amt > 0 ? amt.toLocaleString() : '-';
+                          })()
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums">
                         {s.assignment_count || '-'}
@@ -173,7 +270,12 @@ export default function StaffPage() {
                     <td className="py-2 px-3">합계 ({filtered.length}명{search ? ` / ${staffList.length}명` : ''})</td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 hidden md:table-cell"></td>
-                    <td className="py-2 px-3 text-right tabular-nums">{filtered.reduce((s, st) => s + (Number(st.monthly_salary) || 0), 0).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">
+                      {salaryEditMode
+                        ? filtered.reduce((sum, st) => sum + (Number(salaryEdits[st.id]) || 0), 0).toLocaleString()
+                        : filtered.reduce((sum, st) => sum + ((monthSalaries[st.id] ?? Number(st.monthly_salary)) || 0), 0).toLocaleString()
+                      }
+                    </td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 text-right tabular-nums">{totalMonthlyCost > 0 ? totalMonthlyCost.toLocaleString() : '-'}</td>
                     <td className="py-2 px-3 hidden md:table-cell"></td>

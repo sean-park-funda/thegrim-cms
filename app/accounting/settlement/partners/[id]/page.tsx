@@ -33,6 +33,8 @@ interface WorkDetail {
   revenue_type_label: string;
   gross_revenue: number;
   revenue_share: number;
+  labor_cost: number;
+  net_share: number;
   rs_rate: number;
 }
 
@@ -44,6 +46,8 @@ interface WorkStatement {
   details: WorkDetail[];
   work_total_revenue: number;
   work_total_share: number;
+  work_total_labor_cost: number;
+  work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
   mg_remaining: number;
@@ -69,6 +73,8 @@ interface StatementData {
   works: WorkStatement[];
   grand_total_revenue: number;
   grand_total_share: number;
+  grand_total_labor_cost: number;
+  grand_total_net_share: number;
   tax_breakdown: TaxBreakdown;
   tax_amount: number;
   total_mg_deduction: number;
@@ -509,6 +515,12 @@ export default function PartnerDetailPage() {
                             <th className="py-2 px-3 font-medium">작품 구분</th>
                             <th className="py-2 px-3 font-medium">수익구분</th>
                             <th className="py-2 px-3 font-medium text-right">더그림수익</th>
+                            {statement.grand_total_labor_cost > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">수익배분</th>
+                            )}
+                            {statement.grand_total_labor_cost > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">인건비공제</th>
+                            )}
                             <th className="py-2 px-3 font-medium text-right">수익정산</th>
                             <th className="py-2 px-3 font-medium text-right">수익배분율</th>
                           </tr>
@@ -522,7 +534,19 @@ export default function PartnerDetailPage() {
                                   <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
                                   <td className="py-1.5 px-3">{d.revenue_type_label}</td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{d.gross_revenue.toLocaleString()}</td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
+                                  {statement.grand_total_labor_cost > 0 && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
+                                  )}
+                                  {statement.grand_total_labor_cost > 0 && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
+                                      {d.labor_cost > 0 ? `-${d.labor_cost.toLocaleString()}` : ''}
+                                    </td>
+                                  )}
+                                  <td className="py-1.5 px-3 text-right tabular-nums">
+                                    {statement.grand_total_labor_cost > 0
+                                      ? d.net_share.toLocaleString()
+                                      : d.revenue_share.toLocaleString()}
+                                  </td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{(d.rs_rate * 100).toFixed(1)}%</td>
                                 </tr>
                               ))
@@ -531,7 +555,19 @@ export default function PartnerDetailPage() {
                             <td className="py-2 px-3">합계</td>
                             <td className="py-2 px-3"></td>
                             <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_revenue.toLocaleString()}</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
+                            {statement.grand_total_labor_cost > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
+                            )}
+                            {statement.grand_total_labor_cost > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.grand_total_labor_cost.toLocaleString()}
+                              </td>
+                            )}
+                            <td className="py-2 px-3 text-right tabular-nums">
+                              {statement.grand_total_labor_cost > 0
+                                ? statement.grand_total_net_share.toLocaleString()
+                                : statement.grand_total_share.toLocaleString()}
+                            </td>
                             <td className="py-2 px-3"></td>
                           </tr>
                         </tbody>
@@ -565,7 +601,11 @@ export default function PartnerDetailPage() {
                         </thead>
                         <tbody>
                           <tr className="border-b font-semibold">
-                            <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">
+                              {statement.grand_total_labor_cost > 0
+                                ? statement.grand_total_net_share.toLocaleString()
+                                : statement.grand_total_share.toLocaleString()}
+                            </td>
                             {statement.partner.partner_type === 'domestic_corp' ? (
                               <td className="py-2 px-3 text-right tabular-nums">
                                 {statement.tax_breakdown.vat > 0 ? statement.tax_breakdown.vat.toLocaleString() : '0'}

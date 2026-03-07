@@ -26,6 +26,8 @@ interface WorkDetail {
   revenue_type_label: string;
   gross_revenue: number;
   revenue_share: number;
+  labor_cost: number;
+  net_share: number;
   rs_rate: number;
 }
 
@@ -37,6 +39,8 @@ interface WorkStatement {
   details: WorkDetail[];
   work_total_revenue: number;
   work_total_share: number;
+  work_total_labor_cost: number;
+  work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
   mg_remaining: number;
@@ -61,6 +65,8 @@ interface StatementData {
   works: WorkStatement[];
   grand_total_revenue: number;
   grand_total_share: number;
+  grand_total_labor_cost: number;
+  grand_total_net_share: number;
   salary_deduction: number;
   subtotal: number;
   tax_breakdown: TaxBreakdown;
@@ -170,6 +176,12 @@ export default function StatementPage() {
                         <th className="py-2 px-3 font-medium">작품 구분</th>
                         <th className="py-2 px-3 font-medium">수익구분</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">더그림수익</th>
+                        {data.grand_total_labor_cost > 0 && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분</th>
+                        )}
+                        {data.grand_total_labor_cost > 0 && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">인건비공제</th>
+                        )}
                         <th className="py-2 px-3 font-medium text-right">수익정산</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분율</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">비고</th>
@@ -186,8 +198,20 @@ export default function StatementPage() {
                               <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
                                 {d.gross_revenue.toLocaleString()}
                               </td>
+                              {data.grand_total_labor_cost > 0 && (
+                                <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                  {d.revenue_share.toLocaleString()}
+                                </td>
+                              )}
+                              {data.grand_total_labor_cost > 0 && (
+                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                  {d.labor_cost > 0 ? `-${d.labor_cost.toLocaleString()}` : ''}
+                                </td>
+                              )}
                               <td className="py-1.5 px-3 text-right tabular-nums">
-                                {d.revenue_share.toLocaleString()}
+                                {data.grand_total_labor_cost > 0
+                                  ? d.net_share.toLocaleString()
+                                  : d.revenue_share.toLocaleString()}
                               </td>
                               <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
                                 {(d.rs_rate * 100).toFixed(1)}%
@@ -204,8 +228,20 @@ export default function StatementPage() {
                         <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
                           {data.grand_total_revenue.toLocaleString()}
                         </td>
+                        {data.grand_total_labor_cost > 0 && (
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
+                            {data.grand_total_share.toLocaleString()}
+                          </td>
+                        )}
+                        {data.grand_total_labor_cost > 0 && (
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                            -{data.grand_total_labor_cost.toLocaleString()}
+                          </td>
+                        )}
                         <td className="py-2 px-3 text-right tabular-nums">
-                          {data.grand_total_share.toLocaleString()}
+                          {data.grand_total_labor_cost > 0
+                            ? data.grand_total_net_share.toLocaleString()
+                            : data.grand_total_share.toLocaleString()}
                         </td>
                         <td className="py-2 px-3 hidden md:table-cell"></td>
                         <td className="py-2 px-3 hidden md:table-cell"></td>
@@ -252,7 +288,9 @@ export default function StatementPage() {
                   <tbody>
                     <tr className="border-b font-semibold">
                       <td className="py-2 px-3 text-right tabular-nums">
-                        {data.grand_total_share.toLocaleString()}
+                        {data.grand_total_labor_cost > 0
+                          ? data.grand_total_net_share.toLocaleString()
+                          : data.grand_total_share.toLocaleString()}
                       </td>
                       {data.salary_deduction > 0 && (
                         <td className="py-2 px-3 text-right tabular-nums text-red-600">

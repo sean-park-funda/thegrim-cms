@@ -104,13 +104,78 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('partner_id', id)
       .in('work_id', workIds);
 
-    // 5) 작품별 정산 상세 조합
+    // 5) 인건비(스태프 급여) 계산 — 이 파트너 소속 스태프의 급여를 작품별/수익구분별로 배분
+    const laborCostByWork = new Map<string, number>();
+
+    const { data: staffList } = await supabase
+      .from('rs_staff')
+      .select('id, monthly_salary')
+      .eq('is_active', true)
+      .eq('employer_partner_id', id);
+
+    if (staffList && staffList.length > 0) {
+      const staffIds = staffList.map(s => s.id);
+
+      const { data: monthlySalaries } = await supabase
+        .from('rs_staff_salaries')
+        .select('staff_id, amount')
+        .eq('month', month)
+        .in('staff_id', staffIds);
+
+      const salaryByStaff = new Map<string, number>();
+      for (const ms of (monthlySalaries || [])) {
+        salaryByStaff.set(ms.staff_id, Number(ms.amount));
+      }
+
+      const { data: staffAssignments } = await supabase
+        .from('rs_staff_assignments')
+        .select('staff_id, work_id')
+        .eq('is_active', true)
+        .in('staff_id', staffIds);
+
+      const assignmentsByStaff = new Map<string, string[]>();
+      for (const a of (staffAssignments || [])) {
+        const list = assignmentsByStaff.get(a.staff_id) || [];
+        list.push(a.work_id);
+        assignmentsByStaff.set(a.staff_id, list);
+      }
+
+      for (const staff of staffList) {
+        const salary = salaryByStaff.get(staff.id) ?? Number(staff.monthly_salary);
+        if (salary <= 0) continue;
+
+        const assignedWorks = assignmentsByStaff.get(staff.id) || [];
+        if (assignedWorks.length === 0) continue;
+
+        const workRevenues: { workId: string; revenue: number }[] = [];
+        let totalRev = 0;
+        for (const wid of assignedWorks) {
+          const rev = revenues?.find(r => r.work_id === wid);
+          const revTotal = rev ? Number(rev.total) : 0;
+          workRevenues.push({ workId: wid, revenue: revTotal });
+          totalRev += revTotal;
+        }
+
+        for (const wr of workRevenues) {
+          let allocated: number;
+          if (totalRev > 0) {
+            allocated = Math.round(salary * (wr.revenue / totalRev));
+          } else {
+            allocated = Math.round(salary / workRevenues.length);
+          }
+          if (allocated > 0) {
+            laborCostByWork.set(wr.workId, (laborCostByWork.get(wr.workId) || 0) + allocated);
+          }
+        }
+      }
+    }
+
+    // 6) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
       const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null } | null;
       const rev = revenues?.find(r => r.work_id === wp.work_id);
       const mg = mgBalances?.find(m => m.work_id === wp.work_id);
 
-      // MG 적용 시 mg_rs_rate 사용
       const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
         ? Number(wp.mg_rs_rate)
         : Number(wp.rs_rate);
@@ -124,13 +189,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           revenue_type_label: REVENUE_TYPE_LABELS[col],
           gross_revenue: amount,
           revenue_share: Math.round(amount * effectiveRate),
+          labor_cost: 0,
+          net_share: 0,
           rs_rate: effectiveRate,
           excluded: !included,
         };
       });
 
+      // 인건비를 수익구분별 비중에 따라 배분
+      const workLaborCost = laborCostByWork.get(wp.work_id) || 0;
+      if (workLaborCost > 0) {
+        const totalWorkRevenue = details.reduce((s, d) => s + d.gross_revenue, 0);
+        if (totalWorkRevenue > 0) {
+          const nonZeroDetails = details.filter(d => d.gross_revenue > 0);
+          let distributed = 0;
+          for (let i = 0; i < nonZeroDetails.length; i++) {
+            if (i === nonZeroDetails.length - 1) {
+              nonZeroDetails[i].labor_cost = workLaborCost - distributed;
+            } else {
+              const cost = Math.round(workLaborCost * (nonZeroDetails[i].gross_revenue / totalWorkRevenue));
+              nonZeroDetails[i].labor_cost = cost;
+              distributed += cost;
+            }
+          }
+        }
+      }
+
+      for (const d of details) {
+        d.net_share = d.revenue_share - d.labor_cost;
+      }
+
       const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0);
       const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0);
+      const work_total_labor_cost = details.reduce((s, d) => s + d.labor_cost, 0);
+      const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0);
 
       return {
         work_name: work?.name || '',
@@ -142,6 +234,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         details,
         work_total_revenue,
         work_total_share,
+        work_total_labor_cost,
+        work_total_net_share,
         mg_balance: mg ? Number(mg.previous_balance) : 0,
         mg_deduction: mg ? Number(mg.mg_deducted) : 0,
         mg_remaining: mg ? Number(mg.current_balance) : 0,
@@ -150,10 +244,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const grand_total_revenue = works.reduce((s, w) => s + w.work_total_revenue, 0);
     const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
+    const grand_total_labor_cost = works.reduce((s, w) => s + w.work_total_labor_cost, 0);
+    const grand_total_net_share = works.reduce((s, w) => s + w.work_total_net_share, 0);
 
     // 근로소득공제 (임직원)
     const salaryDeduction = Number(partner.salary_deduction) || 0;
-    const subtotal = grand_total_share - salaryDeduction;
+    const subtotal = grand_total_net_share - salaryDeduction;
 
     // 세금 계산 (파트너 유형별 분리)
     const tax_breakdown = calculateTax(subtotal, partner.partner_type);
@@ -206,6 +302,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       works,
       grand_total_revenue,
       grand_total_share,
+      grand_total_labor_cost,
+      grand_total_net_share,
       salary_deduction: salaryDeduction,
       subtotal,
       tax_breakdown,

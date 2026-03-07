@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const staffId = searchParams.get('staffId');
+    const month = searchParams.get('month');
 
     let query = supabase
       .from('rs_staff_salaries')
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       .order('month', { ascending: false });
 
     if (staffId) query = query.eq('staff_id', staffId);
+    if (month) query = query.eq('month', month);
 
     const { data, error } = await query;
     if (error) {
