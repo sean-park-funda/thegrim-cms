@@ -87,7 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <ImageModelProvider>
       <div className="flex flex-col h-screen bg-background">
         <Navigation />
-        <BreadcrumbNav />
+        {!pathname?.startsWith('/accounting') && <BreadcrumbNav />}
         <div className="flex-1 min-h-0 bg-background">
           {children}
         </div>
