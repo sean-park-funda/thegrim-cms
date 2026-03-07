@@ -26,27 +26,19 @@ interface Props {
 }
 
 export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
-  const [penName, setPenName] = useState('');
+  const [rsRate, setRsRate] = useState('');
   const [vatType, setVatType] = useState('');
   const [mgRsRate, setMgRsRate] = useState('');
   const [contractCategory, setContractCategory] = useState('');
-  const [contractDocName, setContractDocName] = useState('');
-  const [contractSignedDate, setContractSignedDate] = useState('');
-  const [contractPeriod, setContractPeriod] = useState('');
-  const [contractEndDate, setContractEndDate] = useState('');
   const [includedRevenueTypes, setIncludedRevenueTypes] = useState<RevenueType[]>(ALL_REVENUE_TYPES);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (wp) {
-      setPenName(wp.pen_name || '');
+      setRsRate(wp.rs_rate != null ? String(wp.rs_rate) : '');
       setVatType(wp.vat_type || '');
       setMgRsRate(wp.mg_rs_rate != null ? String(wp.mg_rs_rate) : '');
       setContractCategory(wp.contract_category || '');
-      setContractDocName(wp.contract_doc_name || '');
-      setContractSignedDate(wp.contract_signed_date || '');
-      setContractPeriod(wp.contract_period || '');
-      setContractEndDate(wp.contract_end_date || '');
       setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
     }
   }, [wp]);
@@ -60,18 +52,13 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: wp.id,
-          rs_rate: wp.rs_rate,
+          rs_rate: rsRate ? Number(rsRate) : wp.rs_rate,
           role: wp.role,
           is_mg_applied: wp.is_mg_applied,
           note: wp.note,
-          pen_name: penName || null,
           vat_type: vatType || null,
           mg_rs_rate: mgRsRate ? Number(mgRsRate) : null,
           contract_category: contractCategory || null,
-          contract_doc_name: contractDocName || null,
-          contract_signed_date: contractSignedDate || null,
-          contract_period: contractPeriod || null,
-          contract_end_date: contractEndDate || null,
           included_revenue_types: includedRevenueTypes,
         }),
       });
@@ -94,40 +81,33 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>필명</Label>
-            <Input value={penName} onChange={(e) => setPenName(e.target.value)} />
+            <Label>RS 요율</Label>
+            <div className="flex items-center gap-2">
+              <Input type="number" step="0.001" min="0" max="1" value={rsRate} onChange={(e) => setRsRate(e.target.value)} className="w-28" />
+              <span className="text-sm text-muted-foreground">
+                ({(parseFloat(rsRate || '0') * 100).toFixed(1)}%)
+              </span>
+            </div>
+          </div>
+          <div>
+            <Label>MG RS 요율</Label>
+            <div className="flex items-center gap-2">
+              <Input type="number" step="0.001" min="0" max="1" value={mgRsRate} onChange={(e) => setMgRsRate(e.target.value)} className="w-28" placeholder="미설정" />
+              {mgRsRate && (
+                <span className="text-sm text-muted-foreground">
+                  ({(parseFloat(mgRsRate || '0') * 100).toFixed(1)}%)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">MG 적용 시 사용되는 별도 요율</p>
           </div>
           <div>
             <Label>부가세 유형</Label>
             <Input value={vatType} onChange={(e) => setVatType(e.target.value)} placeholder="과세/면세/협의중" />
           </div>
           <div>
-            <Label>RS 요율</Label>
-            <Input value={wp?.rs_rate != null ? `${(wp.rs_rate * 100).toFixed(1)}%` : ''} disabled />
-          </div>
-          <div>
-            <Label>MG RS 요율</Label>
-            <Input type="number" step="0.001" value={mgRsRate} onChange={(e) => setMgRsRate(e.target.value)} placeholder="0.0" />
-          </div>
-          <div>
             <Label>계약구분</Label>
             <Input value={contractCategory} onChange={(e) => setContractCategory(e.target.value)} placeholder="RS/MG/신규/갱신" />
-          </div>
-          <div>
-            <Label>계약서명</Label>
-            <Input value={contractDocName} onChange={(e) => setContractDocName(e.target.value)} />
-          </div>
-          <div>
-            <Label>계약체결일</Label>
-            <Input type="date" value={contractSignedDate} onChange={(e) => setContractSignedDate(e.target.value)} />
-          </div>
-          <div>
-            <Label>계약종료일</Label>
-            <Input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <Label>계약기간</Label>
-            <Input value={contractPeriod} onChange={(e) => setContractPeriod(e.target.value)} placeholder="예: 마지막업로드~5년" />
           </div>
           <div className="col-span-2">
             <Label className="mb-2 block">정산 대상 수익유형</Label>
