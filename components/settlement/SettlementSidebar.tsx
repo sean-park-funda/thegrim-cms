@@ -21,6 +21,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  SidebarTrigger,
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
@@ -81,14 +82,17 @@ export function SettlementSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
-            <Calculator className="h-4 w-4 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
+              <Calculator className="h-4 w-4 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-sidebar-primary-foreground">RS 정산</span>
+              <span className="text-[10px] text-sidebar-foreground/50">더그림 CMS</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-sidebar-primary-foreground">RS 정산</span>
-            <span className="text-[10px] text-sidebar-foreground/50">더그림 CMS</span>
-          </div>
+          <SidebarTrigger className="text-sidebar-foreground/60 hover:text-sidebar-foreground" />
         </div>
         <div className="mt-2 group-data-[collapsible=icon]:hidden">
           <MonthSelector />
