@@ -447,7 +447,25 @@ export default function PartnerDetailPage() {
                               {wp.work?.name || wp.work_id}
                             </Link>
                           </td>
-                          <td className="py-2 px-3 text-right tabular-nums">{(wp.rs_rate * 100).toFixed(1)}%</td>
+                          <td className="py-2 px-3 text-right tabular-nums">
+                            <span className="inline-flex items-center gap-1">
+                              {(wp.rs_rate * 100).toFixed(1)}%
+                              {canManage && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContractWp(wp);
+                                    setContractDialogOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </span>
+                          </td>
                           <td className="py-2 px-3 text-right tabular-nums">
                             {(() => {
                               const latestMg = mgBalances
