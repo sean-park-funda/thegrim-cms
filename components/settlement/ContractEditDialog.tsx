@@ -35,9 +35,9 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
 
   useEffect(() => {
     if (wp) {
-      setRsRate(wp.rs_rate != null ? String(wp.rs_rate) : '');
+      setRsRate(wp.rs_rate != null ? String(wp.rs_rate * 100) : '');
       setVatType(wp.vat_type || '');
-      setMgRsRate(wp.mg_rs_rate != null ? String(wp.mg_rs_rate) : '');
+      setMgRsRate(wp.mg_rs_rate != null ? String(wp.mg_rs_rate * 100) : '');
       setContractCategory(wp.contract_category || '');
       setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
     }
@@ -52,12 +52,12 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: wp.id,
-          rs_rate: rsRate ? Number(rsRate) : wp.rs_rate,
+          rs_rate: rsRate ? Number(rsRate) / 100 : wp.rs_rate,
           role: wp.role,
           is_mg_applied: wp.is_mg_applied,
           note: wp.note,
           vat_type: vatType || null,
-          mg_rs_rate: mgRsRate ? Number(mgRsRate) : null,
+          mg_rs_rate: mgRsRate ? Number(mgRsRate) / 100 : null,
           contract_category: contractCategory || null,
           included_revenue_types: includedRevenueTypes,
         }),
@@ -81,23 +81,17 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>RS 요율</Label>
+            <Label>RS 요율 (%)</Label>
             <div className="flex items-center gap-2">
-              <Input type="number" step="0.001" min="0" max="1" value={rsRate} onChange={(e) => setRsRate(e.target.value)} className="w-28" />
-              <span className="text-sm text-muted-foreground">
-                ({(parseFloat(rsRate || '0') * 100).toFixed(1)}%)
-              </span>
+              <Input type="number" step="1" min="0" max="100" value={rsRate} onChange={(e) => setRsRate(e.target.value)} className="w-28" />
+              <span className="text-sm text-muted-foreground">%</span>
             </div>
           </div>
           <div>
-            <Label>MG RS 요율</Label>
+            <Label>MG RS 요율 (%)</Label>
             <div className="flex items-center gap-2">
-              <Input type="number" step="0.001" min="0" max="1" value={mgRsRate} onChange={(e) => setMgRsRate(e.target.value)} className="w-28" placeholder="미설정" />
-              {mgRsRate && (
-                <span className="text-sm text-muted-foreground">
-                  ({(parseFloat(mgRsRate || '0') * 100).toFixed(1)}%)
-                </span>
-              )}
+              <Input type="number" step="1" min="0" max="100" value={mgRsRate} onChange={(e) => setMgRsRate(e.target.value)} className="w-28" placeholder="미설정" />
+              <span className="text-sm text-muted-foreground">%</span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">MG 적용 시 사용되는 별도 요율</p>
           </div>
