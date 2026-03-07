@@ -1,12 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -32,17 +29,10 @@ interface InsuranceEntry {
 }
 
 export default function InsurancePage() {
-  const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [data, setData] = useState<InsuranceEntry[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role)) return;
@@ -75,10 +65,7 @@ export default function InsurancePage() {
   const totalInsurance = eligible.reduce((s, d) => s + d.insurance_amount, 0);
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">

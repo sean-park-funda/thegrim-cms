@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,7 +26,6 @@ const PARTNER_TYPE_LABELS: Record<string, string> = {
 const fmt = (n: number) => (n > 0 ? n.toLocaleString() : n < 0 ? n.toLocaleString() : '-');
 
 export default function MgPage() {
-  const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
@@ -43,12 +39,6 @@ export default function MgPage() {
   const [editMonthNote, setEditMonthNote] = useState('');
   const [editCondition, setEditCondition] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   const load = async () => {
     setLoading(true);
@@ -159,10 +149,7 @@ export default function MgPage() {
   );
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>MG현황 집계 ({selectedMonth})</CardTitle>

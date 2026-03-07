@@ -1,12 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { SettlementTable } from '@/components/settlement/SettlementTable';
 import { SettlementSummaryTable } from '@/components/settlement/SettlementSummaryTable';
 import { SettlementDetailDialog } from '@/components/settlement/SettlementDetailDialog';
@@ -20,7 +17,6 @@ import { settlementFetch } from '@/lib/settlement/api';
 type ViewMode = 'summary' | 'detail' | 'verification';
 
 export default function SettlementsPage() {
-  const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [settlements, setSettlements] = useState<RsSettlement[]>([]);
@@ -30,12 +26,6 @@ export default function SettlementsPage() {
   const [selected, setSelected] = useState<RsSettlement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   const loadSettlements = async () => {
     setLoading(true);
@@ -101,11 +91,7 @@ export default function SettlementsPage() {
   ];
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-
-      <SettlementNav />
-
+    <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-4">

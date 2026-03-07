@@ -6,8 +6,6 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { PartnerForm } from '@/components/settlement/PartnerForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -40,12 +38,6 @@ export default function PartnersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<RsPartner | null>(null);
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   const load = async () => {
     setLoading(true);
@@ -150,11 +142,7 @@ export default function PartnersPage() {
 
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-
-      <SettlementNav />
-
+    <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>파트너 ({selectedMonth})</CardTitle>

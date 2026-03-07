@@ -1,13 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -74,19 +72,12 @@ interface StatementData {
 }
 
 export default function StatementPage() {
-  const router = useRouter();
   const params = useParams();
   const partnerId = params.id as string;
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [data, setData] = useState<StatementData | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role) || !partnerId) return;
@@ -117,10 +108,7 @@ export default function StatementPage() {
   const workNames = data?.works.map(w => w.work_name).join(', ') || '';
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <div className="flex items-center gap-2 mb-4">
         <Link href="/accounting/settlement/partners">
           <Button variant="ghost" size="sm">

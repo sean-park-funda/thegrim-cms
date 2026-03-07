@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { WorkForm } from '@/components/settlement/WorkForm';
 import { ContractEditDialog } from '@/components/settlement/ContractEditDialog';
 import { Button } from '@/components/ui/button';
@@ -30,7 +28,6 @@ const CONTRACT_TYPE_LABELS: Record<string, string> = {
 const fmt = (n: number) => (n > 0 ? n.toLocaleString() : '-');
 
 export default function WorkDetailPage() {
-  const router = useRouter();
   const params = useParams();
   const workId = params.id as string;
   const { profile } = useStore();
@@ -51,12 +48,6 @@ export default function WorkDetailPage() {
   const [linkRate, setLinkRate] = useState('0.7');
   const [linkMg, setLinkMg] = useState(false);
   const [linkSaving, setLinkSaving] = useState(false);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   const load = async () => {
     setLoading(true);
@@ -149,10 +140,7 @@ export default function WorkDetailPage() {
   const canManage = canManageAccounting(profile.role);
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/accounting/settlement/works">
           <Button variant="ghost" size="sm">

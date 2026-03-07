@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
@@ -166,7 +163,6 @@ function BreakdownRow({ label, value, total, color }: {
 /* ── Main page ───────────────────────────────────── */
 
 export default function SettlementDashboardPage() {
-  const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
@@ -175,10 +171,6 @@ export default function SettlementDashboardPage() {
   const [partnerCount, setPartnerCount] = useState(0);
   const [settlementTotal, setSettlementTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) router.push('/webtoons');
-  }, [profile, router]);
 
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role)) return;
@@ -289,10 +281,7 @@ export default function SettlementDashboardPage() {
   const ready = !loading;
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-5">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-5">
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard

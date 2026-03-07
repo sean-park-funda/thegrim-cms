@@ -1,12 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -39,23 +35,13 @@ const SECTIONS = [
 ];
 
 export default function SettlementGuidePage() {
-  const router = useRouter();
   const { profile } = useStore();
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <Link href="/accounting/settlement">
         <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-4 w-4" /> 대시보드로 돌아가기

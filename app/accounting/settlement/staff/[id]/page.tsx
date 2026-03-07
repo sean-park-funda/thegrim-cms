@@ -5,8 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
-import { SettlementNav } from '@/components/settlement/SettlementNav';
-import { SettlementHeader } from '@/components/settlement/SettlementHeader';
 import { StaffForm } from '@/components/settlement/StaffForm';
 import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDialog';
 import { Button } from '@/components/ui/button';
@@ -32,12 +30,6 @@ export default function StaffDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [editAssignment, setEditAssignment] = useState<RsStaffAssignment | null>(null);
-
-  useEffect(() => {
-    if (profile && !canViewAccounting(profile.role)) {
-      router.push('/webtoons');
-    }
-  }, [profile, router]);
 
   const load = async () => {
     setLoading(true);
@@ -95,10 +87,7 @@ export default function StaffDetailPage() {
   const totalMonthlyCost = assignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0);
 
   return (
-    <div className="container mx-auto p-3 md:p-6 space-y-6">
-      <SettlementHeader />
-      <SettlementNav />
-
+    <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/accounting/settlement/staff">
           <Button variant="ghost" size="sm">
