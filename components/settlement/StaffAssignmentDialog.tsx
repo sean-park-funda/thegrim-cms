@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RsWork, RsStaffAssignment } from '@/lib/types/settlement';
+import { RsStaffAssignment, RsWorkPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface Props {
   staffId: string;
+  employerPartnerId?: string;
   assignment?: RsStaffAssignment | null;
   existingWorkIds: string[];
   open: boolean;
@@ -18,39 +19,32 @@ interface Props {
   onSaved: () => void;
 }
 
-export function StaffAssignmentDialog({ staffId, assignment, existingWorkIds, open, onOpenChange, onSaved }: Props) {
-  const [works, setWorks] = useState<RsWork[]>([]);
+export function StaffAssignmentDialog({ staffId, employerPartnerId, assignment, existingWorkIds, open, onOpenChange, onSaved }: Props) {
+  const [partnerWorks, setPartnerWorks] = useState<RsWorkPartner[]>([]);
   const [workId, setWorkId] = useState('');
-  const [monthlyCost, setMonthlyCost] = useState('');
-  const [startMonth, setStartMonth] = useState('');
-  const [endMonth, setEndMonth] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      settlementFetch('/api/accounting/settlement/works')
-        .then(r => r.json())
-        .then(d => setWorks(d.works || []));
+      if (employerPartnerId) {
+        settlementFetch(`/api/accounting/settlement/work-partners?partnerId=${employerPartnerId}`)
+          .then(r => r.json())
+          .then(d => setPartnerWorks(d.work_partners || []));
+      }
 
       if (assignment) {
         setWorkId(assignment.work_id);
-        setMonthlyCost(String(assignment.monthly_cost || ''));
-        setStartMonth(assignment.start_month || '');
-        setEndMonth(assignment.end_month || '');
         setNote(assignment.note || '');
       } else {
         setWorkId('');
-        setMonthlyCost('');
-        setStartMonth('');
-        setEndMonth('');
         setNote('');
       }
     }
-  }, [open, assignment]);
+  }, [open, assignment, employerPartnerId]);
 
-  const availableWorks = works.filter(w =>
-    w.is_active && (assignment ? true : !existingWorkIds.includes(w.id))
+  const availableWorks = partnerWorks.filter(wp =>
+    assignment ? true : !existingWorkIds.includes(wp.work_id)
   );
 
   const handleSave = async () => {
@@ -62,9 +56,6 @@ export function StaffAssignmentDialog({ staffId, assignment, existingWorkIds, op
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: assignment.id,
-            monthly_cost: Number(monthlyCost) || 0,
-            start_month: startMonth || null,
-            end_month: endMonth || null,
             note: note || null,
           }),
         });
@@ -77,9 +68,6 @@ export function StaffAssignmentDialog({ staffId, assignment, existingWorkIds, op
           body: JSON.stringify({
             staff_id: staffId,
             work_id: workId,
-            monthly_cost: Number(monthlyCost) || 0,
-            start_month: startMonth || null,
-            end_month: endMonth || null,
             note: note || null,
           }),
         });
@@ -105,41 +93,15 @@ export function StaffAssignmentDialog({ staffId, assignment, existingWorkIds, op
                   <SelectValue placeholder="작품 선택..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableWorks.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  {availableWorks.map((wp) => (
+                    <SelectItem key={wp.work_id} value={wp.work_id}>
+                      {wp.work?.name || wp.work_id}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           )}
-          <div>
-            <Label>월 비용</Label>
-            <Input
-              type="number"
-              value={monthlyCost}
-              onChange={(e) => setMonthlyCost(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>시작월</Label>
-              <Input
-                type="month"
-                value={startMonth}
-                onChange={(e) => setStartMonth(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>종료월</Label>
-              <Input
-                type="month"
-                value={endMonth}
-                onChange={(e) => setEndMonth(e.target.value)}
-                placeholder="진행중"
-              />
-            </div>
-          </div>
           <div>
             <Label>메모</Label>
             <Input value={note} onChange={(e) => setNote(e.target.value)} />

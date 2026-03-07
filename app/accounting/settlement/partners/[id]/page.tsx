@@ -913,6 +913,7 @@ export default function PartnerDetailPage() {
           {selectedStaffId && (
             <StaffAssignmentDialog
               staffId={selectedStaffId}
+              employerPartnerId={partnerId}
               assignment={editStaffAssignment}
               existingWorkIds={staffAssignments.filter(a => a.staff_id === selectedStaffId).map(a => a.work_id)}
               open={staffAssignDialogOpen}

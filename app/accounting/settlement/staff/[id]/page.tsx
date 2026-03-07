@@ -260,6 +260,7 @@ export default function StaffDetailPage() {
 
           <StaffAssignmentDialog
             staffId={staffId}
+            employerPartnerId={staff?.employer_partner_id || undefined}
             assignment={editAssignment}
             existingWorkIds={existingWorkIds}
             open={assignDialogOpen}
