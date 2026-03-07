@@ -172,6 +172,16 @@ export interface RsStaffAssignment {
   work?: RsWork;
 }
 
+export interface RsStaffSalary {
+  id: string;
+  staff_id: string;
+  month: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // 파싱 결과 타입
 export interface ParsedRevenueRow {
   work_name: string;

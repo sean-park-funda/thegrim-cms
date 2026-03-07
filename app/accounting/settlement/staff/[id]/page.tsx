@@ -10,8 +10,9 @@ import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDi
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Pencil, Trash2, Plus } from 'lucide-react';
-import { RsStaff, RsStaffAssignment, RsPartner } from '@/lib/types/settlement';
+import { Input } from '@/components/ui/input';
+import { ArrowLeft, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
+import { RsStaff, RsStaffAssignment, RsStaffSalary, RsPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const fmt = (n: number) => (n > 0 ? n.toLocaleString() : '-');
@@ -24,6 +25,7 @@ export default function StaffDetailPage() {
 
   const [staff, setStaff] = useState<RsStaff | null>(null);
   const [assignments, setAssignments] = useState<RsStaffAssignment[]>([]);
+  const [salaries, setSalaries] = useState<RsStaffSalary[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,18 +33,28 @@ export default function StaffDetailPage() {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [editAssignment, setEditAssignment] = useState<RsStaffAssignment | null>(null);
 
+  // 급여 인라인 편집
+  const [editingSalaryMonth, setEditingSalaryMonth] = useState<string | null>(null);
+  const [editingSalaryAmount, setEditingSalaryAmount] = useState('');
+  const [addSalaryMonth, setAddSalaryMonth] = useState('');
+  const [addSalaryAmount, setAddSalaryAmount] = useState('');
+  const [salaryAdding, setSalaryAdding] = useState(false);
+
   const load = async () => {
     setLoading(true);
     try {
-      const [detailRes, partnersRes] = await Promise.all([
+      const [detailRes, partnersRes, salariesRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/staff/${staffId}`),
         settlementFetch('/api/accounting/settlement/partners'),
+        settlementFetch(`/api/accounting/settlement/staff-salaries?staffId=${staffId}`),
       ]);
       const detailData = await detailRes.json();
       const partnersData = await partnersRes.json();
+      const salariesData = await salariesRes.json();
       setStaff(detailData.staff || null);
       setAssignments(detailData.assignments || []);
       setPartners(partnersData.partners || []);
+      setSalaries(salariesData.salaries || []);
     } catch (e) {
       console.error('스태프 상세 로드 오류:', e);
     } finally {
@@ -77,6 +89,36 @@ export default function StaffDetailPage() {
     if (res.ok) await load();
   };
 
+  const handleSaveSalary = async (month: string, amount: string) => {
+    const res = await settlementFetch('/api/accounting/settlement/staff-salaries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staff_id: staffId, month, amount: Number(amount) || 0 }),
+    });
+    if (res.ok) {
+      setEditingSalaryMonth(null);
+      await load();
+    }
+  };
+
+  const handleDeleteSalary = async (id: string) => {
+    if (!confirm('이 급여 기록을 삭제하시겠습니까?')) return;
+    const res = await settlementFetch(`/api/accounting/settlement/staff-salaries?id=${id}`, { method: 'DELETE' });
+    if (res.ok) await load();
+  };
+
+  const handleAddSalary = async () => {
+    if (!addSalaryMonth || !addSalaryAmount) return;
+    setSalaryAdding(true);
+    try {
+      await handleSaveSalary(addSalaryMonth, addSalaryAmount);
+      setAddSalaryMonth('');
+      setAddSalaryAmount('');
+    } finally {
+      setSalaryAdding(false);
+    }
+  };
+
   if (!profile) {
     return <div className="flex items-center justify-center h-full">Loading...</div>;
   }
@@ -84,7 +126,6 @@ export default function StaffDetailPage() {
 
   const canManage = canManageAccounting(profile.role);
   const existingWorkIds = assignments.map(a => a.work_id);
-  const totalMonthlyCost = assignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -136,10 +177,6 @@ export default function StaffDetailPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <div className="text-muted-foreground">월 급여</div>
-                  <div className="font-medium">{Number(staff.monthly_salary) > 0 ? Number(staff.monthly_salary).toLocaleString() + '원' : '-'}</div>
-                </div>
                 {staff.phone && (
                   <div>
                     <div className="text-muted-foreground">연락처</div>
@@ -185,39 +222,21 @@ export default function StaffDetailPage() {
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">작품</th>
-                        <th className="py-2 px-3 font-medium text-right">월 비용</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">시작월</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">종료월</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">메모</th>
-                        {canManage && <th className="py-2 px-3 font-medium"></th>}
+                        {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {assignments.map((a) => (
-                        <tr
-                          key={a.id}
-                          className={`border-b hover:bg-muted/50 ${canManage ? 'cursor-pointer' : ''}`}
-                          onClick={() => {
-                            if (canManage) {
-                              setEditAssignment(a);
-                              setAssignDialogOpen(true);
-                            }
-                          }}
-                        >
+                        <tr key={a.id} className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3">
                             <Link
                               href={`/accounting/settlement/works/${a.work_id}`}
                               className="text-primary hover:underline"
-                              onClick={(e) => e.stopPropagation()}
                             >
                               {(a.work as { name?: string } | null)?.name || a.work_id}
                             </Link>
                           </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                            {fmt(Number(a.monthly_cost))}
-                          </td>
-                          <td className="py-2 px-3 hidden md:table-cell">{a.start_month || '-'}</td>
-                          <td className="py-2 px-3 hidden md:table-cell">{a.end_month || '진행중'}</td>
                           <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{a.note || '-'}</td>
                           {canManage && (
                             <td className="py-2 px-3">
@@ -225,10 +244,7 @@ export default function StaffDetailPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteAssignment(a.id);
-                                }}
+                                onClick={() => handleDeleteAssignment(a.id)}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -237,15 +253,143 @@ export default function StaffDetailPage() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 font-semibold">
-                        <td className="py-2 px-3">합계</td>
-                        <td className="py-2 px-3 text-right tabular-nums">{fmt(totalMonthlyCost)}</td>
-                        <td className="py-2 px-3 hidden md:table-cell" colSpan={canManage ? 4 : 3}></td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 월별 급여 */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">월별 급여</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-2 px-3 font-medium">월</th>
+                      <th className="py-2 px-3 font-medium text-right">금액</th>
+                      {canManage && <th className="py-2 px-3 font-medium w-20"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salaries.map((s) => (
+                      <tr key={s.id} className="border-b hover:bg-muted/50">
+                        <td className="py-2 px-3 font-medium">{s.month}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {editingSalaryMonth === s.month ? (
+                            <div className="inline-flex items-center gap-1">
+                              <Input
+                                type="number"
+                                value={editingSalaryAmount}
+                                onChange={(e) => setEditingSalaryAmount(e.target.value)}
+                                className="w-32 h-7 text-right"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveSalary(s.month, editingSalaryAmount);
+                                  if (e.key === 'Escape') setEditingSalaryMonth(null);
+                                }}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => handleSaveSalary(s.month, editingSalaryAmount)}
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => setEditingSalaryMonth(null)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span
+                              className={canManage ? 'cursor-pointer hover:text-primary' : ''}
+                              onClick={() => {
+                                if (canManage) {
+                                  setEditingSalaryMonth(s.month);
+                                  setEditingSalaryAmount(String(s.amount));
+                                }
+                              }}
+                            >
+                              {Number(s.amount).toLocaleString()}원
+                            </span>
+                          )}
+                        </td>
+                        {canManage && (
+                          <td className="py-2 px-3">
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  setEditingSalaryMonth(s.month);
+                                  setEditingSalaryAmount(String(s.amount));
+                                }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleDeleteSalary(s.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {canManage && (
+                      <tr className="border-t-2">
+                        <td className="py-2 px-3">
+                          <Input
+                            type="month"
+                            value={addSalaryMonth}
+                            onChange={(e) => setAddSalaryMonth(e.target.value)}
+                            className="w-40 h-8"
+                            placeholder="월 선택"
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <Input
+                            type="number"
+                            value={addSalaryAmount}
+                            onChange={(e) => setAddSalaryAmount(e.target.value)}
+                            className="w-32 h-8 text-right ml-auto"
+                            placeholder="금액"
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleAddSalary(); }}
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={handleAddSalary}
+                            disabled={salaryAdding || !addSalaryMonth || !addSalaryAmount}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            추가
+                          </Button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {salaries.length === 0 && !canManage && (
+                <div className="text-sm text-muted-foreground py-4 text-center">급여 데이터가 없습니다.</div>
               )}
             </CardContent>
           </Card>
