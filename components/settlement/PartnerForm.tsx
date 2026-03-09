@@ -54,6 +54,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
   const [partnerType, setPartnerType] = useState<PartnerType>(partner?.partner_type || 'individual');
   const [taxRate, setTaxRate] = useState(String(partner?.tax_rate ?? 0.033));
   const [salaryDeduction, setSalaryDeduction] = useState(String(partner?.salary_deduction ?? 0));
+  const [hasSalary, setHasSalary] = useState(partner?.has_salary ?? false);
   const [reportType, setReportType] = useState<ReportType>(partner?.report_type || DEFAULT_REPORT_TYPE[partnerType]);
   const [taxId, setTaxId] = useState(partner?.tax_id || '');
   const [bankName, setBankName] = useState(partner?.bank_name || '');
@@ -83,6 +84,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
         partner_type: partnerType,
         tax_rate: Number(taxRate),
         salary_deduction: isEmployee ? Number(salaryDeduction) : 0,
+        has_salary: hasSalary,
         report_type: reportType,
         tax_id: taxId || null,
         bank_name: bankName || null,
@@ -154,6 +156,18 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
               />
             </div>
           )}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="hasSalary"
+              checked={hasSalary}
+              onChange={(e) => setHasSalary(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <Label htmlFor="hasSalary" className="cursor-pointer">
+              급여 수령 (인건비 공제 대상)
+            </Label>
+          </div>
           <div>
             <Label>사업자/주민번호</Label>
             <Input value={taxId} onChange={(e) => setTaxId(e.target.value)} />

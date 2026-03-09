@@ -104,9 +104,49 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('partner_id', id)
       .in('work_id', workIds);
 
-    // 5) 인건비(스태프 급여) 계산 — 이 파트너 소속 스태프의 급여를 작품별/수익구분별로 배분
+    // 5) 인건비 계산 — 스태프 급여 + 파트너 본인 급여를 작품별/수익구분별로 배분
     const laborCostByWork = new Map<string, number>();
 
+    // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
+    const revenueShareByWork = new Map<string, number>();
+    for (const wp of workPartners) {
+      const rev = revenues?.find(r => r.work_id === wp.work_id);
+      const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
+        ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+      const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
+      let totalShare = 0;
+      for (const col of REVENUE_COLUMNS) {
+        if (!includedTypes.includes(col)) continue;
+        const amount = rev ? Number(rev[col]) : 0;
+        totalShare += Math.round(amount * effectiveRate);
+      }
+      revenueShareByWork.set(wp.work_id, totalShare);
+    }
+
+    // 급여를 작품별 수익배분액 비례로 배분하는 헬퍼
+    const distributeToWorks = (salary: number, targetWorkIds: string[]) => {
+      if (salary <= 0 || targetWorkIds.length === 0) return;
+      const workShares: { workId: string; share: number }[] = [];
+      let totalShare = 0;
+      for (const wid of targetWorkIds) {
+        const share = revenueShareByWork.get(wid) || 0;
+        workShares.push({ workId: wid, share });
+        totalShare += share;
+      }
+      for (const ws of workShares) {
+        let allocated: number;
+        if (totalShare > 0) {
+          allocated = Math.round(salary * (ws.share / totalShare));
+        } else {
+          allocated = Math.round(salary / workShares.length);
+        }
+        if (allocated > 0) {
+          laborCostByWork.set(ws.workId, (laborCostByWork.get(ws.workId) || 0) + allocated);
+        }
+      }
+    };
+
+    // 5-1) 소속 스태프 급여
     const { data: staffList } = await supabase
       .from('rs_staff')
       .select('id, monthly_salary')
@@ -142,31 +182,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       for (const staff of staffList) {
         const salary = salaryByStaff.get(staff.id) ?? Number(staff.monthly_salary);
-        if (salary <= 0) continue;
-
         const assignedWorks = assignmentsByStaff.get(staff.id) || [];
-        if (assignedWorks.length === 0) continue;
+        distributeToWorks(salary, assignedWorks);
+      }
+    }
 
-        const workRevenues: { workId: string; revenue: number }[] = [];
-        let totalRev = 0;
-        for (const wid of assignedWorks) {
-          const rev = revenues?.find(r => r.work_id === wid);
-          const revTotal = rev ? Number(rev.total) : 0;
-          workRevenues.push({ workId: wid, revenue: revTotal });
-          totalRev += revTotal;
-        }
+    // 5-2) 파트너 본인 급여 (has_salary=true인 경우, 계약 작품 기준으로 안분)
+    if (partner.has_salary) {
+      const { data: partnerSalary } = await supabase
+        .from('rs_partner_salaries')
+        .select('amount')
+        .eq('partner_id', id)
+        .eq('month', month)
+        .single();
 
-        for (const wr of workRevenues) {
-          let allocated: number;
-          if (totalRev > 0) {
-            allocated = Math.round(salary * (wr.revenue / totalRev));
-          } else {
-            allocated = Math.round(salary / workRevenues.length);
-          }
-          if (allocated > 0) {
-            laborCostByWork.set(wr.workId, (laborCostByWork.get(wr.workId) || 0) + allocated);
-          }
-        }
+      const partnerSalaryAmount = partnerSalary ? Number(partnerSalary.amount) : 0;
+      if (partnerSalaryAmount > 0) {
+        distributeToWorks(partnerSalaryAmount, workIds);
       }
     }
 
@@ -196,18 +228,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         };
       });
 
-      // 인건비를 수익구분별 비중에 따라 배분
+      // 인건비를 수익구분별 수익배분액(revenue_share) 비중에 따라 배분
       const workLaborCost = laborCostByWork.get(wp.work_id) || 0;
       if (workLaborCost > 0) {
-        const totalWorkRevenue = details.reduce((s, d) => s + d.gross_revenue, 0);
-        if (totalWorkRevenue > 0) {
-          const nonZeroDetails = details.filter(d => d.gross_revenue > 0);
+        const totalWorkShare = details.reduce((s, d) => s + d.revenue_share, 0);
+        if (totalWorkShare > 0) {
+          const nonZeroDetails = details.filter(d => d.revenue_share > 0);
           let distributed = 0;
           for (let i = 0; i < nonZeroDetails.length; i++) {
             if (i === nonZeroDetails.length - 1) {
               nonZeroDetails[i].labor_cost = workLaborCost - distributed;
             } else {
-              const cost = Math.round(workLaborCost * (nonZeroDetails[i].gross_revenue / totalWorkRevenue));
+              const cost = Math.round(workLaborCost * (nonZeroDetails[i].revenue_share / totalWorkShare));
               nonZeroDetails[i].labor_cost = cost;
               distributed += cost;
             }
@@ -216,7 +248,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       for (const d of details) {
-        d.net_share = d.revenue_share - d.labor_cost;
+        d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
       }
 
       const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0);

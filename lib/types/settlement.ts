@@ -30,6 +30,7 @@ export interface RsPartner {
   tax_id: string | null;
   tax_rate: number;
   salary_deduction: number;
+  has_salary: boolean;
   report_type: ReportType | null;
   bank_name: string | null;
   bank_account: string | null;
@@ -175,6 +176,16 @@ export interface RsStaffAssignment {
 export interface RsStaffSalary {
   id: string;
   staff_id: string;
+  month: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RsPartnerSalary {
+  id: string;
+  partner_id: string;
   month: string;
   amount: number;
   note: string | null;

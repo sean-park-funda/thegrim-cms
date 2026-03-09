@@ -75,9 +75,12 @@ interface StatementData {
   grand_total_share: number;
   grand_total_labor_cost: number;
   grand_total_net_share: number;
+  salary_deduction: number;
   tax_breakdown: TaxBreakdown;
   tax_amount: number;
+  insurance: number;
   total_mg_deduction: number;
+  total_other_deduction: number;
   final_payment: number;
   mg_history?: MgWorkHistory[];
 }
@@ -109,6 +112,10 @@ export default function PartnerDetailPage() {
   const [staffList, setStaffList] = useState<RsStaff[]>([]);
   const [staffAssignments, setStaffAssignments] = useState<RsStaffAssignment[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
+
+  const [partnerSalary, setPartnerSalary] = useState<number>(0);
+  const [partnerSalaryInput, setPartnerSalaryInput] = useState('');
+  const [partnerSalarySaving, setPartnerSalarySaving] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
@@ -188,6 +195,39 @@ export default function PartnerDetailPage() {
     }
   }, [profile, partnerId]);
 
+  const loadPartnerSalary = async () => {
+    try {
+      const res = await settlementFetch(
+        `/api/accounting/settlement/partner-salaries?partnerId=${partnerId}&month=${selectedMonth}`
+      );
+      const json = await res.json();
+      const salary = json.salaries?.[0]?.amount ?? 0;
+      setPartnerSalary(Number(salary));
+      setPartnerSalaryInput(Number(salary) > 0 ? String(Number(salary)) : '');
+    } catch {
+      setPartnerSalary(0);
+      setPartnerSalaryInput('');
+    }
+  };
+
+  const handlePartnerSalarySave = async () => {
+    setPartnerSalarySaving(true);
+    try {
+      await settlementFetch('/api/accounting/settlement/partner-salaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: partnerId,
+          month: selectedMonth,
+          amount: Number(partnerSalaryInput) || 0,
+        }),
+      });
+      await loadPartnerSalary();
+    } finally {
+      setPartnerSalarySaving(false);
+    }
+  };
+
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role) || !partnerId) return;
     async function loadStatement() {
@@ -205,6 +245,7 @@ export default function PartnerDetailPage() {
       }
     }
     loadStatement();
+    loadPartnerSalary();
   }, [profile, partnerId, selectedMonth]);
 
   const handleUpdate = async (data: Partial<RsPartner>) => {
@@ -583,7 +624,10 @@ export default function PartnerDetailPage() {
                         <thead>
                           <tr className="border-b text-left bg-muted/50">
                             <th className="py-2 px-3 font-medium text-right">수익정산금</th>
-                            {statement.partner.partner_type === 'domestic_corp' ? (
+                            {statement.salary_deduction > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
+                            )}
+                            {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') ? (
                               <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
                             ) : (
                               <>
@@ -593,8 +637,14 @@ export default function PartnerDetailPage() {
                                 <th className="py-2 px-3 font-medium text-right">지방세 (10%)</th>
                               </>
                             )}
+                            {statement.insurance > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">예고료</th>
+                            )}
                             {statement.total_mg_deduction > 0 && (
                               <th className="py-2 px-3 font-medium text-right">MG 차감</th>
+                            )}
+                            {statement.total_other_deduction > 0 && (
+                              <th className="py-2 px-3 font-medium text-right">기타 공제</th>
                             )}
                             <th className="py-2 px-3 font-medium text-right">지급액</th>
                           </tr>
@@ -606,7 +656,12 @@ export default function PartnerDetailPage() {
                                 ? statement.grand_total_net_share.toLocaleString()
                                 : statement.grand_total_share.toLocaleString()}
                             </td>
-                            {statement.partner.partner_type === 'domestic_corp' ? (
+                            {statement.salary_deduction > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.salary_deduction.toLocaleString()}
+                              </td>
+                            )}
+                            {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') ? (
                               <td className="py-2 px-3 text-right tabular-nums">
                                 {statement.tax_breakdown.vat > 0 ? statement.tax_breakdown.vat.toLocaleString() : '0'}
                               </td>
@@ -620,9 +675,19 @@ export default function PartnerDetailPage() {
                                 </td>
                               </>
                             )}
+                            {statement.insurance > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.insurance.toLocaleString()}
+                              </td>
+                            )}
                             {statement.total_mg_deduction > 0 && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
                                 -{statement.total_mg_deduction.toLocaleString()}
+                              </td>
+                            )}
+                            {statement.total_other_deduction > 0 && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.total_other_deduction.toLocaleString()}
                               </td>
                             )}
                             <td className="py-2 px-3 text-right tabular-nums text-lg">{statement.final_payment.toLocaleString()}</td>
@@ -809,7 +874,7 @@ export default function PartnerDetailPage() {
               <CardTitle className="text-base">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  소속 인력 ({staffList.length}명)
+                  소속 인력 ({staffList.length + (partner.has_salary ? 1 : 0)}명)
                 </div>
               </CardTitle>
               {canManage && (
@@ -820,10 +885,48 @@ export default function PartnerDetailPage() {
               )}
             </CardHeader>
             <CardContent>
-              {staffList.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
-              ) : (
-                <div className="space-y-4">
+              <div className="space-y-4">
+                {/* 파트너 본인 급여 */}
+                {partner.has_salary && (
+                  <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-950/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{partner.name}</span>
+                        <Badge variant="secondary" className="text-xs">본인</Badge>
+                        {partnerSalary > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {selectedMonth} 급여: {partnerSalary.toLocaleString()}원
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input
+                          type="number"
+                          value={partnerSalaryInput}
+                          onChange={(e) => setPartnerSalaryInput(e.target.value)}
+                          placeholder={`${selectedMonth} 급여`}
+                          className="h-8 w-48 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={handlePartnerSalarySave}
+                          disabled={partnerSalarySaving}
+                        >
+                          {partnerSalarySaving ? '저장 중...' : '저장'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 스태프 목록 */}
+                {staffList.length === 0 && !partner.has_salary && (
+                  <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
+                )}
                   {staffList.map((s) => {
                     const sAssignments = staffAssignments.filter(a => a.staff_id === s.id);
                     const totalCost = sAssignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0);
@@ -924,7 +1027,6 @@ export default function PartnerDetailPage() {
                     );
                   })}
                 </div>
-              )}
             </CardContent>
           </Card>
 
