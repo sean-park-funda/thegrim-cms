@@ -416,43 +416,6 @@ export default function PartnerDetailPage() {
             </CardContent>
           </Card>
 
-          {/* 월별 수익 분배 추이 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">월별 수익 분배 추이</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {monthlyData.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center">정산 데이터가 없습니다.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="py-2 px-3 font-medium">월</th>
-                        <th className="py-2 px-3 font-medium">작품</th>
-                        <th className="py-2 px-3 font-medium text-right">수익분배금</th>
-                        <th className="py-2 px-3 font-medium text-right">최종지급액</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyData.map(([month, data]) => (
-                        <tr key={month} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-3 font-medium">{month}</td>
-                          <td className="py-2 px-3 text-muted-foreground text-xs">
-                            {data.works.join(', ') || '-'}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(data.revenue_share)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(data.final_payment)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* 계약 작품 목록 */}
           <Card>
             <CardHeader>
@@ -885,148 +848,142 @@ export default function PartnerDetailPage() {
               )}
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {/* 파트너 본인 급여 */}
                 {partner.has_salary && (
-                  <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-950/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{partner.name}</span>
-                        <Badge variant="secondary" className="text-xs">본인</Badge>
-                        {partnerSalary > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            {selectedMonth} 급여: {partnerSalary.toLocaleString()}원
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-2 py-1.5 border-b pb-2 mb-1">
+                    <span className="text-sm font-medium shrink-0">{partner.name}</span>
+                    <Badge variant="secondary" className="text-xs">본인</Badge>
+                    {partnerSalary > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {selectedMonth}: {partnerSalary.toLocaleString()}원
+                      </span>
+                    )}
                     {canManage && (
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="ml-auto flex items-center gap-1">
                         <Input
                           type="number"
                           value={partnerSalaryInput}
                           onChange={(e) => setPartnerSalaryInput(e.target.value)}
                           placeholder={`${selectedMonth} 급여`}
-                          className="h-8 w-48 text-sm"
+                          className="h-7 w-32 text-xs"
                         />
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8"
+                          className="h-7 text-xs"
                           onClick={handlePartnerSalarySave}
                           disabled={partnerSalarySaving}
                         >
-                          {partnerSalarySaving ? '저장 중...' : '저장'}
+                          {partnerSalarySaving ? '...' : '저장'}
                         </Button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* 스태프 목록 */}
                 {staffList.length === 0 && !partner.has_salary && (
                   <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
                 )}
                   {staffList.map((s) => {
                     const sAssignments = staffAssignments.filter(a => a.staff_id === s.id);
-                    const totalCost = sAssignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0);
                     return (
-                      <div key={s.id} className="border rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/accounting/settlement/staff/${s.id}`}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              {s.name}
-                            </Link>
-                            {!s.is_active && <Badge variant="outline">비활성</Badge>}
-                            {totalCost > 0 && (
-                              <span className="text-xs text-muted-foreground">월 {totalCost.toLocaleString()}원</span>
-                            )}
-                          </div>
-                          {canManage && (
-                            <div className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedStaffId(s.id);
-                                  setEditStaffAssignment(null);
-                                  setStaffAssignDialogOpen(true);
-                                }}
+                      <div key={s.id} className="flex items-center gap-2 py-1.5 group">
+                        <Link
+                          href={`/accounting/settlement/staff/${s.id}`}
+                          className="text-sm font-medium text-primary hover:underline shrink-0"
+                        >
+                          {s.name}
+                        </Link>
+                        {!s.is_active && <Badge variant="outline" className="text-[10px] px-1 py-0">비활성</Badge>}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {sAssignments.map((a) => (
+                            <Badge key={a.id} variant="secondary" className="text-xs font-normal gap-1">
+                              <Link
+                                href={`/accounting/settlement/works/${a.work_id}`}
+                                className="hover:underline"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <Plus className="h-3.5 w-3.5 mr-1" />
-                                배정
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditStaff(s); setStaffFormOpen(true); }}>
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteStaff(s.id)}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
+                                {(a.work as { name?: string } | null)?.name || a.work_id}
+                              </Link>
+                              {canManage && (
+                                <button
+                                  className="ml-0.5 hover:text-destructive"
+                                  onClick={() => handleDeleteStaffAssignment(a.id)}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </Badge>
+                          ))}
+                          {canManage && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 rounded-full"
+                              onClick={() => {
+                                setSelectedStaffId(s.id);
+                                setEditStaffAssignment(null);
+                                setStaffAssignDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
                           )}
                         </div>
-                        {sAssignments.length > 0 && (
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b text-left text-xs text-muted-foreground">
-                                <th className="py-1 px-2 font-medium">작품</th>
-                                <th className="py-1 px-2 font-medium text-right">월 비용</th>
-                                <th className="py-1 px-2 font-medium hidden md:table-cell">기간</th>
-                                {canManage && <th className="py-1 px-2 font-medium w-8"></th>}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {sAssignments.map((a) => (
-                                <tr
-                                  key={a.id}
-                                  className={`border-b last:border-0 hover:bg-muted/50 ${canManage ? 'cursor-pointer' : ''}`}
-                                  onClick={() => {
-                                    if (canManage) {
-                                      setSelectedStaffId(s.id);
-                                      setEditStaffAssignment(a);
-                                      setStaffAssignDialogOpen(true);
-                                    }
-                                  }}
-                                >
-                                  <td className="py-1 px-2">
-                                    <Link
-                                      href={`/accounting/settlement/works/${a.work_id}`}
-                                      className="text-primary hover:underline"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {(a.work as { name?: string } | null)?.name || a.work_id}
-                                    </Link>
-                                  </td>
-                                  <td className="py-1 px-2 text-right tabular-nums">
-                                    {Number(a.monthly_cost) > 0 ? Number(a.monthly_cost).toLocaleString() : '-'}
-                                  </td>
-                                  <td className="py-1 px-2 text-xs text-muted-foreground hidden md:table-cell">
-                                    {a.start_month || '?'} ~ {a.end_month || '진행중'}
-                                  </td>
-                                  {canManage && (
-                                    <td className="py-1 px-2">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={(e) => { e.stopPropagation(); handleDeleteStaffAssignment(a.id); }}
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </td>
-                                  )}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
+                        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {canManage && (
+                            <>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditStaff(s); setStaffFormOpen(true); }}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteStaff(s.id)}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 월별 수익 분배 추이 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">월별 수익 분배 추이</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyData.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">정산 데이터가 없습니다.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="py-2 px-3 font-medium">월</th>
+                        <th className="py-2 px-3 font-medium">작품</th>
+                        <th className="py-2 px-3 font-medium text-right">수익분배금</th>
+                        <th className="py-2 px-3 font-medium text-right">최종지급액</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyData.map(([month, data]) => (
+                        <tr key={month} className="border-b hover:bg-muted/50">
+                          <td className="py-2 px-3 font-medium">{month}</td>
+                          <td className="py-2 px-3 text-muted-foreground text-xs">
+                            {data.works.join(', ') || '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmt(data.revenue_share)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(data.final_payment)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+              )}
             </CardContent>
           </Card>
 
