@@ -36,6 +36,7 @@ import {
   FileText,
   FileCheck,
   BarChart3,
+  MessageCircle,
 } from 'lucide-react';
 
 const navGroups = [
@@ -68,6 +69,7 @@ const navGroups = [
       { href: '/accounting/settlement/revenue', label: '매출 현황', icon: BarChart3 },
       { href: '/accounting/settlement/partner-revenue', label: '파트너별 매출', icon: BarChart3 },
       { href: '/accounting/settlement/verification', label: '검증', icon: FileCheck },
+      { href: '/accounting/settlement/chat', label: 'AI 검색', icon: MessageCircle },
     ],
   },
 ];

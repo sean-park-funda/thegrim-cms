@@ -7,7 +7,7 @@ import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Users, BookOpen, TrendingUp } from 'lucide-react';
+import { DollarSign, Users, BookOpen, TrendingUp, MessageCircle } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
 import { RsRevenue, RsSettlement } from '@/lib/types/settlement';
 import {
@@ -311,6 +311,21 @@ export default function SettlementDashboardPage() {
           iconClass="bg-orange-500/10 text-orange-600 dark:text-orange-400"
         />
       </div>
+
+      {/* ── AI Search shortcut ── */}
+      <Link
+        href="/accounting/settlement/chat"
+        className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4 hover:border-cyan-600/40 hover:bg-cyan-950/20 transition-colors group"
+      >
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
+          <MessageCircle className="h-4 w-4 text-white" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium group-hover:text-cyan-400 transition-colors">AI 검색</p>
+          <p className="text-xs text-zinc-500">매출, 정산, MG 등을 자연어로 질문하세요</p>
+        </div>
+        <span className="text-xs text-zinc-600 group-hover:text-cyan-500">→</span>
+      </Link>
 
       {/* ── Revenue breakdown ── */}
       {ready && breakdown.total > 0 && (
