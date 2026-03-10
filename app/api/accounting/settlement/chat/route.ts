@@ -238,10 +238,31 @@ const toolExecutors: Record<string, (args: Record<string, string>) => Promise<an
 
 // ── System prompt ──
 
-function buildSystemPrompt(selectedMonth: string) {
+async function buildSystemPrompt(selectedMonth: string) {
   const today = new Date().toISOString().split('T')[0];
+
+  // 작품 목록 + 파트너 목록을 가져와서 줄임말 매칭에 활용
+  const [{ data: works }, { data: partners }] = await Promise.all([
+    supabase.from('rs_works').select('name').eq('is_active', true).order('name'),
+    supabase.from('rs_partners').select('name').order('name'),
+  ]);
+
+  const workList = (works || []).map(w => w.name).join(', ');
+  const partnerList = (partners || []).map(p => p.name).join(', ');
+
   return `당신은 더그림엔터테인먼트 RS 정산 비서 AI입니다.
 웹툰 작품의 매출, 파트너 정산, MG, 세금 등에 대해 질문하면 도구를 사용해 데이터를 조회하고 분석해서 답변합니다.
+
+## 등록된 작품 목록
+${workList}
+
+## 등록된 파트너 목록
+${partnerList}
+
+## 작품명/파트너명 매칭 규칙
+사용자는 줄임말이나 별칭을 자주 사용합니다. 위 목록에서 가장 적합한 정식 명칭으로 매칭하세요.
+예: "외지주"→"외모지상주의", "싸독"→"싸움독학", "김부"→"김부장", "퀘지주"→"퀘스트지상주의"
+도구 호출 시 반드시 정식 명칭을 사용하세요.
 
 ## 데이터 구조
 - 매출 5종: 국내유료(domestic_paid), 해외유료(global_paid), 국내광고(domestic_ad), 해외광고(global_ad), 2차사업(secondary)
@@ -283,12 +304,14 @@ export async function POST(request: NextRequest) {
       parts: [{ text: m.content }],
     }));
 
+    const systemPrompt = await buildSystemPrompt(selectedMonth);
+
     // Initial LLM call with tools
     let response = await ai.models.generateContent({
       model: MODEL,
       contents: geminiMessages,
       config: {
-        systemInstruction: buildSystemPrompt(selectedMonth),
+        systemInstruction: systemPrompt,
         tools: [{ functionDeclarations: tools }],
       },
     });
@@ -329,7 +352,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         config: {
-          systemInstruction: buildSystemPrompt(selectedMonth),
+          systemInstruction: systemPrompt,
           tools: [{ functionDeclarations: tools }],
         },
       });
