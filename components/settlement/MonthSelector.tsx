@@ -19,7 +19,7 @@ export function MonthSelector() {
 
   return (
     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-      <SelectTrigger className="w-[160px]">
+      <SelectTrigger className="w-[130px] md:w-[160px]">
         <SelectValue placeholder="월 선택" />
       </SelectTrigger>
       <SelectContent>
