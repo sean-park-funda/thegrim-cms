@@ -388,3 +388,62 @@ export interface WebtoonAnimationVideoSegment {
   created_at: string;
   updated_at: string;
 }
+
+// 무빙웹툰 타입
+export type MovingWebtoonMotionType = 'lip_sync' | 'blink' | 'breathing' | 'hair' | 'custom';
+
+export interface MovingWebtoonProject {
+  id: string;
+  project_id: string;
+  default_provider: string;
+  default_motion_type: MovingWebtoonMotionType;
+  default_prompt_preset: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MovingWebtoonCut {
+  id: string;
+  moving_project_id: string;
+  cut_id: string | null;
+  order_index: number;
+  motion_type: MovingWebtoonMotionType;
+  prompt: string | null;
+  provider: string | null;
+  duration_seconds: number;
+  aspect_ratio: string;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  video_path: string | null;
+  video_url: string | null;
+  error_message: string | null;
+  elapsed_ms: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MovingWebtoonCutWithImage extends MovingWebtoonCut {
+  cut?: WebtoonAnimationCut;
+}
+
+export const MOTION_TYPE_PRESETS: Record<MovingWebtoonMotionType, { label: string; prompt: string }> = {
+  lip_sync: {
+    label: '입 움직임',
+    prompt: 'A still webtoon panel that barely moves. The character keeps his exact facial expression and eye shape — do NOT change the eyes at all. The ONLY motion is lips parting very slightly open and closed as if saying a few quiet words. No eye movement, no blink, no head turn, no camera shift. Preserve the original manhwa illustration style perfectly.',
+  },
+  blink: {
+    label: '눈 깜빡임',
+    prompt: 'A still webtoon panel with almost zero movement. The ONLY animation is a single slow eye blink — eyes close gently then reopen to the exact same expression. No head movement, no body movement, no mouth movement, no camera shift. Preserve the original manhwa illustration style perfectly.',
+  },
+  breathing: {
+    label: '호흡',
+    prompt: 'A still webtoon panel with the character showing very subtle breathing motion — gentle chest rise and fall. Everything else is completely frozen: no eye movement, no head turn, no mouth movement, no camera shift. Preserve the original manhwa illustration style perfectly.',
+  },
+  hair: {
+    label: '머리카락 흔들림',
+    prompt: 'A still webtoon panel where only the character hair sways very gently as if from a light breeze. Face, body, eyes, mouth are all completely frozen. No camera movement, no background change. Preserve the original manhwa illustration style perfectly.',
+  },
+  custom: {
+    label: '커스텀',
+    prompt: '',
+  },
+};
