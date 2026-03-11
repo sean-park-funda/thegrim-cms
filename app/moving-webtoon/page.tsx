@@ -17,11 +17,9 @@ import {
   Loader2,
   Play,
   RefreshCw,
-  Trash2,
   Upload,
   Download,
-  Merge,
-  GripVertical,
+  Clipboard,
 } from 'lucide-react';
 import {
   MovingWebtoonMotionType,
@@ -40,7 +38,6 @@ interface CutItem {
   videoUrl: string | null;
   errorMessage: string | null;
   elapsedMs: number | null;
-  // DB에 저장된 경우
   dbCutId: string | null;
   dbMwCutId: string | null;
 }
@@ -56,18 +53,16 @@ const DEFAULT_MOTION: MovingWebtoonMotionType = 'lip_sync';
 
 export default function MovingWebtoonPage() {
   const [cuts, setCuts] = useState<CutItem[]>([]);
-  const [globalProvider, setGlobalProvider] = useState(DEFAULT_PROVIDER);
-  const [globalMotion, setGlobalMotion] = useState<MovingWebtoonMotionType>(DEFAULT_MOTION);
   const [merging, setMerging] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [mwProjectId, setMwProjectId] = useState<string | null>(null);
   const fileCounter = useRef(0);
+  const projectRef = useRef<{ projectId: string; mwProjectId: string } | null>(null);
 
-  // ===== 프로젝트 초기화 (첫 업로드 시 자동 생성) =====
+  // ===== 프로젝트 초기화 =====
   const ensureProject = useCallback(async (): Promise<{ projectId: string; mwProjectId: string }> => {
-    if (projectId && mwProjectId) return { projectId, mwProjectId };
+    if (projectRef.current) return projectRef.current;
 
-    // 웹툰 애니메이션 프로젝트 생성
     const projRes = await fetch('/api/webtoonanimation/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,33 +70,34 @@ export default function MovingWebtoonPage() {
     });
     const proj = await projRes.json();
 
-    // 무빙웹툰 프로젝트 생성
     const mwRes = await fetch('/api/webtoonanimation/moving-webtoon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'create',
         projectId: proj.id,
-        defaultProvider: globalProvider,
-        defaultMotionType: globalMotion,
+        defaultProvider: DEFAULT_PROVIDER,
+        defaultMotionType: DEFAULT_MOTION,
       }),
     });
     const mwProj = await mwRes.json();
 
+    const result = { projectId: proj.id, mwProjectId: mwProj.id };
+    projectRef.current = result;
     setProjectId(proj.id);
     setMwProjectId(mwProj.id);
-    return { projectId: proj.id, mwProjectId: mwProj.id };
-  }, [projectId, mwProjectId, globalProvider, globalMotion]);
+    return result;
+  }, []);
 
-  // ===== 이미지 드롭 처리 =====
-  const handleDrop = useCallback(async (files: File[]) => {
+  // ===== 파일 처리 (드롭/페이스트 공통) =====
+  const processFiles = useCallback(async (files: File[]) => {
     const newCuts: CutItem[] = files.map((file) => ({
       id: `temp-${++fileCounter.current}`,
       imageUrl: URL.createObjectURL(file),
       fileName: file.name,
-      prompt: MOTION_TYPE_PRESETS[globalMotion].prompt,
-      motionType: globalMotion,
-      provider: globalProvider,
+      prompt: MOTION_TYPE_PRESETS[DEFAULT_MOTION].prompt,
+      motionType: DEFAULT_MOTION,
+      provider: DEFAULT_PROVIDER,
       duration: 3,
       status: 'uploading' as const,
       videoUrl: null,
@@ -113,16 +109,13 @@ export default function MovingWebtoonPage() {
 
     setCuts((prev) => [...prev, ...newCuts]);
 
-    // 프로젝트 확보
     const { projectId: pId, mwProjectId: mwId } = await ensureProject();
 
-    // 각 파일 업로드 & DB 저장
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const tempId = newCuts[i].id;
 
       try {
-        // 1. 이미지 업로드 (기존 API 활용)
         const reader = new FileReader();
         const base64 = await new Promise<string>((resolve) => {
           reader.onload = () => resolve((reader.result as string).split(',')[1]);
@@ -134,16 +127,13 @@ export default function MovingWebtoonPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projectId: pId,
-            files: [{ name: file.name, base64, type: file.type }],
+            files: [{ name: file.name || `paste-${Date.now()}.png`, base64, type: file.type }],
           }),
         });
         const uploadData = await uploadRes.json();
         const uploadedCut = uploadData.cuts?.[0];
-
         if (!uploadedCut) throw new Error('업로드 실패');
 
-        // 2. 무빙웹툰 컷 추가
-        const orderIndex = cuts.length + i;
         const addRes = await fetch('/api/webtoonanimation/moving-webtoon', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -152,26 +142,19 @@ export default function MovingWebtoonPage() {
             movingProjectId: mwId,
             cuts: [{
               cutId: uploadedCut.id,
-              orderIndex,
-              motionType: globalMotion,
-              prompt: MOTION_TYPE_PRESETS[globalMotion].prompt,
+              orderIndex: i,
+              motionType: DEFAULT_MOTION,
+              prompt: MOTION_TYPE_PRESETS[DEFAULT_MOTION].prompt,
             }],
           }),
         });
         const addData = await addRes.json();
         const mwCut = addData[0];
 
-        // 상태 업데이트
         setCuts((prev) =>
           prev.map((c) =>
             c.id === tempId
-              ? {
-                  ...c,
-                  status: 'pending' as const,
-                  imageUrl: uploadedCut.file_path,
-                  dbCutId: uploadedCut.id,
-                  dbMwCutId: mwCut?.id || null,
-                }
+              ? { ...c, status: 'pending' as const, imageUrl: uploadedCut.file_path, dbCutId: uploadedCut.id, dbMwCutId: mwCut?.id || null }
               : c
           )
         );
@@ -179,20 +162,43 @@ export default function MovingWebtoonPage() {
         console.error('업로드 실패:', e);
         setCuts((prev) =>
           prev.map((c) =>
-            c.id === tempId
-              ? { ...c, status: 'failed' as const, errorMessage: '업로드 실패' }
-              : c
+            c.id === tempId ? { ...c, status: 'failed' as const, errorMessage: '업로드 실패' } : c
           )
         );
       }
     }
-  }, [cuts.length, globalMotion, globalProvider, ensureProject]);
+  }, [ensureProject]);
 
+  // ===== 클립보드 페이스트 =====
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const imageFiles: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        processFiles(imageFiles);
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [processFiles]);
+
+  // ===== 드롭존 =====
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: handleDrop,
+    onDrop: processFiles,
     accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'] },
     multiple: true,
-    noClick: cuts.length > 0, // 컷이 있으면 클릭 업로드 비활성 (드래그만)
+    noClick: cuts.length > 0,
   });
 
   // ===== 개별 영상 생성 =====
@@ -208,25 +214,13 @@ export default function MovingWebtoonPage() {
       const res = await fetch('/api/webtoonanimation/moving-webtoon/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cutId: cut.dbMwCutId,
-          prompt: cut.prompt,
-          provider: cut.provider,
-        }),
+        body: JSON.stringify({ cutId: cut.dbMwCutId, prompt: cut.prompt, provider: cut.provider }),
       });
-
       const data = await res.json();
       if (res.ok) {
         setCuts((prev) =>
           prev.map((c) =>
-            c.id === cutId
-              ? {
-                  ...c,
-                  status: 'completed' as const,
-                  videoUrl: data.video_url,
-                  elapsedMs: data.elapsed_ms,
-                }
-              : c
+            c.id === cutId ? { ...c, status: 'completed' as const, videoUrl: data.video_url, elapsedMs: data.elapsed_ms } : c
           )
         );
       } else {
@@ -235,9 +229,7 @@ export default function MovingWebtoonPage() {
     } catch (e) {
       setCuts((prev) =>
         prev.map((c) =>
-          c.id === cutId
-            ? { ...c, status: 'failed' as const, errorMessage: (e as Error).message }
-            : c
+          c.id === cutId ? { ...c, status: 'failed' as const, errorMessage: (e as Error).message } : c
         )
       );
     }
@@ -289,11 +281,9 @@ export default function MovingWebtoonPage() {
     setCuts((prev) => prev.filter((c) => c.id !== cutId));
   };
 
-  // ===== 컷 프롬프트/모델 업데이트 =====
+  // ===== 컷 업데이트 =====
   const updateCut = (cutId: string, updates: Partial<CutItem>) => {
     setCuts((prev) => prev.map((c) => (c.id === cutId ? { ...c, ...updates } : c)));
-
-    // DB 업데이트 (있는 경우)
     const cut = cuts.find((c) => c.id === cutId);
     if (cut?.dbMwCutId) {
       const dbUpdates: Record<string, unknown> = {};
@@ -330,30 +320,6 @@ export default function MovingWebtoonPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* 전체 기본 모델 */}
-              <Select value={globalProvider} onValueChange={setGlobalProvider}>
-                <SelectTrigger className="w-40 h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* 전체 기본 움직임 */}
-              <Select value={globalMotion} onValueChange={(v) => setGlobalMotion(v as MovingWebtoonMotionType)}>
-                <SelectTrigger className="w-32 h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(MOTION_TYPE_PRESETS).map(([key, val]) => (
-                    <SelectItem key={key} value={key}>{val.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               {pendingCount > 0 && (
                 <Button size="sm" onClick={generateAll} disabled={isGenerating}>
                   {isGenerating ? (
@@ -390,7 +356,6 @@ export default function MovingWebtoonPage() {
         <input {...getInputProps()} />
 
         {cuts.length === 0 ? (
-          /* 빈 상태: 업로드 안내 */
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
             <div
               className={`border-2 border-dashed rounded-xl p-12 transition-colors max-w-lg w-full cursor-pointer ${
@@ -399,13 +364,16 @@ export default function MovingWebtoonPage() {
             >
               <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
               <p className="text-base font-medium mb-2">웹툰 컷을 드래그하여 추가</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 여러 장을 한번에 올릴 수 있습니다. 순서대로 영상이 만들어집니다.
               </p>
+              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
+                <Clipboard className="h-3.5 w-3.5" />
+                <span>스크린샷을 Ctrl+V로 바로 붙여넣기도 가능</span>
+              </div>
             </div>
           </div>
         ) : (
-          /* 컷 목록 */
           <div className="space-y-3">
             {cuts.map((cut, index) => (
               <CutRow
@@ -431,13 +399,13 @@ export default function MovingWebtoonPage() {
                 input.multiple = true;
                 input.onchange = (ev) => {
                   const files = Array.from((ev.target as HTMLInputElement).files || []);
-                  if (files.length) handleDrop(files);
+                  if (files.length) processFiles(files);
                 };
                 input.click();
               }}
             >
               <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">컷 추가 (드래그 또는 클릭)</p>
+              <p className="text-xs text-muted-foreground">컷 추가 (드래그, 클릭, 또는 Ctrl+V)</p>
             </div>
           </div>
         )}
@@ -496,13 +464,10 @@ function CutRow({
           </button>
         </div>
 
-        {/* 가운데: 프롬프트 + 설정 */}
+        {/* 가운데: 설정 + 프롬프트 + 만들기 */}
         <div className="flex-1 p-3 space-y-2 min-w-0">
-          <div className="flex items-center gap-2">
-            <Select
-              value={cut.motionType}
-              onValueChange={handleMotionChange}
-            >
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={cut.motionType} onValueChange={handleMotionChange}>
               <SelectTrigger className="w-32 h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -513,10 +478,7 @@ function CutRow({
               </SelectContent>
             </Select>
 
-            <Select
-              value={cut.provider}
-              onValueChange={(v) => onUpdate({ provider: v })}
-            >
+            <Select value={cut.provider} onValueChange={(v) => onUpdate({ provider: v })}>
               <SelectTrigger className="w-40 h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -534,9 +496,7 @@ function CutRow({
             value={localPrompt}
             onChange={(e) => setLocalPrompt(e.target.value)}
             onBlur={() => {
-              if (localPrompt !== cut.prompt) {
-                onUpdate({ prompt: localPrompt });
-              }
+              if (localPrompt !== cut.prompt) onUpdate({ prompt: localPrompt });
             }}
             rows={3}
             className="text-xs resize-none"
@@ -547,12 +507,7 @@ function CutRow({
             <p className="text-xs text-red-500">{cut.errorMessage}</p>
           )}
 
-          <Button
-            size="sm"
-            onClick={onGenerate}
-            disabled={isWorking || !cut.dbMwCutId}
-            className="h-7 text-xs"
-          >
+          <Button size="sm" onClick={onGenerate} disabled={isWorking || !cut.dbMwCutId} className="h-7 text-xs">
             {cut.status === 'generating' ? (
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
             ) : cut.status === 'completed' ? (
