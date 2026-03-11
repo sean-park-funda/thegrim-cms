@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn, DollarSign } from 'lucide-react';
+import { Film, FolderTree, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn, DollarSign, Clapperboard } from 'lucide-react';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 import { type ApiProvider } from '@/lib/supabase';
 import {
@@ -128,6 +128,20 @@ export function Navigation() {
               >
                 <FolderTree className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">공정</span>
+              </Button>
+            </Link>
+            <Link href="/moving-webtoon">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                  pathname?.startsWith('/moving-webtoon')
+                    ? 'bg-background/20 text-background'
+                    : 'text-background/70 hover:text-background hover:bg-background/10'
+                }`}
+              >
+                <Clapperboard className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">무빙툰</span>
               </Button>
             </Link>
             {profile && (profile.role === 'admin' || profile.role === 'executive' || profile.role === 'accountant') && (

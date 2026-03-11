@@ -19,7 +19,6 @@ import { SeedancePromptEditor } from '@/components/webtoonanimation/SeedanceProm
 import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
 import { VideoTestLab } from '@/components/webtoonanimation/VideoTestLab';
 import { SegmentPlanner } from '@/components/webtoonanimation/SegmentPlanner';
-import { MovingWebtoon } from '@/components/webtoonanimation/MovingWebtoon';
 
 export default function WebtoonAnimationPage() {
   // State: 프로젝트 목록
@@ -46,7 +45,7 @@ export default function WebtoonAnimationPage() {
   const [activeGroup, setActiveGroup] = useState<WebtoonAnimationPromptGroupWithCuts | null>(null);
 
   // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
-  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments' | 'moving'>('testlab');
+  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments'>('testlab');
 
   // Debounce timer
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -461,16 +460,6 @@ export default function WebtoonAnimationPage() {
                 세그먼트 영상
               </button>
               <button
-                onClick={() => setActiveTab('moving')}
-                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === 'moving'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                무빙웹툰
-              </button>
-              <button
                 onClick={() => setActiveTab('seedance')}
                 className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                   activeTab === 'seedance'
@@ -508,14 +497,6 @@ export default function WebtoonAnimationPage() {
                 />
               )}
             </>
-          )}
-
-          {/* 무빙웹툰 모드 */}
-          {activeTab === 'moving' && (
-            <MovingWebtoon
-              cuts={cuts}
-              projectId={selectedProject.id}
-            />
           )}
 
           {/* 세그먼트 모드 */}
