@@ -31,6 +31,8 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
   const [mgRsRate, setMgRsRate] = useState('');
   const [contractCategory, setContractCategory] = useState('');
   const [includedRevenueTypes, setIncludedRevenueTypes] = useState<RevenueType[]>(ALL_REVENUE_TYPES);
+  const [revenueRate, setRevenueRate] = useState('1');
+  const [settlementCycle, setSettlementCycle] = useState('monthly');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -40,6 +42,8 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
       setMgRsRate(wp.mg_rs_rate != null ? String(wp.mg_rs_rate * 100) : '');
       setContractCategory(wp.contract_category || '');
       setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
+      setRevenueRate(wp.revenue_rate != null ? String(wp.revenue_rate) : '1');
+      setSettlementCycle(wp.settlement_cycle || 'monthly');
     }
   }, [wp]);
 
@@ -60,6 +64,8 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
           mg_rs_rate: mgRsRate ? Number(mgRsRate) / 100 : null,
           contract_category: contractCategory || null,
           included_revenue_types: includedRevenueTypes,
+          revenue_rate: revenueRate ? Number(revenueRate) : 1,
+          settlement_cycle: settlementCycle,
         }),
       });
       if (res.ok) {
@@ -94,6 +100,22 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
               <span className="text-sm text-muted-foreground">%</span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">MG 적용 시 사용되는 별도 요율</p>
+          </div>
+          <div>
+            <Label>매출액 적용율</Label>
+            <Input type="number" step="0.01" min="0" max="1" value={revenueRate} onChange={(e) => setRevenueRate(e.target.value)} className="w-28" />
+            <p className="text-[11px] text-muted-foreground mt-1">매출액에 먼저 곱해지는 비율 (기본 1)</p>
+          </div>
+          <div>
+            <Label>정산주기</Label>
+            <select
+              value={settlementCycle}
+              onChange={(e) => setSettlementCycle(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+            >
+              <option value="monthly">매월</option>
+              <option value="semi_annual">반기</option>
+            </select>
           </div>
           <div>
             <Label>부가세 유형</Label>

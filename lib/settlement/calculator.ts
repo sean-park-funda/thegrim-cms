@@ -53,6 +53,8 @@ export interface InsuranceContext {
   reportType?: string | null;
   /** 정산 기준 월 (YYYY-MM) */
   month?: string;
+  /** 외국인 여부 — true이면 예고료 대상 제외 */
+  isForeign?: boolean;
 }
 
 /**
@@ -72,6 +74,7 @@ export function calculateInsurance(amount: number, partnerType: string, ctx?: In
   if ((partnerType !== 'individual' && partnerType !== 'individual_simple_tax') || amount <= 0) return 0;
 
   if (ctx) {
+    if (ctx.isForeign) return 0;
     // 조건 2: 50만원 초과
     if (amount <= 500000) return 0;
     // 조건 3: 연재 미종료
@@ -121,6 +124,7 @@ export interface CalculationInput {
   serial_end_date?: string | null;
   report_type?: string | null;
   month?: string;
+  is_foreign?: boolean;
 }
 
 export interface CalculationResult {
@@ -158,6 +162,7 @@ export function calculateSettlement(input: CalculationInput): CalculationResult 
     serialEndDate: input.serial_end_date,
     reportType: input.report_type,
     month: input.month,
+    isForeign: input.is_foreign,
   });
 
   let mg_deduction = 0;

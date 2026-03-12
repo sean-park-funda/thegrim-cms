@@ -223,23 +223,27 @@ export async function GET(request: NextRequest) {
       // 계약 테이블 내보내기
       const { data: workPartners } = await supabase
         .from('rs_work_partners')
-        .select('*, work:rs_works(name), partner:rs_partners(name, partner_type)')
+        .select('*, work:rs_works(name), partner:rs_partners(name, company_name, partner_type, report_type)')
         .order('created_at');
 
+      const incomeTypeMap: Record<string, string> = {
+        individual: '개인', individual_employee: '개인(임직원)', individual_simple_tax: '개인(간이)',
+        domestic_corp: '사업자(국내)', foreign_corp: '사업자(해외)', naver: '사업자(네이버)',
+      };
+      const cycleMap: Record<string, string> = { monthly: '매월', semi_annual: '반기' };
+
       const rows = (workPartners || []).map(wp => ({
+        '대상자': wp.partner?.name || '',
+        '거래처명': wp.partner?.company_name || '',
+        '소득구분': incomeTypeMap[wp.partner?.partner_type] || wp.partner?.partner_type || '',
+        '신고구분': wp.partner?.report_type || '',
+        '정산주기': cycleMap[wp.settlement_cycle] || '매월',
         '작품명': wp.work?.name || '',
-        '파트너명': wp.partner?.name || '',
-        '필명': wp.pen_name || '',
-        '파트너구분': wp.partner?.partner_type || '',
-        '부가세': wp.vat_type || '',
-        'RS요율': `${(wp.rs_rate * 100).toFixed(1)}%`,
-        'MG RS요율': wp.mg_rs_rate != null ? `${(wp.mg_rs_rate * 100).toFixed(1)}%` : '',
-        '계약구분': wp.contract_category || '',
-        '계약서명': wp.contract_doc_name || '',
-        '체결일': wp.contract_signed_date || '',
-        '계약기간': wp.contract_period || '',
-        '종료일': wp.contract_end_date || '',
-        'MG': wp.is_mg_applied ? 'Y' : '',
+        '매출액적용율': wp.revenue_rate ?? 1,
+        'MG적용': wp.is_mg_applied ? 'O' : 'X',
+        'MG요율': wp.mg_rs_rate != null ? wp.mg_rs_rate : '',
+        'RS요율': wp.rs_rate,
+        '특이사항': wp.note || '',
       }));
 
       const ws = XLSX.utils.json_to_sheet(rows);

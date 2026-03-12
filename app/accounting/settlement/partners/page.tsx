@@ -11,15 +11,36 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
-import { RsPartner } from '@/lib/types/settlement';
+import { RsPartner, PartnerType, ReportType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   individual: '개인',
+  individual_employee: '개인-임직원',
+  individual_simple_tax: '개인-간이',
   domestic_corp: '국내법인',
   foreign_corp: '해외법인',
   naver: '네이버',
+};
+
+const PARTNER_TYPE_TAX: Record<PartnerType, number> = {
+  individual: 0.033,
+  individual_employee: 0.033,
+  individual_simple_tax: 0.033,
+  domestic_corp: 0,
+  foreign_corp: 0.22,
+  naver: 0,
+};
+
+const DEFAULT_REPORT_TYPE: Record<PartnerType, ReportType> = {
+  individual: '기타소득',
+  individual_employee: '기타소득',
+  individual_simple_tax: '사업소득',
+  domestic_corp: '세금계산서',
+  foreign_corp: '기타소득',
+  naver: '세금계산서',
 };
 
 interface PartnerWithRevenue extends RsPartner {
@@ -115,6 +136,20 @@ export default function PartnersPage() {
     }
   };
 
+  const handleTypeChange = async (partnerId: string, newType: PartnerType) => {
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        partner_type: newType,
+        tax_rate: PARTNER_TYPE_TAX[newType],
+        report_type: DEFAULT_REPORT_TYPE[newType],
+        salary_deduction: newType === 'individual_employee' ? undefined : 0,
+      }),
+    });
+    if (res.ok) await load();
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const res = await settlementFetch(`/api/accounting/settlement/partners/${id}`, { method: 'DELETE' });
@@ -194,8 +229,24 @@ export default function PartnersPage() {
                     >
                       <td className="py-2 px-3 font-medium">{p.name}</td>
                       <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{p.company_name || '-'}</td>
-                      <td className="py-2 px-3 hidden md:table-cell">
-                        <Badge variant="secondary">{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</Badge>
+                      <td className="py-2 px-3 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+                        {canManage ? (
+                          <Select
+                            value={p.partner_type}
+                            onValueChange={(v) => handleTypeChange(p.id, v as PartnerType)}
+                          >
+                            <SelectTrigger className="h-7 w-[110px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(PARTNER_TYPE_LABELS).map(([key, label]) => (
+                                <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge variant="secondary">{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</Badge>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{p.work_count || '-'}</td>
                       <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">

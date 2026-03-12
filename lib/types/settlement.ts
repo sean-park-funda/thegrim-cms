@@ -35,6 +35,7 @@ export interface RsPartner {
   bank_name: string | null;
   bank_account: string | null;
   email: string | null;
+  is_foreign: boolean;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -57,6 +58,8 @@ export interface RsWorkPartner {
   contract_period: string | null;
   contract_end_date: string | null;
   included_revenue_types: RevenueType[] | null;
+  revenue_rate: number;
+  settlement_cycle: string;
   created_at: string;
   updated_at: string;
   // joined

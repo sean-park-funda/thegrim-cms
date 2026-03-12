@@ -287,8 +287,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const tax_breakdown = calculateTax(subtotal, partner.partner_type);
     const tax_amount = tax_breakdown.total;
 
-    // 예고료 — 일단 비활성 (추후 필요시 재활성화)
-    const insurance = 0;
+    const hasActiveSerial = works.some(w => {
+      const wk = workPartners.find(wp => wp.work_id === w.work_id);
+      const wkData = wk?.work as unknown as { serial_end_date: string | null } | null;
+      return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
+    });
+    const insurance = calculateInsurance(subtotal, partner.partner_type, {
+      serialEndDate: hasActiveSerial ? null : '1900-01-01',
+      reportType: partner.report_type ?? null,
+      month,
+      isForeign: partner.is_foreign ?? false,
+    });
 
     // MG 차감 합계
     const total_mg_deduction = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
