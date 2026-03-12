@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useState, useEffect } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { RsPartner, PartnerType, ReportType } from '@/lib/types/settlement';
+import { User, Receipt, Settings, CreditCard, StickyNote } from 'lucide-react';
 
 const PARTNER_TYPE_LABELS: Record<PartnerType, string> = {
   individual: '개인 (3.3%)',
@@ -49,19 +51,38 @@ interface PartnerFormProps {
 }
 
 export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerFormProps) {
-  const [name, setName] = useState(partner?.name || '');
-  const [companyName, setCompanyName] = useState(partner?.company_name || '');
-  const [partnerType, setPartnerType] = useState<PartnerType>(partner?.partner_type || 'individual');
-  const [taxRate, setTaxRate] = useState(String(partner?.tax_rate ?? 0.033));
-  const [salaryDeduction, setSalaryDeduction] = useState(String(partner?.salary_deduction ?? 0));
-  const [hasSalary, setHasSalary] = useState(partner?.has_salary ?? false);
-  const [reportType, setReportType] = useState<ReportType>(partner?.report_type || DEFAULT_REPORT_TYPE[partnerType]);
-  const [taxId, setTaxId] = useState(partner?.tax_id || '');
-  const [bankName, setBankName] = useState(partner?.bank_name || '');
-  const [bankAccount, setBankAccount] = useState(partner?.bank_account || '');
-  const [email, setEmail] = useState(partner?.email || '');
-  const [note, setNote] = useState(partner?.note || '');
+  const [name, setName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [partnerType, setPartnerType] = useState<PartnerType>('individual');
+  const [taxRate, setTaxRate] = useState('0.033');
+  const [salaryDeduction, setSalaryDeduction] = useState('0');
+  const [hasSalary, setHasSalary] = useState(false);
+  const [reportType, setReportType] = useState<ReportType>('기타소득');
+  const [taxId, setTaxId] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [email, setEmail] = useState('');
+  const [isForeign, setIsForeign] = useState(false);
+  const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(partner?.name || '');
+      setCompanyName(partner?.company_name || '');
+      setPartnerType(partner?.partner_type || 'individual');
+      setTaxRate(String(partner?.tax_rate ?? 0.033));
+      setSalaryDeduction(String(partner?.salary_deduction ?? 0));
+      setHasSalary(partner?.has_salary ?? false);
+      setReportType(partner?.report_type || DEFAULT_REPORT_TYPE[partner?.partner_type || 'individual']);
+      setTaxId(partner?.tax_id || '');
+      setBankName(partner?.bank_name || '');
+      setBankAccount(partner?.bank_account || '');
+      setEmail(partner?.email || '');
+      setIsForeign(partner?.is_foreign ?? false);
+      setNote(partner?.note || '');
+    }
+  }, [open, partner]);
 
   const handleTypeChange = (type: PartnerType) => {
     setPartnerType(type);
@@ -90,6 +111,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
         bank_name: bankName || null,
         bank_account: bankAccount || null,
         email: email || null,
+        is_foreign: isForeign,
         note: note || null,
       });
       onOpenChange(false);
@@ -99,105 +121,154 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{partner ? '파트너 수정' : '파트너 생성'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>이름 *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="파트너 이름" />
-          </div>
-          <div>
-            <Label>회사명</Label>
-            <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="회사명 (선택)" />
-          </div>
-          <div>
-            <Label>유형</Label>
-            <Select value={partnerType} onValueChange={(v) => handleTypeChange(v as PartnerType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(PARTNER_TYPE_LABELS).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>세율</Label>
-              <Input type="number" step="0.001" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="sm:max-w-lg w-full p-0 flex flex-col gap-0">
+        <SheetHeader className="px-6 py-5 border-b bg-muted/40">
+          <SheetTitle className="text-lg">{partner ? '파트너 수정' : '새 파트너'}</SheetTitle>
+          <SheetDescription>
+            {partner ? `${partner.name}의 정보를 수정합니다.` : '새로운 파트너를 등록합니다.'}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* 기본 정보 */}
+          <section className="rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <User className="h-4 w-4 text-primary" />
+              기본 정보
             </div>
-            <div>
-              <Label>신고구분</Label>
-              <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REPORT_TYPES.map(rt => (
-                    <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="name" className="text-xs text-muted-foreground">이름 *</Label>
+                <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="파트너 이름" className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="company" className="text-xs text-muted-foreground">회사명 / 거래처명</Label>
+                <Input id="company" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="선택 사항" className="mt-1" />
+              </div>
             </div>
-          </div>
-          {isEmployee && (
-            <div>
-              <Label>근로소득공제 (월 급여 차감액)</Label>
-              <Input
-                type="number"
-                value={salaryDeduction}
-                onChange={(e) => setSalaryDeduction(e.target.value)}
-                placeholder="급여에서 이미 수령한 금액"
-              />
+          </section>
+
+          {/* 소득 · 세금 */}
+          <section className="rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Receipt className="h-4 w-4 text-primary" />
+              소득 · 세금
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="hasSalary"
-              checked={hasSalary}
-              onChange={(e) => setHasSalary(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            <Label htmlFor="hasSalary" className="cursor-pointer">
-              급여 수령 (인건비 공제 대상)
-            </Label>
-          </div>
-          <div>
-            <Label>사업자/주민번호</Label>
-            <Input value={taxId} onChange={(e) => setTaxId(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>은행명</Label>
-              <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">유형</Label>
+                <Select value={partnerType} onValueChange={v => handleTypeChange(v as PartnerType)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PARTNER_TYPE_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="taxRate" className="text-xs text-muted-foreground">세율</Label>
+                  <Input id="taxRate" type="number" step="0.001" value={taxRate} onChange={e => setTaxRate(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">신고구분</Label>
+                  <Select value={reportType} onValueChange={v => setReportType(v as ReportType)}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REPORT_TYPES.map(rt => (
+                        <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="taxId" className="text-xs text-muted-foreground">사업자/주민번호</Label>
+                <Input id="taxId" value={taxId} onChange={e => setTaxId(e.target.value)} placeholder="000-00-00000" className="mt-1" />
+              </div>
             </div>
-            <div>
-              <Label>계좌번호</Label>
-              <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
+          </section>
+
+          {/* 옵션 */}
+          <section className="rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Settings className="h-4 w-4 text-primary" />
+              옵션
             </div>
-          </div>
-          <div>
-            <Label>이메일</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div>
-            <Label>메모</Label>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim()}>
-              {saving ? '저장 중...' : '저장'}
-            </Button>
-          </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2.5">
+                <div>
+                  <Label htmlFor="hasSalary" className="text-sm cursor-pointer">급여 수령</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">인건비 공제 대상 여부</p>
+                </div>
+                <Switch id="hasSalary" checked={hasSalary} onCheckedChange={setHasSalary} />
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2.5">
+                <div>
+                  <Label htmlFor="isForeign" className="text-sm cursor-pointer">외국인</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">예고료 대상에서 제외</p>
+                </div>
+                <Switch id="isForeign" checked={isForeign} onCheckedChange={setIsForeign} />
+              </div>
+              {isEmployee && (
+                <div>
+                  <Label htmlFor="salaryDeduction" className="text-xs text-muted-foreground">근로소득공제 (월 급여 차감액)</Label>
+                  <Input id="salaryDeduction" type="number" value={salaryDeduction} onChange={e => setSalaryDeduction(e.target.value)} placeholder="0" className="mt-1" />
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 결제 · 연락처 */}
+          <section className="rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <CreditCard className="h-4 w-4 text-primary" />
+              결제 · 연락처
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="bankName" className="text-xs text-muted-foreground">은행명</Label>
+                  <Input id="bankName" value={bankName} onChange={e => setBankName(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="bankAccount" className="text-xs text-muted-foreground">계좌번호</Label>
+                  <Input id="bankAccount" value={bankAccount} onChange={e => setBankAccount(e.target.value)} className="mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="email" className="text-xs text-muted-foreground">이메일</Label>
+                <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+          </section>
+
+          {/* 메모 */}
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <StickyNote className="h-4 w-4 text-primary" />
+              메모
+            </div>
+            <Input id="note" value={note} onChange={e => setNote(e.target.value)} placeholder="특이사항을 입력하세요" />
+          </section>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="border-t bg-muted/40 px-6 py-4 flex gap-3">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+            취소
+          </Button>
+          <Button onClick={handleSave} disabled={saving || !name.trim()} className="flex-1">
+            {saving ? '저장 중...' : '저장'}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
