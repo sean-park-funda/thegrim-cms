@@ -191,8 +191,8 @@ export default function AccountingPage() {
                     className="stroke-border"
                   />
                   <Tooltip
-                    formatter={(value: number) => [value.toLocaleString() + '원', '매출']}
-                    labelFormatter={(label: string) => label}
+                    formatter={(value) => [Number(value).toLocaleString() + '원', '매출']}
+                    labelFormatter={(label) => String(label)}
                   />
                   <Line
                     type="monotone"
