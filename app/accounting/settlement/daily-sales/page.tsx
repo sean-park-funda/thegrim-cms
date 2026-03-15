@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, DollarSign, BookOpen, Crown } from 'lucide-react';
+import { TrendingUp, DollarSign, BookOpen, Crown, Bot, User, Send, Loader2, MessageCircle, X } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -89,12 +89,55 @@ function ChartTooltip({ active, payload, label }: {
   );
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export default function DailySalesPage() {
   const { profile } = useStore();
   const [data, setData] = useState<DailySalesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [selectedWorks, setSelectedWorks] = useState<Set<string>>(new Set());
+
+  // Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [chatMessages, chatOpen]);
+
+  const sendChat = useCallback(async () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+
+    const userMsg: ChatMessage = { role: 'user', content: text };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await fetch('/api/accounting/settlement/daily-sales/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+      const data = await res.json();
+      setChatMessages([...newMessages, { role: 'assistant', content: data.error ? `오류: ${data.error}` : data.reply }]);
+    } catch {
+      setChatMessages([...newMessages, { role: 'assistant', content: '네트워크 오류가 발생했습니다.' }]);
+    } finally {
+      setChatLoading(false);
+      chatInputRef.current?.focus();
+    }
+  }, [chatInput, chatLoading, chatMessages]);
 
   const { from, to } = useMemo(() => {
     const now = new Date();
@@ -324,6 +367,118 @@ export default function DailySalesPage() {
             </CardContent>
           </Card>
         </>
+      )}
+
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => setChatOpen(prev => !prev)}
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/30 flex items-center justify-center hover:scale-105 transition-transform"
+      >
+        {chatOpen ? <X className="h-6 w-6 text-white" /> : <MessageCircle className="h-6 w-6 text-white" />}
+      </button>
+
+      {/* Chat Panel */}
+      {chatOpen && (
+        <div className="fixed bottom-24 right-6 z-50 w-[420px] h-[520px] rounded-2xl border bg-card shadow-2xl flex flex-col overflow-hidden">
+          {/* Chat Header */}
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-gradient-to-r from-cyan-500/5 to-blue-500/5">
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">매출 AI 분석</p>
+              <p className="text-[10px] text-muted-foreground">일별 매출 데이터를 자연어로 검색</p>
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+            {chatMessages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-4">
+                <Bot className="h-10 w-10 opacity-20" />
+                <p className="text-xs">매출 데이터에 대해 질문하세요</p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {[
+                    '전체 매출 요약',
+                    '외모지상주의 추이',
+                    '매출 1위 작품은?',
+                    '연재일 매출 급등 분석',
+                  ].map(q => (
+                    <button
+                      key={q}
+                      onClick={() => { setChatInput(q); chatInputRef.current?.focus(); }}
+                      className="px-2.5 py-1 text-[11px] rounded-full border hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                {msg.role === 'assistant' && (
+                  <div className="flex-shrink-0 h-6 w-6 rounded-md bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center mt-0.5">
+                    <Bot className="h-3.5 w-3.5 text-white" />
+                  </div>
+                )}
+                <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+                  msg.role === 'user'
+                    ? 'bg-cyan-500/10 border border-cyan-200 dark:border-cyan-800'
+                    : 'bg-muted border border-border'
+                }`}>
+                  {msg.content}
+                </div>
+                {msg.role === 'user' && (
+                  <div className="flex-shrink-0 h-6 w-6 rounded-md bg-muted flex items-center justify-center mt-0.5">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {chatLoading && (
+              <div className="flex gap-2">
+                <div className="h-6 w-6 rounded-md bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                  <Bot className="h-3.5 w-3.5 text-white" />
+                </div>
+                <div className="bg-muted border rounded-xl px-3 py-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>분석 중...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input */}
+          <div className="border-t px-3 py-2.5">
+            <div className="flex items-end gap-2 bg-muted/50 rounded-lg border px-3 py-2 focus-within:border-cyan-500/50 transition-colors">
+              <textarea
+                ref={chatInputRef}
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                placeholder="질문을 입력하세요..."
+                rows={1}
+                className="flex-1 resize-none bg-transparent text-xs placeholder:text-muted-foreground focus:outline-none max-h-20"
+                style={{ minHeight: '20px' }}
+                onInput={e => {
+                  const t = e.currentTarget;
+                  t.style.height = 'auto';
+                  t.style.height = Math.min(t.scrollHeight, 80) + 'px';
+                }}
+              />
+              <button
+                onClick={sendChat}
+                disabled={!chatInput.trim() || chatLoading}
+                className="flex-shrink-0 h-7 w-7 rounded-md bg-cyan-500 hover:bg-cyan-400 disabled:bg-muted disabled:text-muted-foreground text-white flex items-center justify-center transition-colors"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
