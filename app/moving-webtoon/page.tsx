@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -66,8 +67,20 @@ const DEFAULT_PROVIDER = 'kling-o3-pro';
 const DEFAULT_MOTION: MovingWebtoonMotionType = 'lip_sync';
 
 export default function MovingWebtoonPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <MovingWebtoonContent />
+    </Suspense>
+  );
+}
+
+function MovingWebtoonContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialProjectId = searchParams.get('id');
+
   // 화면 모드: 'list' = 프로젝트 목록, 'project' = 프로젝트 내부
-  const [mode, setMode] = useState<'list' | 'project'>('list');
+  const [mode, setMode] = useState<'list' | 'project'>(initialProjectId ? 'project' : 'list');
   const [cuts, setCuts] = useState<CutItem[]>([]);
   const [merging, setMerging] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -96,11 +109,30 @@ export default function MovingWebtoonPage() {
     }
   }, []);
 
-  // ===== 기존 프로젝트 로드 =====
-  const loadProject = useCallback(async (proj: MwProject) => {
+  // ===== 기존 프로젝트 로드 (MwProject 객체 또는 mwProjectId 문자열) =====
+  const loadProject = useCallback(async (projOrId: MwProject | string) => {
     setLoadingProject(true);
     try {
-      const res = await fetch(`/api/webtoonanimation/moving-webtoon?projectId=${proj.project_id}`);
+      let mwPId: string;
+      let pId: string;
+      let name: string;
+
+      if (typeof projOrId === 'string') {
+        // mwProjectId만 있는 경우 (URL에서 복원) — 목록에서 찾거나 API로 조회
+        const listRes = await fetch('/api/webtoonanimation/moving-webtoon?list=true');
+        const listData = await listRes.json();
+        const found = (listData.projects || []).find((p: MwProject) => p.id === projOrId);
+        if (!found) { setMode('list'); return; }
+        mwPId = found.id;
+        pId = found.project_id;
+        name = found.name || '이름없음';
+      } else {
+        mwPId = projOrId.id;
+        pId = projOrId.project_id;
+        name = projOrId.name || '이름없음';
+      }
+
+      const res = await fetch(`/api/webtoonanimation/moving-webtoon?projectId=${pId}`);
       if (!res.ok) return;
       const data = await res.json();
       if (!data.project) return;
@@ -121,16 +153,17 @@ export default function MovingWebtoonPage() {
         dbMwCutId: c.id as string,
       }));
 
-      projectRef.current = { projectId: proj.project_id, mwProjectId: proj.id };
-      setProjectId(proj.project_id);
-      setMwProjectId(proj.id);
-      setProjectName(proj.name || '이름없음');
+      projectRef.current = { projectId: pId, mwProjectId: mwPId };
+      setProjectId(pId);
+      setMwProjectId(mwPId);
+      setProjectName(name);
       setCuts(loadedCuts);
       setMode('project');
+      router.replace(`/moving-webtoon?id=${mwPId}`);
     } finally {
       setLoadingProject(false);
     }
-  }, []);
+  }, [router]);
 
   // ===== 새 프로젝트 만들기 =====
   const createNewProject = useCallback(async () => {
@@ -162,10 +195,11 @@ export default function MovingWebtoonPage() {
       setProjectName('이름없음');
       setCuts([]);
       setMode('project');
+      router.replace(`/moving-webtoon?id=${mwProj.id}`);
     } finally {
       setLoadingProject(false);
     }
-  }, []);
+  }, [router]);
 
   // ===== 프로젝트 목록으로 돌아가기 =====
   const goBack = useCallback(() => {
@@ -174,8 +208,9 @@ export default function MovingWebtoonPage() {
     setMwProjectId(null);
     setCuts([]);
     setMode('list');
+    router.replace('/moving-webtoon');
     loadProjectList();
-  }, [loadProjectList]);
+  }, [loadProjectList, router]);
 
   // ===== 프로젝트 이름 저장 =====
   const saveName = useCallback(async () => {
@@ -195,8 +230,13 @@ export default function MovingWebtoonPage() {
 
   // ===== 페이지 로드 시 =====
   useEffect(() => {
-    loadProjectList();
-  }, [loadProjectList]);
+    if (initialProjectId) {
+      loadProject(initialProjectId);
+    } else {
+      loadProjectList();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ===== 이름 편집 시 포커스 =====
   useEffect(() => {
