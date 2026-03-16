@@ -6,17 +6,13 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { StaffForm } from '@/components/settlement/StaffForm';
-import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
-import { RsStaff, RsStaffAssignment, RsStaffSalary, RsPartner, RsLaborCostShare } from '@/lib/types/settlement';
+import { RsStaff, RsStaffSalary, RsPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
-
-const fmt = (n: number) => (n > 0 ? n.toLocaleString() : '-');
 
 export default function StaffDetailPage() {
   const router = useRouter();
@@ -25,20 +21,11 @@ export default function StaffDetailPage() {
   const { profile } = useStore();
 
   const [staff, setStaff] = useState<RsStaff | null>(null);
-  const [assignments, setAssignments] = useState<RsStaffAssignment[]>([]);
   const [salaries, setSalaries] = useState<RsStaffSalary[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [editAssignment, setEditAssignment] = useState<RsStaffAssignment | null>(null);
-
-  // 인건비 분담
-  const [laborShares, setLaborShares] = useState<RsLaborCostShare[]>([]);
-  const [addSharePartnerId, setAddSharePartnerId] = useState('');
-  const [addShareRatio, setAddShareRatio] = useState('');
-  const [shareSaving, setShareSaving] = useState(false);
 
   // 급여 인라인 편집
   const [editingSalaryMonth, setEditingSalaryMonth] = useState<string | null>(null);
@@ -50,21 +37,17 @@ export default function StaffDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [detailRes, partnersRes, salariesRes, sharesRes] = await Promise.all([
+      const [detailRes, partnersRes, salariesRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/staff/${staffId}`),
         settlementFetch('/api/accounting/settlement/partners'),
         settlementFetch(`/api/accounting/settlement/staff-salaries?staffId=${staffId}`),
-        settlementFetch(`/api/accounting/settlement/labor-cost-shares?sourceType=staff&sourceId=${staffId}`),
       ]);
       const detailData = await detailRes.json();
       const partnersData = await partnersRes.json();
       const salariesData = await salariesRes.json();
-      const sharesData = await sharesRes.json();
       setStaff(detailData.staff || null);
-      setAssignments(detailData.assignments || []);
       setPartners(partnersData.partners || []);
       setSalaries(salariesData.salaries || []);
-      setLaborShares(sharesData.shares || []);
     } catch (e) {
       console.error('스태프 상세 로드 오류:', e);
     } finally {
@@ -88,15 +71,9 @@ export default function StaffDetailPage() {
   };
 
   const handleDeleteStaff = async () => {
-    if (!confirm('이 인력을 삭제하시겠습니까? 모든 배정 정보도 함께 삭제됩니다.')) return;
+    if (!confirm('이 인력을 삭제하시겠습니까?')) return;
     const res = await settlementFetch(`/api/accounting/settlement/staff/${staffId}`, { method: 'DELETE' });
     if (res.ok) router.push('/accounting/settlement/staff');
-  };
-
-  const handleDeleteAssignment = async (id: string) => {
-    if (!confirm('이 배정을 삭제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/staff-assignments?id=${id}`, { method: 'DELETE' });
-    if (res.ok) await load();
   };
 
   const handleSaveSalary = async (month: string, amount: string) => {
@@ -129,49 +106,12 @@ export default function StaffDetailPage() {
     }
   };
 
-  const handleAddShare = async () => {
-    if (!addSharePartnerId || !addShareRatio) return;
-    setShareSaving(true);
-    try {
-      const res = await settlementFetch('/api/accounting/settlement/labor-cost-shares', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_type: 'staff',
-          source_id: staffId,
-          bearer_partner_id: addSharePartnerId,
-          share_ratio: Number(addShareRatio) / 100,
-        }),
-      });
-      if (res.ok) {
-        setAddSharePartnerId('');
-        setAddShareRatio('');
-        await load();
-      } else {
-        const err = await res.json();
-        alert(err.error || '분담 추가 실패');
-      }
-    } finally {
-      setShareSaving(false);
-    }
-  };
-
-  const handleDeleteShare = async (shareId: string) => {
-    if (!confirm('이 분담 설정을 삭제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/labor-cost-shares?id=${shareId}`, { method: 'DELETE' });
-    if (res.ok) await load();
-  };
-
-  const totalShareRatio = laborShares.reduce((s, sh) => s + Number(sh.share_ratio), 0);
-  const employerRatio = Math.max(0, 1 - totalShareRatio);
-
   if (!profile) {
     return <div className="flex items-center justify-center h-full">Loading...</div>;
   }
   if (!canViewAccounting(profile.role)) return null;
 
   const canManage = canManageAccounting(profile.role);
-  const existingWorkIds = assignments.map(a => a.work_id);
 
   return (
     <div className="space-y-6">
@@ -245,185 +185,6 @@ export default function StaffDetailPage() {
               {staff.note && (
                 <p className="text-sm text-muted-foreground mt-3">{staff.note}</p>
               )}
-            </CardContent>
-          </Card>
-
-          {/* 작품 배정 목록 */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">작품 배정 ({assignments.length}건)</CardTitle>
-              {canManage && (
-                <Button size="sm" variant="outline" onClick={() => { setEditAssignment(null); setAssignDialogOpen(true); }}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  배정 추가
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {assignments.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center">배정된 작품이 없습니다.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="py-2 px-3 font-medium">작품</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">메모</th>
-                        {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assignments.map((a) => (
-                        <tr key={a.id} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-3">
-                            <Link
-                              href={`/accounting/settlement/works/${a.work_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              {(a.work as { name?: string } | null)?.name || a.work_id}
-                            </Link>
-                          </td>
-                          <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{a.note || '-'}</td>
-                          {canManage && (
-                            <td className="py-2 px-3">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleDeleteAssignment(a.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 인건비 분담 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">인건비 분담</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left">
-                      <th className="py-2 px-3 font-medium">부담자</th>
-                      <th className="py-2 px-3 font-medium text-right">비율</th>
-                      {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b bg-muted/30">
-                      <td className="py-2 px-3">
-                        <span className="inline-flex items-center gap-2">
-                          {staff.employer_partner_id ? (
-                            <Link
-                              href={`/accounting/settlement/partners/${staff.employer_partner_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              {(staff.employer_partner as { name?: string } | null)?.name || '소속 작가'}
-                            </Link>
-                          ) : '소속 작가'}
-                          <Badge variant="secondary" className="text-[10px]">기본</Badge>
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                        {(employerRatio * 100).toFixed(0)}%
-                      </td>
-                      {canManage && <td className="py-2 px-3"></td>}
-                    </tr>
-                    {laborShares.map((sh) => (
-                      <tr key={sh.id} className="border-b hover:bg-muted/50">
-                        <td className="py-2 px-3">
-                          <Link
-                            href={`/accounting/settlement/partners/${sh.bearer_partner_id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {(sh.bearer_partner as { name?: string } | null)?.name || sh.bearer_partner_id}
-                          </Link>
-                        </td>
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          {(() => { const p = Number(sh.share_ratio) * 100; return Number.isInteger(p) ? `${p}%` : `${p.toFixed(1)}%`; })()}
-                        </td>
-                        {canManage && (
-                          <td className="py-2 px-3">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => handleDeleteShare(sh.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    {canManage && (
-                      <tr className="border-t-2">
-                        <td className="py-2 px-3">
-                          <Select value={addSharePartnerId} onValueChange={setAddSharePartnerId}>
-                            <SelectTrigger className="h-8 w-48">
-                              <SelectValue placeholder="파트너 선택" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {partners
-                                .filter(p => p.id !== staff.employer_partner_id && !laborShares.some(s => s.bearer_partner_id === p.id))
-                                .map(p => (
-                                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <Input
-                              type="number"
-                              value={addShareRatio}
-                              onChange={(e) => setAddShareRatio(e.target.value)}
-                              className="w-20 h-8 text-right"
-                              placeholder="비율"
-                              min="1"
-                              max="100"
-                            />
-                            <span className="text-sm text-muted-foreground">%</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8"
-                            onClick={handleAddShare}
-                            disabled={shareSaving || !addSharePartnerId || !addShareRatio}
-                          >
-                            <Plus className="h-3.5 w-3.5 mr-1" />
-                            추가
-                          </Button>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 font-semibold">
-                      <td className="py-2 px-3">합계</td>
-                      <td className={`py-2 px-3 text-right tabular-nums ${totalShareRatio > 1 ? 'text-red-600' : ''}`}>
-                        100%
-                        {totalShareRatio > 1 && <span className="text-xs ml-1">(초과!)</span>}
-                      </td>
-                      {canManage && <td className="py-2 px-3"></td>}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
             </CardContent>
           </Card>
 
@@ -568,16 +329,6 @@ export default function StaffDetailPage() {
             open={formOpen}
             onOpenChange={setFormOpen}
             onSave={handleUpdate}
-          />
-
-          <StaffAssignmentDialog
-            staffId={staffId}
-            employerPartnerId={staff?.employer_partner_id || undefined}
-            assignment={editAssignment}
-            existingWorkIds={existingWorkIds}
-            open={assignDialogOpen}
-            onOpenChange={setAssignDialogOpen}
-            onSaved={load}
           />
         </>
       )}

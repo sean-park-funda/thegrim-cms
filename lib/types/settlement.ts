@@ -162,22 +162,6 @@ export interface RsStaff {
   employer_partner?: RsPartner;
 }
 
-export interface RsStaffAssignment {
-  id: string;
-  staff_id: string;
-  work_id: string;
-  monthly_cost: number;
-  start_month: string | null;
-  end_month: string | null;
-  is_active: boolean;
-  note: string | null;
-  created_at: string;
-  updated_at: string;
-  // joined
-  staff?: RsStaff;
-  work?: RsWork;
-}
-
 export interface RsStaffSalary {
   id: string;
   staff_id: string;
@@ -196,21 +180,6 @@ export interface RsPartnerSalary {
   note: string | null;
   created_at: string;
   updated_at: string;
-}
-
-// 인건비 분담
-export type LaborCostSourceType = 'staff' | 'partner';
-
-export interface RsLaborCostShare {
-  id: string;
-  source_type: LaborCostSourceType;
-  source_id: string;
-  bearer_partner_id: string;
-  share_ratio: number;
-  note: string | null;
-  created_at: string;
-  updated_at: string;
-  bearer_partner?: RsPartner;
 }
 
 // 파싱 결과 타입

@@ -15,8 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Pencil, Trash2, Plus, Users } from 'lucide-react';
-import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance, RsStaff, RsStaffAssignment, RsLaborCostShare } from '@/lib/types/settlement';
+import { ArrowLeft, Pencil, Trash2, Plus } from 'lucide-react';
+import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -37,8 +37,6 @@ export default function WorkDetailPage() {
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
-  const [staffAssignments, setStaffAssignments] = useState<(RsStaffAssignment & { staff?: RsStaff })[]>([]);
-  const [laborSharesByStaff, setLaborSharesByStaff] = useState<Map<string, RsLaborCostShare[]>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -54,44 +52,23 @@ export default function WorkDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [workRes, wpRes, revRes, partnersRes, mgRes, saRes] = await Promise.all([
+      const [workRes, wpRes, revRes, partnersRes, mgRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/works/${workId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/revenue?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/partners`),
         settlementFetch(`/api/accounting/settlement/mg?workId=${workId}`),
-        settlementFetch(`/api/accounting/settlement/staff-assignments?workId=${workId}`),
       ]);
       const workData = await workRes.json();
       const wpData = await wpRes.json();
       const revData = await revRes.json();
       const partnersData = await partnersRes.json();
       const mgData = await mgRes.json();
-      const saData = await saRes.json();
       setWork(workData.work || null);
       setWorkPartners(wpData.work_partners || []);
       setRevenues((revData.revenues || []).sort((a: RsRevenue, b: RsRevenue) => b.month.localeCompare(a.month)));
       setPartners(partnersData.partners || []);
       setMgBalances((mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month)));
-      const assignments: (RsStaffAssignment & { staff?: RsStaff })[] = saData.assignments || [];
-      setStaffAssignments(assignments);
-
-      const staffIds = assignments.map(a => a.staff_id).filter(Boolean);
-      if (staffIds.length > 0) {
-        const sharesRes = await settlementFetch('/api/accounting/settlement/labor-cost-shares?sourceType=staff');
-        const sharesData = await sharesRes.json();
-        const shareMap = new Map<string, RsLaborCostShare[]>();
-        for (const share of (sharesData.shares || []) as RsLaborCostShare[]) {
-          if (staffIds.includes(share.source_id)) {
-            const list = shareMap.get(share.source_id) || [];
-            list.push(share);
-            shareMap.set(share.source_id, list);
-          }
-        }
-        setLaborSharesByStaff(shareMap);
-      } else {
-        setLaborSharesByStaff(new Map());
-      }
     } catch (e) {
       console.error('작품 상세 로드 오류:', e);
     } finally {
@@ -343,98 +320,6 @@ export default function WorkDetailPage() {
                           )}
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 배정 인력 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  배정 인력 ({staffAssignments.length}명)
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {staffAssignments.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center">배정된 인력이 없습니다.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="py-2 px-3 font-medium">이름</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">소속 구분</th>
-                        <th className="py-2 px-3 font-medium text-right">기본 월급여</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">인건비 부담</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {staffAssignments.map((sa) => {
-                        const staff = sa.staff as RsStaff | undefined;
-                        const employerName = staff
-                          ? partners.find(p => p.id === staff.employer_partner_id)?.name
-                          : undefined;
-                        const shares = laborSharesByStaff.get(sa.staff_id);
-                        return (
-                          <tr
-                            key={sa.id}
-                            className="border-b hover:bg-muted/50 cursor-pointer"
-                            onClick={() => staff && window.location.assign(`/accounting/settlement/staff/${staff.id}`)}
-                          >
-                            <td className="py-2 px-3 font-medium">
-                              {staff ? (
-                                <Link
-                                  href={`/accounting/settlement/staff/${staff.id}`}
-                                  className="text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {staff.name}
-                                </Link>
-                              ) : sa.staff_id}
-                            </td>
-                            <td className="py-2 px-3 hidden md:table-cell">
-                              <Badge variant="secondary">
-                                {staff?.employer_type === 'author' ? '작가 소속' : '회사 소속'}
-                              </Badge>
-                            </td>
-                            <td className="py-2 px-3 text-right tabular-nums">
-                              {staff ? fmt(Number(staff.monthly_salary)) : '-'}
-                            </td>
-                            <td className="py-2 px-3 hidden md:table-cell">
-                              {(() => {
-                                if (!shares || shares.length === 0) {
-                                  return <span className="text-muted-foreground">{employerName || '-'} 100%</span>;
-                                }
-                                const othersTotal = shares.reduce((sum, sh) => sum + Number(sh.share_ratio), 0);
-                                const employerRatio = Math.max(0, 1 - othersTotal);
-                                const parts: { name: string; pct: number }[] = [];
-                                if (employerRatio > 0 && employerName) {
-                                  parts.push({ name: employerName, pct: employerRatio * 100 });
-                                }
-                                for (const sh of shares) {
-                                  const bearerName = (sh.bearer_partner as { name?: string } | undefined)?.name || '?';
-                                  parts.push({ name: bearerName, pct: Number(sh.share_ratio) * 100 });
-                                }
-                                return (
-                                  <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-muted-foreground">
-                                    {parts.map((p, i) => (
-                                      <span key={i} className="whitespace-nowrap">
-                                        {p.name} {Number.isInteger(p.pct) ? `${p.pct}%` : `${p.pct.toFixed(1)}%`}
-                                      </span>
-                                    ))}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        );
-                      })}
                     </tbody>
                   </table>
                 </div>

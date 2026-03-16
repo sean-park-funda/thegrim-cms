@@ -10,30 +10,25 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Check, Pencil, Plus, Search, X } from 'lucide-react';
-import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary } from '@/lib/types/settlement';
+import { RsStaff, RsPartner, RsStaffSalary } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 
-interface StaffWithSummary extends RsStaff {
-  assignment_count: number;
-  total_monthly_cost: number;
-}
-
 interface PartnerSalaryRow {
-  id: string; // partner_id prefixed
+  id: string;
   partner_id: string;
   name: string;
   is_partner: true;
   monthly_salary: number;
 }
 
-type ListRow = (StaffWithSummary & { is_partner?: false }) | PartnerSalaryRow;
+type ListRow = (RsStaff & { is_partner?: false }) | PartnerSalaryRow;
 
 export default function StaffPage() {
   const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
-  const [staffList, setStaffList] = useState<StaffWithSummary[]>([]);
+  const [staffList, setStaffList] = useState<RsStaff[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [salaryPartners, setSalaryPartners] = useState<PartnerSalaryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +66,6 @@ export default function StaffPage() {
       }
       setPartnerMonthSalaries(partnerMap);
 
-      // Build person_id → 대상자 파트너 목록 from labor cost items
       const burdenMap = new Map<string, Array<{ id: string; name: string }>>();
       for (const item of (laborItemsData.items || [])) {
         const existing = burdenMap.get(item.person_id) || [];
@@ -91,19 +85,16 @@ export default function StaffPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [staffRes, assignmentsRes, partnersRes] = await Promise.all([
+      const [staffRes, partnersRes] = await Promise.all([
         settlementFetch('/api/accounting/settlement/staff?activeOnly=false'),
-        settlementFetch('/api/accounting/settlement/staff-assignments'),
         settlementFetch('/api/accounting/settlement/partners'),
       ]);
       const staffData = await staffRes.json();
-      const assignmentsData = await assignmentsRes.json();
       const partnersData = await partnersRes.json();
 
       const allPartners: RsPartner[] = partnersData.partners || [];
       setPartners(allPartners);
 
-      // has_salary 파트너를 인력 목록에 포함
       const salPartners: PartnerSalaryRow[] = allPartners
         .filter((p: RsPartner) => p.has_salary)
         .map((p: RsPartner) => ({
@@ -115,17 +106,8 @@ export default function StaffPage() {
         }));
       setSalaryPartners(salPartners);
 
-      const assignments: RsStaffAssignment[] = assignmentsData.assignments || [];
-      const merged: StaffWithSummary[] = (staffData.staff || []).map((s: RsStaff) => {
-        const staffAssignments = assignments.filter(a => a.staff_id === s.id);
-        return {
-          ...s,
-          assignment_count: staffAssignments.length,
-          total_monthly_cost: staffAssignments.reduce((sum, a) => sum + (Number(a.monthly_cost) || 0), 0),
-        };
-      });
-
-      merged.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      const merged: RsStaff[] = (staffData.staff || []);
+      merged.sort((a: RsStaff, b: RsStaff) => a.name.localeCompare(b.name, 'ko'));
       setStaffList(merged);
     } catch (e) {
       console.error('스태프 로드 오류:', e);
@@ -225,7 +207,6 @@ export default function StaffPage() {
         if (!r.is_partner) {
           if ((r.employer_partner as { name?: string } | null)?.name?.toLowerCase().includes(q)) return true;
         }
-        // Search in labor burden partners
         const personId = r.is_partner ? r.partner_id : r.id;
         const burdenPartners = laborBurdenByPerson.get(personId);
         if (burdenPartners) {
@@ -234,8 +215,6 @@ export default function StaffPage() {
         return false;
       })
     : allRows;
-
-  const totalMonthlyCost = filtered.reduce((s, r) => s + (r.is_partner ? 0 : r.total_monthly_cost), 0);
 
   return (
     <div className="space-y-6">
@@ -292,8 +271,6 @@ export default function StaffPage() {
                     <th className="py-2 px-3 font-medium">소속 구분</th>
                     <th className="py-2 px-3 font-medium hidden md:table-cell">인건비 부담</th>
                     <th className="py-2 px-3 font-medium text-right">{selectedMonth} 급여</th>
-                    <th className="py-2 px-3 font-medium text-right">배정 작품</th>
-                    <th className="py-2 px-3 font-medium text-right">월 비용 합계</th>
                     <th className="py-2 px-3 font-medium text-center hidden md:table-cell">상태</th>
                   </tr>
                 </thead>
@@ -341,8 +318,6 @@ export default function StaffPage() {
                               amt > 0 ? amt.toLocaleString() : '-'
                             )}
                           </td>
-                          <td className="py-2 px-3 text-right tabular-nums">-</td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold">-</td>
                           <td className="py-2 px-3 text-center hidden md:table-cell">
                             <Badge variant="default">활성</Badge>
                           </td>
@@ -394,12 +369,6 @@ export default function StaffPage() {
                             })()
                           )}
                         </td>
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          {s.assignment_count || '-'}
-                        </td>
-                        <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                          {s.total_monthly_cost > 0 ? s.total_monthly_cost.toLocaleString() : '-'}
-                        </td>
                         <td className="py-2 px-3 text-center hidden md:table-cell">
                           {s.is_active ? (
                             <Badge variant="default">활성</Badge>
@@ -425,8 +394,6 @@ export default function StaffPage() {
                           }, 0).toLocaleString()
                       }
                     </td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3 text-right tabular-nums">{totalMonthlyCost > 0 ? totalMonthlyCost.toLocaleString() : '-'}</td>
                     <td className="py-2 px-3 hidden md:table-cell"></td>
                   </tr>
                 </tfoot>

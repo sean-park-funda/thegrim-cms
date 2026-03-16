@@ -17,8 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
 import { StaffForm } from '@/components/settlement/StaffForm';
-import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDialog';
-import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff, RsStaffAssignment, RsLaborCostShare } from '@/lib/types/settlement';
+import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface TaxBreakdown {
@@ -127,7 +126,6 @@ export default function PartnerDetailPage() {
   const [statementLoading, setStatementLoading] = useState(false);
 
   const [staffList, setStaffList] = useState<RsStaff[]>([]);
-  const [staffAssignments, setStaffAssignments] = useState<RsStaffAssignment[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
 
   const [partnerSalary, setPartnerSalary] = useState<number>(0);
@@ -140,17 +138,6 @@ export default function PartnerDetailPage() {
 
   const [staffFormOpen, setStaffFormOpen] = useState(false);
   const [editStaff, setEditStaff] = useState<RsStaff | null>(null);
-  const [staffAssignDialogOpen, setStaffAssignDialogOpen] = useState(false);
-  const [editStaffAssignment, setEditStaffAssignment] = useState<RsStaffAssignment | null>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState('');
-
-  // 인건비 분담
-  const [ownSalaryShares, setOwnSalaryShares] = useState<RsLaborCostShare[]>([]);
-  const [bearerShares, setBearerShares] = useState<RsLaborCostShare[]>([]);
-  const [bearerStaffNames, setBearerStaffNames] = useState<Map<string, string>>(new Map());
-  const [addOwnSharePartnerId, setAddOwnSharePartnerId] = useState('');
-  const [addOwnShareRatio, setAddOwnShareRatio] = useState('');
-  const [ownShareSaving, setOwnShareSaving] = useState(false);
 
   const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
@@ -190,49 +177,7 @@ export default function PartnerDetailPage() {
       setWorks(worksData.works || []);
       setPartners(partnersData.partners || []);
 
-      const staffMembers: RsStaff[] = staffData.staff || [];
-      setStaffList(staffMembers);
-
-      // Load assignments for all staff members
-      if (staffMembers.length > 0) {
-        const assignResults = await Promise.all(
-          staffMembers.map(s => settlementFetch(`/api/accounting/settlement/staff-assignments?staffId=${s.id}`))
-        );
-        const allAssignments: RsStaffAssignment[] = [];
-        for (const r of assignResults) {
-          const d = await r.json();
-          allAssignments.push(...(d.assignments || []));
-        }
-        setStaffAssignments(allAssignments);
-      } else {
-        setStaffAssignments([]);
-      }
-
-      // 인건비 분담 로드
-      const [ownSharesRes, bearerSharesRes] = await Promise.all([
-        settlementFetch(`/api/accounting/settlement/labor-cost-shares?sourceType=partner&sourceId=${partnerId}`),
-        settlementFetch(`/api/accounting/settlement/labor-cost-shares?bearerPartnerId=${partnerId}`),
-      ]);
-      const ownSharesData = await ownSharesRes.json();
-      const bearerSharesData = await bearerSharesRes.json();
-      setOwnSalaryShares(ownSharesData.shares || []);
-      const bShares: RsLaborCostShare[] = bearerSharesData.shares || [];
-      setBearerShares(bShares);
-
-      const staffSourceIds = bShares.filter(s => s.source_type === 'staff').map(s => s.source_id);
-      if (staffSourceIds.length > 0) {
-        const allStaffRes = await settlementFetch('/api/accounting/settlement/staff?activeOnly=false');
-        const allStaffData = await allStaffRes.json();
-        const nameMap = new Map<string, string>();
-        for (const s of (allStaffData.staff || [])) {
-          if (staffSourceIds.includes(s.id)) {
-            nameMap.set(s.id, s.name);
-          }
-        }
-        setBearerStaffNames(nameMap);
-      } else {
-        setBearerStaffNames(new Map());
-      }
+      setStaffList(staffData.staff || []);
     } catch (e) {
       console.error('파트너 상세 로드 오류:', e);
     } finally {
@@ -336,12 +281,6 @@ export default function PartnerDetailPage() {
     if (res.ok) await load();
   };
 
-  const handleDeleteStaffAssignment = async (id: string) => {
-    if (!confirm('이 배정을 삭제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/staff-assignments?id=${id}`, { method: 'DELETE' });
-    if (res.ok) await load();
-  };
-
   const handleMgAdd = async () => {
     if (!mgWorkId || !mgAmount) return;
     setMgSaving(true);
@@ -367,39 +306,6 @@ export default function PartnerDetailPage() {
     } finally {
       setMgSaving(false);
     }
-  };
-
-  const handleAddOwnSalaryShare = async () => {
-    if (!addOwnSharePartnerId || !addOwnShareRatio) return;
-    setOwnShareSaving(true);
-    try {
-      const res = await settlementFetch('/api/accounting/settlement/labor-cost-shares', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_type: 'partner',
-          source_id: partnerId,
-          bearer_partner_id: addOwnSharePartnerId,
-          share_ratio: Number(addOwnShareRatio) / 100,
-        }),
-      });
-      if (res.ok) {
-        setAddOwnSharePartnerId('');
-        setAddOwnShareRatio('');
-        await load();
-      } else {
-        const err = await res.json();
-        alert(err.error || '분담 추가 실패');
-      }
-    } finally {
-      setOwnShareSaving(false);
-    }
-  };
-
-  const handleDeleteOwnSalaryShare = async (shareId: string) => {
-    if (!confirm('이 분담 설정을 삭제하시겠습니까?')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/labor-cost-shares?id=${shareId}`, { method: 'DELETE' });
-    if (res.ok) await load();
   };
 
   if (!profile) {
@@ -1085,9 +991,7 @@ export default function PartnerDetailPage() {
                 {staffList.length === 0 && !partner.has_salary && (
                   <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
                 )}
-                  {staffList.map((s) => {
-                    const sAssignments = staffAssignments.filter(a => a.staff_id === s.id);
-                    return (
+                  {staffList.map((s) => (
                       <div key={s.id} className="flex items-center gap-2 py-1.5 group">
                         <Link
                           href={`/accounting/settlement/staff/${s.id}`}
@@ -1096,41 +1000,6 @@ export default function PartnerDetailPage() {
                           {s.name}
                         </Link>
                         {!s.is_active && <Badge variant="outline" className="text-[10px] px-1 py-0">비활성</Badge>}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {sAssignments.map((a) => (
-                            <Badge key={a.id} variant="secondary" className="text-xs font-normal gap-1">
-                              <Link
-                                href={`/accounting/settlement/works/${a.work_id}`}
-                                className="hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {(a.work as { name?: string } | null)?.name || a.work_id}
-                              </Link>
-                              {canManage && (
-                                <button
-                                  className="ml-0.5 hover:text-destructive"
-                                  onClick={() => handleDeleteStaffAssignment(a.id)}
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </Badge>
-                          ))}
-                          {canManage && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 rounded-full"
-                              onClick={() => {
-                                setSelectedStaffId(s.id);
-                                setEditStaffAssignment(null);
-                                setStaffAssignDialogOpen(true);
-                              }}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
                         <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {canManage && (
                             <>
@@ -1144,146 +1013,10 @@ export default function PartnerDetailPage() {
                           )}
                         </div>
                       </div>
-                    );
-                  })}
+                  ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* 본인 급여 분담 (has_salary인 경우) */}
-          {partner.has_salary && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">본인 급여 인건비 분담</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const totalRatio = ownSalaryShares.reduce((s, sh) => s + Number(sh.share_ratio), 0);
-                  const selfRatio = Math.max(0, 1 - totalRatio);
-                  return (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left">
-                            <th className="py-2 px-3 font-medium">부담자</th>
-                            <th className="py-2 px-3 font-medium text-right">비율</th>
-                            {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="border-b bg-muted/30">
-                            <td className="py-2 px-3">
-                              <span className="inline-flex items-center gap-2">
-                                {partner.name}
-                                <Badge variant="secondary" className="text-[10px]">본인</Badge>
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right tabular-nums font-semibold">{(selfRatio * 100).toFixed(0)}%</td>
-                            {canManage && <td className="py-2 px-3"></td>}
-                          </tr>
-                          {ownSalaryShares.map((sh) => (
-                            <tr key={sh.id} className="border-b hover:bg-muted/50">
-                              <td className="py-2 px-3">
-                                <Link
-                                  href={`/accounting/settlement/partners/${sh.bearer_partner_id}`}
-                                  className="text-primary hover:underline"
-                                >
-                                  {(sh.bearer_partner as { name?: string } | null)?.name || sh.bearer_partner_id}
-                                </Link>
-                              </td>
-                              <td className="py-2 px-3 text-right tabular-nums">{(() => { const p = Number(sh.share_ratio) * 100; return Number.isInteger(p) ? `${p}%` : `${p.toFixed(1)}%`; })()}</td>
-                              {canManage && (
-                                <td className="py-2 px-3">
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteOwnSalaryShare(sh.id)}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                          {canManage && (
-                            <tr className="border-t-2">
-                              <td className="py-2 px-3">
-                                <Select value={addOwnSharePartnerId} onValueChange={setAddOwnSharePartnerId}>
-                                  <SelectTrigger className="h-8 w-48">
-                                    <SelectValue placeholder="파트너 선택" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {partners
-                                      .filter(p => p.id !== partnerId && !ownSalaryShares.some(s => s.bearer_partner_id === p.id))
-                                      .map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                <div className="inline-flex items-center gap-1">
-                                  <Input type="number" value={addOwnShareRatio} onChange={(e) => setAddOwnShareRatio(e.target.value)} className="w-20 h-8 text-right" placeholder="비율" min="1" max="100" />
-                                  <span className="text-sm text-muted-foreground">%</span>
-                                </div>
-                              </td>
-                              <td className="py-2 px-3">
-                                <Button size="sm" variant="outline" className="h-8" onClick={handleAddOwnSalaryShare} disabled={ownShareSaving || !addOwnSharePartnerId || !addOwnShareRatio}>
-                                  <Plus className="h-3.5 w-3.5 mr-1" />추가
-                                </Button>
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* 타 작가 인건비 분담 (이 파트너가 bearer로 참여하는 항목) */}
-          {bearerShares.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">타 작가 인건비 분담 ({bearerShares.length}건)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="py-2 px-3 font-medium">구분</th>
-                        <th className="py-2 px-3 font-medium">대상</th>
-                        <th className="py-2 px-3 font-medium text-right">분담 비율</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bearerShares.map((sh) => {
-                        let sourceName = sh.source_id;
-                        if (sh.source_type === 'staff') {
-                          sourceName = bearerStaffNames.get(sh.source_id) || sh.source_id;
-                        } else {
-                          const p = partners.find(pt => pt.id === sh.source_id);
-                          if (p) sourceName = p.name;
-                        }
-                        const pct = Number(sh.share_ratio) * 100;
-                        const pctStr = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
-                        return (
-                          <tr key={sh.id} className="border-b hover:bg-muted/50">
-                            <td className="py-2 px-3">
-                              <Badge variant="secondary" className="text-xs">
-                                {sh.source_type === 'staff' ? '스태프' : '파트너 급여'}
-                              </Badge>
-                            </td>
-                            <td className="py-2 px-3">{sourceName}</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{pctStr}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* 월별 수익 분배 추이 */}
           <Card>
@@ -1343,18 +1076,6 @@ export default function PartnerDetailPage() {
             onOpenChange={setStaffFormOpen}
             onSave={editStaff ? handleUpdateStaff : handleCreateStaff}
           />
-
-          {selectedStaffId && (
-            <StaffAssignmentDialog
-              staffId={selectedStaffId}
-              employerPartnerId={partnerId}
-              assignment={editStaffAssignment}
-              existingWorkIds={staffAssignments.filter(a => a.staff_id === selectedStaffId).map(a => a.work_id)}
-              open={staffAssignDialogOpen}
-              onOpenChange={setStaffAssignDialogOpen}
-              onSaved={load}
-            />
-          )}
 
           <Dialog open={mgDialogOpen} onOpenChange={setMgDialogOpen}>
             <DialogContent className="max-w-md">
