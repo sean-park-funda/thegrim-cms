@@ -306,9 +306,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         totalBaseRevenue += br;
       }
 
-      // 정산제외금 모드: 공제인원 인건비 전액 (분담 전)을 제외금으로 사용
+      // 정산제외금 모드: 공동부담 인건비 공제만 정산제외금으로 처리 (근로소득공제는 제외)
       const workFullLaborCost =
-        (laborCostFullByWorkType.get(`${wp.work_id}:근로소득공제`) || 0) +
         (laborCostFullByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
 
       const isExclusionMode = work?.labor_cost_as_exclusion && workFullLaborCost > 0;
@@ -353,7 +352,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         for (const d of details) {
           d.settlement_target = d.base_revenue - d.exclusion_amount;
           d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
-          d.net_share = d.revenue_share; // 인건비는 이미 정산제외금으로 처리됨
+        }
+
+        // 근로소득공제는 정산제외금이 아니므로 RS 적용 후 별도 차감
+        const earnedKey = `${wp.work_id}:근로소득공제`;
+        const earnedCost = laborCostByWorkType.get(earnedKey) || 0;
+        if (earnedCost > 0) {
+          const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
+          if (totalBasis > 0) {
+            const eligible = details.filter(d => d.revenue_share > 0);
+            let distributed = 0;
+            for (let i = 0; i < eligible.length; i++) {
+              const cost = i === eligible.length - 1
+                ? earnedCost - distributed
+                : Math.round(earnedCost * (eligible[i].revenue_share / totalBasis));
+              eligible[i].earned_income_deduction += cost;
+              distributed += cost;
+            }
+          }
+        }
+
+        for (const d of details) {
+          d.labor_cost = d.earned_income_deduction;
+          d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
         }
       } else {
         // 일반 모드: RS 적용 후 인건비 차감
