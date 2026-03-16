@@ -18,16 +18,33 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
-    if (!month) {
-      return NextResponse.json({ error: 'month 파라미터가 필요합니다.' }, { status: 400 });
+    const partnerId = searchParams.get('partnerId');
+    if (!month && !partnerId) {
+      return NextResponse.json({ error: 'month 또는 partnerId 파라미터가 필요합니다.' }, { status: 400 });
+    }
+
+    // partnerId가 주어지면: 이 파트너가 대상자인 아이템만 조회
+    let targetItemIds: string[] | null = null;
+    if (partnerId) {
+      const { data: links } = await supabase
+        .from('rs_labor_cost_item_partners')
+        .select('item_id')
+        .eq('partner_id', partnerId);
+      targetItemIds = (links || []).map(l => l.item_id);
+      if (targetItemIds.length === 0) {
+        return NextResponse.json({ items: [] });
+      }
     }
 
     // Fetch items with related partners and works
-    const { data: items, error: itemsError } = await supabase
+    let query = supabase
       .from('rs_labor_cost_items')
       .select('*')
-      .eq('month', month)
       .order('created_at');
+    if (month) query = query.eq('month', month);
+    if (targetItemIds) query = query.in('id', targetItemIds);
+
+    const { data: items, error: itemsError } = await query;
 
     if (itemsError) {
       console.error('인건비공제 아이템 조회 오류:', itemsError);

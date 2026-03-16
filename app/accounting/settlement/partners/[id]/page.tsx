@@ -15,9 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
-import { StaffForm } from '@/components/settlement/StaffForm';
-import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff } from '@/lib/types/settlement';
+import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface TaxBreakdown {
@@ -125,8 +124,7 @@ export default function PartnerDetailPage() {
   const [statement, setStatement] = useState<StatementData | null>(null);
   const [statementLoading, setStatementLoading] = useState(false);
 
-  const [staffList, setStaffList] = useState<RsStaff[]>([]);
-  const [partners, setPartners] = useState<RsPartner[]>([]);
+  const [laborCostPersons, setLaborCostPersons] = useState<{ person_name: string; person_type: string; deduction_type: string; amount: number; month: string }[]>([]);
 
   const [partnerSalary, setPartnerSalary] = useState<number>(0);
   const [partnerSalaryInput, setPartnerSalaryInput] = useState('');
@@ -136,8 +134,6 @@ export default function PartnerDetailPage() {
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
-  const [staffFormOpen, setStaffFormOpen] = useState(false);
-  const [editStaff, setEditStaff] = useState<RsStaff | null>(null);
 
   const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
@@ -149,22 +145,20 @@ export default function PartnerDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [partnerRes, wpRes, settRes, mgRes, worksRes, staffRes, partnersRes] = await Promise.all([
+      const [partnerRes, wpRes, settRes, mgRes, worksRes, laborCostRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/partners/${partnerId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/settlements?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}`),
         settlementFetch('/api/accounting/settlement/works'),
-        settlementFetch(`/api/accounting/settlement/staff?partnerId=${partnerId}&activeOnly=false`),
-        settlementFetch('/api/accounting/settlement/partners'),
+        settlementFetch(`/api/accounting/settlement/labor-cost-items?partnerId=${partnerId}`),
       ]);
       const partnerData = await partnerRes.json();
       const wpData = await wpRes.json();
       const settData = await settRes.json();
       const mgData = await mgRes.json();
       const worksData = await worksRes.json();
-      const staffData = await staffRes.json();
-      const partnersData = await partnersRes.json();
+      const laborCostData = await laborCostRes.json();
 
       setPartner(partnerData.partner || null);
       setWorkPartners(wpData.work_partners || []);
@@ -175,9 +169,24 @@ export default function PartnerDetailPage() {
         (mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month))
       );
       setWorks(worksData.works || []);
-      setPartners(partnersData.partners || []);
 
-      setStaffList(staffData.staff || []);
+      // 인건비공제에서 공제인원 목록 추출 (중복 제거: person_name 기준 최신)
+      const items = laborCostData.items || [];
+      const personMap = new Map<string, typeof items[0]>();
+      for (const item of items) {
+        const key = `${item.person_type}:${item.person_id}`;
+        const existing = personMap.get(key);
+        if (!existing || item.month > existing.month) {
+          personMap.set(key, item);
+        }
+      }
+      setLaborCostPersons(Array.from(personMap.values()).map((item: { person_name: string; person_type: string; deduction_type: string; amount: number; month: string }) => ({
+        person_name: item.person_name,
+        person_type: item.person_type,
+        deduction_type: item.deduction_type,
+        amount: item.amount,
+        month: item.month,
+      })));
     } catch (e) {
       console.error('파트너 상세 로드 오류:', e);
     } finally {
@@ -253,33 +262,6 @@ export default function PartnerDetailPage() {
     if (res.ok) await load();
   };
 
-  const handleCreateStaff = async (data: Partial<RsStaff>) => {
-    const res = await settlementFetch('/api/accounting/settlement/staff', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, employer_partner_id: partnerId, employer_type: 'author' }),
-    });
-    if (res.ok) await load();
-  };
-
-  const handleUpdateStaff = async (data: Partial<RsStaff>) => {
-    if (!editStaff) return;
-    const res = await settlementFetch(`/api/accounting/settlement/staff/${editStaff.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (res.ok) {
-      setEditStaff(null);
-      await load();
-    }
-  };
-
-  const handleDeleteStaff = async (id: string) => {
-    if (!confirm('이 인력을 삭제하시겠습니까? 모든 배정 정보도 함께 삭제됩니다.')) return;
-    const res = await settlementFetch(`/api/accounting/settlement/staff/${id}`, { method: 'DELETE' });
-    if (res.ok) await load();
-  };
 
   const handleMgAdd = async () => {
     if (!mgWorkId || !mgAmount) return;
@@ -937,83 +919,32 @@ export default function PartnerDetailPage() {
             </CardContent>
           </Card>
 
-          {/* 소속 인력 */}
+          {/* 공제인원 (인건비공제 기반) */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <CardTitle className="text-base">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  소속 인력 ({staffList.length + (partner.has_salary ? 1 : 0)}명)
+                  공제인원 ({laborCostPersons.length}명)
                 </div>
               </CardTitle>
-              {canManage && (
-                <Button variant="outline" size="sm" onClick={() => { setEditStaff(null); setStaffFormOpen(true); }}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  인력 추가
-                </Button>
-              )}
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {/* 파트너 본인 급여 */}
-                {partner.has_salary && (
-                  <div className="flex items-center gap-2 py-1.5 border-b pb-2 mb-1">
-                    <span className="text-sm font-medium shrink-0">{partner.name}</span>
-                    <Badge variant="secondary" className="text-xs">본인</Badge>
-                    {partnerSalary > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {selectedMonth}: {partnerSalary.toLocaleString()}원
-                      </span>
-                    )}
-                    {canManage && (
-                      <div className="ml-auto flex items-center gap-1">
-                        <Input
-                          type="number"
-                          value={partnerSalaryInput}
-                          onChange={(e) => setPartnerSalaryInput(e.target.value)}
-                          placeholder={`${selectedMonth} 급여`}
-                          className="h-7 w-32 text-xs"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={handlePartnerSalarySave}
-                          disabled={partnerSalarySaving}
-                        >
-                          {partnerSalarySaving ? '...' : '저장'}
-                        </Button>
-                      </div>
-                    )}
+                {laborCostPersons.length === 0 && (
+                  <div className="text-sm text-muted-foreground py-4 text-center">인건비공제 대상이 없습니다.</div>
+                )}
+                {laborCostPersons.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1.5">
+                    <span className="text-sm font-medium shrink-0">{p.person_name}</span>
+                    <Badge variant={p.deduction_type === '근로소득공제' ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                      {p.deduction_type}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {p.month} · {Number(p.amount).toLocaleString()}원
+                    </span>
                   </div>
-                )}
-
-                {staffList.length === 0 && !partner.has_salary && (
-                  <div className="text-sm text-muted-foreground py-4 text-center">소속 인력이 없습니다.</div>
-                )}
-                  {staffList.map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 py-1.5 group">
-                        <Link
-                          href={`/accounting/settlement/staff/${s.id}`}
-                          className="text-sm font-medium text-primary hover:underline shrink-0"
-                        >
-                          {s.name}
-                        </Link>
-                        {!s.is_active && <Badge variant="outline" className="text-[10px] px-1 py-0">비활성</Badge>}
-                        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {canManage && (
-                            <>
-                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditStaff(s); setStaffFormOpen(true); }}>
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteStaff(s.id)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                  ))}
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -1067,14 +998,6 @@ export default function PartnerDetailPage() {
             open={contractDialogOpen}
             onOpenChange={setContractDialogOpen}
             onSaved={load}
-          />
-
-          <StaffForm
-            staff={editStaff}
-            partners={partners}
-            open={staffFormOpen}
-            onOpenChange={setStaffFormOpen}
-            onSave={editStaff ? handleUpdateStaff : handleCreateStaff}
           />
 
           <Dialog open={mgDialogOpen} onOpenChange={setMgDialogOpen}>
