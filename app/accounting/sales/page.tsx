@@ -157,25 +157,23 @@ export default function SalesDashboardPage() {
             </Card>
           </div>
 
-          {/* 작품 선택 */}
+          {/* 차트 + 작품 선택 */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">작품 선택</CardTitle>
+                <CardTitle>일별 매출 추이</CardTitle>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setSelectedWorks(new Set(workNames))}>전체 선택</Button>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedWorks(new Set())}>전체 해제</Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5 mt-2">
                 {workNames.map((name, i) => (
                   <Button
                     key={name}
                     variant={selectedWorks.has(name) ? 'default' : 'outline'}
                     size="sm"
-                    className="text-xs"
+                    className="text-xs h-7"
                     style={selectedWorks.has(name) ? { backgroundColor: WORK_COLORS[i % WORK_COLORS.length] } : {}}
                     onClick={() => toggleWork(name)}
                   >
@@ -183,13 +181,6 @@ export default function SalesDashboardPage() {
                   </Button>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* 차트 */}
-          <Card>
-            <CardHeader>
-              <CardTitle>일별 매출 추이</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[400px]">
