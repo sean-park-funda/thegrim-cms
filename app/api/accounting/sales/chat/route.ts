@@ -82,8 +82,8 @@ const tools: FunctionDeclaration[] = [
     parameters: {
       type: Type.OBJECT,
       properties: {
-        days: { type: Type.NUMBER, description: '분석 기간 (일). 기본 30. 예: 30이면 최근 30일 vs 이전 30일 비교' },
-        mode: { type: Type.STRING, description: '"period_compare" (기본): 최근 N일 vs 이전 N일 비교. "half_split": 지정 기간을 전반/후반으로 나눠 비교. "weekly": 주간 단위 성장률' },
+        days: { type: Type.NUMBER, description: '분석 기간 (일). period_compare/half_split 모드에서 사용. 기본 30' },
+        mode: { type: Type.STRING, description: '"weekly" (기본): 주간 단위 성장률 (최근 4주). "period_compare": 최근 N일 vs 이전 N일 비교. "half_split": 지정 기간을 전반/후반으로 나눠 비교' },
       },
     },
   },
@@ -273,7 +273,7 @@ async function executeGetPeakDays(args: Record<string, any>) {
 
 async function executeGetGrowthRates(args: Record<string, any>) {
   const days = args.days || 30;
-  const mode = args.mode || 'period_compare';
+  const mode = args.mode || 'weekly';
   const today = new Date().toISOString().slice(0, 10);
 
   if (mode === 'weekly') {
