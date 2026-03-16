@@ -421,8 +421,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       isForeign: partner.is_foreign ?? false,
     });
 
-    const total_mg_deduction = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
+    // MG 차감: 세금·예고료 차감 후 남은 금액까지만 차감 가능
+    const afterTax = subtotal - tax_amount - insurance;
+    const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
     const total_other_deduction = (settlements || []).reduce((s, st) => s + (Number(st.other_deduction) || 0), 0);
+    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, afterTax - total_other_deduction));
 
     // MG 전체 이력을 작품별로 그룹핑
     const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
