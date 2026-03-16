@@ -16,6 +16,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
   SidebarFooter,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
@@ -77,6 +78,11 @@ export function SalesSidebar() {
   const currentConvId = searchParams.get('id');
   const isOnChat = pathname === '/accounting/sales/chat';
   const isMobile = useIsMobile();
+  const { setOpenMobile } = useSidebar();
+
+  const closeMobileSidebar = useCallback(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [hoveredConv, setHoveredConv] = useState<string | null>(null);
@@ -142,7 +148,7 @@ export function SalesSidebar() {
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-cyan-400" />
                       )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-                        <Link href={item.href}>
+                        <Link href={item.href} onClick={closeMobileSidebar}>
                           <item.icon className={isActive ? 'text-cyan-400' : ''} />
                           <span className={isActive ? 'text-sidebar-primary-foreground font-medium' : ''}>
                             {item.label}
@@ -166,6 +172,7 @@ export function SalesSidebar() {
                 href="/accounting/sales/chat"
                 className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
                 title="새 대화"
+                onClick={closeMobileSidebar}
               >
                 <Plus className="h-3 w-3" />
               </Link>
@@ -185,7 +192,7 @@ export function SalesSidebar() {
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-purple-400" />
                       )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={conv.title}>
-                        <Link href={`/accounting/sales/chat?id=${conv.id}`}>
+                        <Link href={`/accounting/sales/chat?id=${conv.id}`} onClick={closeMobileSidebar}>
                           <Sparkles className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? 'text-purple-400' : 'text-sidebar-foreground/30'}`} />
                           <div className="flex-1 min-w-0 flex items-center gap-1.5">
                             <span className={`truncate text-xs ${isActive ? 'text-sidebar-primary-foreground font-medium' : ''}`}>
@@ -222,7 +229,7 @@ export function SalesSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="회계 홈">
-              <Link href="/accounting">
+              <Link href="/accounting" onClick={closeMobileSidebar}>
                 <ArrowLeft />
                 <span>회계 홈</span>
               </Link>
