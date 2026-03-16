@@ -101,10 +101,12 @@ interface StatementData {
 }
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
-  individual: '개인',
-  domestic_corp: '국내법인',
-  foreign_corp: '해외법인',
-  naver: '네이버',
+  individual: '개인 (3.3%)',
+  individual_employee: '개인-임직원 (3.3%)',
+  individual_simple_tax: '개인-간이과세 (3.3%)',
+  domestic_corp: '국내법인 (VAT 10% 별도)',
+  foreign_corp: '해외법인 (22%)',
+  naver: '네이버 (VAT 10% 별도)',
 };
 
 const fmt = (n: number) => (n > 0 ? n.toLocaleString() : n < 0 ? n.toLocaleString() : '-');
@@ -467,33 +469,57 @@ export default function PartnerDetailPage() {
                 )}
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <CardContent className="pt-0 space-y-4">
+              {/* 소득 · 세금 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
                 <div>
-                  <span className="text-muted-foreground">세율: </span>
-                  <span className="font-medium">{(partner.tax_rate * 100).toFixed(1)}%</span>
+                  <span className="text-muted-foreground text-xs">세율</span>
+                  <p className="font-medium">{(partner.tax_rate * 100).toFixed(1)}%</p>
                 </div>
-                {partner.tax_id && (
+                <div>
+                  <span className="text-muted-foreground text-xs">신고구분</span>
+                  <p className="font-medium">{partner.report_type || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">사업자/주민번호</span>
+                  <p className="font-medium">{partner.tax_id || '-'}</p>
+                </div>
+                {partner.partner_type === 'individual_employee' && (
                   <div>
-                    <span className="text-muted-foreground">사업자번호: </span>
-                    <span className="font-medium">{partner.tax_id}</span>
-                  </div>
-                )}
-                {partner.email && (
-                  <div>
-                    <span className="text-muted-foreground">이메일: </span>
-                    <span className="font-medium">{partner.email}</span>
-                  </div>
-                )}
-                {partner.bank_name && (
-                  <div>
-                    <span className="text-muted-foreground">은행: </span>
-                    <span className="font-medium">{partner.bank_name} {partner.bank_account}</span>
+                    <span className="text-muted-foreground text-xs">근로소득공제</span>
+                    <p className="font-medium">{partner.salary_deduction > 0 ? `${partner.salary_deduction.toLocaleString()}원` : '-'}</p>
                   </div>
                 )}
               </div>
+
+              {/* 옵션 */}
+              <div className="flex flex-wrap gap-2">
+                {partner.has_salary && (
+                  <Badge variant="default" className="text-xs">급여 수령</Badge>
+                )}
+                {partner.is_foreign && (
+                  <Badge variant="secondary" className="text-xs">외국인</Badge>
+                )}
+              </div>
+
+              {/* 결제 · 연락처 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">은행</span>
+                  <p className="font-medium">{partner.bank_name ? `${partner.bank_name} ${partner.bank_account || ''}` : '-'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">이메일</span>
+                  <p className="font-medium">{partner.email || '-'}</p>
+                </div>
+              </div>
+
+              {/* 메모 */}
               {partner.note && (
-                <p className="text-sm text-muted-foreground mt-2">{partner.note}</p>
+                <div className="text-sm">
+                  <span className="text-muted-foreground text-xs">메모</span>
+                  <p className="text-muted-foreground">{partner.note}</p>
+                </div>
               )}
             </CardContent>
           </Card>

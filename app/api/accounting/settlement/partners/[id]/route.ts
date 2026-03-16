@@ -50,9 +50,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const body = await request.json();
-    const { name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, is_foreign, note } = body;
+    const { name, company_name, partner_type, tax_id, tax_rate, salary_deduction, has_salary, report_type, bank_name, bank_account, email, is_foreign, note } = body;
 
     const updateData: Record<string, unknown> = { name, company_name, partner_type, tax_id, tax_rate, salary_deduction, report_type, bank_name, bank_account, email, note };
+    if (has_salary !== undefined) updateData.has_salary = has_salary;
     if (is_foreign !== undefined) updateData.is_foreign = is_foreign;
 
     const { data, error } = await supabase
