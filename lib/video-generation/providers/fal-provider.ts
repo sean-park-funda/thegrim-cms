@@ -340,6 +340,54 @@ const hunyuanConfig: FalModelConfig = {
   },
 };
 
+const klingO3ProConfig: FalModelConfig = {
+  capabilities: {
+    id: 'kling-o3-pro',
+    name: 'Kling O3 Pro',
+    inputModes: ['single_image'],
+    durations: [5, 10],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    maxImages: 1,
+    contentSafety: 'moderate',
+    costPerSec: 0.112,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/kling-video/o3/pro/image-to-video',
+  buildPayload: (req) => {
+    const img = req.images.find((i) => i.role === 'start' || i.role === 'reference');
+    return {
+      prompt: req.prompt,
+      image_url: img ? getImageUrl(img) : undefined,
+      duration: req.duration <= 5 ? '5' : '10',
+      aspect_ratio: req.aspectRatio,
+    };
+  },
+};
+
+const klingO3StandardConfig: FalModelConfig = {
+  capabilities: {
+    id: 'kling-o3-standard',
+    name: 'Kling O3 Standard',
+    inputModes: ['single_image'],
+    durations: [5, 10],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    maxImages: 1,
+    contentSafety: 'moderate',
+    costPerSec: 0.056,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/kling-video/o3/standard/image-to-video',
+  buildPayload: (req) => {
+    const img = req.images.find((i) => i.role === 'start' || i.role === 'reference');
+    return {
+      prompt: req.prompt,
+      image_url: img ? getImageUrl(img) : undefined,
+      duration: req.duration <= 5 ? '5' : '10',
+      aspect_ratio: req.aspectRatio,
+    };
+  },
+};
+
 // --- Reference-to-Video Models ---
 
 const klingO1RefConfig: FalModelConfig = {
@@ -421,6 +469,8 @@ const viduQ1RefConfig: FalModelConfig = {
 export function getFalProviders(): VideoProvider[] {
   return [
     klingConfig,
+    klingO3ProConfig,
+    klingO3StandardConfig,
     pika22Config,
     lumaRay2Config,
     wan21FlF2VConfig,

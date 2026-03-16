@@ -45,7 +45,7 @@ interface CutItem {
 const PROVIDERS = [
   { id: 'kling-o3-pro', name: 'Kling O3 Pro' },
   { id: 'kling-o3-standard', name: 'Kling O3 Standard' },
-  { id: 'veo-3.1', name: 'Veo 3.1' },
+  { id: 'veo', name: 'Veo 3.1' },
 ];
 
 const DEFAULT_PROVIDER = 'kling-o3-pro';
