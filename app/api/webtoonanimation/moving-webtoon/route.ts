@@ -12,6 +12,30 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('projectId');
+  const listProjects = searchParams.get('list');
+
+  // 프로젝트 목록 조회 (컷 수 포함)
+  if (listProjects === 'true') {
+    const { data: projects, error } = await supabase
+      .from('moving_webtoon_projects')
+      .select('*, moving_webtoon_cuts(count)')
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const result = (projects || [])
+      .map((p) => ({
+        ...p,
+        cut_count: p.moving_webtoon_cuts?.[0]?.count || 0,
+        moving_webtoon_cuts: undefined,
+      }))
+      .filter((p) => p.cut_count > 0);
+
+    return NextResponse.json({ projects: result });
+  }
 
   if (!projectId) {
     return NextResponse.json({ error: 'projectId 필요' }, { status: 400 });
