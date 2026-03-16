@@ -134,8 +134,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('partner_id', id)
       .in('work_id', workIds);
 
-    // 5) 인건비 계산 — rs_labor_cost_items 기반
-    const laborCostByWork = new Map<string, number>();
+    // 5) 인건비 계산 — rs_labor_cost_items 기반 (공제유형별 분리)
+    // key: `${workId}:${deductionType}`
+    const laborCostByWorkType = new Map<string, number>();
 
     // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
     const revenueShareByWork = new Map<string, number>();
@@ -172,7 +173,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // 아이템 정보 + 아이템별 대상자 + 아이템별 작품
       const { data: items } = await supabase
         .from('rs_labor_cost_items')
-        .select('id, amount')
+        .select('id, amount, deduction_type')
         .eq('month', month)
         .in('id', itemIds);
 
@@ -252,9 +253,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         if (eligibleWorkIds.length === 0) continue;
 
+        const dtype = item.deduction_type as string;
         if (eligibleWorkIds.length === 1) {
-          const wid = eligibleWorkIds[0];
-          laborCostByWork.set(wid, (laborCostByWork.get(wid) || 0) + myBurden);
+          const key = `${eligibleWorkIds[0]}:${dtype}`;
+          laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + myBurden);
         } else {
           let totalShare = 0;
           const shares: { wid: string; share: number }[] = [];
@@ -268,7 +270,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               ? Math.round(myBurden * (ws.share / totalShare))
               : Math.round(myBurden / shares.length);
             if (allocated > 0) {
-              laborCostByWork.set(ws.wid, (laborCostByWork.get(ws.wid) || 0) + allocated);
+              const key = `${ws.wid}:${dtype}`;
+              laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + allocated);
             }
           }
         }
@@ -310,33 +313,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           exclusion_amount: 0,
           settlement_target: settlementTarget,
           revenue_share: Math.round(Math.max(0, settlementTarget) * effectiveRate),
-          labor_cost: 0,
+          earned_income_deduction: 0, // 근로소득공제
+          labor_cost_deduction: 0,    // 인건비 공제
+          labor_cost: 0,              // 합계
           net_share: 0,
           rs_rate: effectiveRate,
           excluded: !included,
         };
       });
 
-      // 인건비를 수익구분별 비중에 따라 배분
-      const workLaborCost = laborCostByWork.get(wp.work_id) || 0;
-      if (workLaborCost > 0) {
+      // 공제유형별로 수익구분 비중에 따라 배분
+      for (const dtype of ['근로소득공제', '인건비 공제'] as const) {
+        const key = `${wp.work_id}:${dtype}`;
+        const typeCost = laborCostByWorkType.get(key) || 0;
+        if (typeCost <= 0) continue;
+
         const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
         if (totalBasis > 0) {
           const eligible = details.filter(d => d.revenue_share > 0);
           let distributed = 0;
           for (let i = 0; i < eligible.length; i++) {
-            if (i === eligible.length - 1) {
-              eligible[i].labor_cost = workLaborCost - distributed;
+            const cost = i === eligible.length - 1
+              ? typeCost - distributed
+              : Math.round(typeCost * (eligible[i].revenue_share / totalBasis));
+            if (dtype === '근로소득공제') {
+              eligible[i].earned_income_deduction += cost;
             } else {
-              const cost = Math.round(workLaborCost * (eligible[i].revenue_share / totalBasis));
-              eligible[i].labor_cost = cost;
-              distributed += cost;
+              eligible[i].labor_cost_deduction += cost;
             }
+            distributed += cost;
           }
         }
       }
 
       for (const d of details) {
+        d.labor_cost = d.earned_income_deduction + d.labor_cost_deduction;
         d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
       }
 
@@ -346,6 +357,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const work_total_settlement_target = details.reduce((s, d) => s + d.settlement_target, 0);
       const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0);
       const work_total_labor_cost = details.reduce((s, d) => s + d.labor_cost, 0);
+      const work_total_earned_income_deduction = details.reduce((s, d) => s + d.earned_income_deduction, 0);
+      const work_total_labor_cost_deduction = details.reduce((s, d) => s + d.labor_cost_deduction, 0);
       const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0);
 
       return {
@@ -363,9 +376,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         work_total_settlement_target,
         work_total_share,
         work_total_labor_cost,
-        // 하위 호환: team + self = total labor cost
-        work_total_team_labor_cost: work_total_labor_cost,
-        work_total_self_labor_cost: 0,
+        work_total_earned_income_deduction,
+        work_total_labor_cost_deduction,
         work_total_net_share,
         ...(() => {
           const prevBalance = mgPrevBalanceByWork.get(wp.work_id) || 0;
@@ -386,8 +398,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const grand_total_exclusion = works.reduce((s, w) => s + w.work_total_exclusion, 0);
     const grand_total_settlement_target = works.reduce((s, w) => s + w.work_total_settlement_target, 0);
     const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
-    const grand_total_team_labor_cost = works.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
-    const grand_total_self_labor_cost = works.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
+    const grand_total_labor_cost = works.reduce((s, w) => s + w.work_total_labor_cost, 0);
+    const grand_total_earned_income_deduction = works.reduce((s, w) => s + w.work_total_earned_income_deduction, 0);
+    const grand_total_labor_cost_deduction = works.reduce((s, w) => s + w.work_total_labor_cost_deduction, 0);
     const grand_total_net_share = works.reduce((s, w) => s + w.work_total_net_share, 0);
 
     const subtotal = grand_total_net_share;
@@ -494,8 +507,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       grand_total_exclusion,
       grand_total_settlement_target,
       grand_total_share,
-      grand_total_team_labor_cost,
-      grand_total_self_labor_cost,
+      grand_total_labor_cost,
+      grand_total_earned_income_deduction,
+      grand_total_labor_cost_deduction,
       grand_total_net_share,
       subtotal,
       tax_type: taxType,
