@@ -471,7 +471,7 @@ function MovingWebtoonContent() {
     setProjectList((prev) => prev.filter((p) => p.id !== proj.id));
   };
 
-  const [videoModal, setVideoModal] = useState<string | null>(null);
+  const [mediaModal, setMediaModal] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
 
   const completedCount = cuts.filter((c) => c.status === 'completed').length;
   const pendingCount = cuts.filter((c) => c.status === 'pending' || c.status === 'failed').length;
@@ -667,7 +667,8 @@ function MovingWebtoonContent() {
                 onGenerate={() => generateCut(cut.id)}
                 onRemove={() => removeCut(cut.id)}
                 onUpdate={(updates) => updateCut(cut.id, updates)}
-                onVideoClick={(url) => setVideoModal(url)}
+                onVideoClick={(url) => setMediaModal({ url, type: 'video' })}
+                onImageClick={(url) => setMediaModal({ url, type: 'image' })}
               />
             ))}
 
@@ -696,27 +697,36 @@ function MovingWebtoonContent() {
         )}
       </div>
 
-      {/* 영상 모달 */}
-      {videoModal && (
+      {/* 미디어 모달 */}
+      {mediaModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setVideoModal(null)}
+          onClick={() => setMediaModal(null)}
         >
           <button
-            onClick={() => setVideoModal(null)}
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
+            onClick={() => setMediaModal(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white z-10"
           >
             <X className="h-6 w-6" />
           </button>
-          <video
-            src={videoModal}
-            className="max-h-[85vh] max-w-[90vw] rounded-lg"
-            autoPlay
-            loop
-            controls
-            playsInline
-            onClick={(e) => e.stopPropagation()}
-          />
+          {mediaModal.type === 'video' ? (
+            <video
+              src={mediaModal.url}
+              className="max-h-[85vh] max-w-[90vw] rounded-lg"
+              autoPlay
+              loop
+              controls
+              playsInline
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={mediaModal.url}
+              alt=""
+              className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </div>
@@ -731,6 +741,7 @@ function CutRow({
   onRemove,
   onUpdate,
   onVideoClick,
+  onImageClick,
 }: {
   cut: CutItem;
   index: number;
@@ -738,6 +749,7 @@ function CutRow({
   onRemove: () => void;
   onUpdate: (updates: Partial<CutItem>) => void;
   onVideoClick: (url: string) => void;
+  onImageClick: (url: string) => void;
 }) {
   const [localPrompt, setLocalPrompt] = useState(cut.prompt);
 
@@ -760,7 +772,10 @@ function CutRow({
         {/* 왼쪽: 번호 + 원본 이미지 */}
         <div className="shrink-0 w-32 bg-muted/30 flex flex-col items-center p-2 gap-1">
           <span className="text-[10px] text-muted-foreground font-medium">#{index + 1}</span>
-          <div className="w-full aspect-[3/4] rounded overflow-hidden bg-muted">
+          <div
+            className="w-full aspect-[3/4] rounded overflow-hidden bg-muted cursor-pointer"
+            onClick={() => cut.imageUrl && onImageClick(cut.imageUrl)}
+          >
             <img
               src={cut.imageUrl}
               alt={cut.fileName}
