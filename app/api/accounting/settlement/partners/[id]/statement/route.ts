@@ -351,7 +351,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
         for (const d of details) {
-          d.settlement_target = Math.max(0, d.base_revenue - d.exclusion_amount);
+          d.settlement_target = d.base_revenue - d.exclusion_amount;
           d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
           d.net_share = d.revenue_share; // 인건비는 이미 정산제외금으로 처리됨
         }
