@@ -8,6 +8,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DailySalesData, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
 
+const fmtComma = (n: number) => n.toLocaleString();
+
 export default function WorksTablePage() {
   const { profile } = useStore();
   const [data, setData] = useState<DailySalesData | null>(null);
@@ -113,12 +115,12 @@ export default function WorksTablePage() {
                         const isMax = amount === maxAmt && amount > 0;
                         return (
                           <td key={date} className={`text-right py-2 px-2 tabular-nums ${amount === 0 ? 'text-muted-foreground/30' : ''} ${isMax ? 'text-cyan-600 dark:text-cyan-400 font-semibold' : ''}`}>
-                            {amount === 0 ? '-' : fmtShort(amount)}
+                            {amount === 0 ? '-' : fmtComma(amount)}
                           </td>
                         );
                       })}
                       <td className="sticky right-0 z-10 bg-card text-right py-2 px-3 tabular-nums font-semibold">
-                        {fmtShort(row.total)}
+                        {fmtComma(row.total)}
                       </td>
                     </tr>
                   ))}
@@ -128,11 +130,11 @@ export default function WorksTablePage() {
                     <td className="sticky left-0 z-10 bg-muted/80 backdrop-blur py-2.5 px-3">합계</td>
                     {dates.map(date => (
                       <td key={date} className="text-right py-2.5 px-2 tabular-nums">
-                        {fmtShort(dateTotals[date] || 0)}
+                        {fmtComma(dateTotals[date] || 0)}
                       </td>
                     ))}
                     <td className="sticky right-0 z-10 bg-muted/80 backdrop-blur text-right py-2.5 px-3 tabular-nums">
-                      {fmtShort(grandTotal)}
+                      {fmtComma(grandTotal)}
                     </td>
                   </tr>
                 </tfoot>
