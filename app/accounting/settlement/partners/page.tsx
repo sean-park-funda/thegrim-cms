@@ -7,14 +7,11 @@ import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { PartnerForm } from '@/components/settlement/PartnerForm';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, Search, Menu } from 'lucide-react';
 import { RsPartner, PartnerType, ReportType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+import { useSidebar } from '@/components/ui/sidebar';
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   individual: '개인',
@@ -54,6 +51,7 @@ export default function PartnersPage() {
   const router = useRouter();
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
+  const { toggleSidebar } = useSidebar();
   const [partners, setPartners] = useState<PartnerWithRevenue[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -81,7 +79,6 @@ export default function PartnersPage() {
         });
       }
 
-      // MG 잔액을 파트너별로 합산
       const mgMap = new Map<string, number>();
       for (const b of mgData.mg_balances || []) {
         const bal = Number(b.current_balance) || 0;
@@ -156,11 +153,9 @@ export default function PartnersPage() {
     if (res.ok) await load();
   };
 
-  if (!profile) {
+  if (!profile || !canViewAccounting(profile.role)) {
     return <div className="flex items-center justify-center h-full">Loading...</div>;
   }
-
-  if (!canViewAccounting(profile.role)) return null;
 
   const canManage = canManageAccounting(profile.role);
 
@@ -175,143 +170,156 @@ export default function PartnersPage() {
   const grandTotalShare = filtered.reduce((s, p) => s + p.total_revenue_share, 0);
   const grandTotalMg = filtered.reduce((s, p) => s + p.mg_balance, 0);
 
-
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>파트너 ({selectedMonth})</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="이름, 거래처 검색..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 w-full md:w-52"
-              />
-            </div>
-            {canManage && (
-              <Button onClick={() => { setEditPartner(null); setFormOpen(true); }}>
-                <Plus className="h-4 w-4 mr-1" />
-                파트너 추가
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">로딩 중...</div>
-          ) : partners.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">등록된 파트너가 없습니다.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="py-2 px-3 font-medium">이름</th>
-                    <th className="py-2 px-3 font-medium hidden md:table-cell">거래처</th>
-                    <th className="py-2 px-3 font-medium hidden md:table-cell">구분</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">작품 수</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">총 매출</th>
-                    <th className="py-2 px-3 font-medium text-right">수익분배금</th>
-                    <th className="py-2 px-3 font-medium text-right hidden md:table-cell">MG 잔액</th>
-                    <th className="py-2 px-3 font-medium text-center">정산서</th>
-                    {canManage && <th className="py-2 px-3 font-medium hidden md:table-cell"></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="border-b hover:bg-muted/50 cursor-pointer"
-                      onClick={() => router.push(`/accounting/settlement/partners/${p.id}`)}
-                    >
-                      <td className="py-2 px-3 font-medium">{p.name}</td>
-                      <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">{p.company_name || '-'}</td>
-                      <td className="py-2 px-3 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
-                        {canManage ? (
-                          <Select
-                            value={p.partner_type}
-                            onValueChange={(v) => handleTypeChange(p.id, v as PartnerType)}
-                          >
-                            <SelectTrigger className="h-7 w-[110px] text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(PARTNER_TYPE_LABELS).map(([key, label]) => (
-                                <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge variant="secondary">{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</Badge>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{p.work_count || '-'}</td>
-                      <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
-                        {p.total_revenue > 0 ? p.total_revenue.toLocaleString() : '-'}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                        {p.total_revenue_share > 0 ? p.total_revenue_share.toLocaleString() : '-'}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums hidden md:table-cell ${p.mg_balance > 0 ? 'text-orange-600 font-medium' : ''}`}>
-                        {p.mg_balance > 0 ? p.mg_balance.toLocaleString() : '-'}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {p.total_revenue_share > 0 && (
-                          <Link
-                            href={`/accounting/settlement/partners/${p.id}/statement`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Button variant="outline" size="sm">
-                              <FileText className="h-3.5 w-3.5 mr-1" />
-                              정산서
-                            </Button>
-                          </Link>
-                        )}
-                      </td>
-                      {canManage && (
-                        <td className="py-2 px-3 hidden md:table-cell">
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => { e.stopPropagation(); setEditPartner(p); setFormOpen(true); }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </td>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">파트너</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{selectedMonth} 파트너별 매출/정산 현황</p>
+        </div>
+        <button
+          onClick={toggleSidebar}
+          className="md:hidden h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+        >
+          <Menu className="h-4.5 w-4.5" />
+        </button>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            placeholder="이름, 거래처 검색..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 transition-all"
+          />
+        </div>
+        {canManage && (
+          <button
+            onClick={() => { setEditPartner(null); setFormOpen(true); }}
+            className="h-10 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-sm font-medium text-white hover:shadow-lg hover:shadow-cyan-500/25 transition-all flex items-center gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">파트너 추가</span>
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+        {loading ? (
+          <div className="text-sm text-zinc-400 py-16 text-center">로딩 중...</div>
+        ) : partners.length === 0 ? (
+          <div className="text-sm text-zinc-400 py-16 text-center">등록된 파트너가 없습니다.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-100 dark:border-zinc-800 text-left">
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400">이름</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell">거래처</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell">구분</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 text-right hidden md:table-cell">작품 수</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 text-right hidden md:table-cell">총 매출</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 text-right">수익분배금</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 text-right hidden md:table-cell">MG 잔액</th>
+                  <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 text-center">정산서</th>
+                  {canManage && <th className="py-3 px-4 font-medium text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                    onClick={() => router.push(`/accounting/settlement/partners/${p.id}`)}
+                  >
+                    <td className="py-3 px-4 font-medium">{p.name}</td>
+                    <td className="py-3 px-4 text-zinc-400 hidden md:table-cell">{p.company_name || '-'}</td>
+                    <td className="py-3 px-4 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+                      {canManage ? (
+                        <Select
+                          value={p.partner_type}
+                          onValueChange={(v) => handleTypeChange(p.id, v as PartnerType)}
+                        >
+                          <SelectTrigger className="h-7 w-[110px] text-xs rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(PARTNER_TYPE_LABELS).map(([key, label]) => (
+                              <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                          {PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}
+                        </span>
                       )}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 font-semibold">
-                    <td className="py-2 px-3">합계 ({filtered.length}명{search ? ` / ${partners.length}명` : ''})</td>
-                    <td className="py-2 px-3 hidden md:table-cell"></td>
-                    <td className="py-2 px-3 hidden md:table-cell"></td>
-                    <td className="py-2 px-3 hidden md:table-cell"></td>
-                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{grandTotalRevenue.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{grandTotalShare.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{grandTotalMg > 0 ? grandTotalMg.toLocaleString() : '-'}</td>
-                    <td className="py-2 px-3"></td>
-                    {canManage && <td className="py-2 px-3 hidden md:table-cell"></td>}
+                    </td>
+                    <td className="py-3 px-4 text-right tabular-nums text-zinc-500 hidden md:table-cell">{p.work_count || '-'}</td>
+                    <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">
+                      {p.total_revenue > 0 ? p.total_revenue.toLocaleString() : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-right tabular-nums font-semibold">
+                      {p.total_revenue_share > 0 ? p.total_revenue_share.toLocaleString() : '-'}
+                    </td>
+                    <td className={`py-3 px-4 text-right tabular-nums hidden md:table-cell ${p.mg_balance > 0 ? 'text-orange-500 font-medium' : 'text-zinc-400'}`}>
+                      {p.mg_balance > 0 ? p.mg_balance.toLocaleString() : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {p.total_revenue_share > 0 && (
+                        <Link
+                          href={`/accounting/settlement/partners/${p.id}/statement`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          정산서
+                        </Link>
+                      )}
+                    </td>
+                    {canManage && (
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        <div className="flex gap-0.5">
+                          <button
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); setEditPartner(p); setFormOpen(true); }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-zinc-200 dark:border-zinc-700 font-semibold bg-zinc-50/50 dark:bg-zinc-800/30">
+                  <td className="py-3 px-4">합계 ({filtered.length}명{search ? ` / ${partners.length}명` : ''})</td>
+                  <td className="py-3 px-4 hidden md:table-cell"></td>
+                  <td className="py-3 px-4 hidden md:table-cell"></td>
+                  <td className="py-3 px-4 hidden md:table-cell"></td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{grandTotalRevenue.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-right tabular-nums">{grandTotalShare.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{grandTotalMg > 0 ? grandTotalMg.toLocaleString() : '-'}</td>
+                  <td className="py-3 px-4"></td>
+                  {canManage && <td className="py-3 px-4 hidden md:table-cell"></td>}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
 
       <PartnerForm
         partner={editPartner}
@@ -319,7 +327,6 @@ export default function PartnersPage() {
         onOpenChange={setFormOpen}
         onSave={editPartner ? handleUpdate : handleCreate}
       />
-
     </div>
   );
 }
