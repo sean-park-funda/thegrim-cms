@@ -33,6 +33,7 @@ import {
   Landmark,
   Shield,
   UserCog,
+  Scissors,
   Upload,
   HelpCircle,
   FileText,
@@ -60,6 +61,7 @@ const navGroups = [
   {
     label: '정산',
     items: [
+      { href: '/accounting/settlement/labor-cost', label: '인건비공제', icon: Scissors },
       { href: '/accounting/settlement/settlements', label: '정산 내역', icon: Calculator },
       { href: '/accounting/settlement/mg', label: 'MG 현황', icon: Landmark },
       { href: '/accounting/settlement/insurance', label: '예고료', icon: Shield },
