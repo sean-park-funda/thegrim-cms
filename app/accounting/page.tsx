@@ -6,7 +6,17 @@ import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DollarSign, TrendingUp, TrendingDown, BarChart3, Calculator } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, BarChart3, Calculator, Crown } from 'lucide-react';
+import { settlementFetch } from '@/lib/settlement/api';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
 export default function AccountingPage() {
   const router = useRouter();
@@ -17,16 +27,44 @@ export default function AccountingPage() {
     balance: 0,
     transactionCount: 0
   });
+  const [dailySales, setDailySales] = useState<{
+    chartData: { date: string; total: number }[];
+    totalSales: number;
+    dailyAverage: number;
+    topWork: { name: string; total: number } | null;
+    workCount: number;
+  } | null>(null);
 
   useEffect(() => {
-    // 권한 체크
     if (profile && !canViewAccounting(profile.role)) {
       router.push('/webtoons');
       return;
     }
 
-    // TODO: 실제 데이터 로드
-    // fetchAccountingStats().then(setStats);
+    // 일별 매출 데이터 로드 (최근 14일)
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - 14);
+    const fromStr = from.toISOString().slice(0, 10);
+    const toStr = now.toISOString().slice(0, 10);
+
+    settlementFetch(`/api/accounting/sales?from=${fromStr}&to=${toStr}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.summary) {
+          setDailySales({
+            chartData: data.summary.dailyTotals?.map((d: { date: string; total: number }) => ({
+              date: d.date.slice(5),
+              total: d.total,
+            })) || [],
+            totalSales: data.summary.totalSales,
+            dailyAverage: data.summary.dailyAverage,
+            topWork: data.summary.topWork,
+            workCount: data.summary.workCount,
+          });
+        }
+      })
+      .catch(() => {});
   }, [profile, router]);
 
   if (!profile) {
@@ -96,6 +134,81 @@ export default function AccountingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 일별 매출 추이 (최근 14일) */}
+      {dailySales && dailySales.chartData.length > 0 && (
+        <Card className="border-cyan-500/20">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-cyan-500" />
+              일별 매출 추이
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/sales')}>
+              상세 보기
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">14일 총 매출</p>
+                <p className="text-lg font-bold">
+                  {dailySales.totalSales >= 100_000_000
+                    ? `${(dailySales.totalSales / 100_000_000).toFixed(1)}억`
+                    : `${Math.round(dailySales.totalSales / 10_000)}만`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">일 평균</p>
+                <p className="text-lg font-bold">
+                  {dailySales.dailyAverage >= 10_000
+                    ? `${Math.round(dailySales.dailyAverage / 10_000)}만`
+                    : dailySales.dailyAverage.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">작품 수</p>
+                <p className="text-lg font-bold">{dailySales.workCount}개</p>
+              </div>
+              {dailySales.topWork && (
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Crown className="h-3 w-3 text-yellow-500" /> 1위
+                  </p>
+                  <p className="text-sm font-bold truncate">{dailySales.topWork.name}</p>
+                </div>
+              )}
+            </div>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dailySales.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} className="stroke-border" />
+                  <YAxis
+                    tickFormatter={(n: number) =>
+                      n >= 100_000_000 ? `${(n / 100_000_000).toFixed(1)}억` : `${Math.round(n / 10_000)}만`
+                    }
+                    tick={{ fontSize: 11 }}
+                    className="stroke-border"
+                  />
+                  <Tooltip
+                    formatter={(value) => [Number(value).toLocaleString() + '원', '매출']}
+                    labelFormatter={(label) => String(label)}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    name="합계"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* RS 정산 시스템 */}
       <Card className="border-primary/20">

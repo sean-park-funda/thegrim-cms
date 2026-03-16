@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon, Video } from 'lucide-react';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon, Video, Clapperboard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Webtoon, supabase } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
@@ -377,6 +377,19 @@ export function WebtoonList({ initialWebtoons }: WebtoonListProps = {}) {
               <Sparkles className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
               <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
                 생성 히스토리
+              </span>
+            </div>
+          </div>
+          {/* 무빙툰 버튼 */}
+          <div
+            className="group cursor-pointer rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+            style={{ aspectRatio: '4/5' }}
+            onClick={() => router.push('/moving-webtoon')}
+          >
+            <div className="h-full flex flex-col items-center justify-center gap-3">
+              <Clapperboard className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
+              <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
+                무빙툰
               </span>
             </div>
           </div>
