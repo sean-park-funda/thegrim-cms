@@ -127,12 +127,14 @@ export default function MovingWebtoonPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projectId: pId,
-            files: [{ name: file.name || `paste-${Date.now()}.png`, base64, type: file.type }],
+            imageData: base64,
+            mimeType: file.type || 'image/png',
+            fileName: file.name || `paste-${Date.now()}.png`,
+            orderIndex: i,
           }),
         });
-        const uploadData = await uploadRes.json();
-        const uploadedCut = uploadData.cuts?.[0];
-        if (!uploadedCut) throw new Error('업로드 실패');
+        const uploadedCut = await uploadRes.json();
+        if (!uploadRes.ok || !uploadedCut?.id) throw new Error('업로드 실패');
 
         const addRes = await fetch('/api/webtoonanimation/moving-webtoon', {
           method: 'POST',
