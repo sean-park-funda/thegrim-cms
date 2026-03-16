@@ -10,7 +10,8 @@ import {
 } from 'recharts';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
 import { useSidebar } from '@/components/ui/sidebar';
-import { Menu } from 'lucide-react';
+import { Menu, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
@@ -289,6 +290,14 @@ export default function SalesDashboardPage() {
           </div>
         </>
       )}
+
+      {/* AI 검색 FAB */}
+      <Link
+        href="/accounting/sales/chat"
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-[0_4px_16px_rgba(99,102,241,0.4)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.5)] hover:scale-105 transition-all duration-300"
+      >
+        <Sparkles className="h-6 w-6 text-white" />
+      </Link>
     </div>
   );
 }
