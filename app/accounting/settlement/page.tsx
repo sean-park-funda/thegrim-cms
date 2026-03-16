@@ -5,11 +5,10 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { DollarSign, Users, BookOpen, TrendingUp, MessageCircle } from 'lucide-react';
+import { DollarSign, Users, BookOpen, TrendingUp, MessageCircle, Menu, ChevronRight, Crown } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
 import { RsRevenue, RsSettlement } from '@/lib/types/settlement';
+import { useSidebar } from '@/components/ui/sidebar';
 import {
   BarChart,
   Bar,
@@ -41,7 +40,7 @@ const CHART_HEX: Record<string, string> = {
 
 const fmtShort = (n: number) => {
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
-  if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
+  if (n >= 10_000) return `${Math.round(n / 10_000).toLocaleString()}만`;
   return n.toLocaleString();
 };
 
@@ -60,8 +59,6 @@ interface WorkRevenue {
   global_total: number;
 }
 
-/* ── Sub-components ──────────────────────────────── */
-
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
   payload?: Array<{ name: string; value: number; color: string }>;
@@ -70,17 +67,17 @@ function ChartTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s, p) => s + (p.value || 0), 0);
   return (
-    <div className="rounded-lg border bg-card px-3 py-2.5 shadow-xl">
-      <p className="mb-1.5 text-sm font-semibold">{label}</p>
+    <div className="rounded-xl border-none bg-white dark:bg-zinc-900 px-4 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.1)] max-h-80 overflow-y-auto">
+      <p className="mb-2 text-sm font-semibold tracking-tight">{label}</p>
       {payload.filter(p => p.value > 0).map((p) => (
-        <div key={p.name} className="flex items-center gap-2 text-xs leading-relaxed">
+        <div key={p.name} className="flex items-center gap-2.5 text-xs leading-relaxed py-0.5">
           <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground">{p.name}</span>
+          <span className="text-zinc-500 dark:text-zinc-400">{p.name}</span>
           <span className="ml-auto tabular-nums font-medium">{p.value.toLocaleString()}</span>
         </div>
       ))}
       {payload.filter(p => p.value > 0).length > 1 && (
-        <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-xs font-semibold">
+        <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs font-semibold flex justify-between">
           <span>합계</span>
           <span className="tabular-nums">{total.toLocaleString()}</span>
         </div>
@@ -91,80 +88,23 @@ function ChartTooltip({ active, payload, label }: {
 
 function RankBadge({ rank }: { rank: number }) {
   const styles = [
-    'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
-    'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300',
-    'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300',
+    'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300',
+    'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   ];
   return (
-    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
-      rank <= 3 ? styles[rank - 1] : 'text-muted-foreground'
+    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
+      rank <= 3 ? styles[rank - 1] : 'text-zinc-400'
     }`}>
       {rank}
     </span>
   );
 }
 
-function StatCard({ title, value, sub, icon: Icon, iconClass }: {
-  title: string;
-  value: string;
-  sub?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  iconClass: string;
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-1">
-        <CardDescription className="text-xs font-medium">{title}</CardDescription>
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconClass}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold tabular-nums">{value}</div>
-        {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
-function BreakdownRow({ label, value, total, color }: {
-  label: string;
-  value: number;
-  total: number;
-  color: string;
-}) {
-  const pct = total > 0 ? (value / total) * 100 : 0;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-          <span className="text-muted-foreground">{label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="tabular-nums font-medium">{value > 0 ? fmtFull(value) : '-'}</span>
-          {value > 0 && (
-            <Badge variant="outline" className="h-4 px-1 text-[10px] tabular-nums font-normal">
-              {pct.toFixed(1)}%
-            </Badge>
-          )}
-        </div>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full transition-all duration-700 ease-out"
-          style={{ width: `${Math.max(pct, value > 0 ? 0.5 : 0)}%`, backgroundColor: color }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ── Main page ───────────────────────────────────── */
-
 export default function SettlementDashboardPage() {
   const { profile } = useStore();
   const { selectedMonth } = useSettlementStore();
+  const { toggleSidebar } = useSidebar();
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
   const [settlements, setSettlements] = useState<RsSettlement[]>([]);
   const [workCount, setWorkCount] = useState(0);
@@ -251,7 +191,6 @@ export default function SettlementDashboardPage() {
     [workRevenues]
   );
 
-  // Partner rankings by revenue_share and final_payment
   const partnerRankings = useMemo(() => {
     const map = new Map<string, { partner_id: string; name: string; revenue_share: number; final_payment: number; work_count: number }>();
     for (const s of settlements) {
@@ -275,220 +214,209 @@ export default function SettlementDashboardPage() {
     return [...map.values()].sort((a, b) => b.revenue_share - a.revenue_share);
   }, [settlements]);
 
-  if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
-  if (!canViewAccounting(profile.role)) return null;
+  if (!profile || !canViewAccounting(profile.role)) return <div className="flex items-center justify-center h-full">Loading...</div>;
 
   const ready = !loading;
 
   return (
-    <div className="space-y-5">
-      {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          title="총 매출"
-          value={ready ? fmtShort(breakdown.total) : '–'}
-          sub={selectedMonth}
-          icon={TrendingUp}
-          iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-        />
-        <StatCard
-          title="정산 합계"
-          value={ready ? fmtShort(settlementTotal) : '–'}
-          sub="최종 지급액"
-          icon={DollarSign}
-          iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
-        />
-        <StatCard
-          title="등록 작품"
-          value={ready ? `${workCount}개` : '–'}
-          icon={BookOpen}
-          iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-400"
-        />
-        <StatCard
-          title="등록 파트너"
-          value={ready ? `${partnerCount}명` : '–'}
-          icon={Users}
-          iconClass="bg-orange-500/10 text-orange-600 dark:text-orange-400"
-        />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">정산</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{selectedMonth} 매출/정산 현황</p>
+        </div>
+        <button
+          onClick={toggleSidebar}
+          className="md:hidden h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+        >
+          <Menu className="h-4.5 w-4.5" />
+        </button>
       </div>
 
-      {/* ── AI Search shortcut ── */}
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { title: '총 매출', value: ready ? fmtShort(breakdown.total) : '–', sub: selectedMonth, icon: TrendingUp, gradient: 'from-emerald-400 to-green-500' },
+          { title: '정산 합계', value: ready ? fmtShort(settlementTotal) : '–', sub: '최종 지급액', icon: DollarSign, gradient: 'from-blue-400 to-indigo-500' },
+          { title: '등록 작품', value: ready ? `${workCount}개` : '–', sub: undefined, icon: BookOpen, gradient: 'from-violet-400 to-purple-500' },
+          { title: '등록 파트너', value: ready ? `${partnerCount}명` : '–', sub: undefined, icon: Users, gradient: 'from-orange-400 to-red-500' },
+        ].map((stat) => (
+          <div key={stat.title} className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{stat.title}</span>
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${stat.gradient}`}>
+                <stat.icon className="h-4 w-4 text-white" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold tabular-nums tracking-tight">{stat.value}</p>
+            {stat.sub && <p className="text-[11px] text-zinc-400 mt-0.5">{stat.sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* AI 검색 */}
       <Link
         href="/accounting/settlement/chat"
-        className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 px-5 py-4 hover:border-cyan-500/40 hover:bg-cyan-500/5 transition-colors group"
+        className="flex items-center gap-3 rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 px-5 py-4 hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300 group"
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
-          <MessageCircle className="h-4 w-4 text-white" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20">
+          <MessageCircle className="h-5 w-5 text-white" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">AI 검색</p>
-          <p className="text-xs text-muted-foreground">매출, 정산, MG 등을 자연어로 질문하세요</p>
+          <p className="text-sm font-semibold tracking-tight group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">AI 검색</p>
+          <p className="text-xs text-zinc-400">매출, 정산, MG 등을 자연어로 질문하세요</p>
         </div>
-        <span className="text-xs text-muted-foreground group-hover:text-cyan-500">→</span>
+        <ChevronRight className="h-4 w-4 text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 transition-colors" />
       </Link>
 
-      {/* ── Revenue breakdown ── */}
+      {/* 매출 유형별 현황 */}
       {ready && breakdown.total > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">매출 유형별 현황</CardTitle>
-            <CardAction>
-              <Badge variant="outline" className="text-[11px] tabular-nums font-normal">
-                {selectedMonth}
-              </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {REVENUE_TYPES.map((key) => (
-              <BreakdownRow
-                key={key}
-                label={REVENUE_TYPE_LABELS[key]}
-                value={breakdown[key]}
-                total={breakdown.total}
-                color={CHART_HEX[key]}
-              />
-            ))}
-            <div className="flex items-center justify-between border-t pt-3 text-sm font-semibold">
+        <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold tracking-tight">매출 유형별 현황</h2>
+            <span className="text-xs text-zinc-400 tabular-nums">{selectedMonth}</span>
+          </div>
+          <div className="space-y-3">
+            {REVENUE_TYPES.map((key) => {
+              const value = breakdown[key];
+              const pct = breakdown.total > 0 ? (value / breakdown.total) * 100 : 0;
+              return (
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: CHART_HEX[key] }} />
+                      <span className="text-zinc-500 dark:text-zinc-400">{REVENUE_TYPE_LABELS[key]}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="tabular-nums font-medium">{value > 0 ? fmtFull(value) : '-'}</span>
+                      {value > 0 && (
+                        <span className="text-[10px] text-zinc-400 tabular-nums">{pct.toFixed(1)}%</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${Math.max(pct, value > 0 ? 0.5 : 0)}%`, backgroundColor: CHART_HEX[key] }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800 pt-3 text-sm font-semibold">
               <span>합계</span>
               <span className="tabular-nums">{fmtFull(breakdown.total)}</span>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Chart + Rankings ── */}
-      {ready && chartData.length > 0 && (
-        <div className="grid gap-4 xl:grid-cols-5">
-          {/* Bar chart */}
-          <Card className="xl:col-span-3">
-            <CardHeader className="border-b pb-4">
-              <CardTitle className="text-base">작품별 매출 구성</CardTitle>
-              <CardDescription>상위 {Math.min(10, chartData.length)}개 작품</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-5">
-              <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis
-                      dataKey="name"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 11 }}
-                      interval={0}
-                      angle={-25}
-                      textAnchor="end"
-                      height={55}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 11 }}
-                      width={48}
-                      tickFormatter={(v: number) =>
-                        v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` :
-                        v >= 10_000 ? `${Math.round(v / 10_000)}만` : String(v)
-                      }
-                    />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-muted)', opacity: 0.4 }} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
-                    <Bar dataKey="국내유료" stackId="a" fill={CHART_HEX.domestic_paid} />
-                    <Bar dataKey="글로벌유료" stackId="a" fill={CHART_HEX.global_paid} />
-                    <Bar dataKey="국내광고" stackId="a" fill={CHART_HEX.domestic_ad} />
-                    <Bar dataKey="글로벌광고" stackId="a" fill={CHART_HEX.global_ad} />
-                    <Bar dataKey="2차사업" stackId="a" fill={CHART_HEX.secondary} radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Rankings */}
-          <div className="flex flex-col gap-4 xl:col-span-2">
-            <Card className="flex-1">
-              <CardHeader className="border-b pb-4">
-                <CardTitle className="text-sm">국내 매출 TOP</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {topDomestic.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">데이터 없음</div>
-                ) : (
-                  <div className="divide-y">
-                    {topDomestic.map((w, i) => (
-                      <div key={w.work_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
-                        <RankBadge rank={i + 1} />
-                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="flex-1 truncate text-sm hover:underline">
-                          {w.work_name}
-                        </Link>
-                        <span className="text-sm font-semibold tabular-nums">{fmtShort(w.domestic_total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="flex-1">
-              <CardHeader className="border-b pb-4">
-                <CardTitle className="text-sm">글로벌 매출 TOP</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {topGlobal.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">데이터 없음</div>
-                ) : (
-                  <div className="divide-y">
-                    {topGlobal.map((w, i) => (
-                      <div key={w.work_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
-                        <RankBadge rank={i + 1} />
-                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="flex-1 truncate text-sm hover:underline">
-                          {w.work_name}
-                        </Link>
-                        <span className="text-sm font-semibold tabular-nums">{fmtShort(w.global_total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </div>
       )}
 
-      {/* ── Partner ranking ── */}
-      {ready && partnerRankings.length > 0 && (
-        <Card>
-          <CardHeader className="border-b pb-4">
-            <CardTitle className="text-base">파트너별 정산 랭킹</CardTitle>
-            <CardAction>
-              <Badge variant="outline" className="text-[11px] tabular-nums font-normal">
-                {selectedMonth}
-              </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {partnerRankings.slice(0, 10).map((p, i) => (
-                <div key={p.partner_id} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50">
-                  <RankBadge rank={i + 1} />
-                  <Link href={`/accounting/settlement/partners/${p.partner_id}`} className="flex-1 truncate text-sm hover:underline">
-                    {p.name}
-                  </Link>
-                  <span className="text-xs text-muted-foreground tabular-nums hidden md:inline">
-                    {p.work_count}작품
-                  </span>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold tabular-nums">{fmtShort(p.revenue_share)}</div>
-                    {p.final_payment !== p.revenue_share && p.final_payment > 0 && (
-                      <div className="text-[10px] text-muted-foreground tabular-nums">
-                        지급 {fmtShort(p.final_payment)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+      {/* 차트 + 랭킹 */}
+      {ready && chartData.length > 0 && (
+        <div className="grid gap-4 xl:grid-cols-5">
+          {/* Bar chart */}
+          <div className="xl:col-span-3 rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 p-5">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold tracking-tight">작품별 매출 구성</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">상위 {Math.min(10, chartData.length)}개 작품</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-25}
+                    textAnchor="end"
+                    height={55}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11 }}
+                    width={48}
+                    tickFormatter={(v: number) =>
+                      v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` :
+                      v >= 10_000 ? `${Math.round(v / 10_000)}만` : String(v)
+                    }
+                  />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
+                  <Bar dataKey="국내유료" stackId="a" fill={CHART_HEX.domestic_paid} />
+                  <Bar dataKey="글로벌유료" stackId="a" fill={CHART_HEX.global_paid} />
+                  <Bar dataKey="국내광고" stackId="a" fill={CHART_HEX.domestic_ad} />
+                  <Bar dataKey="글로벌광고" stackId="a" fill={CHART_HEX.global_ad} />
+                  <Bar dataKey="2차사업" stackId="a" fill={CHART_HEX.secondary} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Rankings */}
+          <div className="flex flex-col gap-4 xl:col-span-2">
+            {[
+              { title: '국내 매출 TOP', data: topDomestic, key: 'domestic_total' as const },
+              { title: '글로벌 매출 TOP', data: topGlobal, key: 'global_total' as const },
+            ].map(({ title, data, key }) => (
+              <div key={title} className="flex-1 rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800">
+                  <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+                </div>
+                {data.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-zinc-400">데이터 없음</div>
+                ) : (
+                  <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {data.map((w, i) => (
+                      <div key={w.work_id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <RankBadge rank={i + 1} />
+                        <Link href={`/accounting/settlement/works/${w.work_id}`} className="flex-1 truncate text-sm hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
+                          {w.work_name}
+                        </Link>
+                        <span className="text-sm font-semibold tabular-nums">{fmtShort(w[key])}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 파트너별 정산 랭킹 */}
+      {ready && partnerRankings.length > 0 && (
+        <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+            <h2 className="text-base font-semibold tracking-tight">파트너별 정산</h2>
+            <span className="text-xs text-zinc-400 tabular-nums">{selectedMonth}</span>
+          </div>
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {partnerRankings.slice(0, 10).map((p, i) => (
+              <div key={p.partner_id} className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                <RankBadge rank={i + 1} />
+                <Link href={`/accounting/settlement/partners/${p.partner_id}`} className="flex-1 truncate text-sm hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
+                  {p.name}
+                </Link>
+                <span className="text-xs text-zinc-400 tabular-nums hidden md:inline">
+                  {p.work_count}작품
+                </span>
+                <div className="text-right">
+                  <div className="text-sm font-semibold tabular-nums">{fmtShort(p.revenue_share)}</div>
+                  {p.final_payment !== p.revenue_share && p.final_payment > 0 && (
+                    <div className="text-[10px] text-zinc-400 tabular-nums">
+                      지급 {fmtShort(p.final_payment)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
