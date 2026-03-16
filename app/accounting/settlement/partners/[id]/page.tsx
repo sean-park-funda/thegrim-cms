@@ -34,8 +34,7 @@ interface WorkDetail {
   exclusion_amount: number;
   settlement_target: number;
   revenue_share: number;
-  team_labor_cost: number;
-  self_labor_cost: number;
+  labor_cost: number;
   net_share: number;
   rs_rate: number;
 }
@@ -504,9 +503,7 @@ export default function PartnerDetailPage() {
                   {(() => {
                     const hasBaseRevenue = statement.works.some(w => w.revenue_rate !== 1);
                     const hasExclusion = statement.grand_total_exclusion > 0;
-                    const hasTeamLaborCost = statement.grand_total_team_labor_cost > 0;
-                    const hasSelfLaborCost = statement.grand_total_self_labor_cost > 0;
-                    const hasAnyLaborCost = hasTeamLaborCost || hasSelfLaborCost;
+                    const hasLaborCost = statement.grand_total_team_labor_cost > 0;
                     return (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">1. 정산상세내역</h4>
@@ -526,14 +523,11 @@ export default function PartnerDetailPage() {
                             {(hasBaseRevenue || hasExclusion) && (
                               <th className="py-2 px-3 font-medium text-right">정산대상금</th>
                             )}
-                            {hasAnyLaborCost && (
+                            {hasLaborCost && (
                               <th className="py-2 px-3 font-medium text-right">수익배분</th>
                             )}
-                            {hasTeamLaborCost && (
-                              <th className="py-2 px-3 font-medium text-right">팀인건비</th>
-                            )}
-                            {hasSelfLaborCost && (
-                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
+                            {hasLaborCost && (
+                              <th className="py-2 px-3 font-medium text-right">인건비공제</th>
                             )}
                             <th className="py-2 px-3 font-medium text-right">수익정산</th>
                             <th className="py-2 px-3 font-medium text-right">수익배분율</th>
@@ -559,21 +553,16 @@ export default function PartnerDetailPage() {
                                   {(hasBaseRevenue || hasExclusion) && (
                                     <td className="py-1.5 px-3 text-right tabular-nums">{d.settlement_target.toLocaleString()}</td>
                                   )}
-                                  {hasAnyLaborCost && (
+                                  {hasLaborCost && (
                                     <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
                                   )}
-                                  {hasTeamLaborCost && (
+                                  {hasLaborCost && (
                                     <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                      {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
-                                    </td>
-                                  )}
-                                  {hasSelfLaborCost && (
-                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                      {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
+                                      {d.labor_cost > 0 ? `-${d.labor_cost.toLocaleString()}` : ''}
                                     </td>
                                   )}
                                   <td className="py-1.5 px-3 text-right tabular-nums">
-                                    {hasAnyLaborCost
+                                    {hasLaborCost
                                       ? d.net_share.toLocaleString()
                                       : d.revenue_share.toLocaleString()}
                                   </td>
@@ -596,21 +585,16 @@ export default function PartnerDetailPage() {
                             {(hasBaseRevenue || hasExclusion) && (
                               <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_settlement_target.toLocaleString()}</td>
                             )}
-                            {hasAnyLaborCost && (
+                            {hasLaborCost && (
                               <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
                             )}
-                            {hasTeamLaborCost && (
+                            {hasLaborCost && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
                                 -{statement.grand_total_team_labor_cost.toLocaleString()}
                               </td>
                             )}
-                            {hasSelfLaborCost && (
-                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.grand_total_self_labor_cost.toLocaleString()}
-                              </td>
-                            )}
                             <td className="py-2 px-3 text-right tabular-nums">
-                              {hasAnyLaborCost
+                              {hasLaborCost
                                 ? statement.grand_total_net_share.toLocaleString()
                                 : statement.grand_total_share.toLocaleString()}
                             </td>
@@ -713,7 +697,7 @@ export default function PartnerDetailPage() {
                         <tbody>
                           <tr className="border-b font-semibold">
                             <td className="py-2 px-3 text-right tabular-nums">
-                              {(statement.grand_total_team_labor_cost > 0 || statement.grand_total_self_labor_cost > 0)
+                              {statement.grand_total_team_labor_cost > 0
                                 ? statement.grand_total_net_share.toLocaleString()
                                 : statement.grand_total_share.toLocaleString()}
                             </td>
