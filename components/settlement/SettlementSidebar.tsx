@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
@@ -22,7 +22,9 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   LayoutDashboard,
   BookOpen,
@@ -80,9 +82,15 @@ export function SettlementSidebar() {
   const { selectedMonth } = useSettlementStore();
   const [uploadOpen, setUploadOpen] = useState(false);
   const canManage = profile && canManageAccounting(profile.role);
+  const isMobile = useIsMobile();
+  const { setOpenMobile } = useSidebar();
+
+  const closeMobileSidebar = useCallback(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0">
+    <Sidebar side={isMobile ? 'right' : 'left'} collapsible="offcanvas" className={isMobile ? 'border-l-0' : 'border-r-0'}>
       <SidebarHeader className="px-4 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
@@ -121,7 +129,7 @@ export function SettlementSidebar() {
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-cyan-400" />
                       )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-                        <Link href={item.href}>
+                        <Link href={item.href} onClick={closeMobileSidebar}>
                           <item.icon className={isActive ? 'text-cyan-400' : ''} />
                           <span className={isActive ? 'text-sidebar-primary-foreground font-medium' : ''}>
                             {item.label}
@@ -151,7 +159,7 @@ export function SettlementSidebar() {
           )}
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="가이드">
-              <Link href="/accounting/settlement/guide">
+              <Link href="/accounting/settlement/guide" onClick={closeMobileSidebar}>
                 <HelpCircle />
                 <span>서비스 설명서</span>
               </Link>
