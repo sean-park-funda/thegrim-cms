@@ -137,6 +137,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 5) 인건비 계산 — rs_labor_cost_items 기반 (공제유형별 분리)
     // key: `${workId}:${deductionType}`
     const laborCostByWorkType = new Map<string, number>();
+    // 정산제외금 모드용: 분담 전 원래 금액 (공제인원 전액)
+    const laborCostFullByWorkType = new Map<string, number>();
 
     // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
     const revenueShareByWork = new Map<string, number>();
@@ -257,6 +259,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (eligibleWorkIds.length === 1) {
           const key = `${eligibleWorkIds[0]}:${dtype}`;
           laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + myBurden);
+          laborCostFullByWorkType.set(key, (laborCostFullByWorkType.get(key) || 0) + amount);
         } else {
           let totalShare = 0;
           const shares: { wid: string; share: number }[] = [];
@@ -266,12 +269,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             totalShare += share;
           }
           for (const ws of shares) {
-            const allocated = totalShare > 0
+            const allocatedBurden = totalShare > 0
               ? Math.round(myBurden * (ws.share / totalShare))
               : Math.round(myBurden / shares.length);
-            if (allocated > 0) {
+            const allocatedFull = totalShare > 0
+              ? Math.round(amount * (ws.share / totalShare))
+              : Math.round(amount / shares.length);
+            if (allocatedBurden > 0) {
               const key = `${ws.wid}:${dtype}`;
-              laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + allocated);
+              laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + allocatedBurden);
+              laborCostFullByWorkType.set(key, (laborCostFullByWorkType.get(key) || 0) + allocatedFull);
             }
           }
         }
@@ -299,12 +306,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         totalBaseRevenue += br;
       }
 
-      // 이 작품의 인건비 총액 (정산제외금 적용 여부 판단용)
-      const workTotalLaborCostForExclusion =
-        (laborCostByWorkType.get(`${wp.work_id}:근로소득공제`) || 0) +
-        (laborCostByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
+      // 정산제외금 모드: 공제인원 인건비 전액 (분담 전)을 제외금으로 사용
+      const workFullLaborCost =
+        (laborCostFullByWorkType.get(`${wp.work_id}:근로소득공제`) || 0) +
+        (laborCostFullByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
 
-      const isExclusionMode = wp.labor_cost_as_exclusion && workTotalLaborCostForExclusion > 0;
+      const isExclusionMode = wp.labor_cost_as_exclusion && workFullLaborCost > 0;
 
       const details = REVENUE_COLUMNS.map(col => {
         const included = includedTypes.includes(col);
@@ -329,16 +336,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
 
       if (isExclusionMode) {
-        // 정산제외금 모드: 인건비를 기준매출에서 먼저 차감 후 RS 적용
-        // 인건비를 기준매출 비중으로 배분하여 exclusion_amount에 넣기
+        // 정산제외금 모드: 공제인원 인건비 전액을 기준매출에서 먼저 차감 후 RS 적용
+        // (RS 분담은 settlement_target × RS율에서 자연스럽게 반영됨)
         const eligibleForExcl = details.filter(d => d.base_revenue > 0);
         const totalBase = eligibleForExcl.reduce((s, d) => s + d.base_revenue, 0);
         if (totalBase > 0) {
           let distributed = 0;
           for (let i = 0; i < eligibleForExcl.length; i++) {
             const excl = i === eligibleForExcl.length - 1
-              ? workTotalLaborCostForExclusion - distributed
-              : Math.round(workTotalLaborCostForExclusion * (eligibleForExcl[i].base_revenue / totalBase));
+              ? workFullLaborCost - distributed
+              : Math.round(workFullLaborCost * (eligibleForExcl[i].base_revenue / totalBase));
             eligibleForExcl[i].exclusion_amount = excl;
             distributed += excl;
           }
