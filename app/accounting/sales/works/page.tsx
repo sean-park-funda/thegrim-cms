@@ -1,31 +1,18 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar,
-} from 'recharts';
-import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, fmtWon, getDateRange } from '@/lib/sales/types';
-import { TrendingUp, TrendingDown, Calendar, Zap } from 'lucide-react';
+import { DailySalesData, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
 
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
-
-export default function WorksPage() {
+export default function WorksTablePage() {
   const { profile } = useStore();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const workParam = searchParams.get('work');
-
   const [data, setData] = useState<DailySalesData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(30);
-  const [selectedWork, setSelectedWork] = useState<string>(workParam || '');
+  const [days, setDays] = useState(14);
 
   const { from, to } = useMemo(() => getDateRange(days), [days]);
 
@@ -34,48 +21,44 @@ export default function WorksPage() {
     setLoading(true);
     settlementFetch(`/api/accounting/sales?from=${from}&to=${to}`)
       .then(r => r.json())
-      .then((d: DailySalesData) => {
-        setData(d);
-        if (!selectedWork && d.summary?.workTotals?.[0]) {
-          setSelectedWork(d.summary.workTotals[0].name);
-        }
-      })
+      .then((d: DailySalesData) => setData(d))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [profile, from, to]);
 
   if (!profile || !canViewAccounting(profile.role)) return null;
 
-  const workNames = data?.summary?.workTotals?.map(w => w.name) || [];
-  const workData = selectedWork && data?.works[selectedWork] ? data.works[selectedWork] : [];
+  // 날짜 목록 (열 헤더)
+  const dates = useMemo(() =>
+    data?.summary?.dailyTotals?.map(d => d.date).sort() || [],
+  [data]);
 
-  // 요일별 평균
-  const dayOfWeekData = useMemo(() => {
-    const dayMap: Record<number, number[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
-    for (const row of workData) {
-      const d = new Date(row.date);
-      dayMap[d.getDay()].push(row.amount);
+  // 작품별 행 데이터 (매출 순 정렬)
+  const rows = useMemo(() => {
+    if (!data?.works) return [];
+    return Object.entries(data.works).map(([name, salesRows]) => {
+      const byDate: Record<string, number> = {};
+      let total = 0;
+      for (const r of salesRows) {
+        byDate[r.date] = r.amount;
+        total += r.amount;
+      }
+      return { name, byDate, total };
+    }).sort((a, b) => b.total - a.total);
+  }, [data]);
+
+  // 날짜별 합계 (마지막 행)
+  const dateTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const row of rows) {
+      for (const [date, amount] of Object.entries(row.byDate)) {
+        totals[date] = (totals[date] || 0) + amount;
+      }
     }
-    return DAY_NAMES.map((name, i) => ({
-      day: name,
-      avg: dayMap[i].length > 0 ? Math.round(dayMap[i].reduce((a, b) => a + b, 0) / dayMap[i].length) : 0,
-      count: dayMap[i].length,
-    }));
-  }, [workData]);
+    return totals;
+  }, [rows]);
 
-  // 통계
-  const stats = useMemo(() => {
-    if (!workData.length) return null;
-    const amounts = workData.map(r => r.amount);
-    const total = amounts.reduce((a, b) => a + b, 0);
-    const avg = total / amounts.length;
-    const maxIdx = amounts.indexOf(Math.max(...amounts));
-    const minIdx = amounts.indexOf(Math.min(...amounts));
-    const peakDay = dayOfWeekData.reduce((best, cur) => cur.avg > best.avg ? cur : best, dayOfWeekData[0]);
-    return { total, avg, max: workData[maxIdx], min: workData[minIdx], peakDay };
-  }, [workData, dayOfWeekData]);
-
-  const chartData = workData.map(r => ({ date: r.date.slice(5), amount: r.amount }));
+  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
 
   return (
     <div className="space-y-6">
@@ -92,116 +75,71 @@ export default function WorksPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64 text-muted-foreground">로딩 중...</div>
+      ) : !data || rows.length === 0 ? (
+        <div className="flex items-center justify-center h-64 text-muted-foreground">데이터 없음</div>
       ) : (
-        <>
-          {/* 작품 선택 */}
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex flex-wrap gap-2">
-                {workNames.map((name, i) => (
-                  <Button
-                    key={name}
-                    variant={selectedWork === name ? 'default' : 'outline'}
-                    size="sm"
-                    className="text-xs"
-                    style={selectedWork === name ? { backgroundColor: WORK_COLORS[i % WORK_COLORS.length] } : {}}
-                    onClick={() => setSelectedWork(name)}
-                  >
-                    {name}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {stats && (
-            <>
-              {/* 통계 카드 */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">기간 총 매출</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{fmtShort(stats.total)}</div>
-                    <p className="text-xs text-muted-foreground">일평균 {fmtShort(stats.avg)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">최고 매출일</CardTitle>
-                    <Zap className="h-4 w-4 text-yellow-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{fmtShort(stats.max.amount)}</div>
-                    <p className="text-xs text-muted-foreground">{stats.max.date}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">최저 매출일</CardTitle>
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{fmtShort(stats.min.amount)}</div>
-                    <p className="text-xs text-muted-foreground">{stats.min.date}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">피크 요일</CardTitle>
-                    <Calendar className="h-4 w-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{stats.peakDay.day}요일</div>
-                    <p className="text-xs text-muted-foreground">평균 {fmtShort(stats.peakDay.avg)}</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* 일별 추이 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>{selectedWork} - 일별 추이</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11 }} className="stroke-border" />
-                        <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} className="stroke-border" />
-                        <Tooltip formatter={(value) => [fmtWon(Number(value)), '매출']} />
-                        <Line type="monotone" dataKey="amount" stroke="#06b6d4" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 요일별 평균 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>요일별 평균 매출</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dayOfWeekData}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis dataKey="day" tick={{ fontSize: 12 }} className="stroke-border" />
-                        <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} className="stroke-border" />
-                        <Tooltip formatter={(value) => [fmtWon(Number(value)), '평균 매출']} />
-                        <Bar dataKey="avg" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-muted-foreground">
+              {rows.length}개 작품 · {dates.length}일 · 총 {fmtShort(grandTotal)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="sticky left-0 z-10 bg-muted/80 backdrop-blur text-left py-2.5 px-3 font-semibold min-w-36">작품</th>
+                    {dates.map(date => (
+                      <th key={date} className="text-right py-2.5 px-2 font-medium text-muted-foreground whitespace-nowrap min-w-20">
+                        {date.slice(5)}
+                      </th>
+                    ))}
+                    <th className="sticky right-0 z-10 bg-muted/80 backdrop-blur text-right py-2.5 px-3 font-semibold min-w-24">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, i) => (
+                    <tr key={row.name} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="sticky left-0 z-10 bg-card py-2 px-3 font-medium truncate max-w-48">
+                        <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
+                        {row.name}
+                      </td>
+                      {dates.map(date => {
+                        const amount = row.byDate[date] || 0;
+                        // 해당 작품 내에서 최대/최소 강조
+                        const amounts = Object.values(row.byDate);
+                        const maxAmt = Math.max(...amounts);
+                        const isMax = amount === maxAmt && amount > 0;
+                        return (
+                          <td key={date} className={`text-right py-2 px-2 tabular-nums ${amount === 0 ? 'text-muted-foreground/30' : ''} ${isMax ? 'text-cyan-600 dark:text-cyan-400 font-semibold' : ''}`}>
+                            {amount === 0 ? '-' : fmtShort(amount)}
+                          </td>
+                        );
+                      })}
+                      <td className="sticky right-0 z-10 bg-card text-right py-2 px-3 tabular-nums font-semibold">
+                        {fmtShort(row.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 bg-muted/30 font-semibold">
+                    <td className="sticky left-0 z-10 bg-muted/80 backdrop-blur py-2.5 px-3">합계</td>
+                    {dates.map(date => (
+                      <td key={date} className="text-right py-2.5 px-2 tabular-nums">
+                        {fmtShort(dateTotals[date] || 0)}
+                      </td>
+                    ))}
+                    <td className="sticky right-0 z-10 bg-muted/80 backdrop-blur text-right py-2.5 px-3 tabular-nums">
+                      {fmtShort(grandTotal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
