@@ -58,8 +58,10 @@ export interface RsWorkPartner {
   contract_period: string | null;
   contract_end_date: string | null;
   included_revenue_types: RevenueType[] | null;
+  labor_cost_excluded: boolean;
   revenue_rate: number;
   settlement_cycle: string;
+  tax_type: string;
   created_at: string;
   updated_at: string;
   // joined
@@ -194,6 +196,21 @@ export interface RsPartnerSalary {
   note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// 인건비 분담
+export type LaborCostSourceType = 'staff' | 'partner';
+
+export interface RsLaborCostShare {
+  id: string;
+  source_type: LaborCostSourceType;
+  source_id: string;
+  bearer_partner_id: string;
+  share_ratio: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  bearer_partner?: RsPartner;
 }
 
 // 파싱 결과 타입

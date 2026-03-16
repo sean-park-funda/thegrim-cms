@@ -21,24 +21,25 @@ const truncate10 = (n: number) => Math.floor(n / 10) * 10;
  * - 사업자(해외): 소득세 20% (10원 미만 절사) + 지방세 (소득세×10%, 10원 미만 절사)
  * - 네이버: 부가세 10% 별도 (차감 아님, 국내법인과 동일)
  */
-export function calculateTax(amount: number, partnerType: string): TaxBreakdown {
+export function calculateTax(amount: number, partnerType: string, taxType: string = 'standard'): TaxBreakdown {
+  if (taxType === 'royalty') {
+    const income_tax = Math.floor(amount * 10 / 110);
+    const local_tax = Math.floor(amount * 1 / 110);
+    return { income_tax, local_tax, vat: 0, total: income_tax + local_tax };
+  }
+
   if (partnerType === 'individual' || partnerType === 'individual_employee' || partnerType === 'individual_simple_tax') {
     const income_tax = truncate10(amount * 0.03);
     const local_tax = truncate10(income_tax * 0.1);
     return { income_tax, local_tax, vat: 0, total: income_tax + local_tax };
   }
-  if (partnerType === 'domestic_corp') {
-    const vat = Math.round(amount * 0.1);
-    return { income_tax: 0, local_tax: 0, vat, total: 0 }; // VAT는 차감이 아닌 별도 청구
+  if (partnerType === 'domestic_corp' || partnerType === 'naver') {
+    return { income_tax: 0, local_tax: 0, vat: 0, total: 0 };
   }
   if (partnerType === 'foreign_corp') {
     const income_tax = truncate10(amount * 0.2);
     const local_tax = truncate10(income_tax * 0.1);
     return { income_tax, local_tax, vat: 0, total: income_tax + local_tax };
-  }
-  if (partnerType === 'naver') {
-    const vat = Math.round(amount * 0.1);
-    return { income_tax: 0, local_tax: 0, vat, total: 0 }; // VAT는 차감이 아닌 별도 청구
   }
   return { income_tax: 0, local_tax: 0, vat: 0, total: 0 };
 }

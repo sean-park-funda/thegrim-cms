@@ -72,9 +72,9 @@ export function parseRevenueExcel(
 
 /**
  * 국내유료수익 파싱
- * 시트: "컨텐츠별 매출 통계" → Row 7 (0-indexed: 6)부터 데이터
- *   idx 0 = 작품명, idx 81 = 더그림 수익 (CP 정산액)
- * Fallback: 파일명에서 작품명 추출 + "N월_정산내역서" 시트에서 CP정산액
+ * 1순위: "정산내역서" 시트 → 헤더에서 "CP 정산액" 컬럼 동적 탐색 → "총 합계" 행 읽기
+ * 2순위: "컨텐츠별 매출 통계" 시트 → "확정 합계" 또는 "더그림" 컬럼
+ * 작품명은 파일명에서 추출
  */
 function parseDomesticPaid(
   workbook: XLSX.WorkBook,
@@ -83,25 +83,79 @@ function parseDomesticPaid(
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
 
-  // 1) "컨텐츠별 매출 통계" 시트에서 파싱 (가장 정확)
-  const statsSheetName = workbook.SheetNames.find(n => n.includes('컨텐츠별 매출 통계'));
-  if (statsSheetName) {
-    const sheet = workbook.Sheets[statsSheetName];
+  // 1) "정산내역서" 시트에서 CP 정산액 읽기
+  const settlementSheetName = workbook.SheetNames.find(n => n.includes('정산내역서'));
+  if (settlementSheetName) {
+    const sheet = workbook.Sheets[settlementSheetName];
     const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-    // 헤더에서 "더그림" 수익 컬럼 인덱스 동적 탐색
-    let revenueColIdx = 81; // 기본값
-    const headerRow = data[4]; // Row 5 = 헤더
-    if (headerRow) {
-      for (let i = 0; i < headerRow.length; i++) {
-        if (headerRow[i] && String(headerRow[i]).includes('더그림')) {
-          revenueColIdx = i;
+    // 헤더에서 "CP 정산액" 컬럼 동적 탐색 (기본값: H열 = index 7)
+    let cpColIdx = 7;
+    for (let i = 0; i < Math.min(10, data.length); i++) {
+      const row = data[i];
+      if (!row) continue;
+      for (let j = 0; j < row.length; j++) {
+        const val = String(row[j] || '');
+        if (val.includes('CP') && val.includes('정산')) {
+          cpColIdx = j;
           break;
         }
       }
     }
 
-    // Row 7부터 데이터 (0-indexed: 6)
+    // "총 합계" 행 우선, 없으면 마지막 "합계" 행
+    let revenue = 0;
+    let lastSubtotal = 0;
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (!row) continue;
+      const firstCell = String(row[0] || '').trim();
+      if (firstCell.includes('총') && firstCell.includes('합계')) {
+        revenue = parseNumber(row[cpColIdx]);
+        break;
+      }
+      if (firstCell === '합계') {
+        lastSubtotal = parseNumber(row[cpColIdx]);
+      }
+    }
+    if (revenue === 0) revenue = lastSubtotal;
+
+    const workName = extractWorkNameFromDomesticPaidFileName(fileName);
+    if (workName && revenue !== 0) {
+      rows.push({ work_name: workName, amount: revenue });
+      return rows;
+    }
+  }
+
+  // 2) Fallback: "컨텐츠별 매출 통계" 시트에서 작품별 파싱
+  const statsSheetName = workbook.SheetNames.find(n => n.includes('컨텐츠별 매출 통계'));
+  if (statsSheetName) {
+    const sheet = workbook.Sheets[statsSheetName];
+    const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // 헤더에서 "확정 합계" → "더그림" 순으로 컬럼 탐색
+    let revenueColIdx = 81;
+    const headerRow = data[4];
+    if (headerRow) {
+      let found = false;
+      for (let i = 0; i < headerRow.length; i++) {
+        const val = String(headerRow[i] || '');
+        if (val.includes('확정') && val.includes('합계')) {
+          revenueColIdx = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        for (let i = 0; i < headerRow.length; i++) {
+          if (headerRow[i] && String(headerRow[i]).includes('더그림')) {
+            revenueColIdx = i;
+            break;
+          }
+        }
+      }
+    }
+
     for (let i = 6; i < data.length; i++) {
       const row = data[i];
       if (!row || !row[0]) continue;
@@ -116,34 +170,6 @@ function parseDomesticPaid(
     }
 
     if (rows.length > 0) return rows;
-  }
-
-  // 2) Fallback: "N월_정산내역서" 시트에서 CP정산액 + 파일명에서 작품명
-  const settlementSheetName = workbook.SheetNames.find(n => n.includes('정산내역서'));
-  if (settlementSheetName) {
-    const sheet = workbook.Sheets[settlementSheetName];
-    const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-    // "총" 또는 "합계" 포함 행에서 CP정산액 찾기
-    let revenue = 0;
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
-      if (!row) continue;
-      const firstCell = String(row[0] || '');
-      if (firstCell.includes('총') || firstCell.includes('합계')) {
-        // CP 정산액은 보통 idx 7 (H열)
-        for (let j = 5; j < Math.min(row.length, 15); j++) {
-          const val = parseNumber(row[j]);
-          if (val > revenue) revenue = val;
-        }
-      }
-    }
-
-    const workName = extractWorkNameFromDomesticPaidFileName(fileName);
-    if (workName && revenue !== 0) {
-      rows.push({ work_name: workName, amount: revenue });
-      return rows;
-    }
   }
 
   // 3) 최종 Fallback: 파일명에서 작품명만이라도 추출

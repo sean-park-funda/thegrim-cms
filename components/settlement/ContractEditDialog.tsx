@@ -35,6 +35,8 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
   const [includedRevenueTypes, setIncludedRevenueTypes] = useState<RevenueType[]>(ALL_REVENUE_TYPES);
   const [revenueRate, setRevenueRate] = useState('1');
   const [settlementCycle, setSettlementCycle] = useState('monthly');
+  const [laborCostExcluded, setLaborCostExcluded] = useState(false);
+  const [taxType, setTaxType] = useState('standard');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -46,6 +48,8 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
       setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
       setRevenueRate(wp.revenue_rate != null ? String(wp.revenue_rate) : '1');
       setSettlementCycle(wp.settlement_cycle || 'monthly');
+      setLaborCostExcluded(wp.labor_cost_excluded ?? false);
+      setTaxType(wp.tax_type || 'standard');
     }
   }, [wp, open]);
 
@@ -66,8 +70,10 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
           mg_rs_rate: mgRsRate ? Number(mgRsRate) / 100 : null,
           contract_category: contractCategory || null,
           included_revenue_types: includedRevenueTypes,
+          labor_cost_excluded: laborCostExcluded,
           revenue_rate: revenueRate ? Number(revenueRate) : 1,
           settlement_cycle: settlementCycle,
+          tax_type: taxType,
         }),
       });
       if (res.ok) {
@@ -148,10 +154,34 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
                   <Input id="ce-vat" value={vatType} onChange={e => setVatType(e.target.value)} placeholder="과세/면세/협의중" className="mt-1" />
                 </div>
               </div>
-              <div>
-                <Label htmlFor="ce-cat" className="text-xs text-muted-foreground">계약구분</Label>
-                <Input id="ce-cat" value={contractCategory} onChange={e => setContractCategory(e.target.value)} placeholder="RS/MG/신규/갱신" className="mt-1" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="ce-cat" className="text-xs text-muted-foreground">계약구분</Label>
+                  <Input id="ce-cat" value={contractCategory} onChange={e => setContractCategory(e.target.value)} placeholder="RS/MG/신규/갱신" className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">세금유형</Label>
+                  <Select value={taxType} onValueChange={setTaxType}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">기본</SelectItem>
+                      <SelectItem value="royalty">사용료소득</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+              <label className="flex items-center gap-2.5 rounded-md bg-muted/50 px-3 py-2 cursor-pointer hover:bg-muted/80 transition-colors">
+                <Checkbox
+                  checked={laborCostExcluded}
+                  onCheckedChange={(checked) => setLaborCostExcluded(!!checked)}
+                />
+                <div>
+                  <span className="text-sm">인건비공제제외</span>
+                  <p className="text-[11px] text-muted-foreground">체크 시 이 작품에는 인건비가 배분되지 않습니다</p>
+                </div>
+              </label>
             </div>
           </section>
 

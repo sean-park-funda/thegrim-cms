@@ -25,8 +25,12 @@ interface WorkDetail {
   revenue_type: string;
   revenue_type_label: string;
   gross_revenue: number;
+  base_revenue: number;
+  exclusion_amount: number;
+  settlement_target: number;
   revenue_share: number;
-  labor_cost: number;
+  team_labor_cost: number;
+  self_labor_cost: number;
   net_share: number;
   rs_rate: number;
 }
@@ -35,11 +39,16 @@ interface WorkStatement {
   work_name: string;
   work_id: string;
   rs_rate: number;
+  revenue_rate: number;
   is_mg_applied: boolean;
   details: WorkDetail[];
   work_total_revenue: number;
+  work_total_base_revenue: number;
+  work_total_exclusion: number;
+  work_total_settlement_target: number;
   work_total_share: number;
-  work_total_labor_cost: number;
+  work_total_team_labor_cost: number;
+  work_total_self_labor_cost: number;
   work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
@@ -64,17 +73,23 @@ interface StatementData {
   month: string;
   works: WorkStatement[];
   grand_total_revenue: number;
+  grand_total_base_revenue: number;
+  grand_total_exclusion: number;
+  grand_total_settlement_target: number;
   grand_total_share: number;
-  grand_total_labor_cost: number;
+  grand_total_team_labor_cost: number;
+  grand_total_self_labor_cost: number;
   grand_total_net_share: number;
-  salary_deduction: number;
   subtotal: number;
+  tax_type: string;
   tax_breakdown: TaxBreakdown;
   tax_amount: number;
   insurance: number;
   total_mg_deduction: number;
   total_other_deduction: number;
   final_payment: number;
+  tax_invoice?: { item: string; supply: number; vat: number; total: number }[] | null;
+  tax_invoice_total?: number;
 }
 
 export default function StatementPage() {
@@ -162,6 +177,13 @@ export default function StatementPage() {
             </div>
 
             {/* Section 1: 정산상세내역 */}
+            {(() => {
+              const hasBaseRevenue = data.works.some(w => w.revenue_rate !== 1);
+              const hasExclusion = data.grand_total_exclusion > 0;
+              const hasTeamLaborCost = data.grand_total_team_labor_cost > 0;
+              const hasSelfLaborCost = data.grand_total_self_labor_cost > 0;
+              const hasAnyLaborCost = hasTeamLaborCost || hasSelfLaborCost;
+              return (
             <div className="space-y-3">
               <h3 className="font-semibold">1. 정산상세내역</h3>
               {data.works.length === 0 ? (
@@ -176,11 +198,23 @@ export default function StatementPage() {
                         <th className="py-2 px-3 font-medium">작품 구분</th>
                         <th className="py-2 px-3 font-medium">수익구분</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">더그림수익</th>
-                        {data.grand_total_labor_cost > 0 && (
+                        {hasBaseRevenue && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">기준매출</th>
+                        )}
+                        {hasExclusion && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">정산제외금</th>
+                        )}
+                        {(hasBaseRevenue || hasExclusion) && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">정산대상금</th>
+                        )}
+                        {hasAnyLaborCost && (
                           <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분</th>
                         )}
-                        {data.grand_total_labor_cost > 0 && (
-                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">인건비공제</th>
+                        {hasTeamLaborCost && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">팀인건비</th>
+                        )}
+                        {hasSelfLaborCost && (
+                          <th className="py-2 px-3 font-medium text-right hidden md:table-cell">근로소득공제</th>
                         )}
                         <th className="py-2 px-3 font-medium text-right">수익정산</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">수익배분율</th>
@@ -198,18 +232,38 @@ export default function StatementPage() {
                               <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
                                 {d.gross_revenue.toLocaleString()}
                               </td>
-                              {data.grand_total_labor_cost > 0 && (
+                              {hasBaseRevenue && (
+                                <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                  {d.base_revenue.toLocaleString()}
+                                </td>
+                              )}
+                              {hasExclusion && (
+                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                  {d.exclusion_amount > 0 ? `-${d.exclusion_amount.toLocaleString()}` : ''}
+                                </td>
+                              )}
+                              {(hasBaseRevenue || hasExclusion) && (
+                                <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                  {d.settlement_target.toLocaleString()}
+                                </td>
+                              )}
+                              {hasAnyLaborCost && (
                                 <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
                                   {d.revenue_share.toLocaleString()}
                                 </td>
                               )}
-                              {data.grand_total_labor_cost > 0 && (
+                              {hasTeamLaborCost && (
                                 <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                                  {d.labor_cost > 0 ? `-${d.labor_cost.toLocaleString()}` : ''}
+                                  {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
+                                </td>
+                              )}
+                              {hasSelfLaborCost && (
+                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                  {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
                                 </td>
                               )}
                               <td className="py-1.5 px-3 text-right tabular-nums">
-                                {data.grand_total_labor_cost > 0
+                                {hasAnyLaborCost
                                   ? d.net_share.toLocaleString()
                                   : d.revenue_share.toLocaleString()}
                               </td>
@@ -228,18 +282,38 @@ export default function StatementPage() {
                         <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
                           {data.grand_total_revenue.toLocaleString()}
                         </td>
-                        {data.grand_total_labor_cost > 0 && (
+                        {hasBaseRevenue && (
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
+                            {data.grand_total_base_revenue.toLocaleString()}
+                          </td>
+                        )}
+                        {hasExclusion && (
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                            -{data.grand_total_exclusion.toLocaleString()}
+                          </td>
+                        )}
+                        {(hasBaseRevenue || hasExclusion) && (
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
+                            {data.grand_total_settlement_target.toLocaleString()}
+                          </td>
+                        )}
+                        {hasAnyLaborCost && (
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
                             {data.grand_total_share.toLocaleString()}
                           </td>
                         )}
-                        {data.grand_total_labor_cost > 0 && (
+                        {hasTeamLaborCost && (
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                            -{data.grand_total_labor_cost.toLocaleString()}
+                            -{data.grand_total_team_labor_cost.toLocaleString()}
+                          </td>
+                        )}
+                        {hasSelfLaborCost && (
+                          <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                            -{data.grand_total_self_labor_cost.toLocaleString()}
                           </td>
                         )}
                         <td className="py-2 px-3 text-right tabular-nums">
-                          {data.grand_total_labor_cost > 0
+                          {hasAnyLaborCost
                             ? data.grand_total_net_share.toLocaleString()
                             : data.grand_total_share.toLocaleString()}
                         </td>
@@ -251,20 +325,76 @@ export default function StatementPage() {
                 </div>
               )}
             </div>
+              );
+            })()}
 
             {/* Section 2: 지급상세내역 */}
             <div className="space-y-3">
               <h3 className="font-semibold">2. 지급상세내역</h3>
+              {(data.partner.partner_type === 'domestic_corp' || data.partner.partner_type === 'naver') && data.tax_invoice ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left bg-muted/50">
+                        <th className="py-2 px-3 font-medium">품목</th>
+                        <th className="py-2 px-3 font-medium text-right">공급가액</th>
+                        <th className="py-2 px-3 font-medium text-right">VAT</th>
+                        <th className="py-2 px-3 font-medium text-right">합 계</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.tax_invoice.map((inv, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="py-1.5 px-3">{inv.item}</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums">{inv.supply.toLocaleString()}</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums">{inv.vat.toLocaleString()}</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums font-semibold">{inv.total.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                      {data.tax_invoice.length > 1 && (
+                        <tr className="border-t-2 font-semibold">
+                          <td className="py-2 px-3">세금계산서 합계</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{data.tax_invoice.reduce((s, t) => s + t.supply, 0).toLocaleString()}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{data.tax_invoice.reduce((s, t) => s + t.vat, 0).toLocaleString()}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{(data.tax_invoice_total || 0).toLocaleString()}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {(data.total_mg_deduction > 0 || data.total_other_deduction > 0) && (
+                    <table className="w-full text-sm mt-2">
+                      <tbody>
+                        {data.total_mg_deduction > 0 && (
+                          <tr className="border-b">
+                            <td className="py-1.5 px-3 text-muted-foreground">MG 차감</td>
+                            <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_mg_deduction.toLocaleString()}</td>
+                          </tr>
+                        )}
+                        {data.total_other_deduction > 0 && (
+                          <tr className="border-b">
+                            <td className="py-1.5 px-3 text-muted-foreground">기타 공제</td>
+                            <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_other_deduction.toLocaleString()}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                  <div className="flex justify-between items-center mt-3 pt-2 border-t-2">
+                    <span className="font-semibold">지급액</span>
+                    <span className="text-lg font-bold tabular-nums">{data.final_payment.toLocaleString()}</span>
+                  </div>
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left bg-muted/50">
                       <th className="py-2 px-3 font-medium text-right">수익정산금</th>
-                      {data.salary_deduction > 0 && (
-                        <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
-                      )}
-                      {(data.partner.partner_type === 'domestic_corp' || data.partner.partner_type === 'naver') ? (
-                        <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
+                      {data.tax_type === 'royalty' ? (
+                        <>
+                          <th className="py-2 px-3 font-medium text-right">사용료 (10/110)</th>
+                          <th className="py-2 px-3 font-medium text-right">주민세 (1/110)</th>
+                        </>
                       ) : (
                         <>
                           <th className="py-2 px-3 font-medium text-right">
@@ -288,29 +418,18 @@ export default function StatementPage() {
                   <tbody>
                     <tr className="border-b font-semibold">
                       <td className="py-2 px-3 text-right tabular-nums">
-                        {data.grand_total_labor_cost > 0
+                        {(data.grand_total_team_labor_cost > 0 || data.grand_total_self_labor_cost > 0)
                           ? data.grand_total_net_share.toLocaleString()
                           : data.grand_total_share.toLocaleString()}
                       </td>
-                      {data.salary_deduction > 0 && (
+                      <>
                         <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                          -{data.salary_deduction.toLocaleString()}
+                          {data.tax_breakdown.income_tax > 0 ? `-${data.tax_breakdown.income_tax.toLocaleString()}` : '0'}
                         </td>
-                      )}
-                      {(data.partner.partner_type === 'domestic_corp' || data.partner.partner_type === 'naver') ? (
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          {data.tax_breakdown.vat > 0 ? data.tax_breakdown.vat.toLocaleString() : '0'}
+                        <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                          {data.tax_breakdown.local_tax > 0 ? `-${data.tax_breakdown.local_tax.toLocaleString()}` : '0'}
                         </td>
-                      ) : (
-                        <>
-                          <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                            {data.tax_breakdown.income_tax > 0 ? `-${data.tax_breakdown.income_tax.toLocaleString()}` : '0'}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                            {data.tax_breakdown.local_tax > 0 ? `-${data.tax_breakdown.local_tax.toLocaleString()}` : '0'}
-                          </td>
-                        </>
-                      )}
+                      </>
                       {data.insurance > 0 && (
                         <td className="py-2 px-3 text-right tabular-nums text-red-600">
                           -{data.insurance.toLocaleString()}
@@ -333,6 +452,7 @@ export default function StatementPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
 
             {/* Section 3: MG 정산 (if any) */}

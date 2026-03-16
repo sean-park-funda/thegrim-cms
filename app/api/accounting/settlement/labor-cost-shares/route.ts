@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 
-// GET /api/accounting/settlement/staff-assignments
+// GET /api/accounting/settlement/labor-cost-shares
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -17,31 +17,33 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const staffId = searchParams.get('staffId');
-    const workId = searchParams.get('workId');
+    const sourceType = searchParams.get('sourceType');
+    const sourceId = searchParams.get('sourceId');
+    const bearerPartnerId = searchParams.get('bearerPartnerId');
 
     let query = supabase
-      .from('rs_staff_assignments')
-      .select('*, staff:rs_staff(id, name, employer_type, employer_partner_id, monthly_salary), work:rs_works(id, name)')
+      .from('rs_labor_cost_shares')
+      .select('*, bearer_partner:rs_partners!bearer_partner_id(id, name)')
       .order('created_at');
 
-    if (staffId) query = query.eq('staff_id', staffId);
-    if (workId) query = query.eq('work_id', workId);
+    if (sourceType) query = query.eq('source_type', sourceType);
+    if (sourceId) query = query.eq('source_id', sourceId);
+    if (bearerPartnerId) query = query.eq('bearer_partner_id', bearerPartnerId);
 
     const { data, error } = await query;
     if (error) {
-      console.error('배정 조회 오류:', error);
-      return NextResponse.json({ error: '배정 조회 실패' }, { status: 500 });
+      console.error('인건비 분담 조회 오류:', error);
+      return NextResponse.json({ error: '조회 실패' }, { status: 500 });
     }
 
-    return NextResponse.json({ assignments: data });
+    return NextResponse.json({ shares: data });
   } catch (error) {
-    console.error('배정 조회 오류:', error);
+    console.error('인건비 분담 조회 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
 }
 
-// POST /api/accounting/settlement/staff-assignments
+// POST /api/accounting/settlement/labor-cost-shares
 export async function POST(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -56,34 +58,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { staff_id, work_id, monthly_cost, start_month, end_month, note } = body;
+    const { source_type, source_id, bearer_partner_id, share_ratio, note } = body;
 
-    if (!staff_id || !work_id) {
-      return NextResponse.json({ error: '스태프와 작품은 필수입니다.' }, { status: 400 });
+    if (!source_type || !source_id || !bearer_partner_id || share_ratio === undefined) {
+      return NextResponse.json({ error: '필수 필드가 누락되었습니다.' }, { status: 400 });
     }
 
     const { data, error } = await supabase
-      .from('rs_staff_assignments')
-      .insert({ staff_id, work_id, monthly_cost: monthly_cost || 0, start_month, end_month, note })
-      .select('*, staff:rs_staff(id, name, employer_type), work:rs_works(id, name)')
+      .from('rs_labor_cost_shares')
+      .insert({ source_type, source_id, bearer_partner_id, share_ratio, note })
+      .select('*, bearer_partner:rs_partners!bearer_partner_id(id, name)')
       .single();
 
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json({ error: '이미 해당 작품에 배정되어 있습니다.' }, { status: 409 });
+        return NextResponse.json({ error: '이미 해당 파트너에 대한 분담 설정이 있습니다.' }, { status: 409 });
       }
-      console.error('배정 생성 오류:', error);
-      return NextResponse.json({ error: '배정 생성 실패' }, { status: 500 });
+      console.error('인건비 분담 생성 오류:', error);
+      return NextResponse.json({ error: '생성 실패' }, { status: 500 });
     }
 
-    return NextResponse.json({ assignment: data }, { status: 201 });
+    return NextResponse.json({ share: data }, { status: 201 });
   } catch (error) {
-    console.error('배정 생성 오류:', error);
+    console.error('인건비 분담 생성 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
 }
 
-// PUT /api/accounting/settlement/staff-assignments
+// PUT /api/accounting/settlement/labor-cost-shares
 export async function PUT(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -98,39 +100,36 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, monthly_cost, start_month, end_month, is_active, note } = body;
+    const { id, share_ratio, note } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
     }
 
     const updateData: Record<string, unknown> = {};
-    if (monthly_cost !== undefined) updateData.monthly_cost = monthly_cost;
-    if (start_month !== undefined) updateData.start_month = start_month;
-    if (end_month !== undefined) updateData.end_month = end_month;
-    if (is_active !== undefined) updateData.is_active = is_active;
+    if (share_ratio !== undefined) updateData.share_ratio = share_ratio;
     if (note !== undefined) updateData.note = note;
 
     const { data, error } = await supabase
-      .from('rs_staff_assignments')
+      .from('rs_labor_cost_shares')
       .update(updateData)
       .eq('id', id)
-      .select('*, staff:rs_staff(id, name, employer_type), work:rs_works(id, name)')
+      .select('*, bearer_partner:rs_partners!bearer_partner_id(id, name)')
       .single();
 
     if (error) {
-      console.error('배정 수정 오류:', error);
-      return NextResponse.json({ error: '배정 수정 실패' }, { status: 500 });
+      console.error('인건비 분담 수정 오류:', error);
+      return NextResponse.json({ error: '수정 실패' }, { status: 500 });
     }
 
-    return NextResponse.json({ assignment: data });
+    return NextResponse.json({ share: data });
   } catch (error) {
-    console.error('배정 수정 오류:', error);
+    console.error('인건비 분담 수정 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
 }
 
-// DELETE /api/accounting/settlement/staff-assignments
+// DELETE /api/accounting/settlement/labor-cost-shares
 export async function DELETE(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -150,15 +149,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('rs_staff_assignments').delete().eq('id', id);
+    const { error } = await supabase.from('rs_labor_cost_shares').delete().eq('id', id);
     if (error) {
-      console.error('배정 삭제 오류:', error);
-      return NextResponse.json({ error: '배정 삭제 실패' }, { status: 500 });
+      console.error('인건비 분담 삭제 오류:', error);
+      return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('배정 삭제 오류:', error);
+    console.error('인건비 분담 삭제 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
 }

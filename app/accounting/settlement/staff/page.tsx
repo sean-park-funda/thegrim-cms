@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Check, Pencil, Plus, Search, X } from 'lucide-react';
-import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary } from '@/lib/types/settlement';
+import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary, RsLaborCostShare } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 
@@ -45,6 +45,7 @@ export default function StaffPage() {
   const [salarySaving, setSalarySaving] = useState(false);
   const [monthSalaries, setMonthSalaries] = useState<Record<string, number>>({});
   const [partnerMonthSalaries, setPartnerMonthSalaries] = useState<Record<string, number>>({});
+  const [laborSharesBySource, setLaborSharesBySource] = useState<Map<string, RsLaborCostShare[]>>(new Map());
 
   const loadMonthSalaries = async (month: string) => {
     try {
@@ -74,17 +75,34 @@ export default function StaffPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [staffRes, assignmentsRes, partnersRes] = await Promise.all([
+      const [staffRes, assignmentsRes, partnersRes, staffSharesRes, partnerSharesRes] = await Promise.all([
         settlementFetch('/api/accounting/settlement/staff?activeOnly=false'),
         settlementFetch('/api/accounting/settlement/staff-assignments'),
         settlementFetch('/api/accounting/settlement/partners'),
+        settlementFetch('/api/accounting/settlement/labor-cost-shares?sourceType=staff'),
+        settlementFetch('/api/accounting/settlement/labor-cost-shares?sourceType=partner'),
       ]);
       const staffData = await staffRes.json();
       const assignmentsData = await assignmentsRes.json();
       const partnersData = await partnersRes.json();
+      const staffSharesData = await staffSharesRes.json();
+      const partnerSharesData = await partnerSharesRes.json();
 
       const allPartners: RsPartner[] = partnersData.partners || [];
       setPartners(allPartners);
+
+      const shareMap = new Map<string, RsLaborCostShare[]>();
+      for (const share of (staffSharesData.shares || []) as RsLaborCostShare[]) {
+        const list = shareMap.get(share.source_id) || [];
+        list.push(share);
+        shareMap.set(share.source_id, list);
+      }
+      for (const share of (partnerSharesData.shares || []) as RsLaborCostShare[]) {
+        const list = shareMap.get(share.source_id) || [];
+        list.push(share);
+        shareMap.set(share.source_id, list);
+      }
+      setLaborSharesBySource(shareMap);
 
       // has_salary 파트너를 인력 목록에 포함
       const salPartners: PartnerSalaryRow[] = allPartners
@@ -202,10 +220,21 @@ export default function StaffPage() {
   ];
 
   const filtered = search
-    ? allRows.filter(r =>
-        r.name.toLowerCase().includes(search.toLowerCase()) ||
-        (!r.is_partner && (r.employer_partner as { name?: string } | null)?.name?.toLowerCase().includes(search.toLowerCase()))
-      )
+    ? allRows.filter(r => {
+        const q = search.toLowerCase();
+        if (r.name.toLowerCase().includes(q)) return true;
+        const sourceId = r.is_partner ? r.partner_id : r.id;
+        if (!r.is_partner) {
+          if ((r.employer_partner as { name?: string } | null)?.name?.toLowerCase().includes(q)) return true;
+        }
+        const shares = laborSharesBySource.get(sourceId);
+        if (shares) {
+          return shares.some(sh =>
+            (sh.bearer_partner as { name?: string } | undefined)?.name?.toLowerCase().includes(q)
+          );
+        }
+        return false;
+      })
     : allRows;
 
   const totalMonthlyCost = filtered.reduce((s, r) => s + (r.is_partner ? 0 : r.total_monthly_cost), 0);
@@ -219,7 +248,7 @@ export default function StaffPage() {
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="이름, 소속작가 검색..."
+                placeholder="이름, 부담작가 검색..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-9 w-full md:w-52"
@@ -263,7 +292,7 @@ export default function StaffPage() {
                   <tr className="border-b text-left">
                     <th className="py-2 px-3 font-medium">이름</th>
                     <th className="py-2 px-3 font-medium">소속 구분</th>
-                    <th className="py-2 px-3 font-medium hidden md:table-cell">소속 작가</th>
+                    <th className="py-2 px-3 font-medium hidden md:table-cell">인건비 부담</th>
                     <th className="py-2 px-3 font-medium text-right">{selectedMonth} 급여</th>
                     <th className="py-2 px-3 font-medium text-right">배정 작품</th>
                     <th className="py-2 px-3 font-medium text-right">월 비용 합계</th>
@@ -274,6 +303,7 @@ export default function StaffPage() {
                   {filtered.map((row) => {
                     if (row.is_partner) {
                       const amt = partnerMonthSalaries[row.partner_id] ?? 0;
+                      const partnerShares = laborSharesBySource.get(row.partner_id);
                       return (
                         <tr
                           key={row.id}
@@ -282,9 +312,34 @@ export default function StaffPage() {
                         >
                           <td className="py-2 px-3 font-medium">{row.name}</td>
                           <td className="py-2 px-3">
-                            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30">본인</Badge>
+                            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30">파트너</Badge>
                           </td>
-                          <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">-</td>
+                          <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">
+                            {(() => {
+                              if (!partnerShares || partnerShares.length === 0) {
+                                return `${row.name} 100%`;
+                              }
+                              const othersTotal = partnerShares.reduce((sum, sh) => sum + Number(sh.share_ratio), 0);
+                              const selfRatio = Math.max(0, 1 - othersTotal);
+                              const parts: string[] = [];
+                              if (selfRatio > 0) {
+                                const sp = selfRatio * 100;
+                                parts.push(`${row.name} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
+                              }
+                              for (const sh of partnerShares) {
+                                const bearerName = (sh.bearer_partner as { name?: string } | undefined)?.name || '?';
+                                const sp = Number(sh.share_ratio) * 100;
+                                parts.push(`${bearerName} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
+                              }
+                              return (
+                                <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                                  {parts.map((p, i) => (
+                                    <span key={i} className="whitespace-nowrap">{p}</span>
+                                  ))}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td className="py-2 px-3 text-right tabular-nums font-semibold">
                             {salaryEditMode && salaryEdits[row.id] !== undefined ? (
                               <Input
@@ -315,12 +370,35 @@ export default function StaffPage() {
                       >
                         <td className="py-2 px-3 font-medium">{s.name}</td>
                         <td className="py-2 px-3">
-                          <Badge variant="secondary">
-                            {s.employer_type === 'author' ? '작가 소속' : '회사 소속'}
-                          </Badge>
+                          <Badge variant="secondary">스태프</Badge>
                         </td>
                         <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">
-                          {(s.employer_partner as { name?: string } | null)?.name || '-'}
+                          {(() => {
+                            const shares = laborSharesBySource.get(s.id);
+                            const employerName = (s.employer_partner as { name?: string } | null)?.name;
+                            if (!shares || shares.length === 0) {
+                              return `${employerName || '-'} 100%`;
+                            }
+                            const othersTotal = shares.reduce((sum, sh) => sum + Number(sh.share_ratio), 0);
+                            const employerRatio = Math.max(0, 1 - othersTotal);
+                            const parts: string[] = [];
+                            if (employerRatio > 0 && employerName) {
+                              const ep = employerRatio * 100;
+                              parts.push(`${employerName} ${Number.isInteger(ep) ? ep : ep.toFixed(1)}%`);
+                            }
+                            for (const sh of shares) {
+                              const bearerName = (sh.bearer_partner as { name?: string } | undefined)?.name || '?';
+                              const sp = Number(sh.share_ratio) * 100;
+                              parts.push(`${bearerName} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
+                            }
+                            return (
+                              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                                {parts.map((p, i) => (
+                                  <span key={i} className="whitespace-nowrap">{p}</span>
+                                ))}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 px-3 text-right tabular-nums font-semibold">
                           {salaryEditMode && s.is_active && salaryEdits[s.id] !== undefined ? (

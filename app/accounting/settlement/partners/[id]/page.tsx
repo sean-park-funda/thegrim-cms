@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
 import { StaffForm } from '@/components/settlement/StaffForm';
 import { StaffAssignmentDialog } from '@/components/settlement/StaffAssignmentDialog';
-import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff, RsStaffAssignment } from '@/lib/types/settlement';
+import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork, RsStaff, RsStaffAssignment, RsLaborCostShare } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface TaxBreakdown {
@@ -32,8 +32,12 @@ interface WorkDetail {
   revenue_type: string;
   revenue_type_label: string;
   gross_revenue: number;
+  base_revenue: number;
+  exclusion_amount: number;
+  settlement_target: number;
   revenue_share: number;
-  labor_cost: number;
+  team_labor_cost: number;
+  self_labor_cost: number;
   net_share: number;
   rs_rate: number;
 }
@@ -42,11 +46,16 @@ interface WorkStatement {
   work_name: string;
   work_id: string;
   rs_rate: number;
+  revenue_rate: number;
   is_mg_applied: boolean;
   details: WorkDetail[];
   work_total_revenue: number;
+  work_total_base_revenue: number;
+  work_total_exclusion: number;
+  work_total_settlement_target: number;
   work_total_share: number;
-  work_total_labor_cost: number;
+  work_total_team_labor_cost: number;
+  work_total_self_labor_cost: number;
   work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
@@ -72,10 +81,14 @@ interface StatementData {
   month: string;
   works: WorkStatement[];
   grand_total_revenue: number;
+  grand_total_base_revenue: number;
+  grand_total_exclusion: number;
+  grand_total_settlement_target: number;
   grand_total_share: number;
-  grand_total_labor_cost: number;
+  grand_total_team_labor_cost: number;
+  grand_total_self_labor_cost: number;
   grand_total_net_share: number;
-  salary_deduction: number;
+  tax_type: string;
   tax_breakdown: TaxBreakdown;
   tax_amount: number;
   insurance: number;
@@ -83,6 +96,8 @@ interface StatementData {
   total_other_deduction: number;
   final_payment: number;
   mg_history?: MgWorkHistory[];
+  tax_invoice?: { item: string; supply: number; vat: number; total: number }[] | null;
+  tax_invoice_total?: number;
 }
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
@@ -126,6 +141,14 @@ export default function PartnerDetailPage() {
   const [staffAssignDialogOpen, setStaffAssignDialogOpen] = useState(false);
   const [editStaffAssignment, setEditStaffAssignment] = useState<RsStaffAssignment | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState('');
+
+  // 인건비 분담
+  const [ownSalaryShares, setOwnSalaryShares] = useState<RsLaborCostShare[]>([]);
+  const [bearerShares, setBearerShares] = useState<RsLaborCostShare[]>([]);
+  const [bearerStaffNames, setBearerStaffNames] = useState<Map<string, string>>(new Map());
+  const [addOwnSharePartnerId, setAddOwnSharePartnerId] = useState('');
+  const [addOwnShareRatio, setAddOwnShareRatio] = useState('');
+  const [ownShareSaving, setOwnShareSaving] = useState(false);
 
   const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
@@ -181,6 +204,32 @@ export default function PartnerDetailPage() {
         setStaffAssignments(allAssignments);
       } else {
         setStaffAssignments([]);
+      }
+
+      // 인건비 분담 로드
+      const [ownSharesRes, bearerSharesRes] = await Promise.all([
+        settlementFetch(`/api/accounting/settlement/labor-cost-shares?sourceType=partner&sourceId=${partnerId}`),
+        settlementFetch(`/api/accounting/settlement/labor-cost-shares?bearerPartnerId=${partnerId}`),
+      ]);
+      const ownSharesData = await ownSharesRes.json();
+      const bearerSharesData = await bearerSharesRes.json();
+      setOwnSalaryShares(ownSharesData.shares || []);
+      const bShares: RsLaborCostShare[] = bearerSharesData.shares || [];
+      setBearerShares(bShares);
+
+      const staffSourceIds = bShares.filter(s => s.source_type === 'staff').map(s => s.source_id);
+      if (staffSourceIds.length > 0) {
+        const allStaffRes = await settlementFetch('/api/accounting/settlement/staff?activeOnly=false');
+        const allStaffData = await allStaffRes.json();
+        const nameMap = new Map<string, string>();
+        for (const s of (allStaffData.staff || [])) {
+          if (staffSourceIds.includes(s.id)) {
+            nameMap.set(s.id, s.name);
+          }
+        }
+        setBearerStaffNames(nameMap);
+      } else {
+        setBearerStaffNames(new Map());
       }
     } catch (e) {
       console.error('파트너 상세 로드 오류:', e);
@@ -318,6 +367,39 @@ export default function PartnerDetailPage() {
     }
   };
 
+  const handleAddOwnSalaryShare = async () => {
+    if (!addOwnSharePartnerId || !addOwnShareRatio) return;
+    setOwnShareSaving(true);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/labor-cost-shares', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_type: 'partner',
+          source_id: partnerId,
+          bearer_partner_id: addOwnSharePartnerId,
+          share_ratio: Number(addOwnShareRatio) / 100,
+        }),
+      });
+      if (res.ok) {
+        setAddOwnSharePartnerId('');
+        setAddOwnShareRatio('');
+        await load();
+      } else {
+        const err = await res.json();
+        alert(err.error || '분담 추가 실패');
+      }
+    } finally {
+      setOwnShareSaving(false);
+    }
+  };
+
+  const handleDeleteOwnSalaryShare = async (shareId: string) => {
+    if (!confirm('이 분담 설정을 삭제하시겠습니까?')) return;
+    const res = await settlementFetch(`/api/accounting/settlement/labor-cost-shares?id=${shareId}`, { method: 'DELETE' });
+    if (res.ok) await load();
+  };
+
   if (!profile) {
     return <div className="flex items-center justify-center h-full">Loading...</div>;
   }
@@ -430,23 +512,19 @@ export default function PartnerDetailPage() {
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">작품명</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">매출액적용율</th>
                         <th className="py-2 px-3 font-medium text-right">RS 요율</th>
                         <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">계약구분</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">계약기간</th>
+                        {canManage && <th className="py-2 px-3 font-medium w-10"></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {workPartners.map((wp) => (
                         <tr
                           key={wp.id}
-                          className={`border-b hover:bg-muted/50 ${canManage ? 'cursor-pointer' : ''}`}
-                          onClick={() => {
-                            if (canManage) {
-                              setContractWp(wp);
-                              setContractDialogOpen(true);
-                            }
-                          }}
+                          className="border-b hover:bg-muted/50"
                         >
                           <td className="py-2 px-3">
                             <Link
@@ -457,24 +535,11 @@ export default function PartnerDetailPage() {
                               {wp.work?.name || wp.work_id}
                             </Link>
                           </td>
+                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">
+                            {`${((wp.revenue_rate ?? 1) * 100).toFixed(0)}%`}
+                          </td>
                           <td className="py-2 px-3 text-right tabular-nums">
-                            <span className="inline-flex items-center gap-1">
-                              {(wp.rs_rate * 100).toFixed(1)}%
-                              {canManage && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 shrink-0"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setContractWp(wp);
-                                    setContractDialogOpen(true);
-                                  }}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </span>
+                            {(wp.rs_rate * 100).toFixed(1)}%
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums">
                             {(() => {
@@ -486,6 +551,18 @@ export default function PartnerDetailPage() {
                           </td>
                           <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_category || '-'}</td>
                           <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_period || '-'}</td>
+                          {canManage && (
+                            <td className="py-2 px-3">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => { setContractWp(wp); setContractDialogOpen(true); }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -510,6 +587,13 @@ export default function PartnerDetailPage() {
               ) : (
                 <div className="space-y-6">
                   {/* 1. 정산상세내역 */}
+                  {(() => {
+                    const hasBaseRevenue = statement.works.some(w => w.revenue_rate !== 1);
+                    const hasExclusion = statement.grand_total_exclusion > 0;
+                    const hasTeamLaborCost = statement.grand_total_team_labor_cost > 0;
+                    const hasSelfLaborCost = statement.grand_total_self_labor_cost > 0;
+                    const hasAnyLaborCost = hasTeamLaborCost || hasSelfLaborCost;
+                    return (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">1. 정산상세내역</h4>
                     <div className="overflow-x-auto">
@@ -519,11 +603,23 @@ export default function PartnerDetailPage() {
                             <th className="py-2 px-3 font-medium">작품 구분</th>
                             <th className="py-2 px-3 font-medium">수익구분</th>
                             <th className="py-2 px-3 font-medium text-right">더그림수익</th>
-                            {statement.grand_total_labor_cost > 0 && (
+                            {hasBaseRevenue && (
+                              <th className="py-2 px-3 font-medium text-right">기준매출</th>
+                            )}
+                            {hasExclusion && (
+                              <th className="py-2 px-3 font-medium text-right">정산제외금</th>
+                            )}
+                            {(hasBaseRevenue || hasExclusion) && (
+                              <th className="py-2 px-3 font-medium text-right">정산대상금</th>
+                            )}
+                            {hasAnyLaborCost && (
                               <th className="py-2 px-3 font-medium text-right">수익배분</th>
                             )}
-                            {statement.grand_total_labor_cost > 0 && (
-                              <th className="py-2 px-3 font-medium text-right">인건비공제</th>
+                            {hasTeamLaborCost && (
+                              <th className="py-2 px-3 font-medium text-right">팀인건비</th>
+                            )}
+                            {hasSelfLaborCost && (
+                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
                             )}
                             <th className="py-2 px-3 font-medium text-right">수익정산</th>
                             <th className="py-2 px-3 font-medium text-right">수익배분율</th>
@@ -538,16 +634,32 @@ export default function PartnerDetailPage() {
                                   <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
                                   <td className="py-1.5 px-3">{d.revenue_type_label}</td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{d.gross_revenue.toLocaleString()}</td>
-                                  {statement.grand_total_labor_cost > 0 && (
+                                  {hasBaseRevenue && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums">{d.base_revenue.toLocaleString()}</td>
+                                  )}
+                                  {hasExclusion && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
+                                      {d.exclusion_amount > 0 ? `-${d.exclusion_amount.toLocaleString()}` : ''}
+                                    </td>
+                                  )}
+                                  {(hasBaseRevenue || hasExclusion) && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums">{d.settlement_target.toLocaleString()}</td>
+                                  )}
+                                  {hasAnyLaborCost && (
                                     <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
                                   )}
-                                  {statement.grand_total_labor_cost > 0 && (
+                                  {hasTeamLaborCost && (
                                     <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                      {d.labor_cost > 0 ? `-${d.labor_cost.toLocaleString()}` : ''}
+                                      {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
+                                    </td>
+                                  )}
+                                  {hasSelfLaborCost && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
+                                      {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
                                     </td>
                                   )}
                                   <td className="py-1.5 px-3 text-right tabular-nums">
-                                    {statement.grand_total_labor_cost > 0
+                                    {hasAnyLaborCost
                                       ? d.net_share.toLocaleString()
                                       : d.revenue_share.toLocaleString()}
                                   </td>
@@ -559,16 +671,32 @@ export default function PartnerDetailPage() {
                             <td className="py-2 px-3">합계</td>
                             <td className="py-2 px-3"></td>
                             <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_revenue.toLocaleString()}</td>
-                            {statement.grand_total_labor_cost > 0 && (
+                            {hasBaseRevenue && (
+                              <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_base_revenue.toLocaleString()}</td>
+                            )}
+                            {hasExclusion && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.grand_total_exclusion.toLocaleString()}
+                              </td>
+                            )}
+                            {(hasBaseRevenue || hasExclusion) && (
+                              <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_settlement_target.toLocaleString()}</td>
+                            )}
+                            {hasAnyLaborCost && (
                               <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
                             )}
-                            {statement.grand_total_labor_cost > 0 && (
+                            {hasTeamLaborCost && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.grand_total_labor_cost.toLocaleString()}
+                                -{statement.grand_total_team_labor_cost.toLocaleString()}
+                              </td>
+                            )}
+                            {hasSelfLaborCost && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.grand_total_self_labor_cost.toLocaleString()}
                               </td>
                             )}
                             <td className="py-2 px-3 text-right tabular-nums">
-                              {statement.grand_total_labor_cost > 0
+                              {hasAnyLaborCost
                                 ? statement.grand_total_net_share.toLocaleString()
                                 : statement.grand_total_share.toLocaleString()}
                             </td>
@@ -578,20 +706,76 @@ export default function PartnerDetailPage() {
                       </table>
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* 2. 지급상세내역 */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">2. 지급상세내역</h4>
+                    {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') && statement.tax_invoice ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left bg-muted/50">
+                              <th className="py-2 px-3 font-medium">품목</th>
+                              <th className="py-2 px-3 font-medium text-right">공급가액</th>
+                              <th className="py-2 px-3 font-medium text-right">VAT</th>
+                              <th className="py-2 px-3 font-medium text-right">합 계</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {statement.tax_invoice.map((inv, i) => (
+                              <tr key={i} className="border-b">
+                                <td className="py-1.5 px-3">{inv.item}</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{inv.supply.toLocaleString()}</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{inv.vat.toLocaleString()}</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums font-semibold">{inv.total.toLocaleString()}</td>
+                              </tr>
+                            ))}
+                            {statement.tax_invoice.length > 1 && (
+                              <tr className="border-t-2 font-semibold">
+                                <td className="py-2 px-3">세금계산서 합계</td>
+                                <td className="py-2 px-3 text-right tabular-nums">{statement.tax_invoice.reduce((s, t) => s + t.supply, 0).toLocaleString()}</td>
+                                <td className="py-2 px-3 text-right tabular-nums">{statement.tax_invoice.reduce((s, t) => s + t.vat, 0).toLocaleString()}</td>
+                                <td className="py-2 px-3 text-right tabular-nums">{(statement.tax_invoice_total || 0).toLocaleString()}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                        {(statement.total_mg_deduction > 0 || statement.total_other_deduction > 0) && (
+                          <table className="w-full text-sm mt-2">
+                            <tbody>
+                              {statement.total_mg_deduction > 0 && (
+                                <tr className="border-b">
+                                  <td className="py-1.5 px-3 text-muted-foreground">MG 차감</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{statement.total_mg_deduction.toLocaleString()}</td>
+                                </tr>
+                              )}
+                              {statement.total_other_deduction > 0 && (
+                                <tr className="border-b">
+                                  <td className="py-1.5 px-3 text-muted-foreground">기타 공제</td>
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{statement.total_other_deduction.toLocaleString()}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        )}
+                        <div className="flex justify-between items-center mt-3 pt-2 border-t-2">
+                          <span className="font-semibold">지급액</span>
+                          <span className="text-lg font-bold tabular-nums">{statement.final_payment.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b text-left bg-muted/50">
                             <th className="py-2 px-3 font-medium text-right">수익정산금</th>
-                            {statement.salary_deduction > 0 && (
-                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
-                            )}
-                            {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') ? (
-                              <th className="py-2 px-3 font-medium text-right">부가세 (10%)</th>
+                            {statement.tax_type === 'royalty' ? (
+                              <>
+                                <th className="py-2 px-3 font-medium text-right">사용료 (10/110)</th>
+                                <th className="py-2 px-3 font-medium text-right">주민세 (1/110)</th>
+                              </>
                             ) : (
                               <>
                                 <th className="py-2 px-3 font-medium text-right">
@@ -615,29 +799,18 @@ export default function PartnerDetailPage() {
                         <tbody>
                           <tr className="border-b font-semibold">
                             <td className="py-2 px-3 text-right tabular-nums">
-                              {statement.grand_total_labor_cost > 0
+                              {(statement.grand_total_team_labor_cost > 0 || statement.grand_total_self_labor_cost > 0)
                                 ? statement.grand_total_net_share.toLocaleString()
                                 : statement.grand_total_share.toLocaleString()}
                             </td>
-                            {statement.salary_deduction > 0 && (
+                            <>
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.salary_deduction.toLocaleString()}
+                                {statement.tax_breakdown.income_tax > 0 ? `-${statement.tax_breakdown.income_tax.toLocaleString()}` : '0'}
                               </td>
-                            )}
-                            {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') ? (
-                              <td className="py-2 px-3 text-right tabular-nums">
-                                {statement.tax_breakdown.vat > 0 ? statement.tax_breakdown.vat.toLocaleString() : '0'}
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                {statement.tax_breakdown.local_tax > 0 ? `-${statement.tax_breakdown.local_tax.toLocaleString()}` : '0'}
                               </td>
-                            ) : (
-                              <>
-                                <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                  {statement.tax_breakdown.income_tax > 0 ? `-${statement.tax_breakdown.income_tax.toLocaleString()}` : '0'}
-                                </td>
-                                <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                  {statement.tax_breakdown.local_tax > 0 ? `-${statement.tax_breakdown.local_tax.toLocaleString()}` : '0'}
-                                </td>
-                              </>
-                            )}
+                            </>
                             {statement.insurance > 0 && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
                                 -{statement.insurance.toLocaleString()}
@@ -658,6 +831,7 @@ export default function PartnerDetailPage() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
 
                   {/* 3. MG 정산 */}
@@ -949,6 +1123,141 @@ export default function PartnerDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* 본인 급여 분담 (has_salary인 경우) */}
+          {partner.has_salary && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">본인 급여 인건비 분담</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const totalRatio = ownSalaryShares.reduce((s, sh) => s + Number(sh.share_ratio), 0);
+                  const selfRatio = Math.max(0, 1 - totalRatio);
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left">
+                            <th className="py-2 px-3 font-medium">부담자</th>
+                            <th className="py-2 px-3 font-medium text-right">비율</th>
+                            {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b bg-muted/30">
+                            <td className="py-2 px-3">
+                              <span className="inline-flex items-center gap-2">
+                                {partner.name}
+                                <Badge variant="secondary" className="text-[10px]">본인</Badge>
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold">{(selfRatio * 100).toFixed(0)}%</td>
+                            {canManage && <td className="py-2 px-3"></td>}
+                          </tr>
+                          {ownSalaryShares.map((sh) => (
+                            <tr key={sh.id} className="border-b hover:bg-muted/50">
+                              <td className="py-2 px-3">
+                                <Link
+                                  href={`/accounting/settlement/partners/${sh.bearer_partner_id}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {(sh.bearer_partner as { name?: string } | null)?.name || sh.bearer_partner_id}
+                                </Link>
+                              </td>
+                              <td className="py-2 px-3 text-right tabular-nums">{(() => { const p = Number(sh.share_ratio) * 100; return Number.isInteger(p) ? `${p}%` : `${p.toFixed(1)}%`; })()}</td>
+                              {canManage && (
+                                <td className="py-2 px-3">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteOwnSalaryShare(sh.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                          {canManage && (
+                            <tr className="border-t-2">
+                              <td className="py-2 px-3">
+                                <Select value={addOwnSharePartnerId} onValueChange={setAddOwnSharePartnerId}>
+                                  <SelectTrigger className="h-8 w-48">
+                                    <SelectValue placeholder="파트너 선택" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {partners
+                                      .filter(p => p.id !== partnerId && !ownSalaryShares.some(s => s.bearer_partner_id === p.id))
+                                      .map(p => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <div className="inline-flex items-center gap-1">
+                                  <Input type="number" value={addOwnShareRatio} onChange={(e) => setAddOwnShareRatio(e.target.value)} className="w-20 h-8 text-right" placeholder="비율" min="1" max="100" />
+                                  <span className="text-sm text-muted-foreground">%</span>
+                                </div>
+                              </td>
+                              <td className="py-2 px-3">
+                                <Button size="sm" variant="outline" className="h-8" onClick={handleAddOwnSalaryShare} disabled={ownShareSaving || !addOwnSharePartnerId || !addOwnShareRatio}>
+                                  <Plus className="h-3.5 w-3.5 mr-1" />추가
+                                </Button>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 타 작가 인건비 분담 (이 파트너가 bearer로 참여하는 항목) */}
+          {bearerShares.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">타 작가 인건비 분담 ({bearerShares.length}건)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="py-2 px-3 font-medium">구분</th>
+                        <th className="py-2 px-3 font-medium">대상</th>
+                        <th className="py-2 px-3 font-medium text-right">분담 비율</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bearerShares.map((sh) => {
+                        let sourceName = sh.source_id;
+                        if (sh.source_type === 'staff') {
+                          sourceName = bearerStaffNames.get(sh.source_id) || sh.source_id;
+                        } else {
+                          const p = partners.find(pt => pt.id === sh.source_id);
+                          if (p) sourceName = p.name;
+                        }
+                        const pct = Number(sh.share_ratio) * 100;
+                        const pctStr = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
+                        return (
+                          <tr key={sh.id} className="border-b hover:bg-muted/50">
+                            <td className="py-2 px-3">
+                              <Badge variant="secondary" className="text-xs">
+                                {sh.source_type === 'staff' ? '스태프' : '파트너 급여'}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3">{sourceName}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{pctStr}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 월별 수익 분배 추이 */}
           <Card>
