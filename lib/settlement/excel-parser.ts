@@ -127,23 +127,69 @@ function parseDomesticPaid(
     }
   }
 
-  // 2) Fallback: "컨텐츠별 매출 통계" 시트에서 작품별 파싱
+  // 2) "작품별 집계" 시트 — 브랜드 파일 (49개 작품이 한 파일에)
+  const summarySheetName = workbook.SheetNames.find(n => n.includes('작품별 집계'));
+  if (summarySheetName) {
+    const sheet = workbook.Sheets[summarySheetName];
+    const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // 헤더 행(5행 = idx 4)에서 "매출 확정" 컬럼 동적 탐색
+    let revenueColIdx = 81; // CD열 기본값
+    const headerRow = data[4];
+    if (headerRow) {
+      for (let i = 0; i < headerRow.length; i++) {
+        const val = String(headerRow[i] || '');
+        if (val.includes('매출') && val.includes('확정')) {
+          revenueColIdx = i;
+          break;
+        }
+      }
+    }
+
+    // 7행(idx 6)부터 데이터: A열=작품명
+    for (let i = 6; i < data.length; i++) {
+      const row = data[i];
+      if (!row || !row[0]) continue;
+
+      const workName = String(row[0]).trim();
+      if (!workName) continue;
+
+      const revenue = parseNumber(row[revenueColIdx]);
+      if (revenue !== 0) {
+        rows.push({ work_name: workName, amount: revenue });
+      }
+    }
+
+    if (rows.length > 0) return rows;
+  }
+
+  // 3) Fallback: "컨텐츠별 매출 통계" 시트에서 작품별 파싱
   const statsSheetName = workbook.SheetNames.find(n => n.includes('컨텐츠별 매출 통계'));
   if (statsSheetName) {
     const sheet = workbook.Sheets[statsSheetName];
     const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-    // 헤더에서 "확정 합계" → "더그림" 순으로 컬럼 탐색
+    // 헤더에서 "매출 확정" → "확정 합계" → "더그림" 순으로 컬럼 탐색
     let revenueColIdx = 81;
     const headerRow = data[4];
     if (headerRow) {
       let found = false;
       for (let i = 0; i < headerRow.length; i++) {
         const val = String(headerRow[i] || '');
-        if (val.includes('확정') && val.includes('합계')) {
+        if (val.includes('매출') && val.includes('확정')) {
           revenueColIdx = i;
           found = true;
           break;
+        }
+      }
+      if (!found) {
+        for (let i = 0; i < headerRow.length; i++) {
+          const val = String(headerRow[i] || '');
+          if (val.includes('확정') && val.includes('합계')) {
+            revenueColIdx = i;
+            found = true;
+            break;
+          }
         }
       }
       if (!found) {
@@ -172,7 +218,7 @@ function parseDomesticPaid(
     if (rows.length > 0) return rows;
   }
 
-  // 3) 최종 Fallback: 파일명에서 작품명만이라도 추출
+  // 4) 최종 Fallback: 파일명에서 작품명만이라도 추출
   const workName = extractWorkNameFromDomesticPaidFileName(fileName);
   if (workName) {
     errors.push(`매출액을 찾을 수 없습니다: ${fileName} (작품: ${workName})`);
