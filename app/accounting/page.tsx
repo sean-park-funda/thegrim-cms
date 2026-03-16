@@ -48,7 +48,7 @@ export default function AccountingPage() {
     const fromStr = from.toISOString().slice(0, 10);
     const toStr = now.toISOString().slice(0, 10);
 
-    settlementFetch(`/api/accounting/settlement/daily-sales?from=${fromStr}&to=${toStr}`)
+    settlementFetch(`/api/accounting/sales?from=${fromStr}&to=${toStr}`)
       .then(r => r.json())
       .then(data => {
         if (data.summary) {
@@ -143,7 +143,7 @@ export default function AccountingPage() {
               <TrendingUp className="h-5 w-5 text-cyan-500" />
               일별 매출 추이
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/settlement/daily-sales')}>
+            <Button variant="outline" size="sm" onClick={() => router.push('/accounting/sales')}>
               상세 보기
             </Button>
           </CardHeader>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 
-// GET /api/accounting/settlement/daily-sales - 일별 매출 데이터 조회
+// GET /api/accounting/sales - 일별 매출 데이터 조회
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);

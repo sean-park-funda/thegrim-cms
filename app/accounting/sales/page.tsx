@@ -124,7 +124,7 @@ export default function DailySalesPage() {
     setChatLoading(true);
 
     try {
-      const res = await fetch('/api/accounting/settlement/daily-sales/chat', {
+      const res = await fetch('/api/accounting/sales/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
@@ -150,7 +150,7 @@ export default function DailySalesPage() {
     if (!profile || !canViewAccounting(profile.role)) return;
 
     setLoading(true);
-    settlementFetch(`/api/accounting/settlement/daily-sales?from=${from}&to=${to}`)
+    settlementFetch(`/api/accounting/sales?from=${from}&to=${to}`)
       .then(r => r.json())
       .then((d: DailySalesData) => {
         setData(d);
