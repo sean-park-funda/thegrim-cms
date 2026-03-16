@@ -99,11 +99,11 @@ export async function POST(request: NextRequest) {
     const { action, projectId, cutIds, defaultProvider, defaultMotionType } = body;
 
     if (action === 'create') {
-      // 프로젝트 생성
       const { data, error } = await supabase
         .from('moving_webtoon_projects')
         .insert({
           project_id: projectId,
+          name: body.name || '이름없음',
           default_provider: defaultProvider || 'kling-o3-pro',
           default_motion_type: defaultMotionType || 'lip_sync',
         })
@@ -147,15 +147,30 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT: 무빙웹툰 컷 업데이트 (프롬프트, 모션타입 등)
+ * PUT: 무빙웹툰 컷 또는 프로젝트 업데이트
  */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // 프로젝트 이름 업데이트
+    if (body.movingProjectId && body.name !== undefined) {
+      const { data, error } = await supabase
+        .from('moving_webtoon_projects')
+        .update({ name: body.name, updated_at: new Date().toISOString() })
+        .eq('id', body.movingProjectId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json(data);
+    }
+
+    // 컷 업데이트
     const { cutId, ...updates } = body;
 
     if (!cutId) {
-      return NextResponse.json({ error: 'cutId 필요' }, { status: 400 });
+      return NextResponse.json({ error: 'cutId 또는 movingProjectId 필요' }, { status: 400 });
     }
 
     const allowedFields = ['motion_type', 'prompt', 'provider', 'duration_seconds', 'aspect_ratio', 'order_index'];

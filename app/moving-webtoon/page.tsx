@@ -20,8 +20,11 @@ import {
   Upload,
   Download,
   Clipboard,
-  FolderOpen,
+  Plus,
   ChevronLeft,
+  Pencil,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import {
   MovingWebtoonMotionType,
@@ -44,6 +47,14 @@ interface CutItem {
   dbMwCutId: string | null;
 }
 
+interface MwProject {
+  id: string;
+  project_id: string;
+  name: string;
+  created_at: string;
+  cut_count: number;
+}
+
 const PROVIDERS = [
   { id: 'kling-o3-pro', name: 'Kling O3 Pro' },
   { id: 'kling-o3-standard', name: 'Kling O3 Standard' },
@@ -53,43 +64,47 @@ const PROVIDERS = [
 const DEFAULT_PROVIDER = 'kling-o3-pro';
 const DEFAULT_MOTION: MovingWebtoonMotionType = 'lip_sync';
 
-interface MwProject {
-  id: string;
-  project_id: string;
-  created_at: string;
-  cut_count: number;
-}
-
 export default function MovingWebtoonPage() {
+  // 화면 모드: 'list' = 프로젝트 목록, 'project' = 프로젝트 내부
+  const [mode, setMode] = useState<'list' | 'project'>('list');
   const [cuts, setCuts] = useState<CutItem[]>([]);
   const [merging, setMerging] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [mwProjectId, setMwProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState('이름없음');
+  const [editingName, setEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
   const [projectList, setProjectList] = useState<MwProject[]>([]);
-  const [showProjectList, setShowProjectList] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
   const [loadingProject, setLoadingProject] = useState(false);
   const fileCounter = useRef(0);
   const projectRef = useRef<{ projectId: string; mwProjectId: string } | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // ===== 최근 프로젝트 목록 로드 =====
+  // ===== 프로젝트 목록 로드 =====
   const loadProjectList = useCallback(async () => {
-    const res = await fetch('/api/webtoonanimation/moving-webtoon?list=true');
-    if (res.ok) {
-      const data = await res.json();
-      setProjectList(data.projects || []);
+    setLoadingList(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/moving-webtoon?list=true');
+      if (res.ok) {
+        const data = await res.json();
+        setProjectList(data.projects || []);
+      }
+    } finally {
+      setLoadingList(false);
     }
   }, []);
 
   // ===== 기존 프로젝트 로드 =====
-  const loadProject = useCallback(async (pId: string, mwPId: string) => {
+  const loadProject = useCallback(async (proj: MwProject) => {
     setLoadingProject(true);
     try {
-      const res = await fetch(`/api/webtoonanimation/moving-webtoon?projectId=${pId}`);
+      const res = await fetch(`/api/webtoonanimation/moving-webtoon?projectId=${proj.project_id}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (!data.project || !data.cuts?.length) return;
+      if (!data.project) return;
 
-      const loadedCuts: CutItem[] = data.cuts.map((c: Record<string, unknown>, i: number) => ({
+      const loadedCuts: CutItem[] = (data.cuts || []).map((c: Record<string, unknown>, i: number) => ({
         id: c.id as string,
         imageUrl: (c.cut as Record<string, string>)?.file_path || '',
         fileName: (c.cut as Record<string, string>)?.file_name || `컷 ${i + 1}`,
@@ -105,52 +120,98 @@ export default function MovingWebtoonPage() {
         dbMwCutId: c.id as string,
       }));
 
-      projectRef.current = { projectId: pId, mwProjectId: mwPId };
-      setProjectId(pId);
-      setMwProjectId(mwPId);
+      projectRef.current = { projectId: proj.project_id, mwProjectId: proj.id };
+      setProjectId(proj.project_id);
+      setMwProjectId(proj.id);
+      setProjectName(proj.name || '이름없음');
       setCuts(loadedCuts);
-      setShowProjectList(false);
+      setMode('project');
     } finally {
       setLoadingProject(false);
     }
   }, []);
 
-  // ===== 페이지 로드 시 프로젝트 목록 가져오기 =====
+  // ===== 새 프로젝트 만들기 =====
+  const createNewProject = useCallback(async () => {
+    setLoadingProject(true);
+    try {
+      const projRes = await fetch('/api/webtoonanimation/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: `무빙웹툰 ${new Date().toLocaleDateString('ko-KR')}` }),
+      });
+      const proj = await projRes.json();
+
+      const mwRes = await fetch('/api/webtoonanimation/moving-webtoon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          projectId: proj.id,
+          name: '이름없음',
+          defaultProvider: DEFAULT_PROVIDER,
+          defaultMotionType: DEFAULT_MOTION,
+        }),
+      });
+      const mwProj = await mwRes.json();
+
+      projectRef.current = { projectId: proj.id, mwProjectId: mwProj.id };
+      setProjectId(proj.id);
+      setMwProjectId(mwProj.id);
+      setProjectName('이름없음');
+      setCuts([]);
+      setMode('project');
+    } finally {
+      setLoadingProject(false);
+    }
+  }, []);
+
+  // ===== 프로젝트 목록으로 돌아가기 =====
+  const goBack = useCallback(() => {
+    projectRef.current = null;
+    setProjectId(null);
+    setMwProjectId(null);
+    setCuts([]);
+    setMode('list');
+    loadProjectList();
+  }, [loadProjectList]);
+
+  // ===== 프로젝트 이름 저장 =====
+  const saveName = useCallback(async () => {
+    if (!mwProjectId || !tempName.trim()) {
+      setEditingName(false);
+      return;
+    }
+    const name = tempName.trim();
+    setProjectName(name);
+    setEditingName(false);
+    await fetch('/api/webtoonanimation/moving-webtoon', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movingProjectId: mwProjectId, name }),
+    });
+  }, [mwProjectId, tempName]);
+
+  // ===== 페이지 로드 시 =====
   useEffect(() => {
     loadProjectList();
   }, [loadProjectList]);
 
-  // ===== 프로젝트 초기화 =====
+  // ===== 이름 편집 시 포커스 =====
+  useEffect(() => {
+    if (editingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [editingName]);
+
+  // ===== ensureProject (이미 프로젝트 안에 있으므로 ref 반환) =====
   const ensureProject = useCallback(async (): Promise<{ projectId: string; mwProjectId: string }> => {
     if (projectRef.current) return projectRef.current;
-
-    const projRes = await fetch('/api/webtoonanimation/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: `무빙웹툰 ${new Date().toLocaleDateString('ko-KR')}` }),
-    });
-    const proj = await projRes.json();
-
-    const mwRes = await fetch('/api/webtoonanimation/moving-webtoon', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create',
-        projectId: proj.id,
-        defaultProvider: DEFAULT_PROVIDER,
-        defaultMotionType: DEFAULT_MOTION,
-      }),
-    });
-    const mwProj = await mwRes.json();
-
-    const result = { projectId: proj.id, mwProjectId: mwProj.id };
-    projectRef.current = result;
-    setProjectId(proj.id);
-    setMwProjectId(mwProj.id);
-    return result;
+    throw new Error('프로젝트가 초기화되지 않았습니다');
   }, []);
 
-  // ===== 파일 처리 (드롭/페이스트 공통) =====
+  // ===== 파일 처리 =====
   const processFiles = useCallback(async (files: File[]) => {
     const newCuts: CutItem[] = files.map((file) => ({
       id: `temp-${++fileCounter.current}`,
@@ -232,8 +293,9 @@ export default function MovingWebtoonPage() {
     }
   }, [ensureProject]);
 
-  // ===== 클립보드 페이스트 =====
+  // ===== 클립보드 페이스트 (프로젝트 모드에서만) =====
   useEffect(() => {
+    if (mode !== 'project') return;
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -254,7 +316,7 @@ export default function MovingWebtoonPage() {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [processFiles]);
+  }, [mode, processFiles]);
 
   // ===== 드롭존 =====
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -262,9 +324,11 @@ export default function MovingWebtoonPage() {
     accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'] },
     multiple: true,
     noClick: cuts.length > 0,
+    noKeyboard: mode !== 'project',
+    noDrag: mode !== 'project',
   });
 
-  // ===== 개별 영상 생성 =====
+  // ===== 영상 생성 =====
   const generateCut = async (cutId: string) => {
     const cut = cuts.find((c) => c.id === cutId);
     if (!cut?.dbMwCutId) return;
@@ -298,7 +362,6 @@ export default function MovingWebtoonPage() {
     }
   };
 
-  // ===== 전체 생성 =====
   const generateAll = async () => {
     const pending = cuts.filter((c) => (c.status === 'pending' || c.status === 'failed') && c.dbMwCutId);
     for (const cut of pending) {
@@ -306,7 +369,6 @@ export default function MovingWebtoonPage() {
     }
   };
 
-  // ===== 합치기 =====
   const mergeCuts = async () => {
     if (!mwProjectId) return;
     setMerging(true);
@@ -335,7 +397,6 @@ export default function MovingWebtoonPage() {
     }
   };
 
-  // ===== 컷 삭제 =====
   const removeCut = async (cutId: string) => {
     const cut = cuts.find((c) => c.id === cutId);
     if (cut?.dbMwCutId) {
@@ -344,7 +405,6 @@ export default function MovingWebtoonPage() {
     setCuts((prev) => prev.filter((c) => c.id !== cutId));
   };
 
-  // ===== 컷 업데이트 =====
   const updateCut = (cutId: string, updates: Partial<CutItem>) => {
     setCuts((prev) => prev.map((c) => (c.id === cutId ? { ...c, ...updates } : c)));
     const cut = cuts.find((c) => c.id === cutId);
@@ -363,10 +423,94 @@ export default function MovingWebtoonPage() {
     }
   };
 
+  const deleteProject = async (proj: MwProject, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`"${proj.name}" 프로젝트를 삭제하시겠습니까?`)) return;
+    await fetch(`/api/webtoonanimation/moving-webtoon?movingProjectId=${proj.id}`, { method: 'DELETE' });
+    setProjectList((prev) => prev.filter((p) => p.id !== proj.id));
+  };
+
   const completedCount = cuts.filter((c) => c.status === 'completed').length;
   const pendingCount = cuts.filter((c) => c.status === 'pending' || c.status === 'failed').length;
   const isGenerating = cuts.some((c) => c.status === 'generating');
 
+  // ==========================================
+  // 프로젝트 목록 화면
+  // ==========================================
+  if (mode === 'list') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+          <div className="container mx-auto max-w-5xl px-4 py-3">
+            <div className="flex items-center justify-between">
+              <h1 className="text-lg font-semibold">무빙웹툰</h1>
+              <Button size="sm" onClick={createNewProject} disabled={loadingProject}>
+                {loadingProject ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                )}
+                새 프로젝트
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="container mx-auto max-w-5xl px-4 py-6">
+          {loadingList ? (
+            <div className="flex items-center justify-center h-[40vh]">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : projectList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+              <p className="text-muted-foreground mb-4">아직 프로젝트가 없습니다</p>
+              <Button onClick={createNewProject} disabled={loadingProject}>
+                <Plus className="h-4 w-4 mr-1" />
+                첫 프로젝트 만들기
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {projectList.map((proj) => (
+                <Card
+                  key={proj.id}
+                  className="p-4 cursor-pointer hover:bg-muted/50 transition-colors group"
+                  onClick={() => loadProject(proj)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{proj.name || '이름없음'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(proj.created_at).toLocaleDateString('ko-KR', {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{proj.cut_count}컷</Badge>
+                      <button
+                        onClick={(e) => deleteProject(proj, e)}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // 프로젝트 내부 화면
+  // ==========================================
   return (
     <div className="min-h-screen bg-background">
       {/* 상단 바 */}
@@ -374,22 +518,41 @@ export default function MovingWebtoonPage() {
         <div className="container mx-auto max-w-5xl px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {projectRef.current && (
-                <button
-                  onClick={() => {
-                    projectRef.current = null;
-                    setProjectId(null);
-                    setMwProjectId(null);
-                    setCuts([]);
-                    setShowProjectList(false);
-                    loadProjectList();
-                  }}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+              <button
+                onClick={goBack}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              {/* 인라인 프로젝트 이름 편집 */}
+              {editingName ? (
+                <form
+                  onSubmit={(e) => { e.preventDefault(); saveName(); }}
+                  className="flex items-center gap-1"
                 >
-                  <ChevronLeft className="h-5 w-5" />
+                  <input
+                    ref={nameInputRef}
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    onBlur={saveName}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setEditingName(false); }}
+                    className="text-lg font-semibold bg-transparent border-b-2 border-primary outline-none w-48"
+                  />
+                  <button type="submit" className="text-primary">
+                    <Check className="h-4 w-4" />
+                  </button>
+                </form>
+              ) : (
+                <button
+                  onClick={() => { setTempName(projectName); setEditingName(true); }}
+                  className="flex items-center gap-1.5 group"
+                >
+                  <h1 className="text-lg font-semibold">{projectName}</h1>
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
               )}
-              <h1 className="text-lg font-semibold">무빙웹툰</h1>
+
               {cuts.length > 0 && (
                 <Badge variant="outline" className="text-xs">
                   {completedCount}/{cuts.length} 완료
@@ -398,16 +561,6 @@ export default function MovingWebtoonPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {!projectRef.current && projectList.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowProjectList(!showProjectList)}
-                >
-                  <FolderOpen className="h-3.5 w-3.5 mr-1" />
-                  이전 프로젝트 ({projectList.length})
-                </Button>
-              )}
               {pendingCount > 0 && (
                 <Button size="sm" onClick={generateAll} disabled={isGenerating}>
                   {isGenerating ? (
@@ -443,34 +596,7 @@ export default function MovingWebtoonPage() {
       >
         <input {...getInputProps()} />
 
-        {/* 프로젝트 목록 */}
-        {showProjectList && (
-          <div className="mb-6 space-y-2">
-            <h2 className="text-sm font-medium text-muted-foreground mb-3">이전 프로젝트</h2>
-            {projectList.map((proj) => (
-              <Card
-                key={proj.id}
-                className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => loadProject(proj.project_id, proj.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-medium">
-                      {new Date(proj.created_at).toLocaleDateString('ko-KR', {
-                        year: 'numeric', month: 'short', day: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-2">{proj.cut_count}컷</span>
-                  </div>
-                  {loadingProject && <Loader2 className="h-4 w-4 animate-spin" />}
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {cuts.length === 0 && !showProjectList ? (
+        {cuts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
             <div
               className={`border-2 border-dashed rounded-xl p-12 transition-colors max-w-lg w-full cursor-pointer ${
@@ -488,7 +614,7 @@ export default function MovingWebtoonPage() {
               </div>
             </div>
           </div>
-        ) : cuts.length > 0 ? (
+        ) : (
           <div className="space-y-3">
             {cuts.map((cut, index) => (
               <CutRow
@@ -523,7 +649,7 @@ export default function MovingWebtoonPage() {
               <p className="text-xs text-muted-foreground">컷 추가 (드래그, 클릭, 또는 Ctrl+V)</p>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
