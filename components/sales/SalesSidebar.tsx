@@ -21,10 +21,8 @@ import {
   LayoutDashboard,
   TrendingUp,
   BookOpen,
-  GitCompareArrows,
   Trophy,
   MessageCircle,
-  Activity,
   ArrowLeft,
   Plus,
   Trash2,
@@ -48,15 +46,14 @@ const navGroups = [
     label: '분석',
     items: [
       { href: '/accounting/sales/works', label: '작품별 매출', icon: BookOpen },
-      { href: '/accounting/sales/compare', label: '비교 분석', icon: GitCompareArrows },
       { href: '/accounting/sales/ranking', label: '랭킹', icon: Trophy },
+      { href: '/accounting/sales/growth', label: '성장률', icon: TrendingUp },
     ],
   },
   {
     label: '도구',
     items: [
       { href: '/accounting/sales/chat', label: 'AI 검색', icon: MessageCircle },
-      { href: '/accounting/sales/status', label: '데이터 현황', icon: Activity },
     ],
   },
 ];

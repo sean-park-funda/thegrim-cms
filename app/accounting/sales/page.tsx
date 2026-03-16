@@ -54,7 +54,7 @@ export default function SalesDashboardPage() {
       .then((d: DailySalesData) => {
         setData(d);
         if (d.summary?.workTotals) {
-          setSelectedWorks(new Set(d.summary.workTotals.slice(0, 5).map(w => w.name)));
+          setSelectedWorks(new Set(d.summary.workTotals.slice(0, 3).map(w => w.name)));
         }
       })
       .catch(console.error)
