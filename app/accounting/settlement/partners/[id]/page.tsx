@@ -39,6 +39,7 @@ interface WorkDetail {
   labor_cost: number;
   net_share: number;
   rs_rate: number;
+  excluded?: boolean;
 }
 
 interface WorkStatement {
@@ -545,7 +546,7 @@ export default function PartnerDetailPage() {
                         <tbody>
                           {statement.works.map((work) =>
                             work.details
-                              .filter(d => d.gross_revenue > 0)
+                              .filter(d => !d.excluded)
                               .map((d, i) => (
                                 <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
                                   <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
