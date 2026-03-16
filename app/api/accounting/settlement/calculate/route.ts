@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { calculateSettlement } from '@/lib/settlement/calculator';
-import { computeStaffSalaryDeductions } from '@/lib/settlement/staff-salary';
+import { computeLaborCostDeductions } from '@/lib/settlement/staff-salary';
 import { RevenueType } from '@/lib/types/settlement';
 
 const DEFAULT_REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
@@ -67,8 +67,8 @@ export async function POST(request: NextRequest) {
       revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
     }
 
-    // 스태프 급여 비례 배분 계산
-    const staffDeductions = await computeStaffSalaryDeductions(supabase, month, revenueByWorkId);
+    // 인건비공제 계산 (rs_labor_cost_items 기반)
+    const staffDeductions = await computeLaborCostDeductions(supabase, month, revenueByWorkId);
 
     const results: {
       work_id: string;

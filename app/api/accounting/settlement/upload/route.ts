@@ -4,7 +4,7 @@ import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel, normalizeWorkName } from '@/lib/settlement/excel-parser';
 import { deduplicateWorks } from '@/lib/settlement/dedup-works';
 import { calculateSettlement } from '@/lib/settlement/calculator';
-import { computeStaffSalaryDeductions } from '@/lib/settlement/staff-salary';
+import { computeLaborCostDeductions } from '@/lib/settlement/staff-salary';
 import { RevenueType } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
         for (const rev of revenues) {
           revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
         }
-        const staffDeductions = await computeStaffSalaryDeductions(supabase, month, revenueByWorkId);
+        const staffDeductions = await computeLaborCostDeductions(supabase, month, revenueByWorkId);
 
         for (const rev of revenues) {
           const partners = workPartners.filter(wp => wp.work_id === rev.work_id);

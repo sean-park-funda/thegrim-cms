@@ -1,156 +1,174 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * 급여를 작품별 수익배분액(revenue_share) 비례로 배분하여 partner|work 키로 차감액을 누적
+ * rs_labor_cost_items 기반 인건비공제 계산
+ *
+ * 엑셀 규칙:
+ * 1. 대상자가 2인 이상인 경우 → 각 RS% 적용하여 공동 부담
+ * 2. 작품이 2개 이상인 경우 → 대상자의 수익분배금 비중으로 안분
+ *
+ * @returns Map<string, number> - key: "partnerId|workId" → 공제액
  */
-function distributeSalaryToWorks(
-  deductions: Map<string, number>,
-  partnerId: string,
-  salary: number,
-  workIds: string[],
-  shareByWork: Map<string, number>,
-) {
-  if (salary <= 0 || workIds.length === 0) return;
-
-  const workShares: { workId: string; share: number }[] = [];
-  let totalShare = 0;
-  for (const wid of workIds) {
-    const share = shareByWork.get(wid) || 0;
-    workShares.push({ workId: wid, share });
-    totalShare += share;
-  }
-
-  for (const ws of workShares) {
-    let allocated: number;
-    if (totalShare > 0) {
-      allocated = Math.round(salary * (ws.share / totalShare));
-    } else {
-      allocated = Math.round(salary / workShares.length);
-    }
-    if (allocated <= 0) continue;
-
-    const key = `${partnerId}|${ws.workId}`;
-    deductions.set(key, (deductions.get(key) || 0) + allocated);
-  }
-}
-
-/**
- * 스태프 급여 + 파트너 본인 급여를 참여 작품 수익배분액 비례로 배분하여
- * 작가별·작품별 차감액을 계산한다.
- */
-export async function computeStaffSalaryDeductions(
+export async function computeLaborCostDeductions(
   supabase: SupabaseClient,
   month: string,
   revenueByWorkId: Map<string, number>,
 ): Promise<Map<string, number>> {
   const deductions = new Map<string, number>();
 
-  // 관련 파트너의 작품별 RS율 조회 → 수익배분액 계산용
-  const buildShareMap = (
-    partnerWorkPairs: { partner_id: string; work_id: string; rs_rate: number; mg_rs_rate: number | null; is_mg_applied: boolean }[],
-    partnerId: string,
-    targetWorkIds: string[],
-  ): Map<string, number> => {
-    const shareMap = new Map<string, number>();
-    for (const wid of targetWorkIds) {
-      const wp = partnerWorkPairs.find(p => p.partner_id === partnerId && p.work_id === wid);
-      const grossRevenue = revenueByWorkId.get(wid) || 0;
-      if (wp) {
-        const rate = wp.is_mg_applied && wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
-        shareMap.set(wid, Math.round(grossRevenue * rate));
-      } else {
-        shareMap.set(wid, grossRevenue);
-      }
-    }
-    return shareMap;
-  };
+  // 1. 해당월 인건비공제 아이템 조회
+  const { data: items } = await supabase
+    .from('rs_labor_cost_items')
+    .select('id, amount')
+    .eq('month', month);
 
-  // 1. 스태프 급여 배분
-  const { data: staffList } = await supabase
-    .from('rs_staff')
-    .select('id, monthly_salary, employer_partner_id')
-    .eq('is_active', true)
-    .eq('employer_type', 'author');
+  if (!items || items.length === 0) return deductions;
 
-  if (staffList && staffList.length > 0) {
-    const staffIds = staffList.map(s => s.id);
-    const employerPartnerIds = [...new Set(staffList.map(s => s.employer_partner_id).filter(Boolean))];
+  const itemIds = items.map(i => i.id);
 
-    const { data: monthlySalaries } = await supabase
-      .from('rs_staff_salaries')
-      .select('staff_id, amount')
-      .eq('month', month)
-      .in('staff_id', staffIds);
+  // 2. 아이템별 대상자(파트너) 조회
+  const { data: partnerLinks } = await supabase
+    .from('rs_labor_cost_item_partners')
+    .select('item_id, partner_id')
+    .in('item_id', itemIds);
 
-    const salaryByStaff = new Map<string, number>();
-    for (const ms of (monthlySalaries || [])) {
-      salaryByStaff.set(ms.staff_id, Number(ms.amount));
-    }
+  // 3. 아이템별 공제작품 조회
+  const { data: workLinks } = await supabase
+    .from('rs_labor_cost_item_works')
+    .select('item_id, work_id')
+    .in('item_id', itemIds);
 
-    const { data: assignments } = await supabase
-      .from('rs_staff_assignments')
-      .select('staff_id, work_id')
-      .eq('is_active', true)
-      .in('staff_id', staffIds);
-
-    const assignmentsByStaff = new Map<string, string[]>();
-    for (const a of (assignments || [])) {
-      const list = assignmentsByStaff.get(a.staff_id) || [];
-      list.push(a.work_id);
-      assignmentsByStaff.set(a.staff_id, list);
-    }
-
-    // 파트너별 RS율 조회
-    const { data: wpData } = await supabase
-      .from('rs_work_partners')
-      .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
-      .in('partner_id', employerPartnerIds);
-    const workPartnerPairs = wpData || [];
-
-    for (const staff of staffList) {
-      const workIds = assignmentsByStaff.get(staff.id);
-      if (!workIds || workIds.length === 0) continue;
-      const salary = salaryByStaff.get(staff.id) ?? Number(staff.monthly_salary);
-      const shareMap = buildShareMap(workPartnerPairs, staff.employer_partner_id, workIds);
-      distributeSalaryToWorks(deductions, staff.employer_partner_id, salary, workIds, shareMap);
-    }
+  // Build maps
+  const partnersByItem = new Map<string, string[]>();
+  for (const link of (partnerLinks || [])) {
+    const list = partnersByItem.get(link.item_id) || [];
+    list.push(link.partner_id);
+    partnersByItem.set(link.item_id, list);
   }
 
-  // 2. 파트너 본인 급여 배분 (has_salary=true인 파트너)
-  const { data: salariedPartners } = await supabase
-    .from('rs_partners')
-    .select('id')
-    .eq('has_salary', true);
+  const worksByItem = new Map<string, string[]>();
+  for (const link of (workLinks || [])) {
+    const list = worksByItem.get(link.item_id) || [];
+    list.push(link.work_id);
+    worksByItem.set(link.item_id, list);
+  }
 
-  if (salariedPartners && salariedPartners.length > 0) {
-    const partnerIds = salariedPartners.map(p => p.id);
+  // 4. 관련 파트너-작품의 RS율 조회 (분담비율 + 안분 계산용)
+  const allPartnerIds = [...new Set((partnerLinks || []).map(l => l.partner_id))];
+  const allWorkIds = [...new Set((workLinks || []).map(l => l.work_id))];
 
-    const { data: partnerSalaries } = await supabase
-      .from('rs_partner_salaries')
-      .select('partner_id, amount')
-      .eq('month', month)
-      .in('partner_id', partnerIds);
+  let wpData: { partner_id: string; work_id: string; rs_rate: number; mg_rs_rate: number | null; is_mg_applied: boolean }[] = [];
+  if (allPartnerIds.length > 0 && allWorkIds.length > 0) {
+    const { data } = await supabase
+      .from('rs_work_partners')
+      .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
+      .in('partner_id', allPartnerIds)
+      .in('work_id', allWorkIds);
+    wpData = data || [];
+  }
 
-    if (partnerSalaries && partnerSalaries.length > 0) {
-      const { data: wpData } = await supabase
-        .from('rs_work_partners')
-        .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
-        .in('partner_id', partnerIds);
+  // 5. 각 아이템에 대해 공제액 배분
+  for (const item of items) {
+    const amount = Number(item.amount);
+    if (amount <= 0) continue;
 
-      const worksByPartner = new Map<string, string[]>();
-      for (const wp of (wpData || [])) {
-        const list = worksByPartner.get(wp.partner_id) || [];
-        list.push(wp.work_id);
-        worksByPartner.set(wp.partner_id, list);
+    const partnerIds = partnersByItem.get(item.id) || [];
+    const workIds = worksByItem.get(item.id) || [];
+    if (partnerIds.length === 0 || workIds.length === 0) continue;
+
+    // --- 규칙 1: 대상자별 부담액 계산 (RS% 비례) ---
+    const partnerBurdens = new Map<string, number>();
+
+    if (partnerIds.length === 1) {
+      // 단독 대상자 → 전액 부담
+      partnerBurdens.set(partnerIds[0], amount);
+    } else {
+      // 공동 대상자 → 각 RS% 비례로 분담
+      // 각 대상자의 RS율 합산 (해당 아이템의 작품들에 대해)
+      const partnerRsSum = new Map<string, number>();
+      let totalRs = 0;
+
+      for (const pid of partnerIds) {
+        let rsSum = 0;
+        for (const wid of workIds) {
+          const wp = wpData.find(w => w.partner_id === pid && w.work_id === wid);
+          if (wp) {
+            rsSum += wp.is_mg_applied && wp.mg_rs_rate != null
+              ? Number(wp.mg_rs_rate)
+              : Number(wp.rs_rate);
+          }
+        }
+        partnerRsSum.set(pid, rsSum);
+        totalRs += rsSum;
       }
 
-      for (const ps of partnerSalaries) {
-        const workIds = worksByPartner.get(ps.partner_id) || [];
-        const shareMap = buildShareMap(wpData || [], ps.partner_id, workIds);
-        distributeSalaryToWorks(deductions, ps.partner_id, Number(ps.amount), workIds, shareMap);
+      if (totalRs > 0) {
+        for (const pid of partnerIds) {
+          const ratio = (partnerRsSum.get(pid) || 0) / totalRs;
+          partnerBurdens.set(pid, Math.round(amount * ratio));
+        }
+      } else {
+        // RS율 정보 없으면 균등 분할
+        const each = Math.round(amount / partnerIds.length);
+        for (const pid of partnerIds) {
+          partnerBurdens.set(pid, each);
+        }
+      }
+    }
+
+    // --- 규칙 2: 작품별 안분 (수익분배금 비중) ---
+    for (const [partnerId, burden] of partnerBurdens) {
+      if (burden <= 0) continue;
+
+      if (workIds.length === 1) {
+        // 단일 작품 → 전액
+        const key = `${partnerId}|${workIds[0]}`;
+        deductions.set(key, (deductions.get(key) || 0) + burden);
+      } else {
+        // 복수 작품 → 해당 파트너의 수익분배금 비중으로 안분
+        const workShares: { workId: string; share: number }[] = [];
+        let totalShare = 0;
+
+        for (const wid of workIds) {
+          const grossRevenue = revenueByWorkId.get(wid) || 0;
+          const wp = wpData.find(w => w.partner_id === partnerId && w.work_id === wid);
+          let share = 0;
+          if (wp) {
+            const rate = wp.is_mg_applied && wp.mg_rs_rate != null
+              ? Number(wp.mg_rs_rate)
+              : Number(wp.rs_rate);
+            share = Math.round(grossRevenue * rate);
+          }
+          workShares.push({ workId: wid, share });
+          totalShare += share;
+        }
+
+        for (const ws of workShares) {
+          let allocated: number;
+          if (totalShare > 0) {
+            allocated = Math.round(burden * (ws.share / totalShare));
+          } else {
+            allocated = Math.round(burden / workShares.length);
+          }
+          if (allocated <= 0) continue;
+
+          const key = `${partnerId}|${ws.workId}`;
+          deductions.set(key, (deductions.get(key) || 0) + allocated);
+        }
       }
     }
   }
 
   return deductions;
+}
+
+/**
+ * @deprecated 새 computeLaborCostDeductions() 사용 권장
+ */
+export async function computeStaffSalaryDeductions(
+  supabase: SupabaseClient,
+  month: string,
+  revenueByWorkId: Map<string, number>,
+): Promise<Map<string, number>> {
+  return computeLaborCostDeductions(supabase, month, revenueByWorkId);
 }
