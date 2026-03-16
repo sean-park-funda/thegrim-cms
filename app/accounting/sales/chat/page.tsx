@@ -4,7 +4,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { User, Send, Loader2, Sparkles } from 'lucide-react';
+import { User, Send, Loader2, Sparkles, Menu } from 'lucide-react';
+import { useSidebar } from '@/components/ui/sidebar';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -24,6 +25,7 @@ const EXAMPLES = [
 
 export default function ChatPage() {
   const { profile } = useStore();
+  const { toggleSidebar } = useSidebar();
   const router = useRouter();
   const searchParams = useSearchParams();
   const convId = searchParams.get('id');
@@ -113,14 +115,22 @@ export default function ChatPage() {
           <h1 className="text-2xl font-bold tracking-tight">AI 검색</h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">일별 매출 데이터를 자연어로 검색하고 분석합니다</p>
         </div>
-        {messages.length > 0 && (
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={startNewChat}
+              className="px-3.5 py-1.5 text-xs font-medium rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+            >
+              새 대화
+            </button>
+          )}
           <button
-            onClick={startNewChat}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+            onClick={toggleSidebar}
+            className="h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
           >
-            새 대화
+            <Menu className="h-4.5 w-4.5" />
           </button>
-        )}
+        </div>
       </div>
 
       {/* 채팅 영역 */}
