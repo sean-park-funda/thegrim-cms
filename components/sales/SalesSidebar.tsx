@@ -104,7 +104,7 @@ export function SalesSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0">
+    <Sidebar side="right" collapsible="icon" className="border-l-0">
       <SidebarHeader className="px-4 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">

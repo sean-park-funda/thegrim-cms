@@ -9,6 +9,8 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
+import { useSidebar } from '@/components/ui/sidebar';
+import { Menu } from 'lucide-react';
 
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
@@ -39,6 +41,7 @@ function ChartTooltip({ active, payload, label }: {
 
 export default function SalesDashboardPage() {
   const { profile } = useStore();
+  const { toggleSidebar } = useSidebar();
   const [data, setData] = useState<DailySalesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
@@ -93,12 +96,20 @@ export default function SalesDashboardPage() {
   return (
     <div className="space-y-8">
       {/* 헤더 */}
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">매출</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">일별 매출 추이와 작품별 현황</p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">매출</h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">일별 매출 추이와 작품별 현황</p>
+          </div>
+          <button
+            onClick={toggleSidebar}
+            className="h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+          >
+            <Menu className="h-4.5 w-4.5" />
+          </button>
         </div>
-        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5">
+        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
           {PRESETS.map(p => (
             <button
               key={p.days}
