@@ -25,6 +25,7 @@ import {
   Pencil,
   Check,
   Trash2,
+  X,
 } from 'lucide-react';
 import {
   MovingWebtoonMotionType,
@@ -430,6 +431,8 @@ export default function MovingWebtoonPage() {
     setProjectList((prev) => prev.filter((p) => p.id !== proj.id));
   };
 
+  const [videoModal, setVideoModal] = useState<string | null>(null);
+
   const completedCount = cuts.filter((c) => c.status === 'completed').length;
   const pendingCount = cuts.filter((c) => c.status === 'pending' || c.status === 'failed').length;
   const isGenerating = cuts.some((c) => c.status === 'generating');
@@ -624,6 +627,7 @@ export default function MovingWebtoonPage() {
                 onGenerate={() => generateCut(cut.id)}
                 onRemove={() => removeCut(cut.id)}
                 onUpdate={(updates) => updateCut(cut.id, updates)}
+                onVideoClick={(url) => setVideoModal(url)}
               />
             ))}
 
@@ -651,6 +655,30 @@ export default function MovingWebtoonPage() {
           </div>
         )}
       </div>
+
+      {/* 영상 모달 */}
+      {videoModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setVideoModal(null)}
+        >
+          <button
+            onClick={() => setVideoModal(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <video
+            src={videoModal}
+            className="max-h-[85vh] max-w-[90vw] rounded-lg"
+            autoPlay
+            loop
+            controls
+            playsInline
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -662,12 +690,14 @@ function CutRow({
   onGenerate,
   onRemove,
   onUpdate,
+  onVideoClick,
 }: {
   cut: CutItem;
   index: number;
   onGenerate: () => void;
   onRemove: () => void;
   onUpdate: (updates: Partial<CutItem>) => void;
+  onVideoClick: (url: string) => void;
 }) {
   const [localPrompt, setLocalPrompt] = useState(cut.prompt);
 
@@ -763,14 +793,22 @@ function CutRow({
         {/* 오른쪽: 결과 영상 */}
         <div className="shrink-0 w-40 bg-muted/20 flex items-center justify-center p-2">
           {cut.status === 'completed' && cut.videoUrl ? (
-            <video
-              src={cut.videoUrl}
-              className="w-full rounded object-cover"
-              autoPlay
-              loop
-              muted
-              playsInline
-            />
+            <div
+              className="w-full cursor-pointer relative group"
+              onClick={() => onVideoClick(cut.videoUrl!)}
+            >
+              <video
+                src={cut.videoUrl}
+                className="w-full rounded object-cover"
+                autoPlay
+                loop
+                muted
+                playsInline
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors rounded">
+                <Play className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
           ) : cut.status === 'generating' ? (
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
