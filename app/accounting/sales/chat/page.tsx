@@ -3,7 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { Bot, User, Send, Loader2, Sparkles } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { User, Send, Loader2, Sparkles } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -23,11 +24,36 @@ const EXAMPLES = [
 
 export default function ChatPage() {
   const { profile } = useStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const convId = searchParams.get('id');
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(convId);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load conversation if id in URL
+  useEffect(() => {
+    if (!convId) {
+      setMessages([]);
+      setConversationId(null);
+      return;
+    }
+    setConversationId(convId);
+    setLoadingHistory(true);
+    fetch(`/api/accounting/sales/chat/conversations/${convId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMessages(data.map((m: any) => ({ role: m.role, content: m.content })));
+        }
+      })
+      .finally(() => setLoadingHistory(false));
+  }, [convId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -47,17 +73,32 @@ export default function ChatPage() {
       const res = await fetch('/api/accounting/sales/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({ messages: newMessages, conversationId }),
       });
       const data = await res.json();
-      setMessages([...newMessages, { role: 'assistant', content: data.error ? `오류: ${data.error}` : data.reply }]);
+      const reply = data.error ? `오류: ${data.error}` : data.reply;
+      setMessages([...newMessages, { role: 'assistant', content: reply }]);
+
+      // Update conversationId and URL if new conversation was created
+      if (data.conversationId && data.conversationId !== conversationId) {
+        setConversationId(data.conversationId);
+        router.replace(`/accounting/sales/chat?id=${data.conversationId}`, { scroll: false });
+        // Trigger sidebar refresh
+        window.dispatchEvent(new Event('chat-conversations-changed'));
+      }
     } catch {
       setMessages([...newMessages, { role: 'assistant', content: '네트워크 오류가 발생했습니다.' }]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, loading, messages]);
+  }, [input, loading, messages, conversationId, router]);
+
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+    router.replace('/accounting/sales/chat', { scroll: false });
+  }, [router]);
 
   if (!profile || !canViewAccounting(profile.role)) return null;
 
@@ -68,17 +109,31 @@ export default function ChatPage() {
         <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-[0_4px_12px_rgba(99,102,241,0.3)]">
           <Sparkles className="h-5 w-5 text-white" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">AI 검색</h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">일별 매출 데이터를 자연어로 검색하고 분석합니다</p>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={startNewChat}
+            className="px-3.5 py-1.5 text-xs font-medium rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+          >
+            새 대화
+          </button>
+        )}
       </div>
 
       {/* 채팅 영역 */}
       <div className="flex-1 rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 flex flex-col overflow-hidden">
         {/* 메시지 */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-          {messages.length === 0 && (
+          {loadingHistory && (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            </div>
+          )}
+
+          {!loadingHistory && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full space-y-8">
               <div className="space-y-3 text-center">
                 <div className="h-16 w-16 rounded-3xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center mx-auto">

@@ -1,7 +1,8 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -25,7 +26,16 @@ import {
   MessageCircle,
   Activity,
   ArrowLeft,
+  Plus,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
+
+interface Conversation {
+  id: string;
+  title: string;
+  updated_at: string;
+}
 
 const navGroups = [
   {
@@ -51,8 +61,50 @@ const navGroups = [
   },
 ];
 
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '방금';
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}일 전`;
+  return new Date(dateStr).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+}
+
 export function SalesSidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentConvId = searchParams.get('id');
+  const isOnChat = pathname === '/accounting/sales/chat';
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [hoveredConv, setHoveredConv] = useState<string | null>(null);
+
+  const loadConversations = useCallback(() => {
+    fetch('/api/accounting/sales/chat/conversations')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setConversations(data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadConversations();
+    const handler = () => loadConversations();
+    window.addEventListener('chat-conversations-changed', handler);
+    return () => window.removeEventListener('chat-conversations-changed', handler);
+  }, [loadConversations]);
+
+  const deleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await fetch(`/api/accounting/sales/chat/conversations/${id}`, { method: 'DELETE' });
+    setConversations(prev => prev.filter(c => c.id !== id));
+    if (currentConvId === id) {
+      window.location.href = '/accounting/sales/chat';
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -105,6 +157,64 @@ export function SalesSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        {/* Chat History */}
+        {conversations.length > 0 && (
+          <SidebarGroup className="py-2">
+            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 px-2 flex items-center justify-between">
+              <span>대화 기록</span>
+              <Link
+                href="/accounting/sales/chat"
+                className="text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
+                title="새 대화"
+              >
+                <Plus className="h-3 w-3" />
+              </Link>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {conversations.map((conv) => {
+                  const isActive = isOnChat && currentConvId === conv.id;
+                  return (
+                    <SidebarMenuItem
+                      key={conv.id}
+                      className="relative group/conv"
+                      onMouseEnter={() => setHoveredConv(conv.id)}
+                      onMouseLeave={() => setHoveredConv(null)}
+                    >
+                      {isActive && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-purple-400" />
+                      )}
+                      <SidebarMenuButton asChild isActive={isActive} tooltip={conv.title}>
+                        <Link href={`/accounting/sales/chat?id=${conv.id}`}>
+                          <Sparkles className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? 'text-purple-400' : 'text-sidebar-foreground/30'}`} />
+                          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                            <span className={`truncate text-xs ${isActive ? 'text-sidebar-primary-foreground font-medium' : ''}`}>
+                              {conv.title}
+                            </span>
+                            {hoveredConv !== conv.id && (
+                              <span className="text-[10px] text-sidebar-foreground/30 flex-shrink-0 group-data-[collapsible=icon]:hidden">
+                                {timeAgo(conv.updated_at)}
+                              </span>
+                            )}
+                          </div>
+                          {hoveredConv === conv.id && (
+                            <button
+                              onClick={(e) => deleteConversation(conv.id, e)}
+                              className="flex-shrink-0 p-0.5 rounded text-sidebar-foreground/30 hover:text-red-400 transition-colors group-data-[collapsible=icon]:hidden"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarSeparator className="opacity-30" />

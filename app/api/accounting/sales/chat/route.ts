@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerSupabase } from '@/lib/supabase/server';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const MODEL = 'gemini-2.5-flash';
@@ -9,6 +10,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+async function getUserId() {
+  const sb = await createServerSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  return user?.id;
+}
 
 // ── Tool definitions ──
 
@@ -446,11 +453,13 @@ ${workList}
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages } = await request.json();
+    const { messages, conversationId } = await request.json();
 
     if (!messages?.length) {
       return Response.json({ error: '메시지가 필요합니다.' }, { status: 400 });
     }
+
+    const userId = await getUserId();
 
     const geminiMessages = messages.map((m: { role: string; content: string }) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -516,7 +525,32 @@ export async function POST(request: NextRequest) {
       .map((p: any) => p.text)
       .join('') || '응답을 생성하지 못했습니다.';
 
-    return Response.json({ reply: finalText });
+    // Save messages to DB if user is authenticated and conversationId provided
+    let savedConversationId = conversationId;
+    if (userId) {
+      const lastUserMsg = messages[messages.length - 1];
+
+      // Create conversation if not provided
+      if (!savedConversationId) {
+        const title = (lastUserMsg?.content || '').slice(0, 40) || '새 대화';
+        const { data: conv } = await supabase
+          .from('chat_conversations')
+          .insert({ user_id: userId, title })
+          .select('id')
+          .single();
+        savedConversationId = conv?.id;
+      }
+
+      if (savedConversationId) {
+        // Save user message and assistant reply
+        await supabase.from('chat_messages').insert([
+          { conversation_id: savedConversationId, role: 'user', content: lastUserMsg.content },
+          { conversation_id: savedConversationId, role: 'assistant', content: finalText },
+        ]);
+      }
+    }
+
+    return Response.json({ reply: finalText, conversationId: savedConversationId });
   } catch (error: any) {
     console.error('Daily sales chat error:', error);
     return Response.json(
