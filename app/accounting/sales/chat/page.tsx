@@ -3,8 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { Card } from '@/components/ui/card';
-import { Bot, User, Send, Loader2 } from 'lucide-react';
+import { Bot, User, Send, Loader2, Sparkles } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -64,32 +63,36 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-          <Bot className="h-5 w-5 text-white" />
+      {/* 헤더 */}
+      <div className="flex items-center gap-3.5 mb-5">
+        <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-[0_4px_12px_rgba(99,102,241,0.3)]">
+          <Sparkles className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">매출 AI 검색</h1>
-          <p className="text-xs text-muted-foreground">일별 매출 데이터를 자연어로 검색하고 분석합니다</p>
+          <h1 className="text-2xl font-bold tracking-tight">AI 검색</h1>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">일별 매출 데이터를 자연어로 검색하고 분석합니다</p>
         </div>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-5">
+      {/* 채팅 영역 */}
+      <div className="flex-1 rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 flex flex-col overflow-hidden">
+        {/* 메시지 */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-6">
-              <Bot className="h-14 w-14 opacity-15" />
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium">매출 데이터에 대해 질문하세요</p>
-                <p className="text-xs">작품별 매출, 추이 분석, 비교, 패턴 등</p>
+            <div className="flex flex-col items-center justify-center h-full space-y-8">
+              <div className="space-y-3 text-center">
+                <div className="h-16 w-16 rounded-3xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center mx-auto">
+                  <Sparkles className="h-8 w-8 text-blue-500/40 dark:text-blue-400/40" />
+                </div>
+                <p className="text-base font-semibold tracking-tight text-zinc-800 dark:text-zinc-200">매출 데이터에 대해 질문하세요</p>
+                <p className="text-sm text-zinc-400 dark:text-zinc-500">작품별 매출, 추이 분석, 비교, 성장률 등</p>
               </div>
-              <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+              <div className="flex flex-wrap justify-center gap-2 max-w-xl">
                 {EXAMPLES.map(q => (
                   <button
                     key={q}
                     onClick={() => send(q)}
-                    className="px-3 py-1.5 text-xs rounded-full border hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors"
+                    className="px-4 py-2 text-xs font-medium rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-200"
                   >
                     {q}
                   </button>
@@ -101,20 +104,20 @@ export default function ChatPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'assistant' && (
-                <div className="flex-shrink-0 h-7 w-7 rounded-md bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center mt-0.5">
-                  <Bot className="h-4 w-4 text-white" />
+                <div className="flex-shrink-0 h-7 w-7 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mt-0.5 shadow-sm">
+                  <Sparkles className="h-3.5 w-3.5 text-white" />
                 </div>
               )}
-              <div className={`max-w-[75%] rounded-xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+              <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === 'user'
-                  ? 'bg-cyan-500/10 border border-cyan-200 dark:border-cyan-800'
-                  : 'bg-muted border border-border'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200'
               }`}>
                 {msg.content}
               </div>
               {msg.role === 'user' && (
-                <div className="flex-shrink-0 h-7 w-7 rounded-md bg-muted flex items-center justify-center mt-0.5">
-                  <User className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-shrink-0 h-7 w-7 rounded-xl bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center mt-0.5">
+                  <User className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
                 </div>
               )}
             </div>
@@ -122,10 +125,10 @@ export default function ChatPage() {
 
           {loading && (
             <div className="flex gap-3">
-              <div className="h-7 w-7 rounded-md bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
-                <Bot className="h-4 w-4 text-white" />
+              <div className="h-7 w-7 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-white" />
               </div>
-              <div className="bg-muted border rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="bg-zinc-100 dark:bg-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-2.5 text-sm text-zinc-500 dark:text-zinc-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>분석 중...</span>
               </div>
@@ -133,17 +136,17 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Input */}
-        <div className="border-t px-4 py-3">
-          <div className="flex items-end gap-3 bg-muted/50 rounded-xl border px-4 py-3 focus-within:border-cyan-500/50 transition-colors">
+        {/* 입력 */}
+        <div className="border-t border-zinc-100 dark:border-zinc-800 px-5 py-4">
+          <div className="flex items-end gap-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all duration-200">
             <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="질문을 입력하세요... (예: 외모지상주의 최근 매출 추이)"
+              placeholder="질문을 입력하세요..."
               rows={1}
-              className="flex-1 resize-none bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none max-h-24"
+              className="flex-1 resize-none bg-transparent text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none max-h-24 text-zinc-800 dark:text-zinc-200"
               style={{ minHeight: '24px' }}
               onInput={e => {
                 const t = e.currentTarget;
@@ -154,13 +157,13 @@ export default function ChatPage() {
             <button
               onClick={() => send()}
               disabled={!input.trim() || loading}
-              className="flex-shrink-0 h-8 w-8 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:bg-muted disabled:text-muted-foreground text-white flex items-center justify-center transition-colors"
+              className="flex-shrink-0 h-8 w-8 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-zinc-200 dark:disabled:bg-zinc-700 disabled:text-zinc-400 text-white flex items-center justify-center transition-all duration-200 hover:shadow-sm"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
