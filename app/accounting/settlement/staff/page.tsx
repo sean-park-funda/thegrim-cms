@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Check, Pencil, Plus, Search, X } from 'lucide-react';
-import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary, RsLaborCostShare } from '@/lib/types/settlement';
+import { RsStaff, RsPartner, RsStaffAssignment, RsStaffSalary } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 import { useSettlementStore } from '@/lib/store/useSettlementStore';
 
@@ -45,16 +45,19 @@ export default function StaffPage() {
   const [salarySaving, setSalarySaving] = useState(false);
   const [monthSalaries, setMonthSalaries] = useState<Record<string, number>>({});
   const [partnerMonthSalaries, setPartnerMonthSalaries] = useState<Record<string, number>>({});
-  const [laborSharesBySource, setLaborSharesBySource] = useState<Map<string, RsLaborCostShare[]>>(new Map());
+  // person_id → 대상자 파트너 목록 (새 rs_labor_cost_items 기반)
+  const [laborBurdenByPerson, setLaborBurdenByPerson] = useState<Map<string, Array<{ id: string; name: string }>>>(new Map());
 
   const loadMonthSalaries = async (month: string) => {
     try {
-      const [staffSalRes, partnerSalRes] = await Promise.all([
+      const [staffSalRes, partnerSalRes, laborItemsRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/staff-salaries?month=${month}`),
         settlementFetch(`/api/accounting/settlement/partner-salaries?month=${month}`),
+        settlementFetch(`/api/accounting/settlement/labor-cost-items?month=${month}`),
       ]);
       const staffSalData = await staffSalRes.json();
       const partnerSalData = await partnerSalRes.json();
+      const laborItemsData = await laborItemsRes.json();
 
       const staffMap: Record<string, number> = {};
       for (const sal of (staffSalData.salaries || []) as RsStaffSalary[]) {
@@ -67,6 +70,19 @@ export default function StaffPage() {
         partnerMap[sal.partner_id] = Number(sal.amount);
       }
       setPartnerMonthSalaries(partnerMap);
+
+      // Build person_id → 대상자 파트너 목록 from labor cost items
+      const burdenMap = new Map<string, Array<{ id: string; name: string }>>();
+      for (const item of (laborItemsData.items || [])) {
+        const existing = burdenMap.get(item.person_id) || [];
+        for (const p of item.partners || []) {
+          if (!existing.some(e => e.id === p.id)) {
+            existing.push(p);
+          }
+        }
+        burdenMap.set(item.person_id, existing);
+      }
+      setLaborBurdenByPerson(burdenMap);
     } catch (e) {
       console.error('월별 급여 로드 오류:', e);
     }
@@ -75,34 +91,17 @@ export default function StaffPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [staffRes, assignmentsRes, partnersRes, staffSharesRes, partnerSharesRes] = await Promise.all([
+      const [staffRes, assignmentsRes, partnersRes] = await Promise.all([
         settlementFetch('/api/accounting/settlement/staff?activeOnly=false'),
         settlementFetch('/api/accounting/settlement/staff-assignments'),
         settlementFetch('/api/accounting/settlement/partners'),
-        settlementFetch('/api/accounting/settlement/labor-cost-shares?sourceType=staff'),
-        settlementFetch('/api/accounting/settlement/labor-cost-shares?sourceType=partner'),
       ]);
       const staffData = await staffRes.json();
       const assignmentsData = await assignmentsRes.json();
       const partnersData = await partnersRes.json();
-      const staffSharesData = await staffSharesRes.json();
-      const partnerSharesData = await partnerSharesRes.json();
 
       const allPartners: RsPartner[] = partnersData.partners || [];
       setPartners(allPartners);
-
-      const shareMap = new Map<string, RsLaborCostShare[]>();
-      for (const share of (staffSharesData.shares || []) as RsLaborCostShare[]) {
-        const list = shareMap.get(share.source_id) || [];
-        list.push(share);
-        shareMap.set(share.source_id, list);
-      }
-      for (const share of (partnerSharesData.shares || []) as RsLaborCostShare[]) {
-        const list = shareMap.get(share.source_id) || [];
-        list.push(share);
-        shareMap.set(share.source_id, list);
-      }
-      setLaborSharesBySource(shareMap);
 
       // has_salary 파트너를 인력 목록에 포함
       const salPartners: PartnerSalaryRow[] = allPartners
@@ -223,15 +222,14 @@ export default function StaffPage() {
     ? allRows.filter(r => {
         const q = search.toLowerCase();
         if (r.name.toLowerCase().includes(q)) return true;
-        const sourceId = r.is_partner ? r.partner_id : r.id;
         if (!r.is_partner) {
           if ((r.employer_partner as { name?: string } | null)?.name?.toLowerCase().includes(q)) return true;
         }
-        const shares = laborSharesBySource.get(sourceId);
-        if (shares) {
-          return shares.some(sh =>
-            (sh.bearer_partner as { name?: string } | undefined)?.name?.toLowerCase().includes(q)
-          );
+        // Search in labor burden partners
+        const personId = r.is_partner ? r.partner_id : r.id;
+        const burdenPartners = laborBurdenByPerson.get(personId);
+        if (burdenPartners) {
+          return burdenPartners.some(p => p.name.toLowerCase().includes(q));
         }
         return false;
       })
@@ -303,7 +301,6 @@ export default function StaffPage() {
                   {filtered.map((row) => {
                     if (row.is_partner) {
                       const amt = partnerMonthSalaries[row.partner_id] ?? 0;
-                      const partnerShares = laborSharesBySource.get(row.partner_id);
                       return (
                         <tr
                           key={row.id}
@@ -316,25 +313,16 @@ export default function StaffPage() {
                           </td>
                           <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">
                             {(() => {
-                              if (!partnerShares || partnerShares.length === 0) {
-                                return `${row.name} 100%`;
-                              }
-                              const othersTotal = partnerShares.reduce((sum, sh) => sum + Number(sh.share_ratio), 0);
-                              const selfRatio = Math.max(0, 1 - othersTotal);
-                              const parts: string[] = [];
-                              if (selfRatio > 0) {
-                                const sp = selfRatio * 100;
-                                parts.push(`${row.name} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
-                              }
-                              for (const sh of partnerShares) {
-                                const bearerName = (sh.bearer_partner as { name?: string } | undefined)?.name || '?';
-                                const sp = Number(sh.share_ratio) * 100;
-                                parts.push(`${bearerName} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
+                              const burdenPartners = laborBurdenByPerson.get(row.partner_id);
+                              if (!burdenPartners || burdenPartners.length === 0) {
+                                return <span className="text-zinc-400">-</span>;
                               }
                               return (
-                                <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-                                  {parts.map((p, i) => (
-                                    <span key={i} className="whitespace-nowrap">{p}</span>
+                                <span className="flex flex-wrap gap-1">
+                                  {burdenPartners.map(p => (
+                                    <span key={p.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 text-xs">
+                                      {p.name}
+                                    </span>
                                   ))}
                                 </span>
                               );
@@ -374,27 +362,17 @@ export default function StaffPage() {
                         </td>
                         <td className="py-2 px-3 text-muted-foreground hidden md:table-cell">
                           {(() => {
-                            const shares = laborSharesBySource.get(s.id);
-                            const employerName = (s.employer_partner as { name?: string } | null)?.name;
-                            if (!shares || shares.length === 0) {
-                              return `${employerName || '-'} 100%`;
-                            }
-                            const othersTotal = shares.reduce((sum, sh) => sum + Number(sh.share_ratio), 0);
-                            const employerRatio = Math.max(0, 1 - othersTotal);
-                            const parts: string[] = [];
-                            if (employerRatio > 0 && employerName) {
-                              const ep = employerRatio * 100;
-                              parts.push(`${employerName} ${Number.isInteger(ep) ? ep : ep.toFixed(1)}%`);
-                            }
-                            for (const sh of shares) {
-                              const bearerName = (sh.bearer_partner as { name?: string } | undefined)?.name || '?';
-                              const sp = Number(sh.share_ratio) * 100;
-                              parts.push(`${bearerName} ${Number.isInteger(sp) ? sp : sp.toFixed(1)}%`);
+                            const burdenPartners = laborBurdenByPerson.get(s.id);
+                            if (!burdenPartners || burdenPartners.length === 0) {
+                              const employerName = (s.employer_partner as { name?: string } | null)?.name;
+                              return <span className="text-zinc-400">{employerName || '-'}</span>;
                             }
                             return (
-                              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-                                {parts.map((p, i) => (
-                                  <span key={i} className="whitespace-nowrap">{p}</span>
+                              <span className="flex flex-wrap gap-1">
+                                {burdenPartners.map(p => (
+                                  <span key={p.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 text-xs">
+                                    {p.name}
+                                  </span>
                                 ))}
                               </span>
                             );
