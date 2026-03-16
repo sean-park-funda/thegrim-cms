@@ -28,6 +28,7 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Conversation {
   id: string;
@@ -75,6 +76,7 @@ export function SalesSidebar() {
   const searchParams = useSearchParams();
   const currentConvId = searchParams.get('id');
   const isOnChat = pathname === '/accounting/sales/chat';
+  const isMobile = useIsMobile();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [hoveredConv, setHoveredConv] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export function SalesSidebar() {
   };
 
   return (
-    <Sidebar side="right" collapsible="icon" className="border-l-0">
+    <Sidebar side={isMobile ? 'right' : 'left'} collapsible="offcanvas" className={isMobile ? 'border-l-0' : 'border-r-0'}>
       <SidebarHeader className="px-4 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">

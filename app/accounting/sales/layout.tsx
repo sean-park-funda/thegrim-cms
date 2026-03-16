@@ -22,13 +22,13 @@ export default function SalesLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider defaultOpen={true}>
+      <SalesSidebar />
       <SidebarInset>
         <div className="flex-1 overflow-auto p-4 md:p-6">
           {children}
         </div>
       </SidebarInset>
-      <SalesSidebar />
     </SidebarProvider>
   );
 }
