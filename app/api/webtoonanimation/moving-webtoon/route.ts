@@ -67,6 +67,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: cutsError.message }, { status: 500 });
   }
 
+  // 'generating' 상태로 남아있는 컷 정리 (중단된 생성)
+  const stuckCuts = (mwCuts || []).filter((c) => c.status === 'generating');
+  if (stuckCuts.length > 0) {
+    await supabase
+      .from('moving_webtoon_cuts')
+      .update({ status: 'failed', error_message: '생성 중 중단됨', updated_at: new Date().toISOString() })
+      .in('id', stuckCuts.map((c) => c.id));
+    for (const c of stuckCuts) {
+      c.status = 'failed';
+      c.error_message = '생성 중 중단됨';
+    }
+  }
+
   // 원본 컷 이미지 정보 조회
   const cutIds = (mwCuts || []).map((c) => c.cut_id).filter(Boolean);
   let originalCuts: Record<string, { file_path: string; file_name: string }> = {};
