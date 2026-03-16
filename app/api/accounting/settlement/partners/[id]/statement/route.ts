@@ -383,7 +383,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         // 공제유형별로 수익구분 비중에 따라 배분
-        for (const dtype of ['근로소득공제', '인건비 공제'] as const) {
+        for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
           const key = `${wp.work_id}:${dtype}`;
           const typeCost = laborCostByWorkType.get(key) || 0;
           if (typeCost <= 0) continue;
