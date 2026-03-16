@@ -421,9 +421,10 @@ function parseGlobalAd(
 }
 
 /**
- * 2차사업 수익 파싱 (SuperLike + Management)
+ * 2차사업 수익 파싱 (SuperLike + Management + 카카오 이모티콘)
  * SuperLike: invoice 시트, 7행부터, col B = 작품명, col I (idx 8) = Payment, "Carryover" 스킵
  * Management: 첫 시트, '총' 포함 행, col J (idx 9) = 금액, 파일명에서 작품명 추출
+ * 카카오 이모티콘: "정산 상세 내역" 시트, Row 8 "총합" 행의 공급가(C열), 작품명은 파일명 끝에서 추출
  */
 function parseSecondary(
   workbook: XLSX.WorkBook,
@@ -432,7 +433,10 @@ function parseSecondary(
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
 
-  if (fileName.includes('Super Like') || fileName.includes('SuperLike')) {
+  if (fileName.includes('이모티콘') && fileName.includes('카카오')) {
+    // 카카오 이모티콘 파일
+    return parseKakaoEmoticon(workbook, fileName, errors);
+  } else if (fileName.includes('Super Like') || fileName.includes('SuperLike')) {
     // SuperLike 파일
     const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('invoice')) || workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -568,6 +572,70 @@ function parseSecondary(
   }
 
   return rows;
+}
+
+/**
+ * 카카오 이모티콘 수익 파싱
+ * "정산 상세 내역" 시트, Row 8 "총합" 행의 공급가(C열, VAT별도)
+ * 작품명은 파일명 마지막 _구분자 뒤에서 추출
+ * 예: "...카카오 이모티콘 수익 accounts report(202512)_외모지상주의.xlsx"
+ */
+function parseKakaoEmoticon(
+  workbook: XLSX.WorkBook,
+  fileName: string,
+  errors: string[]
+): ParsedRevenueRow[] {
+  const rows: ParsedRevenueRow[] = [];
+
+  // 작품명: 파일명 마지막 _ 뒤
+  const workName = extractWorkNameFromSecondaryFileName(fileName);
+  if (!workName) {
+    errors.push(`카카오 이모티콘 파일명에서 작품명 추출 실패: ${fileName}`);
+    return rows;
+  }
+
+  const sheetName = workbook.SheetNames.find(n => n.includes('정산 상세 내역')) || workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    errors.push(`시트를 찾을 수 없습니다: ${fileName}`);
+    return rows;
+  }
+
+  const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+  // "총합" 행에서 공급가(C열 = idx 2) 읽기
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (!row) continue;
+    const label = String(row[1] || '').trim();
+    if (label === '총합') {
+      const amount = parseNumber(row[2]); // 공급가 (VAT 별도)
+      if (amount !== 0) {
+        rows.push({ work_name: workName, amount });
+      }
+      break;
+    }
+  }
+
+  if (rows.length === 0) {
+    errors.push(`카카오 이모티콘 총합을 찾을 수 없습니다: ${fileName}`);
+  }
+
+  return rows;
+}
+
+/**
+ * 2차사업 파일명에서 작품명 추출 (마지막 _ 뒤)
+ * "더그림_2026-01월발행_카카오 이모티콘 수익 accounts report(202512)_외모지상주의.xlsx" → "외모지상주의"
+ */
+function extractWorkNameFromSecondaryFileName(fileName: string): string | null {
+  const base = fileName.replace(/\.(xlsx|xls)$/i, '');
+  const parts = base.split('_');
+  const lastPart = parts[parts.length - 1]?.trim();
+  if (lastPart && !lastPart.match(/^\d/) && !lastPart.includes('정산')) {
+    return lastPart;
+  }
+  return null;
 }
 
 function parseNumber(value: unknown): number {
