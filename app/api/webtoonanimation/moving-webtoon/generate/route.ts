@@ -94,7 +94,25 @@ export async function POST(request: NextRequest) {
       .from('webtoon-files')
       .getPublicUrl(storagePath);
 
-    // 6. 상태 업데이트 → completed
+    // 6. 기존 버전 목록 가져오기
+    const { data: currentCut } = await supabase
+      .from('moving_webtoon_cuts')
+      .select('video_versions')
+      .eq('id', mwCutId)
+      .single();
+
+    const existingVersions = (currentCut?.video_versions || []) as Record<string, unknown>[];
+    const newVersion = {
+      video_url: publicUrl,
+      video_path: storagePath,
+      provider: providerId,
+      elapsed_ms: elapsedMs,
+      prompt,
+      created_at: new Date().toISOString(),
+    };
+    const updatedVersions = [...existingVersions, newVersion];
+
+    // 7. 상태 업데이트 → completed (최신 영상을 active로)
     const { data: updated, error: updateError } = await supabase
       .from('moving_webtoon_cuts')
       .update({
@@ -104,6 +122,7 @@ export async function POST(request: NextRequest) {
         elapsed_ms: elapsedMs,
         provider: providerId,
         prompt,
+        video_versions: updatedVersions,
         updated_at: new Date().toISOString(),
       })
       .eq('id', mwCutId)
@@ -112,7 +131,7 @@ export async function POST(request: NextRequest) {
 
     if (updateError) throw updateError;
 
-    console.log(`[moving-webtoon/generate] 완료 (${providerId}, ${elapsedMs}ms)`);
+    console.log(`[moving-webtoon/generate] 완료 (${providerId}, ${elapsedMs}ms, 버전 ${updatedVersions.length}개)`);
     return NextResponse.json(updated);
   } catch (error) {
     console.error('[moving-webtoon/generate] 실패:', error);

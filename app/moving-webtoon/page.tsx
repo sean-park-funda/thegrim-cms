@@ -33,6 +33,15 @@ import {
   MOTION_TYPE_PRESETS,
 } from '@/lib/supabase';
 
+interface VideoVersion {
+  video_url: string;
+  video_path: string;
+  provider: string;
+  elapsed_ms: number;
+  prompt?: string;
+  created_at: string;
+}
+
 interface CutItem {
   id: string;
   imageUrl: string;
@@ -43,6 +52,7 @@ interface CutItem {
   duration: number;
   status: 'pending' | 'uploading' | 'generating' | 'completed' | 'failed';
   videoUrl: string | null;
+  videoVersions: VideoVersion[];
   errorMessage: string | null;
   elapsedMs: number | null;
   dbCutId: string | null;
@@ -147,6 +157,7 @@ function MovingWebtoonContent() {
         duration: (c.duration_seconds as number) || 3,
         status: (c.status as CutItem['status']) || 'pending',
         videoUrl: (c.video_url as string) || null,
+        videoVersions: (c.video_versions as VideoVersion[]) || [],
         errorMessage: (c.error_message as string) || null,
         elapsedMs: (c.elapsed_ms as number) || null,
         dbCutId: (c.cut_id as string) || null,
@@ -264,6 +275,7 @@ function MovingWebtoonContent() {
       duration: 3,
       status: 'uploading' as const,
       videoUrl: null,
+      videoVersions: [],
       errorMessage: null,
       elapsedMs: null,
       dbCutId: null,
@@ -388,7 +400,13 @@ function MovingWebtoonContent() {
       if (res.ok) {
         setCuts((prev) =>
           prev.map((c) =>
-            c.id === cutId ? { ...c, status: 'completed' as const, videoUrl: data.video_url, elapsedMs: data.elapsed_ms } : c
+            c.id === cutId ? {
+              ...c,
+              status: 'completed' as const,
+              videoUrl: data.video_url,
+              videoVersions: data.video_versions || [],
+              elapsedMs: data.elapsed_ms,
+            } : c
           )
         );
       } else {
@@ -752,10 +770,18 @@ function CutRow({
   onImageClick: (url: string) => void;
 }) {
   const [localPrompt, setLocalPrompt] = useState(cut.prompt);
+  const [activeVideoIdx, setActiveVideoIdx] = useState<number | null>(null);
 
   useEffect(() => {
     setLocalPrompt(cut.prompt);
   }, [cut.prompt]);
+
+  // 새 버전이 추가되면 최신 버전을 active로
+  useEffect(() => {
+    if (cut.videoVersions.length > 0) {
+      setActiveVideoIdx(cut.videoVersions.length - 1);
+    }
+  }, [cut.videoVersions.length]);
 
   const handleMotionChange = (motion: MovingWebtoonMotionType) => {
     const preset = MOTION_TYPE_PRESETS[motion];
@@ -846,39 +872,88 @@ function CutRow({
         </div>
 
         {/* 오른쪽: 결과 영상 */}
-        <div className="shrink-0 w-40 bg-muted/20 flex items-center justify-center p-2">
-          {cut.status === 'completed' && cut.videoUrl ? (
-            <div
-              className="w-full cursor-pointer relative group"
-              onClick={() => onVideoClick(cut.videoUrl!)}
-            >
-              <video
-                src={cut.videoUrl}
-                className="w-full rounded object-cover"
-                autoPlay
-                loop
-                muted
-                playsInline
-              />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors rounded">
-                <Play className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="shrink-0 w-40 bg-muted/20 flex flex-col items-center justify-center p-2 gap-1.5">
+          {(() => {
+            const versions = cut.videoVersions;
+            const activeUrl = activeVideoIdx !== null && versions[activeVideoIdx]
+              ? versions[activeVideoIdx].video_url
+              : cut.videoUrl;
+
+            if ((cut.status === 'completed' || versions.length > 0) && activeUrl) {
+              return (
+                <>
+                  {/* 버전 썸네일 (2개 이상일 때) */}
+                  {versions.length >= 2 && (
+                    <div className="flex gap-1 w-full overflow-x-auto pb-0.5">
+                      {versions.map((v, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActiveVideoIdx(i)}
+                          className={`shrink-0 w-8 h-8 rounded overflow-hidden border-2 transition-colors ${
+                            i === activeVideoIdx ? 'border-primary' : 'border-transparent hover:border-muted-foreground/40'
+                          }`}
+                        >
+                          <video
+                            src={v.video_url}
+                            className="w-full h-full object-cover"
+                            muted
+                            playsInline
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* 메인 영상 */}
+                  <div
+                    className="w-full cursor-pointer relative group"
+                    onClick={() => onVideoClick(activeUrl)}
+                  >
+                    <video
+                      key={activeUrl}
+                      src={activeUrl}
+                      className="w-full rounded object-cover"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors rounded">
+                      <Play className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                  {versions.length >= 2 && (
+                    <span className="text-[9px] text-muted-foreground">
+                      {(activeVideoIdx ?? 0) + 1}/{versions.length}
+                    </span>
+                  )}
+                </>
+              );
+            }
+
+            if (cut.status === 'generating') {
+              return (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-[10px]">생성 중...</span>
+                </div>
+              );
+            }
+
+            if (cut.status === 'uploading') {
+              return (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-[10px]">업로드 중...</span>
+                </div>
+              );
+            }
+
+            return (
+              <div className="text-center text-muted-foreground">
+                <span className="text-[10px]">영상 없음</span>
               </div>
-            </div>
-          ) : cut.status === 'generating' ? (
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-[10px]">생성 중...</span>
-            </div>
-          ) : cut.status === 'uploading' ? (
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-[10px]">업로드 중...</span>
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground">
-              <span className="text-[10px]">영상 없음</span>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </Card>
