@@ -59,6 +59,7 @@ export interface RsWorkPartner {
   contract_end_date: string | null;
   included_revenue_types: RevenueType[] | null;
   labor_cost_excluded: boolean;
+  labor_cost_as_exclusion: boolean;
   revenue_rate: number;
   settlement_cycle: string;
   tax_type: string;

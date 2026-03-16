@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, work:rs_works(id, name, serial_start_date, serial_end_date)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_exclusion, revenue_rate, tax_type, work:rs_works(id, name, serial_start_date, serial_end_date)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -299,11 +299,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         totalBaseRevenue += br;
       }
 
+      // 이 작품의 인건비 총액 (정산제외금 적용 여부 판단용)
+      const workTotalLaborCostForExclusion =
+        (laborCostByWorkType.get(`${wp.work_id}:근로소득공제`) || 0) +
+        (laborCostByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
+
+      const isExclusionMode = wp.labor_cost_as_exclusion && workTotalLaborCostForExclusion > 0;
+
       const details = REVENUE_COLUMNS.map(col => {
         const included = includedTypes.includes(col);
         const amount = (rev && included) ? Number(rev[col]) : 0;
         const baseRevenue = baseRevenueByCol[col];
-        const settlementTarget = baseRevenue;
 
         return {
           revenue_type: col,
@@ -311,44 +317,71 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           gross_revenue: amount,
           base_revenue: baseRevenue,
           exclusion_amount: 0,
-          settlement_target: settlementTarget,
-          revenue_share: Math.round(Math.max(0, settlementTarget) * effectiveRate),
-          earned_income_deduction: 0, // 근로소득공제
-          labor_cost_deduction: 0,    // 인건비 공제
-          labor_cost: 0,              // 합계
+          settlement_target: baseRevenue,
+          revenue_share: 0,
+          earned_income_deduction: 0,
+          labor_cost_deduction: 0,
+          labor_cost: 0,
           net_share: 0,
           rs_rate: effectiveRate,
           excluded: !included,
         };
       });
 
-      // 공제유형별로 수익구분 비중에 따라 배분
-      for (const dtype of ['근로소득공제', '인건비 공제'] as const) {
-        const key = `${wp.work_id}:${dtype}`;
-        const typeCost = laborCostByWorkType.get(key) || 0;
-        if (typeCost <= 0) continue;
-
-        const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
-        if (totalBasis > 0) {
-          const eligible = details.filter(d => d.revenue_share > 0);
+      if (isExclusionMode) {
+        // 정산제외금 모드: 인건비를 기준매출에서 먼저 차감 후 RS 적용
+        // 인건비를 기준매출 비중으로 배분하여 exclusion_amount에 넣기
+        const eligibleForExcl = details.filter(d => d.base_revenue > 0);
+        const totalBase = eligibleForExcl.reduce((s, d) => s + d.base_revenue, 0);
+        if (totalBase > 0) {
           let distributed = 0;
-          for (let i = 0; i < eligible.length; i++) {
-            const cost = i === eligible.length - 1
-              ? typeCost - distributed
-              : Math.round(typeCost * (eligible[i].revenue_share / totalBasis));
-            if (dtype === '근로소득공제') {
-              eligible[i].earned_income_deduction += cost;
-            } else {
-              eligible[i].labor_cost_deduction += cost;
-            }
-            distributed += cost;
+          for (let i = 0; i < eligibleForExcl.length; i++) {
+            const excl = i === eligibleForExcl.length - 1
+              ? workTotalLaborCostForExclusion - distributed
+              : Math.round(workTotalLaborCostForExclusion * (eligibleForExcl[i].base_revenue / totalBase));
+            eligibleForExcl[i].exclusion_amount = excl;
+            distributed += excl;
           }
         }
-      }
+        for (const d of details) {
+          d.settlement_target = Math.max(0, d.base_revenue - d.exclusion_amount);
+          d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
+          d.net_share = d.revenue_share; // 인건비는 이미 정산제외금으로 처리됨
+        }
+      } else {
+        // 일반 모드: RS 적용 후 인건비 차감
+        for (const d of details) {
+          d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
+        }
 
-      for (const d of details) {
-        d.labor_cost = d.earned_income_deduction + d.labor_cost_deduction;
-        d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
+        // 공제유형별로 수익구분 비중에 따라 배분
+        for (const dtype of ['근로소득공제', '인건비 공제'] as const) {
+          const key = `${wp.work_id}:${dtype}`;
+          const typeCost = laborCostByWorkType.get(key) || 0;
+          if (typeCost <= 0) continue;
+
+          const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
+          if (totalBasis > 0) {
+            const eligible = details.filter(d => d.revenue_share > 0);
+            let distributed = 0;
+            for (let i = 0; i < eligible.length; i++) {
+              const cost = i === eligible.length - 1
+                ? typeCost - distributed
+                : Math.round(typeCost * (eligible[i].revenue_share / totalBasis));
+              if (dtype === '근로소득공제') {
+                eligible[i].earned_income_deduction += cost;
+              } else {
+                eligible[i].labor_cost_deduction += cost;
+              }
+              distributed += cost;
+            }
+          }
+        }
+
+        for (const d of details) {
+          d.labor_cost = d.earned_income_deduction + d.labor_cost_deduction;
+          d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
+        }
       }
 
       const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0);
