@@ -17,6 +17,7 @@ export interface RsWork {
   is_active: boolean;
   serial_start_date: string | null;
   serial_end_date: string | null;
+  labor_cost_as_exclusion: boolean;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -59,7 +60,6 @@ export interface RsWorkPartner {
   contract_end_date: string | null;
   included_revenue_types: RevenueType[] | null;
   labor_cost_excluded: boolean;
-  labor_cost_as_exclusion: boolean;
   revenue_rate: number;
   settlement_cycle: string;
   tax_type: string;

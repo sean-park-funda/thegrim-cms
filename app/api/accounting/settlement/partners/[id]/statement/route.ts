@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_exclusion, revenue_rate, tax_type, work:rs_works(id, name, serial_start_date, serial_end_date)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -287,7 +287,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // 6) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
-      const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null } | null;
+      const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null; labor_cost_as_exclusion: boolean } | null;
       const rev = revenues?.find(r => r.work_id === wp.work_id);
 
       const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
@@ -311,7 +311,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         (laborCostFullByWorkType.get(`${wp.work_id}:근로소득공제`) || 0) +
         (laborCostFullByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
 
-      const isExclusionMode = wp.labor_cost_as_exclusion && workFullLaborCost > 0;
+      const isExclusionMode = work?.labor_cost_as_exclusion && workFullLaborCost > 0;
 
       const details = REVENUE_COLUMNS.map(col => {
         const included = includedTypes.includes(col);
