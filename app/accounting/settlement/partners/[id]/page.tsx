@@ -34,8 +34,8 @@ interface WorkDetail {
   exclusion_amount: number;
   settlement_target: number;
   revenue_share: number;
-  earned_income_deduction: number;
-  labor_cost_deduction: number;
+  self_labor_cost: number;
+  team_labor_cost: number;
   labor_cost: number;
   net_share: number;
   rs_rate: number;
@@ -55,8 +55,8 @@ interface WorkStatement {
   work_total_settlement_target: number;
   work_total_share: number;
   work_total_labor_cost: number;
-  work_total_earned_income_deduction: number;
-  work_total_labor_cost_deduction: number;
+  work_total_self_labor_cost: number;
+  work_total_team_labor_cost: number;
   work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
@@ -87,8 +87,8 @@ interface StatementData {
   grand_total_settlement_target: number;
   grand_total_share: number;
   grand_total_labor_cost: number;
-  grand_total_earned_income_deduction: number;
-  grand_total_labor_cost_deduction: number;
+  grand_total_self_labor_cost: number;
+  grand_total_team_labor_cost: number;
   grand_total_net_share: number;
   tax_type: string;
   tax_breakdown: TaxBreakdown;
@@ -508,8 +508,8 @@ export default function PartnerDetailPage() {
                   {(() => {
                     const hasBaseRevenue = statement.works.some(w => w.revenue_rate !== 1);
                     const hasExclusion = statement.grand_total_exclusion > 0;
-                    const hasEarnedIncome = statement.grand_total_earned_income_deduction > 0;
-                    const hasLaborCostDed = statement.grand_total_labor_cost_deduction > 0;
+                    const hasEarnedIncome = statement.grand_total_self_labor_cost > 0;
+                    const hasLaborCostDed = statement.grand_total_team_labor_cost > 0;
                     const hasAnyDeduction = hasEarnedIncome || hasLaborCostDed;
                     return (
                   <div className="space-y-2">
@@ -533,11 +533,11 @@ export default function PartnerDetailPage() {
                             {hasAnyDeduction && (
                               <th className="py-2 px-3 font-medium text-right">수익배분</th>
                             )}
-                            {hasEarnedIncome && (
-                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
-                            )}
                             {hasLaborCostDed && (
                               <th className="py-2 px-3 font-medium text-right">인건비공제</th>
+                            )}
+                            {hasEarnedIncome && (
+                              <th className="py-2 px-3 font-medium text-right">근로소득공제</th>
                             )}
                             <th className="py-2 px-3 font-medium text-right">수익정산</th>
                             <th className="py-2 px-3 font-medium text-right">수익배분율</th>
@@ -566,14 +566,14 @@ export default function PartnerDetailPage() {
                                   {hasAnyDeduction && (
                                     <td className="py-1.5 px-3 text-right tabular-nums">{d.revenue_share.toLocaleString()}</td>
                                   )}
-                                  {hasEarnedIncome && (
-                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                      {d.earned_income_deduction > 0 ? `-${d.earned_income_deduction.toLocaleString()}` : ''}
-                                    </td>
-                                  )}
                                   {hasLaborCostDed && (
                                     <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                      {d.labor_cost_deduction > 0 ? `-${d.labor_cost_deduction.toLocaleString()}` : ''}
+                                      {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
+                                    </td>
+                                  )}
+                                  {hasEarnedIncome && (
+                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
+                                      {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
                                     </td>
                                   )}
                                   <td className="py-1.5 px-3 text-right tabular-nums">
@@ -603,14 +603,14 @@ export default function PartnerDetailPage() {
                             {hasAnyDeduction && (
                               <td className="py-2 px-3 text-right tabular-nums">{statement.grand_total_share.toLocaleString()}</td>
                             )}
-                            {hasEarnedIncome && (
-                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.grand_total_earned_income_deduction.toLocaleString()}
-                              </td>
-                            )}
                             {hasLaborCostDed && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.grand_total_labor_cost_deduction.toLocaleString()}
+                                -{statement.grand_total_team_labor_cost.toLocaleString()}
+                              </td>
+                            )}
+                            {hasEarnedIncome && (
+                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
+                                -{statement.grand_total_self_labor_cost.toLocaleString()}
                               </td>
                             )}
                             <td className="py-2 px-3 text-right tabular-nums">
