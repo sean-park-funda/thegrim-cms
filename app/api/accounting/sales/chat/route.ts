@@ -76,6 +76,17 @@ const tools: FunctionDeclaration[] = [
       },
     },
   },
+  {
+    name: 'get_growth_rates',
+    description: '작품별 매출 성장률을 계산합니다. 지정 기간을 전반기/후반기로 나눠 증감률을 계산하거나, 최근 기간과 이전 동일 기간을 비교합니다. "성장률", "증가율", "감소율", "추세" 관련 질문에 사용하세요.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        days: { type: Type.NUMBER, description: '분석 기간 (일). 기본 30. 예: 30이면 최근 30일 vs 이전 30일 비교' },
+        mode: { type: Type.STRING, description: '"period_compare" (기본): 최근 N일 vs 이전 N일 비교. "half_split": 지정 기간을 전반/후반으로 나눠 비교. "weekly": 주간 단위 성장률' },
+      },
+    },
+  },
 ];
 
 // ── Tool executors ──
@@ -260,12 +271,133 @@ async function executeGetPeakDays(args: Record<string, any>) {
   return { period: { from, to }, threshold, peak_days: peaks.slice(0, 30) };
 }
 
+async function executeGetGrowthRates(args: Record<string, any>) {
+  const days = args.days || 30;
+  const mode = args.mode || 'period_compare';
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (mode === 'weekly') {
+    // 주간 단위 성장률: 최근 4주
+    const weeks = 4;
+    const results = [];
+    for (let w = 0; w < weeks; w++) {
+      const wEnd = new Date(today);
+      wEnd.setDate(wEnd.getDate() - (w * 7));
+      const wStart = new Date(wEnd);
+      wStart.setDate(wStart.getDate() - 6);
+
+      const { data } = await supabase
+        .from('rs_daily_sales')
+        .select('work_name, amount')
+        .gte('sale_date', wStart.toISOString().slice(0, 10))
+        .lte('sale_date', wEnd.toISOString().slice(0, 10));
+
+      const weekTotal: Record<string, number> = {};
+      for (const row of data || []) {
+        weekTotal[row.work_name] = (weekTotal[row.work_name] || 0) + Number(row.amount);
+      }
+      results.push({
+        week: `W-${w}`,
+        period: `${wStart.toISOString().slice(0, 10)} ~ ${wEnd.toISOString().slice(0, 10)}`,
+        totals: weekTotal,
+      });
+    }
+
+    // 주간 성장률 계산
+    const workGrowth: Record<string, { current: number; previous: number; growth_pct: number }> = {};
+    const currentWeek = results[0]?.totals || {};
+    const previousWeek = results[1]?.totals || {};
+    for (const name of new Set([...Object.keys(currentWeek), ...Object.keys(previousWeek)])) {
+      const cur = currentWeek[name] || 0;
+      const prev = previousWeek[name] || 0;
+      workGrowth[name] = {
+        current: cur,
+        previous: prev,
+        growth_pct: prev > 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : cur > 0 ? 100 : 0,
+      };
+    }
+
+    return {
+      mode: 'weekly',
+      weekly_data: results,
+      week_over_week_growth: Object.entries(workGrowth)
+        .map(([name, stats]) => ({ work_name: name, ...stats }))
+        .sort((a, b) => b.growth_pct - a.growth_pct),
+    };
+  }
+
+  // period_compare (기본) 또는 half_split
+  let recentFrom: string, recentTo: string, prevFrom: string, prevTo: string;
+
+  if (mode === 'half_split') {
+    const endDate = new Date(today);
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - days);
+    const midDate = new Date(startDate.getTime() + (endDate.getTime() - startDate.getTime()) / 2);
+    prevFrom = startDate.toISOString().slice(0, 10);
+    prevTo = midDate.toISOString().slice(0, 10);
+    recentFrom = new Date(midDate.getTime() + 86400000).toISOString().slice(0, 10);
+    recentTo = today;
+  } else {
+    // period_compare: 최근 N일 vs 이전 N일
+    const endDate = new Date(today);
+    const recentStart = new Date(today);
+    recentStart.setDate(recentStart.getDate() - days);
+    const prevEnd = new Date(recentStart);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevStart.getDate() - days + 1);
+    recentFrom = recentStart.toISOString().slice(0, 10);
+    recentTo = today;
+    prevFrom = prevStart.toISOString().slice(0, 10);
+    prevTo = prevEnd.toISOString().slice(0, 10);
+  }
+
+  const [recentRes, prevRes] = await Promise.all([
+    supabase.from('rs_daily_sales').select('work_name, amount')
+      .gte('sale_date', recentFrom).lte('sale_date', recentTo),
+    supabase.from('rs_daily_sales').select('work_name, amount')
+      .gte('sale_date', prevFrom).lte('sale_date', prevTo),
+  ]);
+
+  const sumByWork = (rows: any[]) => {
+    const map: Record<string, number> = {};
+    for (const r of rows || []) map[r.work_name] = (map[r.work_name] || 0) + Number(r.amount);
+    return map;
+  };
+
+  const recentTotals = sumByWork(recentRes.data || []);
+  const prevTotals = sumByWork(prevRes.data || []);
+  const allWorks = new Set([...Object.keys(recentTotals), ...Object.keys(prevTotals)]);
+
+  const rankings = Array.from(allWorks).map(name => {
+    const recent = recentTotals[name] || 0;
+    const prev = prevTotals[name] || 0;
+    const growth_pct = prev > 0 ? Math.round(((recent - prev) / prev) * 1000) / 10 : recent > 0 ? 100 : 0;
+    return { work_name: name, recent_total: recent, previous_total: prev, change: recent - prev, growth_pct };
+  }).sort((a, b) => b.growth_pct - a.growth_pct);
+
+  return {
+    mode,
+    recent_period: { from: recentFrom, to: recentTo },
+    previous_period: { from: prevFrom, to: prevTo },
+    rankings,
+    summary: {
+      most_grown: rankings[0] || null,
+      most_declined: rankings[rankings.length - 1] || null,
+      total_recent: Object.values(recentTotals).reduce((a, b) => a + b, 0),
+      total_previous: Object.values(prevTotals).reduce((a, b) => a + b, 0),
+    },
+  };
+}
+
 const toolExecutors: Record<string, (args: Record<string, any>) => Promise<any>> = {
   get_daily_sales: executeGetDailySales,
   get_daily_sales_summary: executeGetDailySalesSummary,
   get_work_trend: executeGetWorkTrend,
   compare_works: executeCompareWorks,
   get_peak_days: executeGetPeakDays,
+  get_growth_rates: executeGetGrowthRates,
 };
 
 // ── System prompt ──
@@ -306,6 +438,7 @@ ${workList}
 - 매출 추이(상승/하락/횡보)를 파악하고 인사이트 제공
 - 연재일 패턴(급등일)을 식별하여 연재 요일 추정
 - 작품 간 비교 시 총 매출, 일평균, 연재일 매출로 비교
+- 성장률/증감률 질문에는 반드시 get_growth_rates 도구를 사용 (period_compare, half_split, weekly 모드 지원)
 - 데이터가 없으면 "해당 데이터가 없습니다"라고 안내`;
 }
 
