@@ -177,7 +177,7 @@ export async function signIn(email: string, password: string) {
 // 회원가입 (초대 토큰 필요, 단 첫 사용자는 자동으로 관리자)
 export async function signUp(email: string, password: string, token?: string, name?: string) {
   try {
-    let role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant' = 'viewer';
+    let role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant' | 'strategy' = 'viewer';
     let invitationId: string | null = null;
 
     // 초대 토큰이 있는 경우 검증
