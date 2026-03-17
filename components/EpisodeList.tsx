@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sparkles, Box, Palette } from 'lucide-react';
+import { Plus, BookOpen, MoreVertical, Edit, Trash2, Folder, FileText, Users, Sparkles, Box, Palette, Network } from 'lucide-react';
 import Link from 'next/link';
 import { Episode, WebtoonWithEpisodes } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
@@ -385,6 +385,16 @@ export function EpisodeList({ webtoon }: EpisodeListProps) {
                   >
                     <Users className="h-4 w-4" />
                     캐릭터 관리
+                  </Button>
+                </Link>
+                <Link href={`/webtoons/${webtoon.id}/relationship-map`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                  >
+                    <Network className="h-4 w-4" />
+                    관계도
                   </Button>
                 </Link>
                 {canCreateContent(profile.role) && (
