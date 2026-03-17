@@ -1,6 +1,6 @@
 import { UserProfile } from '../api/auth';
 
-export type UserRole = 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant';
+export type UserRole = 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant' | 'strategy';
 
 /**
  * 역할별 권한 체크 유틸리티 함수
@@ -94,5 +94,24 @@ export function canManageBudgets(role: UserRole): boolean {
 // 회계 보고서 조회 권한
 export function canViewAccountingReports(role: UserRole): boolean {
   return role === 'admin' || role === 'executive' || role === 'accountant';
+}
+
+// ========================================
+// 전략팀 권한
+// ========================================
+
+// 전략팀 여부 확인
+export function isStrategy(role: UserRole): boolean {
+  return role === 'strategy';
+}
+
+// 전략팀 접근 권한 (향후 전략팀 전용 기능에 사용)
+export function canAccessStrategy(role: UserRole): boolean {
+  return role === 'admin' || role === 'strategy';
+}
+
+// 전략팀의 회계 보고서 조회 (임원과 동일 수준)
+export function canViewAccountingAsStrategy(role: UserRole): boolean {
+  return role === 'admin' || role === 'executive' || role === 'accountant' || role === 'strategy';
 }
 

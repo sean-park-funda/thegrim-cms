@@ -12,7 +12,7 @@ const getSupabaseAnonKey = () => {
 export interface UserProfile {
   id: string;
   email: string;
-  role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant';
+  role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant' | 'strategy';
   name?: string;
   default_ai_image_public?: boolean;
   created_at: string;
@@ -22,7 +22,7 @@ export interface UserProfile {
 export interface Invitation {
   id: string;
   email: string;
-  role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant';
+  role: 'admin' | 'executive' | 'manager' | 'staff' | 'viewer' | 'accountant' | 'strategy';
   token: string;
   invited_by?: string;
   expires_at: string;

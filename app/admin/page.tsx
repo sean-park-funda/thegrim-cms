@@ -128,6 +128,7 @@ export default function AdminPage() {
       staff: { label: '스태프', variant: 'secondary' },
       viewer: { label: '조회자', variant: 'outline' },
       accountant: { label: '회계', variant: 'default' },
+      strategy: { label: '전략팀', variant: 'secondary' },
     };
     const roleInfo = roleMap[role] || { label: role, variant: 'outline' as const };
     return <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>;
@@ -387,6 +388,7 @@ export default function AdminPage() {
                               <SelectItem value="staff">스태프</SelectItem>
                               <SelectItem value="viewer">조회자</SelectItem>
                               <SelectItem value="accountant">회계</SelectItem>
+                              <SelectItem value="strategy">전략팀</SelectItem>
                             </SelectContent>
                           </Select>
                           {userItem.id === user?.id && (
@@ -447,6 +449,7 @@ export default function AdminPage() {
                         <SelectItem value="staff">스태프</SelectItem>
                         <SelectItem value="viewer">조회자</SelectItem>
                         <SelectItem value="accountant">회계</SelectItem>
+                        <SelectItem value="strategy">전략팀</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
