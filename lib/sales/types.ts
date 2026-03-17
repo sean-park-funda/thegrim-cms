@@ -10,6 +10,7 @@ export interface DailySalesRow {
 export interface DailySalesData {
   sales: DailySalesRow[];
   works: Record<string, { date: string; amount: number }[]>;
+  workStatus: Record<string, { serialEndDate: string | null }>;
   summary: {
     totalSales: number;
     dailyAverage: number;
@@ -17,6 +18,51 @@ export interface DailySalesData {
     topWork: { name: string; total: number } | null;
     dailyTotals: { date: string; total: number }[];
     workTotals: { name: string; total: number }[];
+  };
+}
+
+export type AggMode = 'daily' | 'weekly' | 'monthly';
+export type WorkFilter = 'all' | 'active' | 'completed';
+
+export function aggregateData(
+  dailyTotals: { date: string; total: number }[],
+  works: Record<string, { date: string; amount: number }[]>,
+  mode: AggMode,
+) {
+  if (mode === 'daily') return { totals: dailyTotals, works };
+
+  const keyFn = mode === 'weekly'
+    ? (d: string) => {
+        const dt = new Date(d);
+        const day = dt.getDay();
+        dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1)); // Monday
+        return dt.toISOString().slice(0, 10);
+      }
+    : (d: string) => d.slice(0, 7);
+
+  const aggTotals: Record<string, number> = {};
+  for (const { date, total } of dailyTotals) {
+    const k = keyFn(date);
+    aggTotals[k] = (aggTotals[k] || 0) + total;
+  }
+
+  const aggWorks: Record<string, { date: string; amount: number }[]> = {};
+  for (const [name, rows] of Object.entries(works)) {
+    const m: Record<string, number> = {};
+    for (const { date, amount } of rows) {
+      const k = keyFn(date);
+      m[k] = (m[k] || 0) + amount;
+    }
+    aggWorks[name] = Object.entries(m)
+      .map(([date, amount]) => ({ date, amount }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  return {
+    totals: Object.entries(aggTotals)
+      .map(([date, total]) => ({ date, total }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    works: aggWorks,
   };
 }
 

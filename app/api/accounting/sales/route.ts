@@ -51,6 +51,23 @@ export async function GET(request: NextRequest) {
       dailyTotals[row.sale_date] = (dailyTotals[row.sale_date] || 0) + Number(row.amount);
     }
 
+    // 작품별 완결 상태 조회
+    const workNames = Object.keys(workMap);
+    const workStatus: Record<string, { serialEndDate: string | null }> = {};
+    if (workNames.length > 0) {
+      const { data: works } = await supabase
+        .from('rs_works')
+        .select('title, serial_end_date')
+        .in('title', workNames);
+      for (const w of works || []) {
+        workStatus[w.title] = { serialEndDate: w.serial_end_date };
+      }
+      // 매칭 안 된 작품은 연재중으로 처리
+      for (const name of workNames) {
+        if (!workStatus[name]) workStatus[name] = { serialEndDate: null };
+      }
+    }
+
     // 요약 통계
     const totalSales = Object.values(dailyTotals).reduce((a, b) => a + b, 0);
     const days = Object.keys(dailyTotals).length;
@@ -65,6 +82,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       sales: data,
       works: workMap,
+      workStatus,
       summary: {
         totalSales,
         dailyAverage,

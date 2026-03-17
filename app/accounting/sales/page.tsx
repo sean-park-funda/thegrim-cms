@@ -4,14 +4,18 @@ import { useEffect, useState, useMemo } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
-import { Button } from '@/components/ui/button';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
+import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, dateStr, AggMode, WorkFilter, aggregateData } from '@/lib/sales/types';
 import { useSidebar } from '@/components/ui/sidebar';
-import { Menu, Sparkles } from 'lucide-react';
+import { Menu, Sparkles, CalendarIcon } from 'lucide-react';
 import Link from 'next/link';
+import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import type { DateRange } from 'react-day-picker';
 
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
@@ -40,6 +44,18 @@ function ChartTooltip({ active, payload, label }: {
   );
 }
 
+const AGG_OPTIONS: { label: string; value: AggMode }[] = [
+  { label: '일별', value: 'daily' },
+  { label: '주별', value: 'weekly' },
+  { label: '월별', value: 'monthly' },
+];
+
+const FILTER_OPTIONS: { label: string; value: WorkFilter }[] = [
+  { label: '전체', value: 'all' },
+  { label: '연재중', value: 'active' },
+  { label: '완결', value: 'completed' },
+];
+
 export default function SalesDashboardPage() {
   const { profile } = useStore();
   const { toggleSidebar } = useSidebar();
@@ -47,8 +63,23 @@ export default function SalesDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [selectedWorks, setSelectedWorks] = useState<Set<string>>(new Set());
+  const [aggMode, setAggMode] = useState<AggMode>('daily');
+  const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const { from, to } = useMemo(() => getDateRange(days), [days]);
+  // 날짜 범위: 프리셋 또는 캘린더
+  const { from, to } = useMemo(() => {
+    if (dateRange?.from && dateRange?.to) {
+      return { from: dateStr(dateRange.from), to: dateStr(dateRange.to) };
+    }
+    const now = new Date();
+    const fromDate = new Date(now);
+    fromDate.setDate(fromDate.getDate() - days);
+    return { from: dateStr(fromDate), to: dateStr(now) };
+  }, [days, dateRange]);
+
+  const isCustomRange = !!(dateRange?.from && dateRange?.to);
 
   useEffect(() => {
     if (!profile || !canViewAccounting(profile.role)) return;
@@ -67,11 +98,57 @@ export default function SalesDashboardPage() {
 
   if (!profile || !canViewAccounting(profile.role)) return null;
 
-  const chartData = useMemo(() => {
+  // 작품 필터링
+  const filteredWorkNames = useMemo(() => {
+    if (!data?.summary?.workTotals) return [];
+    return data.summary.workTotals
+      .filter(w => {
+        if (workFilter === 'all') return true;
+        const status = data.workStatus?.[w.name];
+        const isCompleted = status?.serialEndDate != null;
+        return workFilter === 'completed' ? isCompleted : !isCompleted;
+      })
+      .map(w => w.name);
+  }, [data, workFilter]);
+
+  // 필터 적용된 works 데이터
+  const filteredWorks = useMemo(() => {
+    if (!data?.works) return {};
+    const result: Record<string, { date: string; amount: number }[]> = {};
+    for (const name of filteredWorkNames) {
+      if (data.works[name]) result[name] = data.works[name];
+    }
+    return result;
+  }, [data, filteredWorkNames]);
+
+  // 필터 적용된 dailyTotals
+  const filteredDailyTotals = useMemo(() => {
     if (!data?.summary?.dailyTotals) return [];
-    return data.summary.dailyTotals.map(({ date }) => {
-      const point: Record<string, string | number> = { date: date.slice(5) };
-      for (const [workName, rows] of Object.entries(data.works)) {
+    if (workFilter === 'all') return data.summary.dailyTotals;
+    // 필터된 작품만으로 일별 합계 재계산
+    const totals: Record<string, number> = {};
+    for (const name of filteredWorkNames) {
+      for (const row of data.works[name] || []) {
+        totals[row.date] = (totals[row.date] || 0) + row.amount;
+      }
+    }
+    return Object.entries(totals)
+      .map(([date, total]) => ({ date, total }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [data, filteredWorkNames, workFilter]);
+
+  // 집계 적용
+  const agg = useMemo(() =>
+    aggregateData(filteredDailyTotals, filteredWorks, aggMode),
+  [filteredDailyTotals, filteredWorks, aggMode]);
+
+  const chartData = useMemo(() => {
+    if (!agg.totals.length) return [];
+    return agg.totals.map(({ date }) => {
+      const point: Record<string, string | number> = {
+        date: aggMode === 'monthly' ? date : date.slice(5),
+      };
+      for (const [workName, rows] of Object.entries(agg.works)) {
         if (selectedWorks.has(workName)) {
           const row = rows.find(r => r.date === date);
           point[workName] = row ? row.amount : 0;
@@ -79,11 +156,27 @@ export default function SalesDashboardPage() {
       }
       return point;
     });
-  }, [data, selectedWorks]);
+  }, [agg, selectedWorks, aggMode]);
 
-  const workNames = useMemo(() =>
-    data?.summary?.workTotals?.map(w => w.name) || [],
-  [data]);
+  // 필터 적용된 요약
+  const filteredSummary = useMemo(() => {
+    if (!data?.summary) return null;
+    if (workFilter === 'all') return data.summary;
+    const totalSales = filteredDailyTotals.reduce((s, d) => s + d.total, 0);
+    const numDays = filteredDailyTotals.length;
+    const workTotals = filteredWorkNames.map(name => ({
+      name,
+      total: (data.works[name] || []).reduce((s, r) => s + r.amount, 0),
+    })).sort((a, b) => b.total - a.total);
+    return {
+      ...data.summary,
+      totalSales,
+      dailyAverage: numDays > 0 ? totalSales / numDays : 0,
+      workCount: workTotals.length,
+      topWork: workTotals[0] || null,
+      workTotals,
+    };
+  }, [data, filteredDailyTotals, filteredWorkNames, workFilter]);
 
   const toggleWork = (name: string) => {
     setSelectedWorks(prev => {
@@ -93,6 +186,22 @@ export default function SalesDashboardPage() {
       return next;
     });
   };
+
+  const handlePreset = (d: number) => {
+    setDays(d);
+    setDateRange(undefined);
+  };
+
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (range?.from && range?.to) {
+      setCalendarOpen(false);
+    }
+  };
+
+  const displayDays = isCustomRange
+    ? Math.ceil((dateRange!.to!.getTime() - dateRange!.from!.getTime()) / 86400000)
+    : days;
 
   return (
     <div className="space-y-8">
@@ -110,20 +219,66 @@ export default function SalesDashboardPage() {
             <Menu className="h-4.5 w-4.5" />
           </button>
         </div>
-        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
-          {PRESETS.map(p => (
-            <button
-              key={p.days}
-              onClick={() => setDays(p.days)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
-                days === p.days
-                  ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 프리셋 버튼 */}
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5">
+            {PRESETS.map(p => (
+              <button
+                key={p.days}
+                onClick={() => handlePreset(p.days)}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+                  !isCustomRange && days === p.days
+                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* 날짜 범위 선택기 */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-xl border transition-all duration-200 ${
+                  isCustomRange
+                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                    : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600'
+                }`}
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {isCustomRange
+                  ? `${format(dateRange!.from!, 'M.d', { locale: ko })} - ${format(dateRange!.to!, 'M.d', { locale: ko })}`
+                  : '기간 선택'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={dateRange}
+                onSelect={handleDateRangeSelect}
+                numberOfMonths={2}
+                locale={ko}
+                disabled={{ after: new Date() }}
+              />
+            </PopoverContent>
+          </Popover>
+          {/* 완결/연재 필터 */}
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5">
+            {FILTER_OPTIONS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setWorkFilter(f.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+                  workFilter === f.value
+                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -136,10 +291,10 @@ export default function SalesDashboardPage() {
           {/* 요약 카드 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: '총 매출', value: fmtShort(data.summary.totalSales), sub: `${days}일간`, color: 'text-green-500' },
-              { label: '일 평균', value: fmtShort(data.summary.dailyAverage), sub: '하루 평균 매출', color: 'text-blue-500' },
-              { label: '작품 수', value: `${data.summary.workCount}개`, sub: '매출 발생 작품', color: 'text-purple-500' },
-              { label: '1위 작품', value: data.summary.topWork?.name || '-', sub: data.summary.topWork ? fmtShort(data.summary.topWork.total) : '-', color: 'text-amber-500', isName: true },
+              { label: '총 매출', value: fmtShort(filteredSummary?.totalSales || 0), sub: `${displayDays}일간`, color: 'text-green-500' },
+              { label: '일 평균', value: fmtShort(filteredSummary?.dailyAverage || 0), sub: '하루 평균 매출', color: 'text-blue-500' },
+              { label: '작품 수', value: `${filteredSummary?.workCount || 0}개`, sub: workFilter === 'all' ? '매출 발생 작품' : workFilter === 'active' ? '연재중 작품' : '완결 작품', color: 'text-purple-500' },
+              { label: '1위 작품', value: filteredSummary?.topWork?.name || '-', sub: filteredSummary?.topWork ? fmtShort(filteredSummary.topWork.total) : '-', color: 'text-amber-500', isName: true },
             ].map((card) => (
               <div
                 key={card.label}
@@ -157,10 +312,28 @@ export default function SalesDashboardPage() {
           {/* 차트 */}
           <div className="rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold tracking-tight">일별 매출 추이</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold tracking-tight">매출 추이</h2>
+                {/* 집계 토글 */}
+                <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                  {AGG_OPTIONS.map(a => (
+                    <button
+                      key={a.value}
+                      onClick={() => setAggMode(a.value)}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                        aggMode === a.value
+                          ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                      }`}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-1.5">
                 <button
-                  onClick={() => setSelectedWorks(new Set(workNames))}
+                  onClick={() => setSelectedWorks(new Set(filteredWorkNames))}
                   className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   전체
@@ -174,7 +347,7 @@ export default function SalesDashboardPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5 mb-5">
-              {workNames.map((name, i) => {
+              {filteredWorkNames.map((name, i) => {
                 const color = WORK_COLORS[i % WORK_COLORS.length];
                 const isSelected = selectedWorks.has(name);
                 return (
@@ -198,8 +371,8 @@ export default function SalesDashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
-                    {workNames.filter(n => selectedWorks.has(n)).map((name) => {
-                      const color = WORK_COLORS[workNames.indexOf(name) % WORK_COLORS.length];
+                    {filteredWorkNames.filter(n => selectedWorks.has(n)).map((name, i) => {
+                      const color = WORK_COLORS[i % WORK_COLORS.length];
                       return (
                         <linearGradient key={name} id={`grad-${name.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor={color} stopOpacity={0.2} />
@@ -235,8 +408,8 @@ export default function SalesDashboardPage() {
                     iconSize={8}
                     wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
                   />
-                  {workNames.filter(n => selectedWorks.has(n)).map((name) => {
-                    const color = WORK_COLORS[workNames.indexOf(name) % WORK_COLORS.length];
+                  {filteredWorkNames.filter(n => selectedWorks.has(n)).map((name, i) => {
+                    const color = WORK_COLORS[i % WORK_COLORS.length];
                     return (
                       <Area
                         key={name}
@@ -259,11 +432,12 @@ export default function SalesDashboardPage() {
           <div className="rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800">
             <h2 className="text-lg font-semibold tracking-tight mb-5">작품별 매출 순위</h2>
             <div className="space-y-3">
-              {data.summary.workTotals.map((w, i) => {
-                const ratio = data.summary.workTotals[0]?.total
-                  ? (w.total / data.summary.workTotals[0].total) * 100
+              {(filteredSummary?.workTotals || []).map((w, i) => {
+                const ratio = (filteredSummary?.workTotals || [])[0]?.total
+                  ? (w.total / (filteredSummary?.workTotals || [])[0].total) * 100
                   : 0;
                 const color = WORK_COLORS[i % WORK_COLORS.length];
+                const status = data.workStatus?.[w.name];
                 return (
                   <div key={w.name} className="flex items-center gap-3 group">
                     <span className={`text-sm font-bold w-6 text-right tabular-nums ${
@@ -273,7 +447,12 @@ export default function SalesDashboardPage() {
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-sm font-medium truncate">{w.name}</span>
+                        <span className="text-sm font-medium truncate flex items-center gap-1.5">
+                          {w.name}
+                          {status?.serialEndDate && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-400">완결</span>
+                          )}
+                        </span>
                         <span className="text-sm tabular-nums font-semibold tracking-tight">{fmtShort(w.total)}</span>
                       </div>
                       <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
