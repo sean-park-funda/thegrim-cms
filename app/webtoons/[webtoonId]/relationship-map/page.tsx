@@ -73,14 +73,28 @@ export default function RelationshipMapPage({ params }: PageProps) {
 
   // Auto-layout: spread characters in a circle if all at origin
   function autoLayout(chars: CharacterNode[]): CharacterNode[] {
-    const allAtOrigin = chars.every(
+    if (chars.length === 0) return chars;
+
+    // Ensure position is a proper object (could be string from DB)
+    const normalized = chars.map((c) => {
+      let pos = c.position;
+      if (typeof pos === 'string') {
+        try { pos = JSON.parse(pos); } catch { pos = { x: 0, y: 0, z: 0 }; }
+      }
+      if (!pos || typeof pos.x !== 'number') {
+        pos = { x: 0, y: 0, z: 0 };
+      }
+      return { ...c, position: pos };
+    });
+
+    const allAtOrigin = normalized.every(
       (c) => c.position.x === 0 && c.position.y === 0 && c.position.z === 0
     );
-    if (!allAtOrigin || chars.length === 0) return chars;
+    if (!allAtOrigin) return normalized;
 
-    const radius = Math.max(3, chars.length * 0.8);
-    return chars.map((c, i) => {
-      const angle = (i / chars.length) * Math.PI * 2;
+    const radius = Math.max(3, normalized.length * 0.8);
+    return normalized.map((c, i) => {
+      const angle = (i / normalized.length) * Math.PI * 2;
       return {
         ...c,
         position: {
