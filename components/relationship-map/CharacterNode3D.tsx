@@ -178,11 +178,11 @@ export default function CharacterNode3D({
       <group ref={labelRef} position={[0, 0.7 * scale, 0]}>
         <Billboard>
           <Text
-            fontSize={0.2}
+            fontSize={0.4}
             color={isSelected || hovered ? '#ffffff' : '#e2e8f0'}
             anchorX="center"
             anchorY="bottom"
-            outlineWidth={0.02}
+            outlineWidth={0.04}
             outlineColor="#000000"
             font={undefined}
           >
@@ -190,12 +190,12 @@ export default function CharacterNode3D({
           </Text>
           {(hovered || isSelected) && faction && (
             <Text
-              fontSize={0.12}
+              fontSize={0.24}
               color="#94a3b8"
               anchorX="center"
               anchorY="top"
-              position={[0, -0.05, 0]}
-              outlineWidth={0.01}
+              position={[0, -0.1, 0]}
+              outlineWidth={0.02}
               outlineColor="#000000"
               font={undefined}
             >

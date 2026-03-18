@@ -146,7 +146,7 @@ export default function RelationshipEdge3D({
                 document.body.style.cursor = 'auto';
               }}
             >
-              <planeGeometry args={[1.2, 0.3]} />
+              <planeGeometry args={[2.4, 0.6]} />
               <meshBasicMaterial
                 color={isSelected ? '#1e293b' : '#0f172a'}
                 transparent
@@ -154,7 +154,7 @@ export default function RelationshipEdge3D({
               />
             </mesh>
             <Text
-              fontSize={0.13}
+              fontSize={0.26}
               color={color}
               anchorX="center"
               anchorY="middle"
@@ -165,11 +165,11 @@ export default function RelationshipEdge3D({
             {/* Tension indicator */}
             {tension > 5 && (
               <Text
-                fontSize={0.08}
+                fontSize={0.16}
                 color="#ef4444"
                 anchorX="center"
                 anchorY="top"
-                position={[0, -0.18, 0]}
+                position={[0, -0.36, 0]}
                 font={undefined}
               >
                 ⚡ 긴장도 {tension}
