@@ -41,6 +41,7 @@ export default function CharacterNode3D({
 }: CharacterNode3DProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const labelRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<THREE.Vector3 | null>(null);
@@ -59,7 +60,7 @@ export default function CharacterNode3D({
     }
   }, [profileImageUrl]);
 
-  // Glow animation
+  // Glow animation + distance-independent label scaling
   useFrame((state) => {
     if (glowRef.current) {
       const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.1 + 1;
@@ -70,6 +71,14 @@ export default function CharacterNode3D({
         glowRef.current.scale.setScalar(scale * 1.2);
         (glowRef.current.material as THREE.MeshBasicMaterial).opacity = 0.1;
       }
+    }
+    // Keep label size constant regardless of camera distance
+    if (labelRef.current) {
+      const dist = state.camera.position.distanceTo(
+        new THREE.Vector3(...position)
+      );
+      const s = Math.min(Math.max(dist * 0.07, 0.5), 2.5);
+      labelRef.current.scale.setScalar(s);
     }
   });
 
@@ -165,34 +174,36 @@ export default function CharacterNode3D({
         </Billboard>
       )}
 
-      {/* Name label */}
-      <Billboard position={[0, 0.7 * scale, 0]}>
-        <Text
-          fontSize={0.2}
-          color={isSelected || hovered ? '#ffffff' : '#e2e8f0'}
-          anchorX="center"
-          anchorY="bottom"
-          outlineWidth={0.02}
-          outlineColor="#000000"
-          font={undefined}
-        >
-          {name}
-        </Text>
-        {(hovered || isSelected) && faction && (
+      {/* Name label — distance-independent size */}
+      <group ref={labelRef} position={[0, 0.7 * scale, 0]}>
+        <Billboard>
           <Text
-            fontSize={0.12}
-            color="#94a3b8"
+            fontSize={0.2}
+            color={isSelected || hovered ? '#ffffff' : '#e2e8f0'}
             anchorX="center"
-            anchorY="top"
-            position={[0, -0.05, 0]}
-            outlineWidth={0.01}
+            anchorY="bottom"
+            outlineWidth={0.02}
             outlineColor="#000000"
             font={undefined}
           >
-            {faction}
+            {name}
           </Text>
-        )}
-      </Billboard>
+          {(hovered || isSelected) && faction && (
+            <Text
+              fontSize={0.12}
+              color="#94a3b8"
+              anchorX="center"
+              anchorY="top"
+              position={[0, -0.05, 0]}
+              outlineWidth={0.01}
+              outlineColor="#000000"
+              font={undefined}
+            >
+              {faction}
+            </Text>
+          )}
+        </Billboard>
+      </group>
     </group>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Billboard, Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -37,6 +37,7 @@ export default function RelationshipEdge3D({
   onClick,
 }: RelationshipEdge3DProps) {
   const lineRef = useRef<THREE.Line>(null);
+  const labelRef = useRef<THREE.Group>(null);
   const timeRef = useRef(0);
 
   const edgeColor = new THREE.Color(color);
@@ -88,9 +89,16 @@ export default function RelationshipEdge3D({
     ];
   }, [direction, points]);
 
-  // Tension animation - vibration
+  // Tension animation + distance-independent label scaling
   useFrame((state) => {
     timeRef.current = state.clock.elapsedTime;
+    if (labelRef.current) {
+      const dist = state.camera.position.distanceTo(
+        new THREE.Vector3(...midPoint)
+      );
+      const s = Math.min(Math.max(dist * 0.07, 0.5), 2.5);
+      labelRef.current.scale.setScalar(s);
+    }
   });
 
   const opacity = isGhost ? 0.4 : isSelected || isHighlighted ? 1.0 : 0.6;
@@ -122,51 +130,53 @@ export default function RelationshipEdge3D({
         />
       )}
 
-      {/* Label at midpoint */}
+      {/* Label at midpoint — distance-independent size */}
       {(isSelected || isHighlighted || label) && (
-        <Billboard position={midPoint}>
-          <mesh
-            onClick={(e) => {
-              e.stopPropagation();
-              onClick(id);
-            }}
-            onPointerOver={() => {
-              document.body.style.cursor = 'pointer';
-            }}
-            onPointerOut={() => {
-              document.body.style.cursor = 'auto';
-            }}
-          >
-            <planeGeometry args={[1.2, 0.3]} />
-            <meshBasicMaterial
-              color={isSelected ? '#1e293b' : '#0f172a'}
-              transparent
-              opacity={isSelected ? 0.9 : 0.7}
-            />
-          </mesh>
-          <Text
-            fontSize={0.13}
-            color={color}
-            anchorX="center"
-            anchorY="middle"
-            font={undefined}
-          >
-            {label || relationshipType}
-          </Text>
-          {/* Tension indicator */}
-          {tension > 5 && (
+        <group ref={labelRef} position={midPoint}>
+          <Billboard>
+            <mesh
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick(id);
+              }}
+              onPointerOver={() => {
+                document.body.style.cursor = 'pointer';
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = 'auto';
+              }}
+            >
+              <planeGeometry args={[1.2, 0.3]} />
+              <meshBasicMaterial
+                color={isSelected ? '#1e293b' : '#0f172a'}
+                transparent
+                opacity={isSelected ? 0.9 : 0.7}
+              />
+            </mesh>
             <Text
-              fontSize={0.08}
-              color="#ef4444"
+              fontSize={0.13}
+              color={color}
               anchorX="center"
-              anchorY="top"
-              position={[0, -0.18, 0]}
+              anchorY="middle"
               font={undefined}
             >
-              ⚡ 긴장도 {tension}
+              {label || relationshipType}
             </Text>
-          )}
-        </Billboard>
+            {/* Tension indicator */}
+            {tension > 5 && (
+              <Text
+                fontSize={0.08}
+                color="#ef4444"
+                anchorX="center"
+                anchorY="top"
+                position={[0, -0.18, 0]}
+                font={undefined}
+              >
+                ⚡ 긴장도 {tension}
+              </Text>
+            )}
+          </Billboard>
+        </group>
       )}
 
       {/* Invisible click area */}
