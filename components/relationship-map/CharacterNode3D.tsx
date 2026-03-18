@@ -44,6 +44,7 @@ export default function CharacterNode3D({
   const labelRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const hasMoved = useRef(false);
   const dragStart = useRef<THREE.Vector3 | null>(null);
 
   const scale = ROLE_SCALE[roleType] || 1.0;
@@ -85,21 +86,26 @@ export default function CharacterNode3D({
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setDragging(true);
+    hasMoved.current = false;
     dragStart.current = new THREE.Vector3(...position);
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
 
   const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    if (dragging && meshRef.current) {
-      const pos = meshRef.current.position;
-      if (dragStart.current && dragStart.current.distanceTo(pos) < 0.3) {
+    if (dragging) {
+      if (!hasMoved.current) {
+        // No actual movement — treat as click
         onClick(id);
-      } else {
-        onDragEnd(id, [pos.x, pos.y, pos.z]);
+      } else if (meshRef.current) {
+        // Actual drag — report world position
+        const worldPos = new THREE.Vector3();
+        meshRef.current.getWorldPosition(worldPos);
+        onDragEnd(id, [worldPos.x, worldPos.y, worldPos.z]);
       }
     }
     setDragging(false);
+    hasMoved.current = false;
     dragStart.current = null;
   };
 
@@ -107,7 +113,13 @@ export default function CharacterNode3D({
     if (!dragging) return;
     e.stopPropagation();
     if (meshRef.current && e.point) {
-      meshRef.current.position.copy(e.point);
+      // Convert world coords to local coords relative to group parent
+      const localPos = e.point.clone();
+      if (meshRef.current.parent) {
+        meshRef.current.parent.worldToLocal(localPos);
+      }
+      meshRef.current.position.copy(localPos);
+      hasMoved.current = true;
     }
   };
 
