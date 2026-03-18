@@ -148,9 +148,9 @@ export default function RelationshipEdge3D({
             >
               <planeGeometry args={[2.4, 0.6]} />
               <meshBasicMaterial
-                color={isSelected ? '#1e293b' : '#0f172a'}
+                color={isSelected ? '#ffffff' : '#f1f5f9'}
                 transparent
-                opacity={isSelected ? 0.9 : 0.7}
+                opacity={isSelected ? 0.95 : 0.85}
               />
             </mesh>
             <Text

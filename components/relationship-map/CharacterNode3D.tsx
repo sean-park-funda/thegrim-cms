@@ -179,11 +179,11 @@ export default function CharacterNode3D({
         <Billboard>
           <Text
             fontSize={0.4}
-            color={isSelected || hovered ? '#ffffff' : '#e2e8f0'}
+            color={isSelected || hovered ? '#1e293b' : '#334155'}
             anchorX="center"
             anchorY="bottom"
             outlineWidth={0.04}
-            outlineColor="#000000"
+            outlineColor="#ffffff"
             font={undefined}
           >
             {name}
@@ -191,12 +191,12 @@ export default function CharacterNode3D({
           {(hovered || isSelected) && faction && (
             <Text
               fontSize={0.24}
-              color="#94a3b8"
+              color="#64748b"
               anchorX="center"
               anchorY="top"
               position={[0, -0.1, 0]}
               outlineWidth={0.02}
-              outlineColor="#000000"
+              outlineColor="#ffffff"
               font={undefined}
             >
               {faction}

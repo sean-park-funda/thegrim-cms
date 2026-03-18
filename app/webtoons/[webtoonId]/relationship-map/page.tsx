@@ -269,30 +269,30 @@ export default function RelationshipMapPage({ params }: PageProps) {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-950">
-        <div className="text-slate-400 animate-pulse">관계도 로딩 중...</div>
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-slate-500 animate-pulse">관계도 로딩 중...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full relative overflow-hidden bg-slate-950">
+    <div className="h-screen w-full relative overflow-hidden bg-slate-50">
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 h-12 bg-slate-900/80 backdrop-blur-sm border-b border-slate-700 flex items-center px-4 z-20">
+      <div className="absolute top-0 left-0 right-0 h-12 bg-white/80 backdrop-blur-sm border-b border-slate-200 flex items-center px-4 z-20">
         <Button
           variant="ghost"
           size="sm"
-          className="text-slate-400 hover:text-white mr-3"
+          className="text-slate-500 hover:text-slate-900 mr-3"
           onClick={() => router.push(`/webtoons/${webtoonId}`)}
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
           돌아가기
         </Button>
-        <Network className="h-4 w-4 text-blue-400 mr-2" />
-        <h1 className="text-sm font-semibold text-white">
+        <Network className="h-4 w-4 text-blue-500 mr-2" />
+        <h1 className="text-sm font-semibold text-slate-900">
           {webtoonTitle || '관계도'}
         </h1>
-        <span className="ml-2 text-xs text-slate-500">
+        <span className="ml-2 text-xs text-slate-400">
           캐릭터 {characters.length}명 · 관계 {relationships.length}개
         </span>
       </div>

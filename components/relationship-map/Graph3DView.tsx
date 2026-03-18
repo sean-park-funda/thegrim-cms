@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Stars, PerspectiveCamera, Environment } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import CharacterNode3D from './CharacterNode3D';
 import RelationshipEdge3D from './RelationshipEdge3D';
 import type { CharacterNode, CharacterRelationship } from '@/lib/types/relationship';
@@ -81,18 +81,16 @@ function SceneContent({
       />
 
       {/* Lighting */}
-      <ambientLight intensity={0.4} />
-      <pointLight position={[10, 10, 10]} intensity={0.8} />
-      <pointLight position={[-10, -10, -10]} intensity={0.3} />
-      <directionalLight position={[0, 10, 5]} intensity={0.5} />
+      <ambientLight intensity={0.7} />
+      <pointLight position={[10, 10, 10]} intensity={0.6} />
+      <directionalLight position={[0, 10, 5]} intensity={0.8} />
 
       {/* Background */}
-      <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-      <color attach="background" args={['#0a0a1a']} />
-      <fog attach="fog" args={['#0a0a1a', 30, 60]} />
+      <color attach="background" args={['#f8fafc']} />
+      <fog attach="fog" args={['#f8fafc', 30, 60]} />
 
       {/* Grid helper */}
-      <gridHelper args={[40, 40, '#1e293b', '#0f172a']} position={[0, -2, 0]} />
+      <gridHelper args={[40, 40, '#e2e8f0', '#f1f5f9']} position={[0, -2, 0]} />
 
       {/* Relationship edges */}
       {relationships.map((rel) => {

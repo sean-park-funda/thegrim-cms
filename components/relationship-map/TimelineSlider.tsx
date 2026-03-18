@@ -48,14 +48,14 @@ export default function TimelineSlider({
   if (sortedEpisodes.length === 0) return null;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-sm border-t border-slate-700 px-4 py-3 z-10">
+    <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-slate-200 px-4 py-3 z-10">
       <div className="flex items-center gap-3">
         {/* Controls */}
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-slate-400 hover:text-white"
+            className="h-7 w-7 text-slate-400 hover:text-slate-900"
             onClick={handlePrev}
             disabled={currentIndex <= 0}
           >
@@ -64,7 +64,7 @@ export default function TimelineSlider({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-slate-400 hover:text-white"
+            className="h-7 w-7 text-slate-400 hover:text-slate-900"
             onClick={handleReset}
           >
             <SkipForward className="h-3.5 w-3.5" />
@@ -99,8 +99,8 @@ export default function TimelineSlider({
                     isActive
                       ? 'bg-blue-500 text-white scale-110 z-10'
                       : isPast
-                        ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                        : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+                        ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
                   }
                 `}
                 title={`${ep.episode_number}화: ${ep.title}`}
@@ -122,7 +122,7 @@ export default function TimelineSlider({
               ${
                 currentEpisodeId === null
                   ? 'bg-emerald-500 text-white scale-110'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
               }
             `}
           >

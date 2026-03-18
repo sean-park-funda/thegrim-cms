@@ -59,11 +59,11 @@ export default function SidePanel({
   if (selectedCharacter) {
     const connectedRels = characterRelationships;
     return (
-      <div className="absolute right-0 top-0 bottom-12 w-80 bg-slate-900/95 backdrop-blur-sm border-l border-slate-700 overflow-y-auto z-20">
+      <div className="absolute right-0 top-0 bottom-12 w-80 bg-white/95 backdrop-blur-sm border-l border-slate-200 overflow-y-auto z-20">
         <div className="p-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-white">{selectedCharacter.name}</h3>
+            <h3 className="text-lg font-bold text-slate-900">{selectedCharacter.name}</h3>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
@@ -74,7 +74,7 @@ export default function SidePanel({
             {selectedCharacter.faction && (
               <div>
                 <span className="text-xs text-slate-400">소속</span>
-                <p className="text-sm text-slate-200">{selectedCharacter.faction}</p>
+                <p className="text-sm text-slate-700">{selectedCharacter.faction}</p>
               </div>
             )}
             <div>
@@ -87,7 +87,7 @@ export default function SidePanel({
                   })
                 }
               >
-                <SelectTrigger className="h-8 mt-1 bg-slate-800 border-slate-600 text-sm">
+                <SelectTrigger className="h-8 mt-1 bg-slate-50 border-slate-300 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -105,7 +105,7 @@ export default function SidePanel({
                   {selectedCharacter.personality_tags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2 py-0.5 bg-slate-700 rounded-full text-xs text-slate-300"
+                      className="px-2 py-0.5 bg-slate-100 rounded-full text-xs text-slate-600"
                     >
                       {tag}
                     </span>
@@ -116,7 +116,7 @@ export default function SidePanel({
             {selectedCharacter.description && (
               <div>
                 <span className="text-xs text-slate-400">설명</span>
-                <p className="text-xs text-slate-300 mt-1">{selectedCharacter.description}</p>
+                <p className="text-xs text-slate-600 mt-1">{selectedCharacter.description}</p>
               </div>
             )}
           </div>
@@ -124,7 +124,7 @@ export default function SidePanel({
           {/* Connected relationships */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold text-slate-300">관계 목록</h4>
+              <h4 className="text-sm font-semibold text-slate-600">관계 목록</h4>
               <Button
                 variant="ghost"
                 size="sm"
@@ -138,10 +138,10 @@ export default function SidePanel({
 
             {/* Add relationship form */}
             {showAddForm && (
-              <Card className="mb-3 bg-slate-800 border-slate-600">
+              <Card className="mb-3 bg-slate-50 border-slate-300">
                 <CardContent className="p-3 space-y-2">
                   <Select value={newRelTarget} onValueChange={setNewRelTarget}>
-                    <SelectTrigger className="h-8 bg-slate-700 border-slate-600 text-xs">
+                    <SelectTrigger className="h-8 bg-slate-100 border-slate-300 text-xs">
                       <SelectValue placeholder="상대 캐릭터" />
                     </SelectTrigger>
                     <SelectContent>
@@ -155,7 +155,7 @@ export default function SidePanel({
                     </SelectContent>
                   </Select>
                   <Select value={newRelType} onValueChange={setNewRelType}>
-                    <SelectTrigger className="h-8 bg-slate-700 border-slate-600 text-xs">
+                    <SelectTrigger className="h-8 bg-slate-100 border-slate-300 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -199,13 +199,13 @@ export default function SidePanel({
                 return (
                   <div
                     key={rel.id}
-                    className="flex items-center gap-2 p-2 rounded bg-slate-800/50 hover:bg-slate-800 cursor-pointer group"
+                    className="flex items-center gap-2 p-2 rounded bg-slate-50/50 hover:bg-slate-50 cursor-pointer group"
                   >
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"
                       style={{ backgroundColor: typeInfo?.color || rel.color }}
                     />
-                    <span className="text-xs text-slate-300 flex-1 truncate">
+                    <span className="text-xs text-slate-600 flex-1 truncate">
                       {otherChar?.name || '?'} — {typeInfo?.label || rel.relationship_type}
                     </span>
                     <span className="text-[10px] text-slate-500">
@@ -239,11 +239,11 @@ export default function SidePanel({
     );
 
     return (
-      <div className="absolute right-0 top-0 bottom-12 w-80 bg-slate-900/95 backdrop-blur-sm border-l border-slate-700 overflow-y-auto z-20">
+      <div className="absolute right-0 top-0 bottom-12 w-80 bg-white/95 backdrop-blur-sm border-l border-slate-200 overflow-y-auto z-20">
         <div className="p-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-white">
+            <h3 className="text-sm font-bold text-slate-900">
               {charA?.name} ↔ {charB?.name}
             </h3>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
@@ -265,7 +265,7 @@ export default function SidePanel({
                   });
                 }}
               >
-                <SelectTrigger className="mt-1 bg-slate-800 border-slate-600 text-sm">
+                <SelectTrigger className="mt-1 bg-slate-50 border-slate-300 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -283,7 +283,7 @@ export default function SidePanel({
               <label className="text-xs text-slate-400">라벨 (자유 입력)</label>
               <input
                 type="text"
-                className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white"
+                className="w-full mt-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded text-sm text-slate-900"
                 placeholder="예: 소꿉친구, 첫사랑"
                 defaultValue={selectedRelationship.label || ''}
                 onBlur={(e) =>
@@ -305,7 +305,7 @@ export default function SidePanel({
                   })
                 }
               >
-                <SelectTrigger className="mt-1 bg-slate-800 border-slate-600 text-sm">
+                <SelectTrigger className="mt-1 bg-slate-50 border-slate-300 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -372,7 +372,7 @@ export default function SidePanel({
             <div>
               <label className="text-xs text-slate-400">메모</label>
               <Textarea
-                className="mt-1 bg-slate-800 border-slate-600 text-sm text-white min-h-[60px]"
+                className="mt-1 bg-slate-50 border-slate-300 text-sm text-slate-900 min-h-[60px]"
                 placeholder="관계에 대한 메모..."
                 defaultValue={selectedRelationship.notes || ''}
                 onBlur={(e) =>
