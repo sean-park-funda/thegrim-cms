@@ -19,6 +19,43 @@ export interface RsWork {
   serial_end_date: string | null;
   labor_cost_as_exclusion: boolean;
   note: string | null;
+  label: string | null;
+  platform: string | null;
+  episode_count: number | null;
+  genre: string[] | null;
+  logline: string | null;
+  element: string | null;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type GlobalLaunchStatus = 'planned' | 'live' | 'ended';
+export type SecondaryBizType = '출판' | '드라마' | '영화' | '애니메이션' | '라이선스' | '기타';
+export type SecondaryBizStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface RsWorkGlobalLaunch {
+  id: string;
+  work_id: string;
+  country_code: string;
+  platform_name: string | null;
+  url: string | null;
+  status: GlobalLaunchStatus;
+  launched_at: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RsWorkSecondaryBiz {
+  id: string;
+  work_id: string;
+  biz_type: string;
+  title: string | null;
+  status: SecondaryBizStatus;
+  partner: string | null;
+  contract_date: string | null;
+  note: string | null;
   created_at: string;
   updated_at: string;
 }

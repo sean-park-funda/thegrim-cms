@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { PRESETS, fmtShort, fmtWon, getDateRange } from '@/lib/sales/types';
-import { ArrowLeft, TrendingUp, TrendingDown, Calendar, BarChart3 } from 'lucide-react';
+import { ArrowLeft, TrendingUp, TrendingDown, Calendar, BarChart3, Globe, Film, BookOpen } from 'lucide-react';
 
 const fmtComma = (n: number) => n.toLocaleString();
 
@@ -20,10 +20,21 @@ interface WorkSalesData {
     serial_start_date: string | null;
     serial_end_date: string | null;
     is_active: boolean;
+    label: string | null;
+    platform: string | null;
+    episode_count: number | null;
+    genre: string[] | null;
+    logline: string | null;
+    element: string | null;
+    thumbnail_url: string | null;
+    note: string | null;
   };
   dailySales: { date: string; amount: number }[];
   monthlySales: { month: string; total: number }[];
   partners: { id: string; partner: { id: string; name: string; pen_name: string | null } | null; rs_rate: number }[];
+  globalLaunches: { id: string; country_code: string; platform_name: string | null; url: string | null; status: string; launched_at: string | null }[];
+  secondaryBiz: { id: string; biz_type: string; title: string | null; status: string; partner: string | null; contract_date: string | null }[];
+  revenues: { month: string; domestic_paid: number; global_paid: number; domestic_ad: number; global_ad: number; secondary: number; total: number }[];
   summary: { totalSales: number; dailyAverage: number; dayCount: number };
 }
 
@@ -31,6 +42,25 @@ const CONTRACT_TYPE_LABELS: Record<string, string> = {
   exclusive: '독점',
   non_exclusive: '비독점',
   management: '매니지먼트',
+};
+
+const COUNTRY_LABELS: Record<string, string> = {
+  US: '북미', JP: '일본', TW: '대만', CN: '중국', ID: '인도네시아',
+  FR: '프랑스', DE: '독일', TH: '태국', KR: '한국', ES: '스페인',
+  IT: '이탈리아', BR: '브라질', VN: '베트남',
+};
+
+const LAUNCH_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  planned: { label: '예정', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  live: { label: '서비스중', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  ended: { label: '종료', color: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400' },
+};
+
+const BIZ_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  planned: { label: '기획', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  in_progress: { label: '진행중', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  completed: { label: '완료', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  cancelled: { label: '취소', color: 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400' },
 };
 
 export default function WorkSalesDetailPage() {
@@ -58,7 +88,6 @@ export default function WorkSalesDetailPage() {
 
   const maxDaily = data ? Math.max(...(data.dailySales.map(d => d.amount)), 1) : 1;
 
-  // 전일 대비 변동
   const trend = useMemo(() => {
     if (!data || data.dailySales.length < 2) return null;
     const sorted = [...data.dailySales].sort((a, b) => b.date.localeCompare(a.date));
@@ -151,7 +180,8 @@ export default function WorkSalesDetailPage() {
 
           {/* 작품 정보 */}
           <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800">
+            <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-zinc-400" />
               <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">작품 정보</h2>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-6 text-sm">
@@ -179,7 +209,47 @@ export default function WorkSalesDetailPage() {
                 <span className="text-zinc-400 dark:text-zinc-500">연재 종료</span>
                 <p className="font-medium mt-0.5">{data.work.serial_end_date || '연재중'}</p>
               </div>
+              {data.work.platform && (
+                <div>
+                  <span className="text-zinc-400 dark:text-zinc-500">플랫폼</span>
+                  <p className="font-medium mt-0.5">{data.work.platform}</p>
+                </div>
+              )}
+              {data.work.label && (
+                <div>
+                  <span className="text-zinc-400 dark:text-zinc-500">레이블</span>
+                  <p className="font-medium mt-0.5">{data.work.label}</p>
+                </div>
+              )}
+              {data.work.episode_count && (
+                <div>
+                  <span className="text-zinc-400 dark:text-zinc-500">에피소드</span>
+                  <p className="font-medium mt-0.5">{data.work.episode_count}화</p>
+                </div>
+              )}
+              {data.work.genre && data.work.genre.length > 0 && (
+                <div>
+                  <span className="text-zinc-400 dark:text-zinc-500">장르</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {data.work.genre.map(g => (
+                      <span key={g} className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-xs font-medium">{g}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+            {data.work.logline && (
+              <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">로그라인</span>
+                <p className="text-sm mt-0.5">{data.work.logline}</p>
+              </div>
+            )}
+            {data.work.note && (
+              <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">특이사항</span>
+                <p className="text-sm mt-0.5 whitespace-pre-wrap">{data.work.note}</p>
+              </div>
+            )}
             {data.partners.length > 0 && (
               <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">파트너</span>
@@ -198,11 +268,137 @@ export default function WorkSalesDetailPage() {
             )}
           </div>
 
+          {/* 해외 론칭 정보 */}
+          {data.globalLaunches.length > 0 && (
+            <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                <Globe className="h-4 w-4 text-zinc-400" />
+                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">해외 론칭</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">국가</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">플랫폼</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">상태</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">론칭일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.globalLaunches.map(gl => {
+                      const st = LAUNCH_STATUS_LABELS[gl.status] || { label: gl.status, color: 'bg-zinc-100 text-zinc-500' };
+                      return (
+                        <tr key={gl.id} className="border-t border-zinc-100 dark:border-zinc-800/50">
+                          <td className="py-2.5 px-5 font-medium">{COUNTRY_LABELS[gl.country_code] || gl.country_code}</td>
+                          <td className="py-2.5 px-5">
+                            {gl.url ? (
+                              <a href={gl.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                {gl.platform_name || '링크'}
+                              </a>
+                            ) : (
+                              gl.platform_name || '-'
+                            )}
+                          </td>
+                          <td className="py-2.5 px-5">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
+                              {st.label}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-5 text-zinc-500">{gl.launched_at || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 2차 사업 */}
+          {data.secondaryBiz.length > 0 && (
+            <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                <Film className="h-4 w-4 text-zinc-400" />
+                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">2차 사업</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">유형</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">제목</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">파트너</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">상태</th>
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">계약일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.secondaryBiz.map(sb => {
+                      const st = BIZ_STATUS_LABELS[sb.status] || { label: sb.status, color: 'bg-zinc-100 text-zinc-500' };
+                      return (
+                        <tr key={sb.id} className="border-t border-zinc-100 dark:border-zinc-800/50">
+                          <td className="py-2.5 px-5 font-medium">{sb.biz_type}</td>
+                          <td className="py-2.5 px-5">{sb.title || '-'}</td>
+                          <td className="py-2.5 px-5">{sb.partner || '-'}</td>
+                          <td className="py-2.5 px-5">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
+                              {st.label}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-5 text-zinc-500">{sb.contract_date || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 정산 매출 (국내/해외 월별) */}
+          {data.revenues.length > 0 && (
+            <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                <Globe className="h-4 w-4 text-zinc-400" />
+                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">정산 매출 (국내/해외)</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">월</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">국내유료</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">해외유료</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">국내광고</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">해외광고</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">2차</th>
+                      <th className="text-right py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">합계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.revenues.map(r => (
+                      <tr key={r.month} className="border-t border-zinc-100 dark:border-zinc-800/50">
+                        <td className="py-2.5 px-5 text-zinc-700 dark:text-zinc-300">{r.month}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums">{r.domestic_paid ? fmtComma(r.domestic_paid) : '-'}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums">{r.global_paid ? fmtComma(r.global_paid) : '-'}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums">{r.domestic_ad ? fmtComma(r.domestic_ad) : '-'}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums">{r.global_ad ? fmtComma(r.global_ad) : '-'}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums">{r.secondary ? fmtComma(r.secondary) : '-'}</td>
+                        <td className="py-2.5 px-5 text-right tabular-nums font-bold">{fmtComma(r.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* 일별 매출 바 차트 */}
           <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
             <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-zinc-400" />
-              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">일별 매출</h2>
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">일별 매출 (네이버)</h2>
             </div>
             <div className="px-5 py-4">
               {data.dailySales.length === 0 ? (
@@ -236,12 +432,12 @@ export default function WorkSalesDetailPage() {
             </div>
           </div>
 
-          {/* 월별 매출 */}
+          {/* 월별 매출 (네이버) */}
           {data.monthlySales.length > 0 && (
             <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-zinc-400" />
-                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">월별 매출</h2>
+                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">월별 매출 (네이버)</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

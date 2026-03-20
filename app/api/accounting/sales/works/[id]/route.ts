@@ -77,11 +77,36 @@ export async function GET(
       .select('*, partner:rs_partners(*)')
       .eq('work_id', workId);
 
+    // 해외 론칭 정보
+    const { data: globalLaunches } = await supabase
+      .from('rs_work_global_launches')
+      .select('*')
+      .eq('work_id', workId)
+      .order('country_code');
+
+    // 2차 사업 정보
+    const { data: secondaryBiz } = await supabase
+      .from('rs_work_secondary_biz')
+      .select('*')
+      .eq('work_id', workId)
+      .order('created_at');
+
+    // 정산 매출 (rs_revenues - 월별 국내/해외)
+    const { data: revenues } = await supabase
+      .from('rs_revenues')
+      .select('month, domestic_paid, global_paid, domestic_ad, global_ad, secondary, total')
+      .eq('work_id', workId)
+      .order('month', { ascending: false })
+      .limit(12);
+
     return NextResponse.json({
       work,
       dailySales,
       monthlySales,
       partners: workPartners || [],
+      globalLaunches: globalLaunches || [],
+      secondaryBiz: secondaryBiz || [],
+      revenues: revenues || [],
       summary: {
         totalSales,
         dailyAverage,

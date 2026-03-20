@@ -28,6 +28,7 @@ import {
   Plus,
   Trash2,
   Sparkles,
+  GitCompareArrows,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -48,6 +49,7 @@ const navGroups = [
     label: '분석',
     items: [
       { href: '/accounting/sales/works', label: '작품별 매출', icon: BookOpen },
+      { href: '/accounting/sales/compare', label: '작품 비교', icon: GitCompareArrows },
       { href: '/accounting/sales/ranking', label: '랭킹', icon: Trophy },
       { href: '/accounting/sales/growth', label: '성장률', icon: TrendingUp },
     ],
