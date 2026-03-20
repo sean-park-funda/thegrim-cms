@@ -10,9 +10,10 @@ interface SortableCutItemProps {
   displayIndex: number;
   isSelected: boolean;
   onRemove: (id: string) => void;
+  onOpenDetail?: (cut: WebtoonAnimationCut) => void;
 }
 
-export function SortableCutItem({ cut, displayIndex, isSelected, onRemove }: SortableCutItemProps) {
+export function SortableCutItem({ cut, displayIndex, isSelected, onRemove, onOpenDetail }: SortableCutItemProps) {
   const {
     attributes,
     listeners,
@@ -28,13 +29,17 @@ export function SortableCutItem({ cut, displayIndex, isSelected, onRemove }: Sor
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const hasSynopsis = !!cut.cut_synopsis;
+  const hasPrompts = !!(cut.gemini_colorize_prompt || cut.video_prompt);
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group rounded-lg overflow-hidden border-2 transition-colors
+      className={`relative group rounded-lg overflow-hidden border-2 transition-colors cursor-pointer
         ${isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-border'}
         ${isDragging ? 'z-50 shadow-lg' : ''}`}
+      onClick={() => onOpenDetail?.(cut)}
     >
       <div className="absolute top-1 left-1 z-10 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded font-mono">
         {displayIndex}
@@ -61,6 +66,16 @@ export function SortableCutItem({ cut, displayIndex, isSelected, onRemove }: Sor
         className="w-full h-32 object-cover"
         draggable={false}
       />
+
+      {/* 기획/프롬프트 상태 뱃지 */}
+      <div className="absolute bottom-1 left-1 flex gap-1">
+        {hasSynopsis && (
+          <span className="bg-blue-500/80 text-white text-[10px] px-1 py-0.5 rounded font-mono leading-none">기획</span>
+        )}
+        {hasPrompts && (
+          <span className="bg-green-500/80 text-white text-[10px] px-1 py-0.5 rounded font-mono leading-none">P</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -24,9 +24,10 @@ interface SortableCutGridProps {
   rangeEnd: number;
   onReorder: (newCuts: WebtoonAnimationCut[]) => void;
   onRemove: (id: string) => void;
+  onOpenDetail?: (cut: WebtoonAnimationCut) => void;
 }
 
-export function SortableCutGrid({ cuts, rangeStart, rangeEnd, onReorder, onRemove }: SortableCutGridProps) {
+export function SortableCutGrid({ cuts, rangeStart, rangeEnd, onReorder, onRemove, onOpenDetail }: SortableCutGridProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -52,6 +53,7 @@ export function SortableCutGrid({ cuts, rangeStart, rangeEnd, onReorder, onRemov
               displayIndex={i}
               isSelected={i >= rangeStart && i <= rangeEnd}
               onRemove={onRemove}
+              onOpenDetail={onOpenDetail}
             />
           ))}
         </div>

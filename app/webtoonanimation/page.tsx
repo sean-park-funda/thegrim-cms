@@ -19,6 +19,7 @@ import { SeedancePromptEditor } from '@/components/webtoonanimation/SeedanceProm
 import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
 import { VideoTestLab } from '@/components/webtoonanimation/VideoTestLab';
 import { SegmentPlanner } from '@/components/webtoonanimation/SegmentPlanner';
+import { CutDetailSheet } from '@/components/webtoonanimation/CutDetailSheet';
 
 export default function WebtoonAnimationPage() {
   // State: 프로젝트 목록
@@ -46,6 +47,10 @@ export default function WebtoonAnimationPage() {
 
   // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
   const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments'>('testlab');
+
+  // State: 컷 상세 시트
+  const [detailCut, setDetailCut] = useState<WebtoonAnimationCut | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   // Debounce timer
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -215,6 +220,17 @@ export default function WebtoonAnimationPage() {
       console.error('컷 삭제 실패:', e);
     }
   };
+
+  // ===== 컷 상세 시트 =====
+  const handleOpenDetail = useCallback((cut: WebtoonAnimationCut) => {
+    setDetailCut(cut);
+    setDetailSheetOpen(true);
+  }, []);
+
+  const handleCutUpdated = useCallback((updated: WebtoonAnimationCut) => {
+    setCuts((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+    setDetailCut(updated);
+  }, []);
 
   // ===== Seedance 프롬프트 생성 =====
   const handleGenerate = async () => {
@@ -528,6 +544,7 @@ export default function WebtoonAnimationPage() {
                     rangeEnd={rangeEnd}
                     onReorder={handleReorder}
                     onRemove={handleRemoveCut}
+                    onOpenDetail={handleOpenDetail}
                   />
                   <RangeSelector
                     totalCuts={cuts.length}
@@ -583,6 +600,15 @@ export default function WebtoonAnimationPage() {
           )}
         </div>
       </div>
+
+      {/* 컷 상세 시트 */}
+      <CutDetailSheet
+        cut={detailCut}
+        project={selectedProject}
+        open={detailSheetOpen}
+        onClose={() => setDetailSheetOpen(false)}
+        onCutUpdated={handleCutUpdated}
+      />
     </div>
   );
 }

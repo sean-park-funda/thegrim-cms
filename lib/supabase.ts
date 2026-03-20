@@ -311,6 +311,8 @@ export interface WebtoonAnimationProject {
   created_by?: string | null;
   created_at: string;
   updated_at: string;
+  character_settings?: Record<string, string> | null;
+  character_ref_url?: string | null;
 }
 
 export interface WebtoonAnimationCut {
@@ -321,6 +323,12 @@ export interface WebtoonAnimationCut {
   file_path: string;
   storage_path: string;
   created_at: string;
+  cut_synopsis?: string | null;
+  frame_strategy?: string | null;
+  gemini_colorize_prompt?: string | null;
+  gemini_expand_prompt?: string | null;
+  gemini_start_frame_prompt?: string | null;
+  video_prompt?: string | null;
 }
 
 export interface WebtoonAnimationPromptGroup {

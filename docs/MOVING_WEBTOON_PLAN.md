@@ -81,6 +81,48 @@
 
 ---
 
+### 7. 컷별 기획 입력 → 4종 프롬프트 자동 생성
+
+컷 단위로 **기획 텍스트**(구도, 액션, 감정, 등장인물)를 입력하면 AI가 4종 프롬프트를 자동 생성한다.
+
+**입력 → 출력 흐름**:
+```
+[컷별 기획 텍스트]
+  예) "복도 등장. 희원이 오른쪽에서 걸어 들어와 중앙에서 멈춘다. 빈 복도, 긴장감."
+  + 캐릭터 설정 (프로젝트에 등록된 것 자동 참조)
+         │
+         ▼
+    AI (Claude/Gemini)
+         │
+         ▼
+[4종 프롬프트 자동 초안]
+  - gemini_colorize
+  - gemini_expand
+  - gemini_start_frame
+  - video_prompt
+```
+
+**UI**: 컷 카드에 "기획 메모" 입력란 → "프롬프트 생성" 버튼 → 4종 프롬프트 에디터에 초안 채워짐 → 사용자가 수정 후 확정
+
+**AI 브리프 구조**:
+```
+아래 컷 기획을 읽고 4종 프롬프트를 작성해주세요.
+
+[컷 기획]: {cut_synopsis}
+[캐릭터 설정]: {character_settings}
+[컷 유형]: {frame_strategy} (등장/퇴장/표정변화/빈배경→액션)
+
+주의사항:
+- gemini_colorize: 캐릭터 색상 정확히 명시, 화풍 지정
+- gemini_expand: 16:9 확장 방향, 추가 배경 요소, 캐릭터 위치
+- gemini_start_frame: End Frame과 동일 카메라 뷰 유지 필수
+- video_prompt: "Anime style, Korean webtoon aesthetic"으로 시작, 구체적 모션 서술
+```
+
+**DB**: `webtoon_animation_cuts.cut_synopsis text` 컬럼 추가
+
+---
+
 ## 구현 단계
 
 ### Phase A — Gemini 프레임 파이프라인 (우선순위 1)
