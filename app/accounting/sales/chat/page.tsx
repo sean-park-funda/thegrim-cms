@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewSales } from '@/lib/utils/permissions';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { User, Send, Loader2, Sparkles, Menu } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -102,7 +102,7 @@ export default function ChatPage() {
     router.replace('/accounting/sales/chat', { scroll: false });
   }, [router]);
 
-  if (!profile || !canViewAccounting(profile.role)) return null;
+  if (!profile || !canViewSales(profile.role)) return null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">

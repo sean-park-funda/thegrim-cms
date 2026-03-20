@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useStore } from '@/lib/store/useStore';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -82,7 +82,7 @@ export default function SalesDashboardPage() {
   const isCustomRange = !!(dateRange?.from && dateRange?.to);
 
   useEffect(() => {
-    if (!profile || !canViewAccounting(profile.role)) return;
+    if (!profile || !canViewSales(profile.role)) return;
     setLoading(true);
     settlementFetch(`/api/accounting/sales?from=${from}&to=${to}`)
       .then(r => r.json())
@@ -96,7 +96,7 @@ export default function SalesDashboardPage() {
       .finally(() => setLoading(false));
   }, [profile, from, to]);
 
-  if (!profile || !canViewAccounting(profile.role)) return null;
+  if (!profile || !canViewSales(profile.role)) return null;
 
   // 작품 필터링
   const filteredWorkNames = useMemo(() => {

@@ -110,3 +110,8 @@ export function canAccessStrategy(role: UserRole): boolean {
   return role === 'admin' || role === 'strategy';
 }
 
+// 매출 메뉴 접근 권한
+export function canViewSales(role: UserRole): boolean {
+  return role === 'admin' || role === 'executive' || role === 'accountant' || role === 'strategy' || role === 'manager';
+}
+

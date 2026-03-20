@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -21,7 +21,7 @@ export default function WorksTablePage() {
   const { from, to } = useMemo(() => getDateRange(days), [days]);
 
   useEffect(() => {
-    if (!profile || !canViewAccounting(profile.role)) return;
+    if (!profile || !canViewSales(profile.role)) return;
     setLoading(true);
     settlementFetch(`/api/accounting/sales?from=${from}&to=${to}`)
       .then(r => r.json())
@@ -30,7 +30,7 @@ export default function WorksTablePage() {
       .finally(() => setLoading(false));
   }, [profile, from, to]);
 
-  if (!profile || !canViewAccounting(profile.role)) return null;
+  if (!profile || !canViewSales(profile.role)) return null;
 
   const dates = useMemo(() =>
     data?.summary?.dailyTotals?.map(d => d.date).sort() || [],

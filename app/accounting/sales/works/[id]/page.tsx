@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { PRESETS, fmtShort, fmtWon, getDateRange } from '@/lib/sales/types';
 import { ArrowLeft, TrendingUp, TrendingDown, Calendar, BarChart3 } from 'lucide-react';
@@ -45,7 +45,7 @@ export default function WorkSalesDetailPage() {
   const { from, to } = useMemo(() => getDateRange(days), [days]);
 
   useEffect(() => {
-    if (!profile || !canViewAccounting(profile.role) || !workId) return;
+    if (!profile || !canViewSales(profile.role) || !workId) return;
     setLoading(true);
     settlementFetch(`/api/accounting/sales/works/${workId}?from=${from}&to=${to}`)
       .then(r => r.json())
@@ -54,7 +54,7 @@ export default function WorkSalesDetailPage() {
       .finally(() => setLoading(false));
   }, [profile, workId, from, to]);
 
-  if (!profile || !canViewAccounting(profile.role)) return null;
+  if (!profile || !canViewSales(profile.role)) return null;
 
   const maxDaily = data ? Math.max(...(data.dailySales.map(d => d.amount)), 1) : 1;
 
