@@ -51,16 +51,36 @@ export async function GET(request: NextRequest) {
       dailyTotals[row.sale_date] = (dailyTotals[row.sale_date] || 0) + Number(row.amount);
     }
 
-    // 작품별 완결 상태 조회
+    // 작품별 완결 상태 + work_id 조회
     const workNames = Object.keys(workMap);
     const workStatus: Record<string, { serialEndDate: string | null }> = {};
+    const workIdMap: Record<string, string> = {};
     if (workNames.length > 0) {
-      const { data: works } = await supabase
-        .from('rs_works')
-        .select('title, serial_end_date')
-        .in('title', workNames);
-      for (const w of works || []) {
-        workStatus[w.title] = { serialEndDate: w.serial_end_date };
+      // work_name으로 rs_daily_sales에서 work_id 가져오기
+      const { data: salesWithWorkId } = await supabase
+        .from('rs_daily_sales')
+        .select('work_name, work_id')
+        .in('work_name', workNames)
+        .not('work_id', 'is', null);
+      for (const s of salesWithWorkId || []) {
+        if (s.work_id) workIdMap[s.work_name] = s.work_id;
+      }
+
+      // work_id로 rs_works 조회
+      const workIds = [...new Set(Object.values(workIdMap))];
+      if (workIds.length > 0) {
+        const { data: works } = await supabase
+          .from('rs_works')
+          .select('id, name, naver_name, serial_end_date')
+          .in('id', workIds);
+        for (const w of works || []) {
+          // workIdMap에서 이 work_id에 해당하는 work_name 찾기
+          for (const [wn, wid] of Object.entries(workIdMap)) {
+            if (wid === w.id) {
+              workStatus[wn] = { serialEndDate: w.serial_end_date };
+            }
+          }
+        }
       }
       // 매칭 안 된 작품은 연재중으로 처리
       for (const name of workNames) {
@@ -83,6 +103,7 @@ export async function GET(request: NextRequest) {
       sales: data,
       works: workMap,
       workStatus,
+      workIdMap,
       summary: {
         totalSales,
         dailyAverage,

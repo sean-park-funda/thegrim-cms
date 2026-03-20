@@ -11,6 +11,7 @@ export interface DailySalesData {
   sales: DailySalesRow[];
   works: Record<string, { date: string; amount: number }[]>;
   workStatus: Record<string, { serialEndDate: string | null }>;
+  workIdMap: Record<string, string>;
   summary: {
     totalSales: number;
     dailyAverage: number;

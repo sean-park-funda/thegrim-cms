@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -143,7 +144,16 @@ export default function WorksTablePage() {
                         <span className={`inline-block w-5 text-right mr-2 tabular-nums text-xs ${
                           i === 0 ? 'text-amber-500 font-bold' : i < 3 ? 'text-zinc-400 font-semibold' : 'text-zinc-300 dark:text-zinc-600'
                         }`}>{i + 1}</span>
-                        <span className="text-zinc-900 dark:text-zinc-100">{row.name}</span>
+                        {data?.workIdMap?.[row.name] ? (
+                          <Link
+                            href={`/accounting/sales/works/${data.workIdMap[row.name]}`}
+                            className="text-zinc-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+                          >
+                            {row.name}
+                          </Link>
+                        ) : (
+                          <span className="text-zinc-900 dark:text-zinc-100">{row.name}</span>
+                        )}
                       </td>
                       {dates.map(date => {
                         const amount = row.byDate[date] || 0;

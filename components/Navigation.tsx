@@ -116,37 +116,37 @@ export function Navigation() {
                 <span className="hidden sm:inline">웹툰</span>
               </Button>
             </Link>
+            {profile && (profile.role === 'admin' || profile.role === 'executive' || profile.role === 'accountant' || profile.role === 'strategy' || profile.role === 'manager') && (
+              <Link href="/accounting/sales">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                    pathname?.startsWith('/accounting/sales')
+                      ? 'bg-background/20 text-background'
+                      : 'text-background/70 hover:text-background hover:bg-background/10'
+                  }`}
+                >
+                  <TrendingUp className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">매출</span>
+                </Button>
+              </Link>
+            )}
             {profile && (profile.role === 'admin' || profile.role === 'executive' || profile.role === 'accountant') && (
-              <>
-                <Link href="/accounting/sales">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
-                      pathname?.startsWith('/accounting/sales')
-                        ? 'bg-background/20 text-background'
-                        : 'text-background/70 hover:text-background hover:bg-background/10'
-                    }`}
-                  >
-                    <TrendingUp className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
-                    <span className="hidden sm:inline">매출</span>
-                  </Button>
-                </Link>
-                <Link href="/accounting">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
-                      pathname === '/accounting' || pathname?.startsWith('/accounting/settlement')
-                        ? 'bg-background/20 text-background'
-                        : 'text-background/70 hover:text-background hover:bg-background/10'
-                    }`}
-                  >
-                    <DollarSign className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
-                    <span className="hidden sm:inline">회계</span>
-                  </Button>
-                </Link>
-              </>
+              <Link href="/accounting">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                    pathname === '/accounting' || pathname?.startsWith('/accounting/settlement')
+                      ? 'bg-background/20 text-background'
+                      : 'text-background/70 hover:text-background hover:bg-background/10'
+                  }`}
+                >
+                  <DollarSign className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">회계</span>
+                </Button>
+              </Link>
             )}
           </div>
 
