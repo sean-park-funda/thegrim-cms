@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     const runColorize = step === 'colorize';
     const runAnchor = !step || step === 'anchor';
-    const runOther = (!step || step === 'other') && frameRole !== 'middle';
+    const runOther = (!step || step === 'other') && frameRole !== 'middle' && !cut.use_prev_cut_as_start;
 
     const result: Record<string, string | null> = {
       color_image_url: null,
@@ -92,13 +92,17 @@ export async function POST(request: NextRequest) {
       }
       console.log(`[generate-frames] colorize 단독 시작`);
       const lineartImg = await downloadToBase64(cut.file_path);
-      const colorizeContents: object[] = [];
+      const colorizeParts: object[] = [{ text: cut.gemini_colorize_prompt + instrSuffix }];
       if (project?.character_ref_url) {
         const refImg = await downloadToBase64(project.character_ref_url);
-        colorizeContents.push({ role: 'user', parts: [{ text: cut.gemini_colorize_prompt + instrSuffix }, { inlineData: { mimeType: refImg.mimeType, data: refImg.data } }, { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } }] });
-      } else {
-        colorizeContents.push({ role: 'user', parts: [{ text: cut.gemini_colorize_prompt + instrSuffix }, { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } }] });
+        colorizeParts.push({ inlineData: { mimeType: refImg.mimeType, data: refImg.data } });
       }
+      if (cut.colorize_reference_url) {
+        const bgRef = await downloadToBase64(cut.colorize_reference_url);
+        colorizeParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
+      }
+      colorizeParts.push({ inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } });
+      const colorizeContents: object[] = [{ role: 'user', parts: colorizeParts }];
       const colorResult = await generateGeminiImage({ provider: 'gemini', model: MODEL, contents: colorizeContents as never });
       const colorUrl = await uploadToStorage(colorResult.base64, colorResult.mimeType, `${prefix}/color_${ts}.png`);
       result.color_image_url = colorUrl;
@@ -113,27 +117,17 @@ export async function POST(request: NextRequest) {
       if (useColorize && cut.gemini_colorize_prompt) {
         console.log(`[generate-frames] anchor/colorize 시작`);
         const lineartImg = await downloadToBase64(cut.file_path);
-        const colorizeContents: object[] = [];
-
+        const anchorColorizeParts: object[] = [{ text: cut.gemini_colorize_prompt + instrSuffix }];
         if (project?.character_ref_url) {
           const refImg = await downloadToBase64(project.character_ref_url);
-          colorizeContents.push({
-            role: 'user',
-            parts: [
-              { text: cut.gemini_colorize_prompt + instrSuffix },
-              { inlineData: { mimeType: refImg.mimeType, data: refImg.data } },
-              { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } },
-            ],
-          });
-        } else {
-          colorizeContents.push({
-            role: 'user',
-            parts: [
-              { text: cut.gemini_colorize_prompt + instrSuffix },
-              { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } },
-            ],
-          });
+          anchorColorizeParts.push({ inlineData: { mimeType: refImg.mimeType, data: refImg.data } });
         }
+        if (cut.colorize_reference_url) {
+          const bgRef = await downloadToBase64(cut.colorize_reference_url);
+          anchorColorizeParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
+        }
+        anchorColorizeParts.push({ inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } });
+        const colorizeContents: object[] = [{ role: 'user', parts: anchorColorizeParts }];
 
         const colorResult = await generateGeminiImage({ provider: 'gemini', model: MODEL, contents: colorizeContents as never });
         const colorUrl = await uploadToStorage(colorResult.base64, colorResult.mimeType, `${prefix}/color_${ts}.png`);
@@ -146,18 +140,21 @@ export async function POST(request: NextRequest) {
         anchorBase = await downloadToBase64(cut.file_path);
       }
 
-      // expand → anchor frame (16:9)
+      // expand → anchor frame
       console.log(`[generate-frames] anchor/expand 시작`);
+      const expandParts: object[] = [
+        { text: cut.gemini_expand_prompt + instrSuffix },
+        { inlineData: { mimeType: anchorBase.mimeType, data: anchorBase.data } },
+      ];
+      if (cut.colorize_reference_url) {
+        // 이전 컷 레퍼런스 — 배경 일관성 유지
+        const bgRef = await downloadToBase64(cut.colorize_reference_url);
+        expandParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
+      }
       const expandResult = await generateGeminiImage({
         provider: 'gemini',
         model: MODEL,
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: cut.gemini_expand_prompt + instrSuffix },
-            { inlineData: { mimeType: anchorBase.mimeType, data: anchorBase.data } },
-          ],
-        }] as never,
+        contents: [{ role: 'user', parts: expandParts }] as never,
       });
 
       const anchorUrl = await uploadToStorage(

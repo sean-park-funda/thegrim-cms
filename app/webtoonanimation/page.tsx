@@ -478,12 +478,13 @@ export default function WebtoonAnimationPage() {
             </div>
           ) : (
             <div className="bg-zinc-900 rounded-xl p-4 flex flex-col gap-4">
-              {cuts.map((cut) => (
+              {cuts.map((cut, index) => (
                 <Wan22CutCard
                   key={cut.id}
                   cut={cut}
                   project={selectedProject}
                   onCutUpdated={handleCutUpdated}
+                  prevCut={index > 0 ? cuts[index - 1] : undefined}
                 />
               ))}
             </div>

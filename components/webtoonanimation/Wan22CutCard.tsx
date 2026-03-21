@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
-  Sparkles, Copy, Check, Loader2, Film, Wand2, ImageIcon, Play,
+  Sparkles, Copy, Check, Loader2, Film, Wand2, ImageIcon, Play, Upload, Link2,
 } from 'lucide-react';
 import { WebtoonAnimationCut, WebtoonAnimationProject } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,7 @@ interface Props {
   cut: WebtoonAnimationCut;
   project: WebtoonAnimationProject | null;
   onCutUpdated: (updated: WebtoonAnimationCut) => void;
+  prevCut?: WebtoonAnimationCut | null;
 }
 
 function CopyBtn({ text, id, copied, onCopy }: { text: string; id: string; copied: string | null; onCopy: (id: string, text: string) => void }) {
@@ -58,6 +59,7 @@ function EmptyResult({ label, ratio = '16:9' }: { label: string; ratio?: string 
 function StepCard({
   stepNum, title, resultSlot, promptEn, promptKo, enField,
   copied, onCopy, onEnChange, onRefine, refining, actionSlot, disabled,
+  extraSlot,
 }: {
   stepNum: number; title: string;
   resultSlot: React.ReactNode;
@@ -68,6 +70,7 @@ function StepCard({
   refining: boolean;
   actionSlot: React.ReactNode;
   disabled?: boolean;
+  extraSlot?: React.ReactNode;
 }) {
   const [instr, setInstr] = useState('');
   const handleRefine = async () => {
@@ -78,18 +81,19 @@ function StepCard({
 
   return (
     <div className={cn('rounded-lg border bg-card flex flex-col overflow-hidden', disabled && 'opacity-40 pointer-events-none')}>
-      {/* 헤더 */}
       <div className="px-3 py-1.5 bg-muted/30 border-b flex items-center gap-2 shrink-0">
         <span className="text-[11px] font-bold text-muted-foreground">STEP {stepNum}</span>
         <span className="text-xs font-medium truncate">{title}</span>
       </div>
-      {/* 결과 이미지/영상 */}
       <div className="p-2 bg-muted/10 shrink-0 border-b">
         {resultSlot}
       </div>
-      {/* 프롬프트 + 컨트롤 */}
+      {extraSlot && (
+        <div className="px-3 pt-2 border-b pb-2">
+          {extraSlot}
+        </div>
+      )}
       <div className="p-3 flex flex-col gap-2 flex-1">
-        {/* EN textarea */}
         <div>
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground font-medium">English</span>
@@ -103,11 +107,9 @@ function StepCard({
             rows={4}
           />
         </div>
-        {/* KO — 읽기 전용 */}
         {promptKo && (
           <p className="text-[10px] text-blue-400/80 leading-relaxed">{promptKo}</p>
         )}
-        {/* 수정 지시 */}
         <div className="flex gap-1.5">
           <Textarea
             value={instr}
@@ -127,7 +129,6 @@ function StepCard({
             {refining ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
           </Button>
         </div>
-        {/* 재생성 버튼 */}
         <div className="mt-auto pt-1">
           {actionSlot}
         </div>
@@ -136,14 +137,43 @@ function StepCard({
   );
 }
 
+/** 이전 컷 자동 연결 — 읽기 전용 스텝 카드 */
+function PrevCutCard({ stepNum, frameUrl, ratio }: { stepNum: number; frameUrl: string | null; ratio: string }) {
+  const cls = ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
+  return (
+    <div className="rounded-lg border bg-card flex flex-col overflow-hidden">
+      <div className="px-3 py-1.5 bg-muted/30 border-b flex items-center gap-2 shrink-0">
+        <span className="text-[11px] font-bold text-muted-foreground">STEP {stepNum}</span>
+        <span className="text-xs font-medium truncate">시작 프레임 (이전 컷)</span>
+        <Link2 className="h-3 w-3 text-amber-500 ml-auto shrink-0" />
+      </div>
+      <div className="p-2 bg-muted/10 flex-1 flex items-center justify-center">
+        {frameUrl
+          ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border`} />
+          : (
+            <div className={`w-full ${cls} border-2 border-dashed border-amber-500/30 rounded flex items-center justify-center`}>
+              <span className="text-[10px] text-amber-500/70">이전 컷 프레임 생성 필요</span>
+            </div>
+          )}
+      </div>
+      <div className="px-3 py-2">
+        <p className="text-[10px] text-amber-500/80">이전 컷의 끝 프레임이 자동으로 시작 프레임으로 사용됩니다.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
+export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [synopsis, setSynopsis] = useState(cut.cut_synopsis || '');
   const [frameRole, setFrameRole] = useState<FrameRole>((cut.frame_role as FrameRole) || 'end');
   const [frameStrategy, setFrameStrategy] = useState(cut.frame_strategy || '');
   const [useColorize, setUseColorize] = useState(cut.use_colorize !== false);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
+  const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
+  const [colorizeRefUrl, setColorizeRefUrl] = useState(cut.colorize_reference_url || '');
+  const [uploadingRef, setUploadingRef] = useState(false);
 
   const [colorizeEn, setColorizeEn] = useState(cut.gemini_colorize_prompt || '');
   const [colorizeKo, setColorizeKo] = useState(cut.gemini_colorize_prompt_ko || '');
@@ -173,7 +203,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const save = useCallback((field: string, value: string | boolean) => {
+  const save = useCallback((field: string, value: string | boolean | null) => {
     clearTimeout(saveTimers.current[field]);
     saveTimers.current[field] = setTimeout(async () => {
       await fetch('/api/webtoonanimation/generate-cut-prompts', {
@@ -194,6 +224,49 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
     setTimeout(() => setCopied(null), 1500);
   };
 
+  // ── 이전 컷 이어받기 토글 ──
+  const handleTogglePrevCut = (v: boolean) => {
+    setUsePrevCut(v);
+    save('use_prev_cut_as_start', v);
+    if (v && prevCut) {
+      // 이전 컷의 끝 프레임을 컬러화 레퍼런스로 자동 설정
+      const refUrl = prevCut.end_frame_url || prevCut.color_image_url || '';
+      if (refUrl) {
+        setColorizeRefUrl(refUrl);
+        save('colorize_reference_url', refUrl);
+        update({ colorize_reference_url: refUrl });
+      }
+      // 역할을 'end'로 고정 (이 컷은 항상 끝 프레임)
+      setFrameRole('end');
+      save('frame_role', 'end');
+    }
+    update({ use_prev_cut_as_start: v });
+  };
+
+  // ── 레퍼런스 이미지 업로드 ──
+  const handleRefUpload = async (file: File) => {
+    setUploadingRef(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/webtoonanimation/upload-reference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutId: cut.id, imageData: base64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setColorizeRefUrl(data.url);
+        update({ colorize_reference_url: data.url });
+      }
+    } catch (e) { alert(`레퍼런스 업로드 실패: ${e instanceof Error ? e.message : e}`); }
+    finally { setUploadingRef(false); }
+  };
+
+  // ── 전체 프롬프트 자동 생성 ──
   const handleGeneratePrompts = async () => {
     if (!synopsis.trim()) return;
     setGenPrompts(true);
@@ -234,6 +307,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
     finally { setGenPrompts(false); }
   };
 
+  // ── 개별 프롬프트 AI 수정 ──
   const handleRefinePrompt = async (promptType: string, instruction: string, currentEn: string, currentKo: string) => {
     setRefiningType(promptType);
     try {
@@ -312,6 +386,19 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
   const handleGenVideo = async () => {
     setGenVideo(true);
     try {
+      // 이전 컷 이어받기 모드: start_frame_url을 이전 컷 끝 프레임으로 설정
+      if (usePrevCut && prevCut) {
+        const prevFrameUrl = prevCut.end_frame_url || prevCut.color_image_url || null;
+        if (prevFrameUrl) {
+          await fetch('/api/webtoonanimation/generate-cut-prompts', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cutId: cut.id, field: 'start_frame_url', value: prevFrameUrl }),
+          });
+          update({ start_frame_url: prevFrameUrl });
+        }
+      }
+
       const res = await fetch('/api/webtoonanimation/generate-comfyui-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,7 +431,39 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
 
   const hasAnchor = !!anchorUrl;
   const hasOther = frameRole === 'middle' || !!otherUrl;
-  const canVideo = frameRole === 'middle' ? !!anchorUrl : (!!anchorUrl && !!otherUrl);
+  const prevCutFrame = prevCut ? (prevCut.end_frame_url || prevCut.color_image_url || null) : null;
+
+  // 이전 컷 이어받기 모드: start frame은 이전 컷에서 자동 제공
+  const canVideo = usePrevCut
+    ? !!anchorUrl && !!prevCutFrame
+    : frameRole === 'middle' ? !!anchorUrl : (!!anchorUrl && !!otherUrl);
+
+  const imgCls = cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video');
+
+  // 컬러화 레퍼런스 섹션 (extraSlot용)
+  const colorizeRefSlot = (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-muted-foreground font-medium shrink-0">참조 이미지</span>
+      {colorizeRefUrl
+        ? <img src={colorizeRefUrl} alt="ref" className="h-10 w-16 object-cover rounded border shrink-0" />
+        : <span className="text-[10px] text-muted-foreground/50 italic">없음</span>}
+      <label className="cursor-pointer ml-auto">
+        <input
+          type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRefUpload(f); }}
+        />
+        <Button variant="outline" size="sm" className="h-7 px-2 text-[10px] pointer-events-none" asChild={false}>
+          {uploadingRef ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Upload className="h-3 w-3 mr-1" />업로드</>}
+        </Button>
+      </label>
+      {colorizeRefUrl && (
+        <Button
+          variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-red-500 hover:text-red-600"
+          onClick={() => { setColorizeRefUrl(''); save('colorize_reference_url', ''); update({ colorize_reference_url: null }); }}
+        >삭제</Button>
+      )}
+    </div>
+  );
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -364,7 +483,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             </div>
             <img src={cut.file_path} alt="원본" className="w-full object-contain rounded border" />
           </div>
-          {/* 연출 설명 */}
+          {/* 연출 설명 + 설정 */}
           <div className="p-3 flex flex-col gap-2">
             <div className="flex-1 space-y-1">
               <Label className="text-xs text-muted-foreground">연출 설명</Label>
@@ -378,17 +497,33 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             </div>
             {/* 설정 행 */}
             <div className="flex items-end gap-3 flex-wrap">
+              {/* 이전 컷 이어받기 (cut 2 이상만) */}
+              {prevCut && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">이전 컷 이어받기</Label>
+                  <div className="flex items-center gap-1.5 h-8">
+                    <Switch
+                      checked={usePrevCut}
+                      onCheckedChange={handleTogglePrevCut}
+                    />
+                    <span className={cn('text-xs', usePrevCut ? 'text-amber-500 font-medium' : 'text-muted-foreground')}>
+                      {usePrevCut ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">이 컷의 역할</Label>
                 <div className="flex gap-1">
                   {FRAME_ROLE_OPTIONS.map((opt) => (
                     <button key={opt.value}
-                      onClick={() => { setFrameRole(opt.value); save('frame_role', opt.value); }}
+                      onClick={() => { if (usePrevCut && opt.value !== 'end') return; setFrameRole(opt.value); save('frame_role', opt.value); }}
                       className={cn(
                         'text-xs py-1 px-2.5 rounded border transition-colors',
                         frameRole === opt.value
                           ? 'border-primary bg-primary/5 text-primary font-medium'
-                          : 'border-border hover:border-muted-foreground text-muted-foreground'
+                          : 'border-border hover:border-muted-foreground text-muted-foreground',
+                        usePrevCut && opt.value !== 'end' && 'opacity-30 cursor-not-allowed'
                       )}
                     >{opt.label}</button>
                   ))}
@@ -449,9 +584,10 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             stepNum={1} title="컬러화"
             resultSlot={
               colorUrl
-                ? <img src={colorUrl} alt="컬러" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+                ? <img src={colorUrl} alt="컬러" className={imgCls} />
                 : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
             }
+            extraSlot={colorizeRefSlot}
             promptEn={colorizeEn} promptKo={colorizeKo} enField="gemini_colorize_prompt"
             copied={copied} onCopy={handleCopy}
             onEnChange={(v) => { setColorizeEn(v); save('gemini_colorize_prompt', v); }}
@@ -478,7 +614,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
           title={`앵커 (${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : 'ref'}) ${aspectRatio}`}
           resultSlot={
             anchorUrl
-              ? <img src={anchorUrl} alt="앵커" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+              ? <img src={anchorUrl} alt="앵커" className={imgCls} />
               : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
           }
           promptEn={expandEn} promptKo={expandKo} enField="gemini_expand_prompt"
@@ -500,15 +636,21 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
           }
         />
 
-        {/* STEP 3: 나머지 프레임 */}
-        {frameRole !== 'middle' && (
+        {/* STEP 3: 이전 컷 이어받기 or 나머지 프레임 */}
+        {usePrevCut ? (
+          <PrevCutCard
+            stepNum={useColorize ? 3 : 2}
+            frameUrl={prevCutFrame}
+            ratio={aspectRatio}
+          />
+        ) : frameRole !== 'middle' ? (
           <StepCard
             stepNum={useColorize ? 3 : 2}
             title={`${frameRole === 'start' ? '끝' : '시작'} 프레임`}
             disabled={!hasAnchor}
             resultSlot={
               otherUrl
-                ? <img src={otherUrl} alt="나머지" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+                ? <img src={otherUrl} alt="나머지" className={imgCls} />
                 : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} ratio={aspectRatio} />
             }
             promptEn={otherEn} promptKo={otherKo} enField="gemini_start_frame_prompt"
@@ -529,7 +671,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
               </Button>
             }
           />
-        )}
+        ) : null}
 
         {/* STEP 4: 영상 */}
         <StepCard
