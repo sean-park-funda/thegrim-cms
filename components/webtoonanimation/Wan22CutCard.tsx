@@ -585,22 +585,6 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 </div>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">영상 길이</Label>
-                <div className="flex gap-1">
-                  {[3, 5, 7, 9, 10].map((sec) => (
-                    <button key={sec}
-                      onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
-                      className={cn(
-                        'text-xs py-1 px-2 rounded border transition-colors',
-                        videoDuration === sec
-                          ? 'border-primary bg-primary/5 text-primary font-medium'
-                          : 'border-border hover:border-muted-foreground text-muted-foreground'
-                      )}
-                    >{sec}s</button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">씬 유형</Label>
                 <Select value={frameStrategy} onValueChange={(v) => { setFrameStrategy(v); save('frame_strategy', v); }}>
                   <SelectTrigger className="text-xs h-8 w-28">
@@ -752,16 +736,31 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           onRefine={(instr) => handleRefinePrompt('video', instr, videoEn, videoKo)}
           refining={refiningType === 'video'}
           actionSlot={
-            <Button
-              onClick={handleGenVideo}
-              disabled={genVideo || !canVideo || !videoEn}
-              className="w-full bg-violet-600 hover:bg-violet-700 text-white"
-              size="sm"
-            >
-              {genVideo
-                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />렌더링 중...</>
-                : <><Film className="h-3 w-3 mr-1" />{videoUrl ? '재생성' : '영상 생성'}</>}
-            </Button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-1">
+                {[3, 5, 7, 9, 10].map((sec) => (
+                  <button key={sec}
+                    onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
+                    className={cn(
+                      'text-xs py-1 px-2 rounded border transition-colors flex-1',
+                      videoDuration === sec
+                        ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                        : 'border-border hover:border-muted-foreground text-muted-foreground'
+                    )}
+                  >{sec}s</button>
+                ))}
+              </div>
+              <Button
+                onClick={handleGenVideo}
+                disabled={genVideo || !canVideo || !videoEn}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                size="sm"
+              >
+                {genVideo
+                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />렌더링 중...</>
+                  : <><Film className="h-3 w-3 mr-1" />{videoUrl ? `재생성 (${videoDuration}s)` : `영상 생성 (${videoDuration}s)`}</>}
+              </Button>
+            </div>
           }
         />
 
