@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
-  Sparkles, Copy, Check, Loader2, Film, Wand2, ImageIcon, Play, Upload, Link2,
+  Sparkles, Copy, Check, Loader2, Film, Wand2, ImageIcon, Play, Link2,
 } from 'lucide-react';
 import { WebtoonAnimationCut, WebtoonAnimationProject } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -455,31 +455,6 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
 
   const imgCls = cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video');
 
-  // 컬러화 레퍼런스 섹션 (extraSlot용)
-  const colorizeRefSlot = (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] text-muted-foreground font-medium shrink-0">참조 이미지</span>
-      {colorizeRefUrl
-        ? <img src={colorizeRefUrl} alt="ref" className="h-10 w-16 object-cover rounded border shrink-0" />
-        : <span className="text-[10px] text-muted-foreground/50 italic">없음</span>}
-      <label className="cursor-pointer ml-auto">
-        <input
-          type="file" accept="image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRefUpload(f); }}
-        />
-        <Button variant="outline" size="sm" className="h-7 px-2 text-[10px] pointer-events-none" asChild={false}>
-          {uploadingRef ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Upload className="h-3 w-3 mr-1" />업로드</>}
-        </Button>
-      </label>
-      {colorizeRefUrl && (
-        <Button
-          variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-red-500 hover:text-red-600"
-          onClick={() => { setColorizeRefUrl(''); save('colorize_reference_url', ''); update({ colorize_reference_url: null }); }}
-        >삭제</Button>
-      )}
-    </div>
-  );
-
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
 
@@ -565,6 +540,24 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 <div className="flex items-center gap-1.5 h-8">
                   <Switch checked={useColorize} onCheckedChange={(v) => { setUseColorize(v); save('use_colorize', v); }} />
                   <span className="text-xs text-muted-foreground">{useColorize ? 'ON' : 'OFF'}</span>
+                  {/* 컬러화 ON일 때 레퍼런스 이미지 업로드 */}
+                  {useColorize && (
+                    <label className="cursor-pointer ml-1 flex items-center gap-1">
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRefUpload(f); }} />
+                      {colorizeRefUrl
+                        ? <img src={colorizeRefUrl} alt="ref" className="h-7 w-10 object-cover rounded border" title="컬러화 레퍼런스" />
+                        : <span className="text-[10px] text-muted-foreground/60 border border-dashed rounded px-1.5 py-0.5 hover:border-muted-foreground">
+                            {uploadingRef ? <Loader2 className="h-3 w-3 animate-spin inline" /> : '+ ref'}
+                          </span>}
+                    </label>
+                  )}
+                  {useColorize && colorizeRefUrl && (
+                    <button
+                      className="text-[10px] text-red-400 hover:text-red-500"
+                      onClick={() => { setColorizeRefUrl(''); save('colorize_reference_url', null); update({ colorize_reference_url: null }); }}
+                    >✕</button>
+                  )}
                 </div>
               </div>
               <div className="space-y-1">
@@ -602,7 +595,6 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 ? <img src={colorUrl} alt="컬러" className={imgCls} />
                 : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
             }
-            extraSlot={colorizeRefSlot}
             promptEn={colorizeEn} promptKo={colorizeKo} enField="gemini_colorize_prompt"
             copied={copied} onCopy={handleCopy}
             onEnChange={(v) => { setColorizeEn(v); save('gemini_colorize_prompt', v); }}
