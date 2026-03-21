@@ -335,6 +335,7 @@ export interface WebtoonAnimationCut {
   video_prompt_ko?: string | null;
   frame_role?: 'start' | 'end' | 'middle' | null;
   use_colorize?: boolean | null;
+  aspect_ratio?: string | null;
   color_image_url?: string | null;
   end_frame_url?: string | null;
   start_frame_url?: string | null;
