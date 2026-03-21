@@ -169,7 +169,7 @@ function PrevCutCard({ stepNum, frameUrl, ratio, onLightbox }: { stepNum: number
         <span className="text-xs font-medium truncate">시작 프레임 (이전 컷)</span>
         <Link2 className="h-3 w-3 text-amber-500 ml-auto shrink-0" />
       </div>
-      <div className="p-2 bg-muted/10 flex-1 flex items-center justify-center">
+      <div className="p-2 bg-muted/10 shrink-0 border-b">
         {frameUrl
           ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border cursor-pointer hover:opacity-90 transition-opacity`} onClick={() => onLightbox(frameUrl)} />
           : (
@@ -178,8 +178,8 @@ function PrevCutCard({ stepNum, frameUrl, ratio, onLightbox }: { stepNum: number
             </div>
           )}
       </div>
-      <div className="px-3 py-2">
-        <p className="text-[10px] text-amber-500/80">이전 컷의 끝 프레임이 자동으로 시작 프레임으로 사용됩니다.</p>
+      <div className="p-3 flex-1">
+        <p className="text-[10px] text-amber-500/80">이전 컷에서 이어집니다</p>
       </div>
     </div>
   );
