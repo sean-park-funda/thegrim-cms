@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
     const colorizeInstruction = useColorize
       ? cut.colorize_reference_url
         ? `1. **gemini_colorize** (라인아트 → 컬러 이미지, 레퍼런스 이미지 있음):
-   - **캐릭터 색상을 직접 지정하지 말 것** — 레퍼런스 이미지의 머리색, 피부톤, 의상 색을 그대로 따라야 함
-   - 프롬프트에 반드시 명시: "Match the character's hair color, skin tone, and clothing colors exactly from the reference image"
-   - 배경/환경/조명도 레퍼런스 이미지와 동일하게 유지: "Use the same background, environment, and lighting as the reference image"
+   - 핵심 지시: "Colorize the provided black and white webtoon lineart."
+   - **캐릭터 색상을 직접 지정하지 말 것** — 반드시 명시: "Match the character's hair color, skin tone, and clothing colors exactly from the color reference image"
+   - 배경/환경/조명도 레퍼런스와 일치: "Use the same background, environment, and lighting as the color reference image"
    - 화풍: "Korean webtoon style, flat color, cel shading"
    - 영어로 작성`
         : `1. **gemini_colorize** (라인아트 → 컬러 이미지):

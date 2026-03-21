@@ -95,12 +95,15 @@ export async function POST(request: NextRequest) {
       const colorizeParts: object[] = [{ text: cut.gemini_colorize_prompt + instrSuffix }];
       if (project?.character_ref_url) {
         const refImg = await downloadToBase64(project.character_ref_url);
+        colorizeParts.push({ text: '[Character reference sheet — use for character appearance only, do NOT colorize this image:]' });
         colorizeParts.push({ inlineData: { mimeType: refImg.mimeType, data: refImg.data } });
       }
       if (cut.colorize_reference_url) {
         const bgRef = await downloadToBase64(cut.colorize_reference_url);
+        colorizeParts.push({ text: '[Color & style reference — match the background, environment, lighting, and character colors from this image:]' });
         colorizeParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
       }
+      colorizeParts.push({ text: '[This is the black and white webtoon lineart to colorize — apply colors to THIS image:]' });
       colorizeParts.push({ inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } });
       const colorizeContents: object[] = [{ role: 'user', parts: colorizeParts }];
       const colorResult = await generateGeminiImage({ provider: 'gemini', model: MODEL, contents: colorizeContents as never });
@@ -120,12 +123,15 @@ export async function POST(request: NextRequest) {
         const anchorColorizeParts: object[] = [{ text: cut.gemini_colorize_prompt + instrSuffix }];
         if (project?.character_ref_url) {
           const refImg = await downloadToBase64(project.character_ref_url);
+          anchorColorizeParts.push({ text: '[Character reference sheet — use for character appearance only, do NOT colorize this image:]' });
           anchorColorizeParts.push({ inlineData: { mimeType: refImg.mimeType, data: refImg.data } });
         }
         if (cut.colorize_reference_url) {
           const bgRef = await downloadToBase64(cut.colorize_reference_url);
+          anchorColorizeParts.push({ text: '[Color & style reference — match the background, environment, lighting, and character colors from this image:]' });
           anchorColorizeParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
         }
+        anchorColorizeParts.push({ text: '[This is the black and white webtoon lineart to colorize — apply colors to THIS image:]' });
         anchorColorizeParts.push({ inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } });
         const colorizeContents: object[] = [{ role: 'user', parts: anchorColorizeParts }];
 
