@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
     const ts = Date.now();
     const instrSuffix = instruction ? `\n\n[REVISION INSTRUCTION: ${instruction}]` : '';
 
+    const runColorize = step === 'colorize';
     const runAnchor = !step || step === 'anchor';
     const runOther = (!step || step === 'other') && frameRole !== 'middle';
 
@@ -83,6 +84,26 @@ export async function POST(request: NextRequest) {
       start_frame_url: null,
       end_frame_url: null,
     };
+
+    // ── COLORIZE 단계 (컬러화만 단독 재생성) ──
+    if (runColorize) {
+      if (!useColorize || !cut.gemini_colorize_prompt) {
+        return NextResponse.json({ error: '컬러화 프롬프트가 없거나 컬러화가 비활성화되어 있습니다' }, { status: 400 });
+      }
+      console.log(`[generate-frames] colorize 단독 시작`);
+      const lineartImg = await downloadToBase64(cut.file_path);
+      const colorizeContents: object[] = [];
+      if (project?.character_ref_url) {
+        const refImg = await downloadToBase64(project.character_ref_url);
+        colorizeContents.push({ role: 'user', parts: [{ text: cut.gemini_colorize_prompt + instrSuffix }, { inlineData: { mimeType: refImg.mimeType, data: refImg.data } }, { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } }] });
+      } else {
+        colorizeContents.push({ role: 'user', parts: [{ text: cut.gemini_colorize_prompt + instrSuffix }, { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } }] });
+      }
+      const colorResult = await generateGeminiImage({ provider: 'gemini', model: MODEL, contents: colorizeContents as never });
+      const colorUrl = await uploadToStorage(colorResult.base64, colorResult.mimeType, `${prefix}/color_${ts}.png`);
+      result.color_image_url = colorUrl;
+      console.log(`[generate-frames] colorize 단독 완료: ${colorUrl}`);
+    }
 
     // ── ANCHOR 단계 ──
     // anchor = 이 컷 자체를 16:9로 준비한 프레임 (colorize 포함 or 생략)

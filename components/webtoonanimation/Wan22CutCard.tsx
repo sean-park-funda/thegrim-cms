@@ -186,6 +186,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
 
   // 로딩 상태
   const [genPrompts, setGenPrompts] = useState(false);
+  const [genColorize, setGenColorize] = useState(false);
   const [genAnchor, setGenAnchor] = useState(false);
   const [genOther, setGenOther] = useState(false);
   const [genVideo, setGenVideo] = useState(false);
@@ -273,6 +274,25 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
       if (promptType === 'video')    { setVideoEn(data.prompt_en);    setVideoKo(data.prompt_ko);    update({ video_prompt: data.prompt_en, video_prompt_ko: data.prompt_ko }); }
     } catch (e) { alert(`프롬프트 수정 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setRefiningType(null); }
+  };
+
+  // ── 컬러화 단독 재생성 ──
+  const handleGenColorize = async () => {
+    setGenColorize(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/generate-frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutId: cut.id, step: 'colorize' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (data.color_image_url) {
+        setColorUrl(data.color_image_url);
+        update({ color_image_url: data.color_image_url });
+      }
+    } catch (e) { alert(`컬러화 생성 실패: ${e instanceof Error ? e.message : e}`); }
+    finally { setGenColorize(false); }
   };
 
   // ── 앵커 프레임 생성 ──
@@ -463,7 +483,18 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
                 refining={refiningType === 'colorize'}
               />
             }
-            actionSlot={null}
+            actionSlot={
+              <Button
+                onClick={handleGenColorize}
+                disabled={genColorize || !colorizeEn}
+                variant={colorUrl ? 'outline' : 'default'}
+                size="sm" className="w-full"
+              >
+                {genColorize
+                  ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
+                  : <><ImageIcon className="h-3.5 w-3.5 mr-1.5" />{colorUrl ? '컬러화 재생성' : '컬러화 생성'}</>}
+              </Button>
+            }
           />
         )}
 
