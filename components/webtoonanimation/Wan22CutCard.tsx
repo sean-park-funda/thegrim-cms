@@ -347,72 +347,79 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
 
-      {/* ── 원본 이미지 — 전체 너비 ── */}
-      <div className="border-b bg-muted/10 p-3">
-        <div className="flex items-center gap-3 mb-2">
-          <p className="text-[11px] font-semibold text-muted-foreground">CUT {cut.order_index + 1} 원본</p>
-          {videoUrl && (
-            <span className="text-[10px] text-green-600 font-medium flex items-center gap-1">
-              <Play className="h-3 w-3" />영상 완료
-            </span>
-          )}
-        </div>
-        <img src={cut.file_path} alt="원본" className="w-full max-h-[200px] object-contain rounded border" />
-      </div>
-
-      {/* ── 설정 행 ── */}
-      <div className="p-3 border-b bg-muted/5 flex items-end gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px] space-y-1">
-          <Label className="text-xs text-muted-foreground">연출 설명</Label>
-          <Textarea
-            value={synopsis}
-            onChange={(e) => { setSynopsis(e.target.value); save('cut_synopsis', e.target.value); }}
-            placeholder="이 컷에서 일어나는 일을 설명해주세요"
-            className="text-sm resize-none min-h-[56px]"
-            rows={2}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">이 컷의 역할</Label>
-          <div className="flex gap-1">
-            {FRAME_ROLE_OPTIONS.map((opt) => (
-              <button key={opt.value}
-                onClick={() => { setFrameRole(opt.value); save('frame_role', opt.value); }}
-                className={cn(
-                  'text-xs py-1 px-2.5 rounded border transition-colors',
-                  frameRole === opt.value
-                    ? 'border-primary bg-primary/5 text-primary font-medium'
-                    : 'border-border hover:border-muted-foreground text-muted-foreground'
-                )}
-              >{opt.label}</button>
-            ))}
+      {/* ── 헤더: 원본 이미지(좌) + 연출설명(우) ── */}
+      <div className="border-b bg-muted/10">
+        <div className="grid grid-cols-[240px_1fr] divide-x">
+          {/* 원본 이미지 */}
+          <div className="p-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <p className="text-[11px] font-semibold text-muted-foreground">CUT {cut.order_index + 1} 원본</p>
+              {videoUrl && (
+                <span className="text-[10px] text-green-600 font-medium flex items-center gap-1">
+                  <Play className="h-3 w-3" />영상 완료
+                </span>
+              )}
+            </div>
+            <img src={cut.file_path} alt="원본" className="w-full object-contain rounded border" />
+          </div>
+          {/* 연출 설명 */}
+          <div className="p-3 flex flex-col gap-2">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs text-muted-foreground">연출 설명</Label>
+              <Textarea
+                value={synopsis}
+                onChange={(e) => { setSynopsis(e.target.value); save('cut_synopsis', e.target.value); }}
+                placeholder="이 컷에서 일어나는 일을 설명해주세요"
+                className="text-sm resize-none min-h-[80px]"
+                rows={4}
+              />
+            </div>
+            {/* 설정 행 */}
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">이 컷의 역할</Label>
+                <div className="flex gap-1">
+                  {FRAME_ROLE_OPTIONS.map((opt) => (
+                    <button key={opt.value}
+                      onClick={() => { setFrameRole(opt.value); save('frame_role', opt.value); }}
+                      className={cn(
+                        'text-xs py-1 px-2.5 rounded border transition-colors',
+                        frameRole === opt.value
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-border hover:border-muted-foreground text-muted-foreground'
+                      )}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">컬러화</Label>
+                <div className="flex items-center gap-1.5 h-8">
+                  <Switch checked={useColorize} onCheckedChange={(v) => { setUseColorize(v); save('use_colorize', v); }} />
+                  <span className="text-xs text-muted-foreground">{useColorize ? 'ON' : 'OFF'}</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">씬 유형</Label>
+                <Select value={frameStrategy} onValueChange={(v) => { setFrameStrategy(v); save('frame_strategy', v); }}>
+                  <SelectTrigger className="text-xs h-8 w-28">
+                    <SelectValue placeholder="선택사항" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FRAME_STRATEGY_OPTIONS.map((s) => (
+                      <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleGeneratePrompts} disabled={genPrompts || !synopsis.trim()} size="sm" className="ml-auto">
+                {genPrompts
+                  ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
+                  : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />전체 프롬프트 자동 생성</>}
+              </Button>
+            </div>
           </div>
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">컬러화</Label>
-          <div className="flex items-center gap-1.5 h-8">
-            <Switch checked={useColorize} onCheckedChange={(v) => { setUseColorize(v); save('use_colorize', v); }} />
-            <span className="text-xs text-muted-foreground">{useColorize ? 'ON' : 'OFF'}</span>
-          </div>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">씬 유형</Label>
-          <Select value={frameStrategy} onValueChange={(v) => { setFrameStrategy(v); save('frame_strategy', v); }}>
-            <SelectTrigger className="text-xs h-8 w-28">
-              <SelectValue placeholder="선택사항" />
-            </SelectTrigger>
-            <SelectContent>
-              {FRAME_STRATEGY_OPTIONS.map((s) => (
-                <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button onClick={handleGeneratePrompts} disabled={genPrompts || !synopsis.trim()} size="sm">
-          {genPrompts
-            ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
-            : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />전체 프롬프트 자동 생성</>}
-        </Button>
       </div>
 
       {/* ── 스텝 카드 — 가로 배열 ── */}

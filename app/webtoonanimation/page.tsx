@@ -472,7 +472,6 @@ export default function WebtoonAnimationPage() {
       {/* 5090 — 전체 너비 (사이드바 없음) */}
       {activeTab === '5090' && (
         <div className="space-y-4">
-          <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
           {loadingCuts ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -489,6 +488,7 @@ export default function WebtoonAnimationPage() {
               ))}
             </div>
           )}
+          <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
         </div>
       )}
 
