@@ -42,9 +42,10 @@ function CopyBtn({ text, id, copied, onCopy }: { text: string; id: string; copie
 }
 
 /** 결과 없을 때 빈 박스 */
-function EmptyResult({ label }: { label: string }) {
+function EmptyResult({ label, ratio = '16:9' }: { label: string; ratio?: string }) {
+  const cls = ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
   return (
-    <div className="w-full aspect-video border-2 border-dashed border-muted-foreground/20 rounded flex items-center justify-center">
+    <div className={`w-full ${cls} border-2 border-dashed border-muted-foreground/20 rounded flex items-center justify-center`}>
       <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>
   );
@@ -142,6 +143,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
   const [frameRole, setFrameRole] = useState<FrameRole>((cut.frame_role as FrameRole) || 'end');
   const [frameStrategy, setFrameStrategy] = useState(cut.frame_strategy || '');
   const [useColorize, setUseColorize] = useState(cut.use_colorize !== false);
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
 
   const [colorizeEn, setColorizeEn] = useState(cut.gemini_colorize_prompt || '');
   const [colorizeKo, setColorizeKo] = useState(cut.gemini_colorize_prompt_ko || '');
@@ -393,6 +395,22 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
                 </div>
               </div>
               <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">비율</Label>
+                <div className="flex gap-1">
+                  {(['16:9', '9:16'] as const).map((r) => (
+                    <button key={r}
+                      onClick={() => { setAspectRatio(r); save('aspect_ratio', r); }}
+                      className={cn(
+                        'text-xs py-1 px-2.5 rounded border transition-colors',
+                        aspectRatio === r
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-border hover:border-muted-foreground text-muted-foreground'
+                      )}
+                    >{r}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">컬러화</Label>
                 <div className="flex items-center gap-1.5 h-8">
                   <Switch checked={useColorize} onCheckedChange={(v) => { setUseColorize(v); save('use_colorize', v); }} />
@@ -431,8 +449,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             stepNum={1} title="컬러화"
             resultSlot={
               colorUrl
-                ? <img src={colorUrl} alt="컬러" className="w-full rounded border" />
-                : <EmptyResult label="아직 생성 안됨" />
+                ? <img src={colorUrl} alt="컬러" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+                : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
             }
             promptEn={colorizeEn} promptKo={colorizeKo} enField="gemini_colorize_prompt"
             copied={copied} onCopy={handleCopy}
@@ -457,11 +475,11 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
         {/* STEP 2: 앵커 프레임 */}
         <StepCard
           stepNum={useColorize ? 2 : 1}
-          title={`앵커 (${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : 'ref'}) 16:9`}
+          title={`앵커 (${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : 'ref'}) ${aspectRatio}`}
           resultSlot={
             anchorUrl
-              ? <img src={anchorUrl} alt="앵커" className="w-full rounded border" />
-              : <EmptyResult label="아직 생성 안됨" />
+              ? <img src={anchorUrl} alt="앵커" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+              : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
           }
           promptEn={expandEn} promptKo={expandKo} enField="gemini_expand_prompt"
           copied={copied} onCopy={handleCopy}
@@ -490,8 +508,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             disabled={!hasAnchor}
             resultSlot={
               otherUrl
-                ? <img src={otherUrl} alt="나머지" className="w-full rounded border" />
-                : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} />
+                ? <img src={otherUrl} alt="나머지" className={cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video')} />
+                : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} ratio={aspectRatio} />
             }
             promptEn={otherEn} promptKo={otherKo} enField="gemini_start_frame_prompt"
             copied={copied} onCopy={handleCopy}
@@ -522,11 +540,11 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
             videoUrl
               ? (
                 <div className="w-full space-y-1">
-                  <video src={videoUrl} controls className="w-full rounded border" style={{ aspectRatio: '832/480' }} />
+                  <video src={videoUrl} controls className="w-full rounded border" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
                   <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline block text-center">새 탭</a>
                 </div>
               )
-              : <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} />
+              : <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} />
           }
           promptEn={videoEn} promptKo={videoKo} enField="video_prompt"
           copied={copied} onCopy={handleCopy}

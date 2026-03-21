@@ -219,7 +219,7 @@ export async function PATCH(request: NextRequest) {
     const { cutId, field, value } = await request.json();
 
     const allowed = [
-      'cut_synopsis', 'frame_role', 'frame_strategy', 'use_colorize',
+      'cut_synopsis', 'frame_role', 'frame_strategy', 'use_colorize', 'aspect_ratio',
       'gemini_colorize_prompt', 'gemini_colorize_prompt_ko',
       'gemini_expand_prompt', 'gemini_expand_prompt_ko',
       'gemini_start_frame_prompt', 'gemini_other_frame_prompt_ko',
