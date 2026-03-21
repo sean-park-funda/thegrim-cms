@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Sparkles, Copy, Check, Loader2, Film, Wand2, ImageIcon, Play, Link2,
 } from 'lucide-react';
 import { WebtoonAnimationCut, WebtoonAnimationProject } from '@/lib/supabase';
@@ -72,9 +75,12 @@ function StepCard({
   disabled?: boolean;
   extraSlot?: React.ReactNode;
 }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [instr, setInstr] = useState('');
+
   const handleRefine = async () => {
     if (!instr.trim()) return;
+    setDialogOpen(false);
     await onRefine(instr);
     setInstr('');
   };
@@ -97,7 +103,18 @@ function StepCard({
         <div>
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground font-medium">English</span>
-            <CopyBtn text={promptEn} id={`${enField}-en`} copied={copied} onCopy={onCopy} />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setDialogOpen(true)}
+                className="text-muted-foreground hover:text-foreground p-0.5"
+                title="AI로 프롬프트 수정"
+              >
+                {refining
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-500" />
+                  : <Wand2 className="h-3.5 w-3.5" />}
+              </button>
+              <CopyBtn text={promptEn} id={`${enField}-en`} copied={copied} onCopy={onCopy} />
+            </div>
           </div>
           <Textarea
             value={promptEn}
@@ -110,29 +127,34 @@ function StepCard({
         {promptKo && (
           <p className="text-[10px] text-blue-400/80 leading-relaxed">{promptKo}</p>
         )}
-        <div className="flex gap-1.5">
-          <Textarea
-            value={instr}
-            onChange={(e) => setInstr(e.target.value)}
-            placeholder="수정 지시..."
-            className="text-xs resize-none min-h-[32px] flex-1"
-            rows={1}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
-          />
-          <Button
-            onClick={handleRefine}
-            disabled={refining || !instr.trim()}
-            variant="outline" size="sm"
-            className="shrink-0 h-8 w-8 p-0"
-            title="AI로 프롬프트 수정"
-          >
-            {refining ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-          </Button>
-        </div>
         <div className="mt-auto pt-1">
           {actionSlot}
         </div>
       </div>
+
+      {/* 수정 지시 다이얼로그 */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">프롬프트 수정 지시</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={instr}
+            onChange={(e) => setInstr(e.target.value)}
+            placeholder="예: 밝은 분위기로, 카메라 줌인 추가, 배경을 실내로 변경..."
+            className="text-sm resize-none min-h-[80px]"
+            rows={3}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>취소</Button>
+            <Button size="sm" onClick={handleRefine} disabled={!instr.trim()}>
+              <Wand2 className="h-3.5 w-3.5 mr-1.5" />AI 재생성
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
