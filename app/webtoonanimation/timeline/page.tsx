@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -78,6 +77,94 @@ function getVideoDuration(url: string): Promise<number> {
   });
 }
 
+// ─── Trim Range Bar ───────────────────────────────────────────────────────────
+
+function TrimRangeBar({
+  dur, trimStart, trimEnd, onChange, onSeek,
+}: {
+  dur: number;
+  trimStart: number;
+  trimEnd: number;
+  onChange: (start: number, end: number) => void;
+  onSeek: (t: number) => void;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const leftPct  = (trimStart / dur) * 100;
+  const rightPct = ((dur - trimEnd) / dur) * 100;
+
+  const getTime = (clientX: number) => {
+    const rect = barRef.current!.getBoundingClientRect();
+    return Math.max(0, Math.min(dur, ((clientX - rect.left) / rect.width) * dur));
+  };
+
+  const startDrag = (which: 'start' | 'end') => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const onMove = (me: MouseEvent) => {
+      const t = getTime(me.clientX);
+      if (which === 'start') {
+        const s = Math.max(0, Math.min(t, dur - trimEnd - 0.2));
+        onChange(s, trimEnd);
+        onSeek(s);
+      } else {
+        const endT = Math.max(0, Math.min(dur - t, dur - trimStart - 0.2));
+        onChange(trimStart, endT);
+        onSeek(Math.max(0, dur - endT - 0.05));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  return (
+    <div ref={barRef} className="relative h-10 rounded select-none bg-muted/60 cursor-default">
+      {/* 트림 제외 영역 (어둡게) */}
+      <div className="absolute left-0 top-0 h-full bg-zinc-800/70 rounded-l-sm pointer-events-none"
+        style={{ width: `${leftPct}%` }} />
+      <div className="absolute right-0 top-0 h-full bg-zinc-800/70 rounded-r-sm pointer-events-none"
+        style={{ width: `${100 - rightPct}%` }} />
+
+      {/* 유효 재생 구간 */}
+      <div className="absolute top-0 h-full bg-primary/25 border-y border-primary/50 pointer-events-none"
+        style={{ left: `${leftPct}%`, width: `${rightPct - leftPct}%` }} />
+
+      {/* 왼쪽 핸들 (시작 트림) */}
+      <div
+        className="absolute top-0 h-full w-5 bg-primary rounded-l cursor-ew-resize flex items-center justify-center z-10 shadow-md"
+        style={{ left: `${leftPct}%`, transform: 'translateX(-50%)' }}
+        onMouseDown={startDrag('start')}
+      >
+        <div className="flex gap-px">
+          <div className="w-px h-5 bg-white/70 rounded" />
+          <div className="w-px h-5 bg-white/70 rounded" />
+        </div>
+      </div>
+
+      {/* 오른쪽 핸들 (끝 트림) */}
+      <div
+        className="absolute top-0 h-full w-5 bg-primary rounded-r cursor-ew-resize flex items-center justify-center z-10 shadow-md"
+        style={{ left: `${rightPct}%`, transform: 'translateX(-50%)' }}
+        onMouseDown={startDrag('end')}
+      >
+        <div className="flex gap-px">
+          <div className="w-px h-5 bg-white/70 rounded" />
+          <div className="w-px h-5 bg-white/70 rounded" />
+        </div>
+      </div>
+
+      {/* 시간 레이블 */}
+      <div className="absolute -bottom-5 pointer-events-none w-full flex justify-between px-1">
+        <span className="text-[10px] text-muted-foreground font-mono">{fmt(0)}</span>
+        <span className="text-[10px] text-muted-foreground font-mono">{fmt(dur)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Trim Dialog ──────────────────────────────────────────────────────────────
 
 function TrimDialog({
@@ -116,43 +203,22 @@ function TrimDialog({
           controls
         />
 
-        {/* 미니 타임라인 */}
-        <div className="relative h-6 bg-muted rounded overflow-hidden">
-          <div
-            className="absolute h-full bg-primary/20 border-l-2 border-r-2 border-primary"
-            style={{
-              left: `${(start / dur) * 100}%`,
-              width: `${(effectiveDur / dur) * 100}%`,
-            }}
+        {/* 트림 범위 바 */}
+        <div className="mb-6">
+          <TrimRangeBar
+            dur={dur}
+            trimStart={start}
+            trimEnd={end}
+            onChange={(s, e) => { setStart(s); setEnd(e); }}
+            onSeek={seek}
           />
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label className="text-xs text-muted-foreground">시작 트림</Label>
-              <span className="text-xs font-mono text-muted-foreground">{fmt(start)}</span>
-            </div>
-            <Slider
-              min={0} max={Math.max(0, dur - end - 0.5)} step={0.1}
-              value={[start]}
-              onValueChange={(vals: number[]) => { setStart(vals[0]); seek(vals[0]); }}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label className="text-xs text-muted-foreground">끝 트림</Label>
-              <span className="text-xs font-mono text-muted-foreground">{fmt(end)}</span>
-            </div>
-            <Slider
-              min={0} max={Math.max(0, dur - start - 0.5)} step={0.1}
-              value={[end]}
-              onValueChange={(vals: number[]) => { setEnd(vals[0]); seek(Math.max(0, dur - vals[0] - 0.1)); }}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground text-center">
-            원본 {fmt(dur)} → 유효 <span className="font-medium text-foreground">{fmt(effectiveDur)}</span>
-          </p>
+        {/* 시간 정보 */}
+        <div className="flex justify-between text-xs text-muted-foreground px-1">
+          <span>시작 <span className="font-mono text-foreground">{fmt(start)}</span></span>
+          <span>유효 <span className="font-mono text-primary font-medium">{fmt(effectiveDur)}</span></span>
+          <span>끝 트림 <span className="font-mono text-foreground">{fmt(end)}</span></span>
         </div>
 
         <DialogFooter>
