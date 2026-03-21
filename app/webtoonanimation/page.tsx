@@ -508,7 +508,7 @@ export default function WebtoonAnimationPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="bg-zinc-900 rounded-xl p-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="bg-zinc-900 rounded-xl p-4 flex flex-col gap-4">
                   {cuts.map((cut) => (
                     <Wan22CutCard
                       key={cut.id}
