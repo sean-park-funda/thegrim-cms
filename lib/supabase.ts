@@ -326,8 +326,11 @@ export interface WebtoonAnimationCut {
   cut_synopsis?: string | null;
   frame_strategy?: string | null;
   gemini_colorize_prompt?: string | null;
+  gemini_colorize_prompt_ko?: string | null;
   gemini_expand_prompt?: string | null;
+  gemini_expand_prompt_ko?: string | null;
   gemini_start_frame_prompt?: string | null;
+  gemini_other_frame_prompt_ko?: string | null;
   video_prompt?: string | null;
   video_prompt_ko?: string | null;
   frame_role?: 'start' | 'end' | 'middle' | null;

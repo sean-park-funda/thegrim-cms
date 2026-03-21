@@ -114,8 +114,11 @@ ${characterText}
 
 {
   "gemini_colorize": "...",
+  "gemini_colorize_ko": "...",
   "gemini_expand": "...",
+  "gemini_expand_ko": "...",
   "gemini_other_frame": "...",
+  "gemini_other_frame_ko": "...",
   "video_prompt": "...",
   "video_prompt_ko": "..."
 }
@@ -143,6 +146,11 @@ ${otherFrameInstruction}
    - 감정/분위기 (quiet, tense, lonely 등)
    - 카메라: static / slow push-in / camera shake 등
    - 반드시 영어로 작성, 2~4문장
+
+각 영어 프롬프트(gemini_colorize, gemini_expand, gemini_other_frame)에는 반드시 한국어 설명 쌍을 작성:
+- **gemini_colorize_ko**: gemini_colorize의 한국어 설명 (빈 문자열이면 빈 문자열)
+- **gemini_expand_ko**: gemini_expand의 한국어 설명
+- **gemini_other_frame_ko**: gemini_other_frame의 한국어 설명 (빈 문자열이면 빈 문자열)
 
 5. **video_prompt_ko** (영상 프롬프트 한국어 설명):
    - video_prompt와 동일한 내용을 한국어로 설명
@@ -180,8 +188,11 @@ JSON 외 다른 텍스트 없이 오직 JSON만 반환하세요.`;
         frame_strategy: frameStrategy || null,
         use_colorize: useColorize,
         gemini_colorize_prompt: prompts.gemini_colorize || null,
+        gemini_colorize_prompt_ko: prompts.gemini_colorize_ko || null,
         gemini_expand_prompt: prompts.gemini_expand,
+        gemini_expand_prompt_ko: prompts.gemini_expand_ko || null,
         gemini_start_frame_prompt: prompts.gemini_other_frame || null,
+        gemini_other_frame_prompt_ko: prompts.gemini_other_frame_ko || null,
         video_prompt: prompts.video_prompt,
         video_prompt_ko: prompts.video_prompt_ko || null,
       })
@@ -209,7 +220,9 @@ export async function PATCH(request: NextRequest) {
 
     const allowed = [
       'cut_synopsis', 'frame_role', 'frame_strategy', 'use_colorize',
-      'gemini_colorize_prompt', 'gemini_expand_prompt', 'gemini_start_frame_prompt',
+      'gemini_colorize_prompt', 'gemini_colorize_prompt_ko',
+      'gemini_expand_prompt', 'gemini_expand_prompt_ko',
+      'gemini_start_frame_prompt', 'gemini_other_frame_prompt_ko',
       'video_prompt', 'video_prompt_ko',
     ];
     if (!cutId || !field || !allowed.includes(field)) {
