@@ -64,21 +64,7 @@ function PromptPair({
   return (
     <div className="space-y-1.5">
       {label && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</p>}
-      {/* KO */}
-      <div className="space-y-0.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-blue-500 font-medium">한국어</span>
-          <CopyBtn text={promptKo} id={`${koField}-ko`} copied={copied} onCopy={onCopy} />
-        </div>
-        <Textarea
-          value={promptKo}
-          onChange={(e) => onKoChange(e.target.value)}
-          placeholder="한국어 설명..."
-          className="text-xs resize-none min-h-[52px] border-blue-100 focus-visible:ring-blue-200"
-          rows={2}
-        />
-      </div>
-      {/* EN */}
+      {/* EN — 편집 가능 */}
       <div className="space-y-0.5">
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground font-medium">English</span>
@@ -88,9 +74,13 @@ function PromptPair({
           value={promptEn}
           onChange={(e) => onEnChange(e.target.value)}
           placeholder="English prompt..."
-          className="text-xs font-mono resize-none min-h-[52px]"
-          rows={2}
+          className="text-xs font-mono resize-none min-h-[64px]"
+          rows={3}
         />
+        {/* KO — 읽기 전용, 작은 글씨 */}
+        {promptKo && (
+          <p className="text-[10px] text-blue-400/80 leading-relaxed px-0.5 pt-0.5">{promptKo}</p>
+        )}
       </div>
       {/* 수정 입력 + 버튼 */}
       <div className="flex gap-1.5">
@@ -138,7 +128,7 @@ function StepCard({
           {resultSlot}
         </div>
         {/* 우: 프롬프트 + 액션 */}
-        <div className="p-3 space-y-3">
+        <div className="p-3 space-y-3 min-h-[220px]">
           {promptSlot}
           {actionSlot}
         </div>

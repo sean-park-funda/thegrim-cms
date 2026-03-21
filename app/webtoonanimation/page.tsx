@@ -507,14 +507,18 @@ export default function WebtoonAnimationPage() {
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : cuts.map((cut) => (
-                <Wan22CutCard
-                  key={cut.id}
-                  cut={cut}
-                  project={selectedProject}
-                  onCutUpdated={handleCutUpdated}
-                />
-              ))}
+              ) : (
+                <div className="bg-zinc-900 rounded-xl p-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  {cuts.map((cut) => (
+                    <Wan22CutCard
+                      key={cut.id}
+                      cut={cut}
+                      project={selectedProject}
+                      onCutUpdated={handleCutUpdated}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
