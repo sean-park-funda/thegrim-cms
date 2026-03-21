@@ -314,6 +314,10 @@ export interface WebtoonAnimationProject {
   character_settings?: Record<string, string> | null;
   character_ref_url?: string | null;
   timeline_rendered_url?: string | null;
+  timeline_config?: {
+    order: string[];
+    items: Record<string, { trimStart: number; trimEnd: number; transition: { type: string; duration: number } }>;
+  } | null;
 }
 
 export interface WebtoonAnimationCut {

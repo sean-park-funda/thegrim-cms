@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Film, Loader2, Download, Check, GripVertical } from 'lucide-react';
+import { ArrowLeft, Film, Loader2, Download, Check, GripVertical, Save } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent,
 } from '@dnd-kit/core';
@@ -281,6 +281,9 @@ function TimelinePageInner() {
   const [loading, setLoading] = useState(true);
   const [rendering, setRendering] = useState(false);
   const [renderResult, setRenderResult] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialLoad = useRef(true);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -294,23 +297,63 @@ function TimelinePageInner() {
       if (proj) setProject(proj);
       if (cutsData) {
         const withVideo = cutsData.filter((c) => c.comfyui_video_url);
+        // 저장된 config 불러오기
+        const savedConfig = proj?.timeline_config as WebtoonAnimationProject['timeline_config'];
+        const savedOrder: string[] = savedConfig?.order ?? [];
+        const savedItems = savedConfig?.items ?? {};
+
         const resolved: TimelineItem[] = await Promise.all(
           withVideo.map(async (c) => {
             const dur = await getVideoDuration(c.comfyui_video_url!);
+            const saved = savedItems[c.id];
             return {
               id: c.id, cutIndex: c.order_index,
               videoUrl: c.comfyui_video_url!,
               originalDuration: dur,
-              trimStart: 0, trimEnd: 0,
-              transition: { type: 'cut', duration: 0 },
+              trimStart: saved?.trimStart ?? 0,
+              trimEnd: saved?.trimEnd ?? 0,
+              transition: (saved?.transition as TransitionConfig) ?? { type: 'cut', duration: 0 },
             };
           })
         );
+
+        // 저장된 순서 적용 (새로 추가된 컷은 뒤에 붙임)
+        if (savedOrder.length > 0) {
+          const orderMap = new Map(savedOrder.map((id, idx) => [id, idx]));
+          resolved.sort((a, b) => {
+            const ia = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999;
+            const ib = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999;
+            return ia - ib;
+          });
+        }
         setItems(resolved);
       }
       setLoading(false);
+      // 초기 로드 완료 — 이후 변경부터 자동저장
+      setTimeout(() => { isInitialLoad.current = false; }, 100);
     })();
   }, [projectId]);
+
+  // 자동저장 (debounce 1.5초)
+  useEffect(() => {
+    if (isInitialLoad.current || !projectId || items.length === 0) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus('saving');
+    saveTimerRef.current = setTimeout(async () => {
+      const config = {
+        order: items.map((i) => i.id),
+        items: Object.fromEntries(
+          items.map((i) => [i.id, { trimStart: i.trimStart, trimEnd: i.trimEnd, transition: i.transition }])
+        ),
+      };
+      await supabase
+        .from('webtoonanimation_projects')
+        .update({ timeline_config: config })
+        .eq('id', projectId);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }, 1500);
+  }, [items, projectId]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -397,6 +440,13 @@ function TimelinePageInner() {
             {items.length}개 클립 · 총 <span className="font-mono text-foreground">{fmt(totalDuration)}</span>
           </p>
         </div>
+        {saveStatus !== 'idle' && (
+          <span className="text-[11px] flex items-center gap-1 text-muted-foreground">
+            {saveStatus === 'saving'
+              ? <><Loader2 className="h-3 w-3 animate-spin" />저장 중...</>
+              : <><Check className="h-3 w-3 text-green-500" />저장됨</>}
+          </span>
+        )}
         <Button onClick={handleRender} disabled={rendering || items.length < 1} className="gap-1.5">
           {rendering
             ? <><Loader2 className="h-4 w-4 animate-spin" />렌더링 중...</>
