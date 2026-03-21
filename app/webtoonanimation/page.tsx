@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Plus, Trash2, Film, Loader2, Scissors } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Film, Loader2, Scissors, Clapperboard } from 'lucide-react';
 import Link from 'next/link';
 import {
   WebtoonAnimationProject,
@@ -472,6 +472,16 @@ export default function WebtoonAnimationPage() {
       {/* 5090 — 전체 너비 (사이드바 없음) */}
       {activeTab === '5090' && (
         <div className="space-y-4">
+          {selectedProject && (
+            <div className="flex justify-end">
+              <Link href={`/webtoonanimation/timeline?projectId=${selectedProject.id}`}>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Clapperboard className="h-4 w-4" />
+                  타임라인 편집
+                </Button>
+              </Link>
+            </div>
+          )}
           {loadingCuts ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

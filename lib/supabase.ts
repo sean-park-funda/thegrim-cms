@@ -313,6 +313,7 @@ export interface WebtoonAnimationProject {
   updated_at: string;
   character_settings?: Record<string, string> | null;
   character_ref_url?: string | null;
+  timeline_rendered_url?: string | null;
 }
 
 export interface WebtoonAnimationCut {
