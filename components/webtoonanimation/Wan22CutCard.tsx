@@ -573,14 +573,24 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleGeneratePrompts} disabled={genPrompts || !synopsis.trim()} size="sm" className="ml-auto">
-                {genPrompts
-                  ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
-                  : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />전체 프롬프트 자동 생성</>}
-              </Button>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── 전체 프롬프트 자동 생성 — 헤더와 스텝 사이 ── */}
+      <div className="px-3 py-2 border-b">
+        <Button
+          onClick={handleGeneratePrompts}
+          disabled={genPrompts || !synopsis.trim()}
+          size="sm"
+          className="w-full"
+          variant={genPrompts ? 'outline' : 'default'}
+        >
+          {genPrompts
+            ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />프롬프트 생성 중...</>
+            : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />전체 프롬프트 자동 생성 → STEP 1 ~ 4</>}
+        </Button>
       </div>
 
       {/* ── 스텝 카드 — 가로 배열 ── */}
