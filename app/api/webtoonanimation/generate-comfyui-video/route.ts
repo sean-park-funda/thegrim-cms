@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
     if (!startUrl) return NextResponse.json({ error: '앵커 프레임을 먼저 생성해주세요' }, { status: 400 });
     if (!isMidRef && !cut.end_frame_url) return NextResponse.json({ error: '나머지 프레임을 먼저 생성해주세요' }, { status: 400 });
 
+    const durationSec = typeof cut.video_duration === 'number' ? cut.video_duration : 7;
+    const numFrames = durationSec * 16 + 1;
     const seed = inputSeed ?? Math.floor(Math.random() * 999999999);
     const prefix = `cut_${cutId.slice(0, 8)}_${seed}`;
     const storagePath = `webtoonanimation/${cut.project_id}/${cutId}/comfyui_${seed}.mp4`;
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest) {
         end_url: endUrl!,
         prompt: cut.video_prompt,
         seed,
+        num_frames: numFrames,
         prefix,
         storage_path: storagePath,
         supabase_url: supabaseUrl,

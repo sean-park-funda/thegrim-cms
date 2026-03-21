@@ -160,7 +160,7 @@ function StepCard({
 }
 
 /** 이전 컷 자동 연결 — 읽기 전용 스텝 카드 */
-function PrevCutCard({ stepNum, frameUrl, ratio }: { stepNum: number; frameUrl: string | null; ratio: string }) {
+function PrevCutCard({ stepNum, frameUrl, ratio, onLightbox }: { stepNum: number; frameUrl: string | null; ratio: string; onLightbox: (url: string) => void }) {
   const cls = ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
   return (
     <div className="rounded-lg border bg-card flex flex-col overflow-hidden">
@@ -171,7 +171,7 @@ function PrevCutCard({ stepNum, frameUrl, ratio }: { stepNum: number; frameUrl: 
       </div>
       <div className="p-2 bg-muted/10 flex-1 flex items-center justify-center">
         {frameUrl
-          ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border`} />
+          ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border cursor-pointer hover:opacity-90 transition-opacity`} onClick={() => onLightbox(frameUrl)} />
           : (
             <div className={`w-full ${cls} border-2 border-dashed border-amber-500/30 rounded flex items-center justify-center`}>
               <span className="text-[10px] text-amber-500/70">이전 컷 프레임 생성 필요</span>
@@ -194,6 +194,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [useColorize, setUseColorize] = useState(cut.use_colorize !== false);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
   const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
+  const [videoDuration, setVideoDuration] = useState<number>(cut.video_duration || 7);
   const [colorizeRefUrl, setColorizeRefUrl] = useState(cut.colorize_reference_url || '');
   const [uploadingRef, setUploadingRef] = useState(false);
 
@@ -222,10 +223,11 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [genVideo, setGenVideo] = useState(false);
   const [refiningType, setRefiningType] = useState<string | null>(null);
 
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const save = useCallback((field: string, value: string | boolean | null) => {
+  const save = useCallback((field: string, value: string | boolean | number | null) => {
     clearTimeout(saveTimers.current[field]);
     saveTimers.current[field] = setTimeout(async () => {
       await fetch('/api/webtoonanimation/generate-cut-prompts', {
@@ -493,7 +495,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 </span>
               )}
             </div>
-            <img src={cut.file_path} alt="원본" className="w-full object-contain rounded border" />
+            <img src={cut.file_path} alt="원본" className="w-full object-contain rounded border cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxUrl(cut.file_path)} />
           </div>
           {/* 연출 설명 + 설정 */}
           <div className="p-3 flex flex-col gap-2">
@@ -568,7 +570,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                       <input type="file" accept="image/*" className="hidden"
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRefUpload(f); }} />
                       {colorizeRefUrl
-                        ? <img src={colorizeRefUrl} alt="ref" className="h-7 w-10 object-cover rounded border" title="컬러화 레퍼런스" />
+                        ? <img src={colorizeRefUrl} alt="ref" className="h-7 w-10 object-cover rounded border cursor-pointer hover:opacity-90 transition-opacity" title="컬러화 레퍼런스" onClick={(e) => { e.preventDefault(); setLightboxUrl(colorizeRefUrl); }} />
                         : <span className="text-[10px] text-muted-foreground/60 border border-dashed rounded px-1.5 py-0.5 hover:border-muted-foreground">
                             {uploadingRef ? <Loader2 className="h-3 w-3 animate-spin inline" /> : '+ ref'}
                           </span>}
@@ -580,6 +582,22 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                       onClick={() => { setColorizeRefUrl(''); save('colorize_reference_url', null); update({ colorize_reference_url: null }); }}
                     >✕</button>
                   )}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">영상 길이</Label>
+                <div className="flex gap-1">
+                  {[3, 5, 7, 9, 10].map((sec) => (
+                    <button key={sec}
+                      onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
+                      className={cn(
+                        'text-xs py-1 px-2 rounded border transition-colors',
+                        videoDuration === sec
+                          ? 'border-primary bg-primary/5 text-primary font-medium'
+                          : 'border-border hover:border-muted-foreground text-muted-foreground'
+                      )}
+                    >{sec}s</button>
+                  ))}
                 </div>
               </div>
               <div className="space-y-1">
@@ -624,7 +642,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             stepNum={1} title="컬러화"
             resultSlot={
               colorUrl
-                ? <img src={colorUrl} alt="컬러" className={imgCls} />
+                ? <img src={colorUrl} alt="컬러" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(colorUrl)} />
                 : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
             }
             promptEn={colorizeEn} promptKo={colorizeKo} enField="gemini_colorize_prompt"
@@ -653,7 +671,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           title={`앵커 (${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : 'ref'}) ${aspectRatio}`}
           resultSlot={
             anchorUrl
-              ? <img src={anchorUrl} alt="앵커" className={imgCls} />
+              ? <img src={anchorUrl} alt="앵커" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(anchorUrl)} />
               : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
           }
           promptEn={expandEn} promptKo={expandKo} enField="gemini_expand_prompt"
@@ -681,6 +699,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             stepNum={useColorize ? 3 : 2}
             frameUrl={prevCutFrame}
             ratio={aspectRatio}
+            onLightbox={setLightboxUrl}
           />
         ) : frameRole !== 'middle' ? (
           <StepCard
@@ -689,7 +708,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             disabled={!hasAnchor}
             resultSlot={
               otherUrl
-                ? <img src={otherUrl} alt="나머지" className={imgCls} />
+                ? <img src={otherUrl} alt="나머지" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(otherUrl)} />
                 : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} ratio={aspectRatio} />
             }
             promptEn={otherEn} promptKo={otherKo} enField="gemini_start_frame_prompt"
@@ -747,6 +766,25 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
         />
 
       </div>
+
+      {/* ── 라이트박스 ── */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img
+            src={lightboxUrl}
+            alt="확대 보기"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl leading-none"
+            onClick={() => setLightboxUrl(null)}
+          >✕</button>
+        </div>
+      )}
     </div>
   );
 }
