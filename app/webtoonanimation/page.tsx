@@ -20,6 +20,7 @@ import { PromptGroupList } from '@/components/webtoonanimation/PromptGroupList';
 import { VideoTestLab } from '@/components/webtoonanimation/VideoTestLab';
 import { SegmentPlanner } from '@/components/webtoonanimation/SegmentPlanner';
 import { CutDetailSheet } from '@/components/webtoonanimation/CutDetailSheet';
+import { Wan22CutCard } from '@/components/webtoonanimation/Wan22CutCard';
 
 export default function WebtoonAnimationPage() {
   // State: 프로젝트 목록
@@ -46,7 +47,7 @@ export default function WebtoonAnimationPage() {
   const [activeGroup, setActiveGroup] = useState<WebtoonAnimationPromptGroupWithCuts | null>(null);
 
   // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
-  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments'>('testlab');
+  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments' | '5090'>('5090');
 
   // State: 컷 상세 시트
   const [detailCut, setDetailCut] = useState<WebtoonAnimationCut | null>(null);
@@ -456,6 +457,16 @@ export default function WebtoonAnimationPage() {
           {cuts.length > 0 && (
             <div className="flex rounded-lg border p-1 bg-muted/50">
               <button
+                onClick={() => setActiveTab('5090')}
+                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === '5090'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                5090
+              </button>
+              <button
                 onClick={() => setActiveTab('testlab')}
                 className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                   activeTab === 'testlab'
@@ -473,7 +484,7 @@ export default function WebtoonAnimationPage() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                세그먼트 영상
+                세그먼트
               </button>
               <button
                 onClick={() => setActiveTab('seedance')}
@@ -483,8 +494,27 @@ export default function WebtoonAnimationPage() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Seedance 프롬프트
+                Seedance
               </button>
+            </div>
+          )}
+
+          {/* 5090 — 컷별 인라인 Wan 2.2 편집기 */}
+          {activeTab === '5090' && (
+            <div className="space-y-4">
+              <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
+              {loadingCuts ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : cuts.map((cut) => (
+                <Wan22CutCard
+                  key={cut.id}
+                  cut={cut}
+                  project={selectedProject}
+                  onCutUpdated={handleCutUpdated}
+                />
+              ))}
             </div>
           )}
 
