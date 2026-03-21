@@ -61,7 +61,7 @@ function EmptyResult({ label, ratio = '16:9' }: { label: string; ratio?: string 
  */
 function StepCard({
   stepNum, title, resultSlot, promptEn, promptKo, enField,
-  copied, onCopy, onEnChange, onRefine, refining, actionSlot, disabled,
+  copied, onCopy, onEnChange, onRefine, afterRefine, refining, actionSlot, disabled,
   extraSlot,
 }: {
   stepNum: number; title: string;
@@ -70,6 +70,7 @@ function StepCard({
   copied: string | null; onCopy: (id: string, text: string) => void;
   onEnChange: (v: string) => void;
   onRefine: (instruction: string) => Promise<void>;
+  afterRefine?: () => Promise<void>;
   refining: boolean;
   actionSlot: React.ReactNode;
   disabled?: boolean;
@@ -83,6 +84,7 @@ function StepCard({
     setDialogOpen(false);
     await onRefine(instr);
     setInstr('');
+    if (afterRefine) await afterRefine();
   };
 
   return (
@@ -633,6 +635,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             copied={copied} onCopy={handleCopy}
             onEnChange={(v) => { setColorizeEn(v); save('gemini_colorize_prompt', v); }}
             onRefine={(instr) => handleRefinePrompt('colorize', instr, colorizeEn, colorizeKo)}
+            afterRefine={handleGenColorize}
             refining={refiningType === 'colorize'}
             actionSlot={
               <Button
@@ -662,6 +665,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           copied={copied} onCopy={handleCopy}
           onEnChange={(v) => { setExpandEn(v); save('gemini_expand_prompt', v); }}
           onRefine={(instr) => handleRefinePrompt('expand', instr, expandEn, expandKo)}
+          afterRefine={handleGenAnchor}
           refining={refiningType === 'expand'}
           actionSlot={
             <Button
@@ -699,6 +703,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             copied={copied} onCopy={handleCopy}
             onEnChange={(v) => { setOtherEn(v); save('gemini_start_frame_prompt', v); }}
             onRefine={(instr) => handleRefinePrompt('other_frame', instr, otherEn, otherKo)}
+            afterRefine={handleGenOther}
             refining={refiningType === 'other_frame'}
             actionSlot={
               <Button
@@ -734,6 +739,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           copied={copied} onCopy={handleCopy}
           onEnChange={(v) => { setVideoEn(v); save('video_prompt', v); }}
           onRefine={(instr) => handleRefinePrompt('video', instr, videoEn, videoKo)}
+          afterRefine={handleGenVideo}
           refining={refiningType === 'video'}
           actionSlot={
             <div className="flex flex-col gap-2">
