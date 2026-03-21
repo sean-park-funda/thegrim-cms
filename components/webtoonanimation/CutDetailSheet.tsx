@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Sparkles, Copy, Check, Loader2, ChevronDown, ChevronUp,
-  Image as ImageIcon, Film, RefreshCw,
+  Image as ImageIcon, Film, RefreshCw, Wand2,
 } from 'lucide-react';
 import { WebtoonAnimationCut, WebtoonAnimationProject } from '@/lib/supabase';
 
@@ -23,10 +23,9 @@ const PROMPT_FIELDS = [
   { key: 'gemini_colorize_prompt', label: '① 컬러화', desc: '라인아트 → 컬러' },
   { key: 'gemini_expand_prompt', label: '② 16:9 확장', desc: '컬러 → End Frame' },
   { key: 'gemini_start_frame_prompt', label: '③ Start Frame', desc: 'End Frame → Start Frame' },
-  { key: 'video_prompt', label: '④ 영상', desc: 'Start+End → 영상' },
 ] as const;
 
-type PromptKey = typeof PROMPT_FIELDS[number]['key'];
+type PromptKey = 'gemini_colorize_prompt' | 'gemini_expand_prompt' | 'gemini_start_frame_prompt';
 
 interface CutDetailSheetProps {
   cut: WebtoonAnimationCut | null;
@@ -43,20 +42,28 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
     gemini_colorize_prompt: '',
     gemini_expand_prompt: '',
     gemini_start_frame_prompt: '',
-    video_prompt: '',
   });
+  const [videoPromptEn, setVideoPromptEn] = useState('');
+  const [videoPromptKo, setVideoPromptKo] = useState('');
+
   const [generating, setGenerating] = useState(false);
   const [generatingFrames, setGeneratingFrames] = useState(false);
   const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [refiningPrompt, setRefiningPrompt] = useState(false);
+
   const [copied, setCopied] = useState<string | null>(null);
   const [showPrompts, setShowPrompts] = useState(false);
   const [showFrames, setShowFrames] = useState(false);
 
-  // 프레임 / 영상 URL (로컬 상태 — DB와 동기화)
+  // 프레임 / 영상 URL
   const [colorUrl, setColorUrl] = useState<string | null>(null);
   const [startFrameUrl, setStartFrameUrl] = useState<string | null>(null);
   const [endFrameUrl, setEndFrameUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+
+  // 수정 지시사항 상태
+  const [frameInstruction, setFrameInstruction] = useState('');
+  const [videoInstruction, setVideoInstruction] = useState('');
 
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const prevCutId = useRef<string | null>(null);
@@ -70,12 +77,15 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
       gemini_colorize_prompt: cut.gemini_colorize_prompt || '',
       gemini_expand_prompt: cut.gemini_expand_prompt || '',
       gemini_start_frame_prompt: cut.gemini_start_frame_prompt || '',
-      video_prompt: cut.video_prompt || '',
     });
+    setVideoPromptEn(cut.video_prompt || '');
+    setVideoPromptKo(cut.video_prompt_ko || '');
     setColorUrl(cut.color_image_url || null);
     setStartFrameUrl(cut.start_frame_url || null);
     setEndFrameUrl(cut.end_frame_url || null);
     setVideoUrl(cut.comfyui_video_url || null);
+    setFrameInstruction('');
+    setVideoInstruction('');
     const hasPrompts = !!(cut.gemini_colorize_prompt || cut.video_prompt);
     setShowPrompts(hasPrompts);
     setShowFrames(!!(cut.start_frame_url || cut.end_frame_url));
@@ -109,6 +119,16 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
     saveField(key, value);
   };
 
+  const handleVideoEnChange = (v: string) => {
+    setVideoPromptEn(v);
+    saveField('video_prompt', v);
+  };
+
+  const handleVideoKoChange = (v: string) => {
+    setVideoPromptKo(v);
+    saveField('video_prompt_ko', v);
+  };
+
   // ── 4종 프롬프트 자동 생성 ──
   const handleGeneratePrompts = async () => {
     if (!cut || !synopsis.trim()) return;
@@ -126,15 +146,23 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
       });
       const data = await res.json();
       if (data.prompts) {
-        const next = {
+        const next: Record<PromptKey, string> = {
           gemini_colorize_prompt: data.prompts.gemini_colorize || '',
           gemini_expand_prompt: data.prompts.gemini_expand || '',
           gemini_start_frame_prompt: data.prompts.gemini_start_frame || '',
-          video_prompt: data.prompts.video_prompt || '',
         };
         setPrompts(next);
+        setVideoPromptEn(data.prompts.video_prompt || '');
+        setVideoPromptKo(data.prompts.video_prompt_ko || '');
         setShowPrompts(true);
-        onCutUpdated({ ...cut, cut_synopsis: synopsis, frame_strategy: frameStrategy || null, ...next });
+        onCutUpdated({
+          ...cut,
+          cut_synopsis: synopsis,
+          frame_strategy: frameStrategy || null,
+          ...next,
+          video_prompt: data.prompts.video_prompt || null,
+          video_prompt_ko: data.prompts.video_prompt_ko || null,
+        });
       }
     } finally {
       setGenerating(false);
@@ -142,7 +170,7 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
   };
 
   // ── Phase A: Gemini 3단계 프레임 생성 ──
-  const handleGenerateFrames = async () => {
+  const handleGenerateFrames = async (instruction?: string) => {
     if (!cut) return;
     if (!prompts.gemini_colorize_prompt || !prompts.gemini_expand_prompt || !prompts.gemini_start_frame_prompt) {
       alert('먼저 4종 프롬프트를 생성해주세요.');
@@ -153,7 +181,10 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
       const res = await fetch('/api/webtoonanimation/generate-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cutId: cut.id }),
+        body: JSON.stringify({
+          cutId: cut.id,
+          ...(instruction ? { frameInstruction: instruction } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -161,6 +192,7 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
       setStartFrameUrl(data.start_frame_url);
       setEndFrameUrl(data.end_frame_url);
       setShowFrames(true);
+      setFrameInstruction('');
       onCutUpdated({
         ...cut,
         color_image_url: data.color_image_url,
@@ -175,6 +207,74 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
     }
   };
 
+  // ── 영상 프롬프트 AI 개선 ──
+  const handleRefineVideoPrompt = async () => {
+    if (!cut || !videoInstruction.trim()) return;
+    setRefiningPrompt(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/refine-video-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cutId: cut.id,
+          instruction: videoInstruction,
+          currentPromptEn: videoPromptEn,
+          currentPromptKo: videoPromptKo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setVideoPromptEn(data.video_prompt || '');
+      setVideoPromptKo(data.video_prompt_ko || '');
+      setVideoInstruction('');
+      onCutUpdated({
+        ...cut,
+        video_prompt: data.video_prompt || null,
+        video_prompt_ko: data.video_prompt_ko || null,
+      });
+    } catch (e) {
+      alert(`프롬프트 개선 실패: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setRefiningPrompt(false);
+    }
+  };
+
+  // ── 영상 프롬프트 개선 후 바로 영상 생성 ──
+  const handleRefineAndGenerate = async () => {
+    if (!cut || !videoInstruction.trim()) return;
+    setRefiningPrompt(true);
+    try {
+      const res = await fetch('/api/webtoonanimation/refine-video-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cutId: cut.id,
+          instruction: videoInstruction,
+          currentPromptEn: videoPromptEn,
+          currentPromptKo: videoPromptKo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setVideoPromptEn(data.video_prompt || '');
+      setVideoPromptKo(data.video_prompt_ko || '');
+      setVideoInstruction('');
+      onCutUpdated({
+        ...cut,
+        video_prompt: data.video_prompt || null,
+        video_prompt_ko: data.video_prompt_ko || null,
+      });
+    } catch (e) {
+      alert(`프롬프트 개선 실패: ${e instanceof Error ? e.message : e}`);
+      setRefiningPrompt(false);
+      return;
+    }
+    setRefiningPrompt(false);
+
+    // 프롬프트 개선 완료 후 바로 영상 생성
+    await handleGenerateVideo();
+  };
+
   // ── Phase B: ComfyUI Wan 2.2 영상 생성 ──
   const handleGenerateVideo = async () => {
     if (!cut) return;
@@ -182,7 +282,7 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
       alert('먼저 프레임을 생성해주세요.');
       return;
     }
-    if (!prompts.video_prompt) {
+    if (!videoPromptEn) {
       alert('영상 프롬프트를 작성해주세요.');
       return;
     }
@@ -211,6 +311,9 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
   };
 
   if (!cut) return null;
+
+  const canGenerateFrames = !!(prompts.gemini_colorize_prompt && prompts.gemini_expand_prompt && prompts.gemini_start_frame_prompt);
+  const canGenerateVideo = !!(startFrameUrl && endFrameUrl && videoPromptEn);
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -258,10 +361,10 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
           <Button onClick={handleGeneratePrompts} disabled={generating || !synopsis.trim()} className="w-full">
             {generating
               ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />프롬프트 생성 중...</>
-              : <><Sparkles className="h-4 w-4 mr-2" />① 4종 프롬프트 자동 생성</>}
+              : <><Sparkles className="h-4 w-4 mr-2" />① 4종 프롬프트 + 영상 프롬프트 자동 생성</>}
           </Button>
 
-          {/* 4종 프롬프트 에디터 */}
+          {/* Gemini 프롬프트 에디터 (컬러화/확장/Start) */}
           {showPrompts && (
             <div className="space-y-1.5">
               <button
@@ -269,7 +372,7 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
               >
                 {showPrompts ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                4종 프롬프트 편집
+                Gemini 이미지 프롬프트 편집
               </button>
 
               <div className="space-y-3 pt-1">
@@ -293,22 +396,24 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
             </div>
           )}
 
-          {/* Step 2: Gemini 프레임 생성 */}
+          {/* ━━━━━━━━ Step 2: Gemini 프레임 생성 ━━━━━━━━ */}
           <div className="border-t pt-4 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">② 프레임 생성</p>
+
             <Button
-              onClick={handleGenerateFrames}
-              disabled={generatingFrames || !prompts.gemini_colorize_prompt}
+              onClick={() => handleGenerateFrames()}
+              disabled={generatingFrames || !canGenerateFrames}
               variant="secondary"
               className="w-full"
             >
               {generatingFrames
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gemini 프레임 생성 중... (~90초)</>
-                : <><ImageIcon className="h-4 w-4 mr-2" />② Gemini 프레임 생성 (컬러화 → End → Start)</>}
+                : <><ImageIcon className="h-4 w-4 mr-2" />프레임 생성 (컬러화 → End → Start)</>}
             </Button>
 
             {/* 프레임 미리보기 */}
             {(colorUrl || startFrameUrl || endFrameUrl) && (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <button
                   onClick={() => setShowFrames((v) => !v)}
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground w-full"
@@ -320,8 +425,8 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { url: colorUrl, label: '컬러' },
-                      { url: startFrameUrl, label: 'Start' },
-                      { url: endFrameUrl, label: 'End' },
+                      { url: startFrameUrl, label: 'Start Frame' },
+                      { url: endFrameUrl, label: 'End Frame' },
                     ].map(({ url, label }) => url && (
                       <div key={label} className="space-y-1">
                         <img src={url} alt={label} className="w-full aspect-video object-cover rounded border" />
@@ -332,18 +437,114 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
                 )}
               </div>
             )}
+
+            {/* 프레임 수정 지시사항 */}
+            {(colorUrl || startFrameUrl || endFrameUrl) && (
+              <div className="space-y-2 rounded-lg bg-muted/40 p-3 border border-dashed">
+                <Label className="text-xs text-muted-foreground">프레임 수정 지시사항</Label>
+                <Textarea
+                  value={frameInstruction}
+                  onChange={(e) => setFrameInstruction(e.target.value)}
+                  placeholder="예) Start Frame에서 캐릭터가 더 왼쪽에 있어야 해. 배경 조명 더 어둡게."
+                  className="text-sm resize-none min-h-[56px]"
+                  rows={2}
+                />
+                <Button
+                  onClick={() => handleGenerateFrames(frameInstruction)}
+                  disabled={generatingFrames || !frameInstruction.trim()}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  {generatingFrames
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />재생성 중...</>
+                    : <><RefreshCw className="h-3.5 w-3.5 mr-1.5" />수정 후 프레임 재생성</>}
+                </Button>
+              </div>
+            )}
           </div>
 
-          {/* Step 3: Wan 2.2 영상 생성 */}
+          {/* ━━━━━━━━ 영상 프롬프트 영역 ━━━━━━━━ */}
           <div className="border-t pt-4 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">④ 영상 프롬프트</p>
+
+            {/* 영어 프롬프트 */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">영어 (ComfyUI 입력용)</Label>
+                <button onClick={() => handleCopy('video_en', videoPromptEn)} className="text-muted-foreground hover:text-foreground p-0.5">
+                  {copied === 'video_en' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <Textarea
+                value={videoPromptEn}
+                onChange={(e) => handleVideoEnChange(e.target.value)}
+                placeholder="Anime style, Korean webtoon aesthetic..."
+                className="text-xs font-mono resize-none min-h-[80px]"
+                rows={3}
+              />
+            </div>
+
+            {/* 한국어 설명 */}
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-blue-600">한국어 설명</Label>
+              <Textarea
+                value={videoPromptKo}
+                onChange={(e) => handleVideoKoChange(e.target.value)}
+                placeholder="예) 애니메이션 스타일. 희원이 복도를 걸어온다. 카메라는 정면에서 슬로우 푸시인."
+                className="text-xs resize-none min-h-[72px] border-blue-200 focus-visible:ring-blue-300"
+                rows={3}
+              />
+            </div>
+
+            {/* 영상 프롬프트 수정 지시사항 */}
+            <div className="space-y-2 rounded-lg bg-muted/40 p-3 border border-dashed">
+              <Label className="text-xs text-muted-foreground">영상 프롬프트 수정 지시사항</Label>
+              <Textarea
+                value={videoInstruction}
+                onChange={(e) => setVideoInstruction(e.target.value)}
+                placeholder="예) 카메라를 위에서 아래로 내려오게 바꿔줘. 속도감 더 살려줘."
+                className="text-sm resize-none min-h-[56px]"
+                rows={2}
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleRefineVideoPrompt}
+                  disabled={refiningPrompt || !videoInstruction.trim()}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                >
+                  {refiningPrompt
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />개선 중...</>
+                    : <><Wand2 className="h-3.5 w-3.5 mr-1.5" />프롬프트만 개선</>}
+                </Button>
+                <Button
+                  onClick={handleRefineAndGenerate}
+                  disabled={refiningPrompt || generatingVideo || !videoInstruction.trim() || !canGenerateVideo}
+                  size="sm"
+                  className="flex-1 bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  {refiningPrompt || generatingVideo
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />{refiningPrompt ? '개선 중...' : '렌더링 중...'}</>
+                    : <><Wand2 className="h-3.5 w-3.5 mr-1.5" />개선 + 영상 재생성</>}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* ━━━━━━━━ Step 3: Wan 2.2 영상 생성 ━━━━━━━━ */}
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">③ Wan 2.2 영상 생성 (5090 PC)</p>
+
             <Button
               onClick={handleGenerateVideo}
-              disabled={generatingVideo || !startFrameUrl || !endFrameUrl || !prompts.video_prompt}
+              disabled={generatingVideo || !canGenerateVideo}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white"
             >
               {generatingVideo
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Wan 2.2 렌더링 중... (~60초)</>
-                : <><Film className="h-4 w-4 mr-2" />③ Wan 2.2 영상 생성 (5090 PC)</>}
+                : <><Film className="h-4 w-4 mr-2" />영상 생성 (Start + End + 프롬프트)</>}
             </Button>
 
             {/* 생성된 영상 */}
@@ -353,7 +554,8 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
                   <p className="text-xs font-medium text-green-600">영상 생성 완료</p>
                   <button
                     onClick={handleGenerateVideo}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    disabled={generatingVideo}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
                   >
                     <RefreshCw className="h-3 w-3" /> 재생성
                   </button>

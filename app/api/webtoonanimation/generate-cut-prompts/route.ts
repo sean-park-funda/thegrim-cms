@@ -75,7 +75,8 @@ ${characterText}
   "gemini_colorize": "...",
   "gemini_expand": "...",
   "gemini_start_frame": "...",
-  "video_prompt": "..."
+  "video_prompt": "...",
+  "video_prompt_ko": "..."
 }
 
 ---
@@ -103,13 +104,18 @@ ${characterText}
    - 퇴장 컷(exit)이면: Start = 전체 인물, End = 퇴장 후 → 주석으로 "⚠️ 퇴장 컷: start_path와 end_path를 swap할 것" 추가
    - 영어로 작성
 
-4. **video_prompt** (Wan 2.2 / fal.ai 영상 생성):
+4. **video_prompt** (Wan 2.2 / fal.ai 영상 생성 — 영어):
    - "Anime style, Korean webtoon aesthetic" 으로 시작
    - 구체적인 모션 서술 (인물 동작, 카메라 움직임)
    - 감정/분위기 (quiet, tense, lonely 등)
    - 카메라: static / slow push-in / camera shake 등
-   - 영어로 작성
+   - 반드시 영어로 작성
    - 2~4문장
+
+5. **video_prompt_ko** (영상 프롬프트 한국어 설명):
+   - video_prompt와 동일한 내용을 한국어로 설명
+   - 어떤 동작과 분위기인지 제작자가 이해할 수 있도록 서술
+   - 한국어로 작성
 
 JSON 외 다른 텍스트 없이 오직 JSON만 반환하세요.`;
 
@@ -144,6 +150,7 @@ JSON 외 다른 텍스트 없이 오직 JSON만 반환하세요.`;
         gemini_expand_prompt: prompts.gemini_expand,
         gemini_start_frame_prompt: prompts.gemini_start_frame,
         video_prompt: prompts.video_prompt,
+        video_prompt_ko: prompts.video_prompt_ko || null,
       })
       .eq('id', cutId);
 
@@ -167,7 +174,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const { cutId, field, value } = await request.json();
 
-    const allowed = ['cut_synopsis', 'frame_strategy', 'gemini_colorize_prompt', 'gemini_expand_prompt', 'gemini_start_frame_prompt', 'video_prompt'];
+    const allowed = ['cut_synopsis', 'frame_strategy', 'gemini_colorize_prompt', 'gemini_expand_prompt', 'gemini_start_frame_prompt', 'video_prompt', 'video_prompt_ko'];
     if (!cutId || !field || !allowed.includes(field)) {
       return NextResponse.json({ error: '잘못된 요청' }, { status: 400 });
     }

@@ -39,7 +39,7 @@ async function uploadToStorage(base64: string, mimeType: string, path: string): 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { cutId } = await request.json();
+    const { cutId, frameInstruction } = await request.json();
     if (!cutId) return NextResponse.json({ error: 'cutId 필요' }, { status: 400 });
 
     const { data: cut, error: cutError } = await supabase
@@ -64,6 +64,9 @@ export async function POST(request: NextRequest) {
     const prefix = `${cut.project_id}/${cutId}`;
     const ts = Date.now();
 
+    // 수정 지시사항이 있으면 각 프롬프트에 append
+    const instrSuffix = frameInstruction ? `\n\n[REVISION INSTRUCTION: ${frameInstruction}]` : '';
+
     // ── Step 1: 컬러화 ──
     console.log(`[generate-frames] Step 1: 컬러화 시작`);
     const lineartImg = await downloadToBase64(cut.file_path);
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
       colorizeContents.push({
         role: 'user',
         parts: [
-          { text: cut.gemini_colorize_prompt },
+          { text: cut.gemini_colorize_prompt + instrSuffix },
           { inlineData: { mimeType: refImg.mimeType, data: refImg.data } },
           { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } },
         ],
@@ -84,24 +87,25 @@ export async function POST(request: NextRequest) {
       colorizeContents.push({
         role: 'user',
         parts: [
-          { text: cut.gemini_colorize_prompt },
+          { text: cut.gemini_colorize_prompt + instrSuffix },
           { inlineData: { mimeType: lineartImg.mimeType, data: lineartImg.data } },
         ],
       });
     }
 
-    const colorResult = await generateGeminiImage({ model: MODEL, contents: colorizeContents as never });
+    const colorResult = await generateGeminiImage({ provider: 'gemini', model: MODEL, contents: colorizeContents as never });
     const colorUrl = await uploadToStorage(colorResult.base64, colorResult.mimeType, `${prefix}/color_${ts}.png`);
     console.log(`[generate-frames] Step 1 완료: ${colorUrl}`);
 
     // ── Step 2: 16:9 확장 → End Frame ──
     console.log(`[generate-frames] Step 2: 16:9 확장 시작`);
     const expandResult = await generateGeminiImage({
+      provider: 'gemini',
       model: MODEL,
       contents: [{
         role: 'user',
         parts: [
-          { text: cut.gemini_expand_prompt },
+          { text: cut.gemini_expand_prompt + instrSuffix },
           { inlineData: { mimeType: colorResult.mimeType, data: colorResult.base64 } },
         ],
       }] as never,
@@ -112,11 +116,12 @@ export async function POST(request: NextRequest) {
     // ── Step 3: Start Frame ──
     console.log(`[generate-frames] Step 3: Start Frame 시작`);
     const startResult = await generateGeminiImage({
+      provider: 'gemini',
       model: MODEL,
       contents: [{
         role: 'user',
         parts: [
-          { text: cut.gemini_start_frame_prompt },
+          { text: cut.gemini_start_frame_prompt + instrSuffix },
           { inlineData: { mimeType: expandResult.mimeType, data: expandResult.base64 } },
         ],
       }] as never,
