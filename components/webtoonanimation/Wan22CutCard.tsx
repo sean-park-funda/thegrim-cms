@@ -225,7 +225,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   };
 
   // ── 이전 컷 이어받기 토글 ──
-  const handleTogglePrevCut = (v: boolean) => {
+  const handleTogglePrevCut = async (v: boolean) => {
     setUsePrevCut(v);
     save('use_prev_cut_as_start', v);
     if (v && prevCut) {
@@ -235,6 +235,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
         setColorizeRefUrl(refUrl);
         save('colorize_reference_url', refUrl);
         update({ colorize_reference_url: refUrl });
+        // 기존 프롬프트가 있으면 자동 수정
+        await refineColorizeForRef();
       }
       // 역할을 'end'로 고정 (이 컷은 항상 끝 프레임)
       setFrameRole('end');
@@ -261,6 +263,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
       if (data.url) {
         setColorizeRefUrl(data.url);
         update({ colorize_reference_url: data.url });
+        // 기존 프롬프트가 있으면 자동 수정
+        await refineColorizeForRef();
       }
     } catch (e) { alert(`레퍼런스 업로드 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setUploadingRef(false); }
@@ -324,6 +328,17 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
       if (promptType === 'video')       { setVideoEn(data.prompt_en);    setVideoKo(data.prompt_ko);    update({ video_prompt: data.prompt_en, video_prompt_ko: data.prompt_ko }); }
     } catch (e) { alert(`프롬프트 수정 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setRefiningType(null); }
+  };
+
+  // ── 레퍼런스 설정 후 컬러화 프롬프트 자동 수정 ──
+  const refineColorizeForRef = async () => {
+    if (!colorizeEn) return; // 프롬프트 없으면 스킵 (이후 자동생성 시 반영됨)
+    await handleRefinePrompt(
+      'colorize',
+      '레퍼런스 이미지의 배경과 환경, 조명을 그대로 유지하면서 이 컷의 인물만 컬러화하도록 프롬프트를 수정해줘',
+      colorizeEn,
+      colorizeKo,
+    );
   };
 
   const handleGenColorize = async () => {

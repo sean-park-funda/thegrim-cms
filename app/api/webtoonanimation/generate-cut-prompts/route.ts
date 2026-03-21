@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // 컷 이미지 가져오기
     const { data: cut, error: cutError } = await supabase
       .from('webtoonanimation_cuts')
-      .select('file_path, file_name')
+      .select('file_path, file_name, colorize_reference_url')
       .eq('id', cutId)
       .single();
 
@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
       ? `1. **gemini_colorize** (라인아트 → 컬러 이미지):
    - 캐릭터별 정확한 색상 명시 (머리색, 의상, 피부톤)
    - 배경 조명과 분위기
-   - 화풍: "Korean webtoon style, flat color, cel shading"
+   - 화풍: "Korean webtoon style, flat color, cel shading"${cut.colorize_reference_url ? `
+   - **중요**: 레퍼런스 이미지가 제공됨. 레퍼런스 이미지의 배경, 환경, 조명, 색조를 그대로 유지하면서 이 컷의 캐릭터/인물만 컬러화할 것. "Use the same background, environment, and lighting as the reference image"를 프롬프트에 명시` : ''}
    - 영어로 작성`
       : `1. **gemini_colorize** (컬러화 불필요 — 빈 문자열 반환):
    - use_colorize가 false이므로 빈 문자열 "" 반환`;
