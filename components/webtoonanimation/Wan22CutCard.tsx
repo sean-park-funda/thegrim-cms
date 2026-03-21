@@ -199,6 +199,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
   const handleGenVideo = async () => {
     setGenVideo(true);
     try {
+      // 1. 작업 제출 (즉시 리턴)
       const res = await fetch('/api/webtoonanimation/generate-comfyui-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,8 +207,28 @@ export function Wan22CutCard({ cut, project, onCutUpdated }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setVideoUrl(data.video_url);
-      update({ comfyui_video_url: data.video_url });
+
+      // 2. polling=true면 DB 폴링으로 완료 대기
+      if (data.polling) {
+        const startTime = Date.now();
+        const maxWait = 5 * 60 * 1000; // 5분
+        while (Date.now() - startTime < maxWait) {
+          await new Promise((r) => setTimeout(r, 10000));
+          const pollRes = await fetch(`/api/webtoonanimation/cuts/${cut.id}`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.comfyui_video_url) {
+              setVideoUrl(pollData.comfyui_video_url);
+              update({ comfyui_video_url: pollData.comfyui_video_url });
+              return;
+            }
+          }
+        }
+        throw new Error('영상 생성 타임아웃 (5분)');
+      } else {
+        setVideoUrl(data.video_url);
+        update({ comfyui_video_url: data.video_url });
+      }
     } catch (e) { alert(`영상 생성 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setGenVideo(false); }
   };

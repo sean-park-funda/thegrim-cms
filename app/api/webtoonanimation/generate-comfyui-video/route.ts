@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,6 +11,12 @@ const supabase = createClient(
 // Lightsail 릴레이: https://api.rewardpang.com/thegrim-cms
 const RELAY_URL = process.env.COMFYUI_RELAY_URL;
 
+/**
+ * POST { cutId, seed? }
+ * → Lightsail에 비동기 작업 제출 (즉시 리턴)
+ * → Lightsail 백그라운드에서 영상 생성 후 DB에 comfyui_video_url 저장
+ * → 프론트엔드는 DB 폴링으로 완료 확인
+ */
 export async function POST(request: NextRequest) {
   try {
     if (!RELAY_URL) {
@@ -40,15 +46,21 @@ export async function POST(request: NextRequest) {
     const seed = inputSeed ?? Math.floor(Math.random() * 999999999);
     const prefix = `cut_${cutId.slice(0, 8)}_${seed}`;
     const storagePath = `webtoonanimation/${cut.project_id}/${cutId}/comfyui_${seed}.mp4`;
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-    // Lightsail 릴레이 호출 (snake_case)
+    // DB의 기존 video_url 초기화 (폴링 시 이전 결과와 혼동 방지)
+    await supabase
+      .from('webtoonanimation_cuts')
+      .update({ comfyui_video_url: null })
+      .eq('id', cutId);
+
+    // Lightsail에 비동기 작업 제출 (즉시 리턴됨)
     const relayRes = await fetch(`${RELAY_URL}/comfyui/generate-video`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        cut_id: cutId,
         start_url: startUrl,
         end_url: endUrl!,
         prompt: cut.video_prompt,
@@ -68,14 +80,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await relayRes.json() as { video_url: string; seed: number; prompt_id: string };
-
-    await supabase
-      .from('webtoonanimation_cuts')
-      .update({ comfyui_video_url: result.video_url })
-      .eq('id', cutId);
-
-    return NextResponse.json(result);
+    const result = await relayRes.json() as { status: string; seed: number; cut_id: string };
+    // status: 'processing' — 프론트엔드가 DB 폴링으로 완료 확인
+    return NextResponse.json({ ...result, polling: true });
   } catch (error) {
     console.error('[generate-comfyui-video] 실패:', error);
     return NextResponse.json(
