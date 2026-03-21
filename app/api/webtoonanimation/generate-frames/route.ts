@@ -117,7 +117,10 @@ export async function POST(request: NextRequest) {
     if (runAnchor) {
       let anchorBase: { data: string; mimeType: string };
 
-      if (useColorize && cut.gemini_colorize_prompt) {
+      // step='anchor' 단독 실행이고 이미 컬러화 이미지가 있으면 재사용 (STEP1 재생성 방지)
+      const reuseExistingColor = step === 'anchor' && useColorize && !!cut.color_image_url;
+
+      if (useColorize && cut.gemini_colorize_prompt && !reuseExistingColor) {
         console.log(`[generate-frames] anchor/colorize 시작`);
         const lineartImg = await downloadToBase64(cut.file_path);
         const anchorColorizeParts: object[] = [{ text: cut.gemini_colorize_prompt + instrSuffix }];
@@ -140,6 +143,10 @@ export async function POST(request: NextRequest) {
         result.color_image_url = colorUrl;
         anchorBase = { data: colorResult.base64, mimeType: colorResult.mimeType };
         console.log(`[generate-frames] colorize 완료: ${colorUrl}`);
+      } else if (reuseExistingColor) {
+        // 기존 컬러화 이미지 재사용 — 다운로드만
+        console.log(`[generate-frames] 기존 컬러 이미지 재사용: ${cut.color_image_url}`);
+        anchorBase = await downloadToBase64(cut.color_image_url!);
       } else {
         // 컬러화 스킵 — 원본 이미지 직접 사용
         console.log(`[generate-frames] colorize 스킵, 원본 사용`);
