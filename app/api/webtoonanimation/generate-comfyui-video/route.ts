@@ -104,11 +104,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (cutError || !cut) return NextResponse.json({ error: '컷을 찾을 수 없습니다' }, { status: 404 });
-    if (!cut.start_frame_url || !cut.end_frame_url) {
-      return NextResponse.json({ error: 'start_frame / end_frame을 먼저 생성해주세요' }, { status: 400 });
-    }
     if (!cut.video_prompt) {
       return NextResponse.json({ error: 'video_prompt를 먼저 작성해주세요' }, { status: 400 });
+    }
+
+    const frameRole: string = cut.frame_role || 'end';
+    const isMidRef = frameRole === 'middle';
+
+    // 중간 레퍼런스 모드: start_frame_url을 start+end 둘 다로 사용
+    const startUrl = cut.start_frame_url;
+    const endUrl = isMidRef ? cut.start_frame_url : cut.end_frame_url;
+
+    if (!startUrl) {
+      return NextResponse.json({ error: '앵커 프레임을 먼저 생성해주세요' }, { status: 400 });
+    }
+    if (!isMidRef && !cut.end_frame_url) {
+      return NextResponse.json({ error: '나머지 프레임을 먼저 생성해주세요' }, { status: 400 });
     }
 
     const seed = inputSeed ?? Math.floor(Math.random() * 999999999);
@@ -119,8 +130,8 @@ export async function POST(request: NextRequest) {
     const endLocal = path.join(tmpDir, `${prefix}_end.png`);
     console.log('[comfyui] 이미지 다운로드 중...');
     await Promise.all([
-      downloadImage(cut.start_frame_url, startLocal),
-      downloadImage(cut.end_frame_url, endLocal),
+      downloadImage(startUrl, startLocal),
+      downloadImage(endUrl!, endLocal),
     ]);
 
     // 2. 5090 PC로 SCP 전송
