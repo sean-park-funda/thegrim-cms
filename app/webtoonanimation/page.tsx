@@ -450,190 +450,154 @@ export default function WebtoonAnimationPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        {/* 좌측 */}
-        <div className="space-y-6">
-          {/* 탭 전환 — 맨 위 */}
-          {cuts.length > 0 && (
-            <div className="flex rounded-lg border p-1 bg-muted/50">
-              <button
-                onClick={() => setActiveTab('5090')}
-                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === '5090'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                5090
-              </button>
-              <button
-                onClick={() => setActiveTab('testlab')}
-                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === 'testlab'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Video Lab
-              </button>
-              <button
-                onClick={() => setActiveTab('segments')}
-                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === 'segments'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                세그먼트
-              </button>
-              <button
-                onClick={() => setActiveTab('seedance')}
-                className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === 'seedance'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Seedance
-              </button>
+      {/* 탭 전환 — 그리드 바깥, 전체 너비 */}
+      {cuts.length > 0 && (
+        <div className="flex rounded-lg border p-1 bg-muted/50 mb-6">
+          {(['5090', 'testlab', 'segments', 'seedance'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                activeTab === tab
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab === '5090' ? '5090' : tab === 'testlab' ? 'Video Lab' : tab === 'segments' ? '세그먼트' : 'Seedance'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 5090 — 전체 너비 (사이드바 없음) */}
+      {activeTab === '5090' && (
+        <div className="space-y-4">
+          <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
+          {loadingCuts ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="bg-zinc-900 rounded-xl p-4 flex flex-col gap-4">
+              {cuts.map((cut) => (
+                <Wan22CutCard
+                  key={cut.id}
+                  cut={cut}
+                  project={selectedProject}
+                  onCutUpdated={handleCutUpdated}
+                />
+              ))}
             </div>
           )}
+        </div>
+      )}
 
-          {/* 5090 — 컷별 인라인 Wan 2.2 편집기 */}
-          {activeTab === '5090' && (
-            <div className="space-y-4">
-              <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
-              {loadingCuts ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="bg-zinc-900 rounded-xl p-4 flex flex-col gap-4">
-                  {cuts.map((cut) => (
-                    <Wan22CutCard
-                      key={cut.id}
-                      cut={cut}
-                      project={selectedProject}
-                      onCutUpdated={handleCutUpdated}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Video Lab — 모델→입력모드→애셋(컷+업로드)→프롬프트→생성 */}
-          {activeTab === 'testlab' && (
-            <>
-              {loadingCuts ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : cuts.length > 0 ? (
-                <VideoTestLab
-                  cuts={cuts}
-                  projectId={selectedProject.id}
-                  rangeStart={rangeStart}
-                  rangeEnd={rangeEnd}
-                  onFilesSelected={handleFilesSelected}
-                  uploading={uploading}
-                  onReorder={handleReorder}
-                  onRemove={handleRemoveCut}
-                />
-              ) : (
-                <CutUploader
-                  onFilesSelected={handleFilesSelected}
-                  uploading={uploading}
-                />
-              )}
-            </>
-          )}
-
-          {/* 세그먼트 모드 */}
-          {activeTab === 'segments' && cuts.length > 0 && (
-            <SegmentPlanner
-              cuts={cuts}
-              projectId={selectedProject.id}
-              rangeStart={rangeStart}
-              rangeEnd={rangeEnd}
-            />
-          )}
-
-          {/* Seedance 모드 — 기존 레이아웃 유지 */}
-          {activeTab === 'seedance' && (
-            <>
-              <CutUploader
-                onFilesSelected={handleFilesSelected}
-                uploading={uploading}
-              />
-              {loadingCuts ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : cuts.length > 0 ? (
-                <>
-                  <SortableCutGrid
-                    cuts={cuts}
-                    rangeStart={rangeStart}
-                    rangeEnd={rangeEnd}
-                    onReorder={handleReorder}
-                    onRemove={handleRemoveCut}
-                    onOpenDetail={handleOpenDetail}
-                  />
-                  <RangeSelector
-                    totalCuts={cuts.length}
-                    rangeStart={rangeStart}
-                    rangeEnd={rangeEnd}
-                    pace={pace}
-                    videoDuration={videoDuration}
-                    onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
-                    onPaceChange={setPace}
-                    onVideoDurationChange={setVideoDuration}
-                    onGenerate={handleGenerate}
-                    generating={generating}
-                  />
-                </>
-              ) : null}
-              {activeGroup && (
-                <div className="pt-4 border-t">
-                  <SeedancePromptEditor
-                    group={activeGroup}
+      {/* 나머지 탭 — 사이드바 그리드 유지 */}
+      {activeTab !== '5090' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+          <div className="space-y-6">
+            {/* Video Lab */}
+            {activeTab === 'testlab' && (
+              <>
+                {loadingCuts ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : cuts.length > 0 ? (
+                  <VideoTestLab
                     cuts={cuts}
                     projectId={selectedProject.id}
-                    onUpdateGroup={handleUpdateGroup}
-                    onRefineSeedancePrompt={handleRefineSeedancePrompt}
+                    rangeStart={rangeStart}
+                    rangeEnd={rangeEnd}
+                    onFilesSelected={handleFilesSelected}
+                    uploading={uploading}
+                    onReorder={handleReorder}
+                    onRemove={handleRemoveCut}
                   />
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                ) : (
+                  <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
+                )}
+              </>
+            )}
 
-        {/* 우측: 생성 이력 */}
-        <div className="space-y-4">
-          <PromptGroupList
-            groups={promptGroups}
-            activeGroupId={activeGroup?.id || null}
-            onSelect={selectPromptGroup}
-            onDelete={deletePromptGroup}
-          />
+            {/* 세그먼트 모드 */}
+            {activeTab === 'segments' && cuts.length > 0 && (
+              <SegmentPlanner
+                cuts={cuts}
+                projectId={selectedProject.id}
+                rangeStart={rangeStart}
+                rangeEnd={rangeEnd}
+              />
+            )}
 
-          {activeGroup?.storyboard_image_path && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">스토리보드 이미지</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <img
-                  src={activeGroup.storyboard_image_path}
-                  alt="Storyboard"
-                  className="w-full rounded border"
-                />
-              </CardContent>
-            </Card>
-          )}
+            {/* Seedance 모드 */}
+            {activeTab === 'seedance' && (
+              <>
+                <CutUploader onFilesSelected={handleFilesSelected} uploading={uploading} />
+                {loadingCuts ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : cuts.length > 0 ? (
+                  <>
+                    <SortableCutGrid
+                      cuts={cuts}
+                      rangeStart={rangeStart}
+                      rangeEnd={rangeEnd}
+                      onReorder={handleReorder}
+                      onRemove={handleRemoveCut}
+                      onOpenDetail={handleOpenDetail}
+                    />
+                    <RangeSelector
+                      totalCuts={cuts.length}
+                      rangeStart={rangeStart}
+                      rangeEnd={rangeEnd}
+                      pace={pace}
+                      videoDuration={videoDuration}
+                      onRangeChange={(s, e) => { setRangeStart(s); setRangeEnd(e); }}
+                      onPaceChange={setPace}
+                      onVideoDurationChange={setVideoDuration}
+                      onGenerate={handleGenerate}
+                      generating={generating}
+                    />
+                  </>
+                ) : null}
+                {activeGroup && (
+                  <div className="pt-4 border-t">
+                    <SeedancePromptEditor
+                      group={activeGroup}
+                      cuts={cuts}
+                      projectId={selectedProject.id}
+                      onUpdateGroup={handleUpdateGroup}
+                      onRefineSeedancePrompt={handleRefineSeedancePrompt}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* 우측: 생성 이력 */}
+          <div className="space-y-4">
+            <PromptGroupList
+              groups={promptGroups}
+              activeGroupId={activeGroup?.id || null}
+              onSelect={selectPromptGroup}
+              onDelete={deletePromptGroup}
+            />
+            {activeGroup?.storyboard_image_path && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">스토리보드 이미지</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <img src={activeGroup.storyboard_image_path} alt="Storyboard" className="w-full rounded border" />
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 컷 상세 시트 */}
       <CutDetailSheet
