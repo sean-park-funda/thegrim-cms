@@ -197,6 +197,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
   const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
   const [videoDuration, setVideoDuration] = useState<number>(cut.video_duration || 7);
+  const [videoModel, setVideoModel] = useState<'wan22' | 'ltx23'>('wan22');
   const [colorizeRefUrl, setColorizeRefUrl] = useState(cut.colorize_reference_url || '');
   const [uploadingRef, setUploadingRef] = useState(false);
 
@@ -440,7 +441,10 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
         }
       }
 
-      const res = await fetch('/api/webtoonanimation/generate-comfyui-video', {
+      const endpoint = videoModel === 'ltx23'
+        ? '/api/webtoonanimation/generate-ltx23-video'
+        : '/api/webtoonanimation/generate-comfyui-video';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cutId: cut.id }),
@@ -743,19 +747,38 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           refining={refiningType === 'video'}
           actionSlot={
             <div className="flex flex-col gap-2">
+              {/* 모델 선택 */}
               <div className="flex gap-1">
-                {[3, 5, 7, 9, 10].map((sec) => (
-                  <button key={sec}
-                    onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
+                {([['wan22', 'WAN 2.2'], ['ltx23', 'LTX 2.3']] as const).map(([m, label]) => (
+                  <button key={m} onClick={() => setVideoModel(m)}
                     className={cn(
                       'text-xs py-1 px-2 rounded border transition-colors flex-1',
-                      videoDuration === sec
-                        ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                      videoModel === m
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-400 font-medium'
                         : 'border-border hover:border-muted-foreground text-muted-foreground'
                     )}
-                  >{sec}s</button>
+                  >{label}</button>
                 ))}
               </div>
+              {/* 영상 길이 (WAN 2.2 전용) */}
+              {videoModel === 'wan22' && (
+                <div className="flex gap-1">
+                  {[3, 5, 7, 9, 10].map((sec) => (
+                    <button key={sec}
+                      onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
+                      className={cn(
+                        'text-xs py-1 px-2 rounded border transition-colors flex-1',
+                        videoDuration === sec
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                          : 'border-border hover:border-muted-foreground text-muted-foreground'
+                      )}
+                    >{sec}s</button>
+                  ))}
+                </div>
+              )}
+              {videoModel === 'ltx23' && (
+                <p className="text-[10px] text-muted-foreground text-center">960×544 · 25fps · ~4s · 오디오 포함</p>
+              )}
               <Button
                 onClick={handleGenVideo}
                 disabled={genVideo || !canVideo || !videoEn}
@@ -764,7 +787,9 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               >
                 {genVideo
                   ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />렌더링 중...</>
-                  : <><Film className="h-3 w-3 mr-1" />{videoUrl ? `재생성 (${videoDuration}s)` : `영상 생성 (${videoDuration}s)`}</>}
+                  : videoModel === 'ltx23'
+                    ? <><Film className="h-3 w-3 mr-1" />{videoUrl ? 'LTX 2.3 재생성' : 'LTX 2.3 생성'}</>
+                    : <><Film className="h-3 w-3 mr-1" />{videoUrl ? `재생성 (${videoDuration}s)` : `영상 생성 (${videoDuration}s)`}</>}
               </Button>
             </div>
           }
