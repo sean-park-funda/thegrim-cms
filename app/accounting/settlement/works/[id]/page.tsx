@@ -185,6 +185,7 @@ export default function WorkDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">월별 매출 추이</CardTitle>
+              {canManage && <p className="text-xs text-muted-foreground mt-1">매출 항목을 클릭하면 확정/미확정 상태를 변경할 수 있습니다.</p>}
             </CardHeader>
             <CardContent>
               {revenues.length === 0 ? (
@@ -206,9 +207,16 @@ export default function WorkDetailPage() {
                     <tbody>
                       {revenues.map((r) => {
                         const unc = r.unconfirmed_types || [];
+                        const TYPE_LABELS: Record<RevenueType, string> = {
+                          domestic_paid: '국내유료', global_paid: '글로벌유료',
+                          domestic_ad: '국내광고', global_ad: '글로벌광고', secondary: '2차사업',
+                        };
                         const toggleUnconfirmed = async (type: RevenueType) => {
                           if (!canManage) return;
-                          const next: RevenueType[] = unc.includes(type) ? unc.filter(t => t !== type) : [...unc, type];
+                          const isCurrentlyUnconfirmed = unc.includes(type);
+                          const action = isCurrentlyUnconfirmed ? '확정' : '미확정';
+                          if (!confirm(`${r.month} ${TYPE_LABELS[type]} 항목을 ${action} 처리하시겠습니까?`)) return;
+                          const next: RevenueType[] = isCurrentlyUnconfirmed ? unc.filter(t => t !== type) : [...unc, type];
                           try {
                             const res = await settlementFetch('/api/accounting/settlement/revenue', {
                               method: 'PATCH',
