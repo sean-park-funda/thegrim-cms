@@ -128,8 +128,23 @@ export async function PATCH(request: NextRequest) {
         const adjustment = existing?.adjustment ?? 0;
         const otherDeduction = existing?.other_deduction ?? 0;
 
+        // MG 의존 체크
+        let mgDependencyBlocked = false;
+        if (wp.mg_depends_on) {
+          const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+          const { data: depMg } = await supabase
+            .from('rs_mg_balances')
+            .select('current_balance')
+            .eq('partner_id', dep.partner_id)
+            .eq('work_id', dep.work_id)
+            .order('month', { ascending: false })
+            .limit(1)
+            .single();
+          if (depMg && Number(depMg.current_balance) > 0) mgDependencyBlocked = true;
+        }
+
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
-        const grossRevenue = types
+        const grossRevenue = mgDependencyBlocked ? 0 : types
           .filter((col: string) => !unc.includes(col))
           .reduce((sum: number, col: string) => sum + (Number((rev as Record<string, unknown>)[col]) || 0), 0);
 

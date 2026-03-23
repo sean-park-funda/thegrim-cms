@@ -48,6 +48,9 @@ interface WorkStatement {
   rs_rate: number;
   revenue_rate: number;
   is_mg_applied: boolean;
+  mg_dependency_blocked: boolean;
+  mg_depends_on: { partner_id: string; work_id: string } | null;
+  mg_dep_info: { partner_name: string; balance: number } | null;
   details: WorkDetail[];
   work_total_revenue: number;
   work_total_base_revenue: number;
@@ -549,7 +552,20 @@ export default function PartnerDetailPage() {
                               .filter(d => !d.excluded)
                               .map((d, i) => (
                                 <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
-                                  <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
+                                  <td className="py-1.5 px-3">
+                                    {i === 0 ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span>{work.work_name}</span>
+                                        {work.mg_dep_info && (
+                                          <Badge variant={work.mg_dependency_blocked ? 'outline' : 'default'} className={`text-[10px] px-1.5 py-0 ${work.mg_dependency_blocked ? 'border-orange-400 text-orange-600' : 'border-green-400 text-green-600 bg-green-50'}`}>
+                                            {work.mg_dependency_blocked
+                                              ? `MG 의존: ${work.mg_dep_info.partner_name} (잔액 ₩${work.mg_dep_info.balance.toLocaleString()})`
+                                              : `MG 소진: ${work.mg_dep_info.partner_name}`}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    ) : ''}
+                                  </td>
                                   <td className="py-1.5 px-3">{d.revenue_type_label}</td>
                                   <td className="py-1.5 px-3 text-right tabular-nums">{d.gross_revenue.toLocaleString()}</td>
                                   {hasBaseRevenue && (

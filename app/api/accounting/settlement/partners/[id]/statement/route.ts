@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 파트너의 작품 연결 (RS비율 + MG요율)
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -140,6 +140,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 정산제외금 모드용: 분담 전 원래 금액 (공제인원 전액)
     const laborCostFullByWorkType = new Map<string, number>();
 
+    // MG 의존 체크: mg_depends_on이 있는 작품의 의존 대상 MG 잔액 조회
+    const mgDepBlockedWorks = new Set<string>();
+    const mgDepInfo = new Map<string, { partner_name: string; balance: number }>();
+    for (const wp of workPartners) {
+      if (!wp.mg_depends_on) continue;
+      const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+      const [{ data: depMg }, { data: depPartner }] = await Promise.all([
+        supabase
+          .from('rs_mg_balances')
+          .select('current_balance')
+          .eq('partner_id', dep.partner_id)
+          .eq('work_id', dep.work_id)
+          .order('month', { ascending: false })
+          .limit(1)
+          .single(),
+        supabase
+          .from('rs_partners')
+          .select('name')
+          .eq('id', dep.partner_id)
+          .single(),
+      ]);
+      const balance = depMg ? Number(depMg.current_balance) : 0;
+      mgDepInfo.set(wp.work_id, {
+        partner_name: depPartner?.name || '',
+        balance,
+      });
+      if (balance > 0) {
+        mgDepBlockedWorks.add(wp.work_id);
+      }
+    }
+
     // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
     const revenueShareByWork = new Map<string, number>();
     for (const wp of workPartners) {
@@ -149,10 +180,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const revenueRate = Number(wp.revenue_rate) || 1;
       const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
       const unc: string[] = rev?.unconfirmed_types || [];
+      const isBlocked = mgDepBlockedWorks.has(wp.work_id);
       let totalShare = 0;
       for (const col of REVENUE_COLUMNS) {
         if (!includedTypes.includes(col) || unc.includes(col)) continue;
-        const amount = rev ? Number(rev[col]) : 0;
+        const amount = (rev && !isBlocked) ? Number(rev[col]) : 0;
         const baseRevenue = Math.round(amount * revenueRate);
         totalShare += Math.round(baseRevenue * effectiveRate);
       }
@@ -298,11 +330,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
 
       const unconfirmed: string[] = rev?.unconfirmed_types || [];
+      const blocked = mgDepBlockedWorks.has(wp.work_id);
       const baseRevenueByCol: Record<string, number> = {};
       let totalBaseRevenue = 0;
       for (const col of REVENUE_COLUMNS) {
         const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included) ? Number(rev[col]) : 0;
+        const amount = (rev && included && !blocked) ? Number(rev[col]) : 0;
         const br = Math.round(amount * revenueRate);
         baseRevenueByCol[col] = br;
         totalBaseRevenue += br;
@@ -316,7 +349,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       const details = REVENUE_COLUMNS.map(col => {
         const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included) ? Number(rev[col]) : 0;
+        const amount = (rev && included && !blocked) ? Number(rev[col]) : 0;
         const baseRevenue = baseRevenueByCol[col];
 
         return {
@@ -432,6 +465,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         effective_rate: effectiveRate,
         revenue_rate: revenueRate,
         is_mg_applied: wp.is_mg_applied,
+        mg_dependency_blocked: blocked,
+        mg_depends_on: wp.mg_depends_on || null,
+        mg_dep_info: mgDepInfo.get(wp.work_id) || null,
         details,
         work_total_revenue,
         work_total_base_revenue,

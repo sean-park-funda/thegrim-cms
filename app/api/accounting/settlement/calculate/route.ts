@@ -118,10 +118,27 @@ export async function POST(request: NextRequest) {
           ? Number(wp.mg_rs_rate)
           : Number(wp.rs_rate);
 
+        // MG 의존 체크: 의존 대상의 MG 잔액이 0보다 크면 RS 없음
+        let mgDependencyBlocked = false;
+        if (wp.mg_depends_on) {
+          const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+          const { data: depMg } = await supabase
+            .from('rs_mg_balances')
+            .select('current_balance')
+            .eq('partner_id', dep.partner_id)
+            .eq('work_id', dep.work_id)
+            .order('month', { ascending: false })
+            .limit(1)
+            .single();
+          if (depMg && Number(depMg.current_balance) > 0) {
+            mgDependencyBlocked = true;
+          }
+        }
+
         // 특약: 포함된 수익유형만 합산 (미설정 시 전체), 미확정 유형 제외
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
         const unconfirmed: string[] = rev.unconfirmed_types || [];
-        const grossRevenue = types
+        const grossRevenue = mgDependencyBlocked ? 0 : types
           .filter((col: string) => !unconfirmed.includes(col))
           .reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
 

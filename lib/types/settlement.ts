@@ -100,6 +100,7 @@ export interface RsWorkPartner {
   revenue_rate: number;
   settlement_cycle: string;
   tax_type: string;
+  mg_depends_on: { partner_id: string; work_id: string } | null;
   created_at: string;
   updated_at: string;
   // joined
