@@ -404,7 +404,7 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
 
             {/* 이 컷의 역할 */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">이 컷의 역할</Label>
+              <Label className="text-xs text-muted-foreground">원본컷의 역할</Label>
               <div className="grid grid-cols-3 gap-2">
                 {FRAME_ROLE_OPTIONS.map((opt) => (
                   <button
@@ -424,30 +424,14 @@ export function CutDetailSheet({ cut, project, open, onClose, onCutUpdated }: Cu
               </div>
             </div>
 
-            {/* 컷 유형 힌트 */}
-            <div className="flex gap-3 items-center">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs text-muted-foreground">씬 유형 (선택)</Label>
-                <Select value={frameStrategy} onValueChange={(v) => { setFrameStrategy(v); saveField('frame_strategy', v); }}>
-                  <SelectTrigger className="text-xs h-8">
-                    <SelectValue placeholder="선택사항" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FRAME_STRATEGY_OPTIONS.map((s) => (
-                      <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">컬러화</Label>
-                <div className="flex items-center gap-1.5 h-8">
-                  <Switch
-                    checked={useColorize}
-                    onCheckedChange={(v) => { setUseColorize(v); saveField('use_colorize', v); }}
-                  />
-                  <span className="text-xs text-muted-foreground">{useColorize ? '필요' : '스킵'}</span>
-                </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">컬러화</Label>
+              <div className="flex items-center gap-1.5 h-8">
+                <Switch
+                  checked={useColorize}
+                  onCheckedChange={(v) => { setUseColorize(v); saveField('use_colorize', v); }}
+                />
+                <span className="text-xs text-muted-foreground">{useColorize ? '필요' : '스킵'}</span>
               </div>
             </div>
 

@@ -104,7 +104,6 @@ function StepCard({
       <div className="p-3 flex flex-col gap-2 flex-1">
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] text-muted-foreground font-medium">English</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setDialogOpen(true)}
@@ -121,7 +120,7 @@ function StepCard({
           <Textarea
             value={promptEn}
             onChange={(e) => onEnChange(e.target.value)}
-            placeholder="English prompt..."
+            placeholder="프롬프트"
             className="text-xs font-mono resize-none min-h-[80px]"
             rows={4}
           />
@@ -218,6 +217,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
     (cut.frame_role === 'start' ? cut.end_frame_url : cut.start_frame_url) || null
   );
   const [videoUrl, setVideoUrl] = useState<string | null>(cut.comfyui_video_url || null);
+  const [videoHistory, setVideoHistory] = useState<string[]>([]);
 
   const [genPrompts, setGenPrompts] = useState(false);
   const [genColorize, setGenColorize] = useState(false);
@@ -451,6 +451,13 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      const applyNewVideo = (url: string) => {
+        setVideoUrl((prev) => {
+          if (prev && prev !== url) setVideoHistory((h) => [prev, ...h]);
+          return url;
+        });
+        update({ comfyui_video_url: url });
+      };
       if (data.polling) {
         const startTime = Date.now();
         while (Date.now() - startTime < 5 * 60 * 1000) {
@@ -459,16 +466,14 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           if (pollRes.ok) {
             const pollData = await pollRes.json();
             if (pollData.comfyui_video_url) {
-              setVideoUrl(pollData.comfyui_video_url);
-              update({ comfyui_video_url: pollData.comfyui_video_url });
+              applyNewVideo(pollData.comfyui_video_url);
               return;
             }
           }
         }
         throw new Error('영상 생성 타임아웃 (5분)');
       } else {
-        setVideoUrl(data.video_url);
-        update({ comfyui_video_url: data.video_url });
+        applyNewVideo(data.video_url);
       }
     } catch (e) { alert(`영상 생성 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setGenVideo(false); }
@@ -533,7 +538,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 </div>
               )}
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">이 컷의 역할</Label>
+                <Label className="text-xs text-muted-foreground">원본컷의 역할</Label>
                 <div className="flex gap-1">
                   {FRAME_ROLE_OPTIONS.map((opt) => (
                     <button key={opt.value}
@@ -589,19 +594,6 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                     >✕</button>
                   )}
                 </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">씬 유형</Label>
-                <Select value={frameStrategy} onValueChange={(v) => { setFrameStrategy(v); save('frame_strategy', v); }}>
-                  <SelectTrigger className="text-xs h-8 w-28">
-                    <SelectValue placeholder="선택사항" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FRAME_STRATEGY_OPTIONS.map((s) => (
-                      <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           </div>
@@ -732,9 +724,20 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           resultSlot={
             videoUrl
               ? (
-                <div className="w-full space-y-1">
+                <div className="w-full space-y-2">
                   <video src={videoUrl} controls className="w-full rounded border" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
                   <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline block text-center">새 탭</a>
+                  {videoHistory.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground font-medium">이전 생성 ({videoHistory.length})</p>
+                      {videoHistory.map((url, i) => (
+                        <div key={url} className="space-y-0.5">
+                          <video src={url} controls className="w-full rounded border opacity-70" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-muted-foreground underline block text-center">#{videoHistory.length - i} 새 탭</a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
               : <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} />

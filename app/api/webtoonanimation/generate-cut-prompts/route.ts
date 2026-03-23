@@ -136,13 +136,12 @@ ${characterText}
 
 ${colorizeInstruction}
 
-2. **gemini_expand** (앵커 프레임 — 16:9 와이드로 확장):
-   - 이 컷이 앵커 프레임(${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : '레퍼런스'})이 됨
-   - 확장 방향 (좌/우/양측)
-   - 추가될 배경 요소 (사물함, 벽, 창문, 바닥 등)
-   - 캐릭터 최종 위치 (중앙/중앙-좌/중앙-우)
-   - "Extend to 1376x768 widescreen. Keep same lighting and perspective."
-   - "Do not add new characters."
+2. **gemini_expand** (컬러 이미지 → 지정 비율로 캔버스 확장):
+   - 목적: step 1에서 컬러화된 이미지를 비율만 바꾸는 것. 구도·캐릭터·조명은 절대 변경하지 말 것
+   - 반드시 포함: "Outpaint this image to [target aspect ratio]. Preserve the exact composition, characters, poses, lighting, and art style. Only extend the background canvas — do not move, resize, or alter any existing elements."
+   - 확장 방향만 간단히 명시 (예: "Extend the background to the left and right.")
+   - 새 캐릭터 추가 금지: "Do not add new characters or objects."
+   - 화면 내용 묘사(씬 설명, 감정, 스토리 등) 추가 금지 — 구도가 깨지는 원인
    - 영어로 작성
 
 ${otherFrameInstruction}
