@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
@@ -41,6 +41,10 @@ interface WorkStatement {
   rs_rate: number;
   revenue_rate: number;
   is_mg_applied: boolean;
+  revenue_adjustments: { id: string; label: string; amount: number }[];
+  revenue_adjustment_total: number;
+  revenue_adjustment_rs: number;
+  effective_rate: number;
   details: WorkDetail[];
   work_total_revenue: number;
   work_total_base_revenue: number;
@@ -184,6 +188,7 @@ export default function StatementPage() {
               const hasTeamLaborCost = data.grand_total_team_labor_cost > 0;
               const hasSelfLaborCost = data.grand_total_self_labor_cost > 0;
               const hasAnyLaborCost = hasTeamLaborCost || hasSelfLaborCost;
+              const midCols = (hasBaseRevenue ? 1 : 0) + (hasExclusion ? 1 : 0) + ((hasBaseRevenue || hasExclusion) ? 1 : 0) + (hasAnyLaborCost ? 1 : 0) + (hasTeamLaborCost ? 1 : 0) + (hasSelfLaborCost ? 1 : 0);
               return (
             <div className="space-y-3">
               <h3 className="font-semibold">1. 정산상세내역</h3>
@@ -223,60 +228,91 @@ export default function StatementPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.works.map((work) =>
-                        work.details
-                          .filter(d => d.gross_revenue > 0)
-                          .map((d, i) => (
-                            <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
-                              <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
-                              <td className="py-1.5 px-3">{d.revenue_type_label}</td>
-                              <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
-                                {d.gross_revenue.toLocaleString()}
-                              </td>
-                              {hasBaseRevenue && (
+                      {data.works.map((work) => (
+                        <React.Fragment key={work.work_id}>
+                          {work.details
+                            .filter(d => d.gross_revenue > 0)
+                            .map((d, i) => (
+                              <tr key={`${work.work_id}-${d.revenue_type}`} className="border-b">
+                                <td className="py-1.5 px-3">{i === 0 ? work.work_name : ''}</td>
+                                <td className="py-1.5 px-3">{d.revenue_type_label}</td>
                                 <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
-                                  {d.base_revenue.toLocaleString()}
+                                  {d.gross_revenue.toLocaleString()}
                                 </td>
-                              )}
-                              {hasExclusion && (
-                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                                  {d.exclusion_amount > 0 ? `-${d.exclusion_amount.toLocaleString()}` : ''}
+                                {hasBaseRevenue && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                    {d.base_revenue.toLocaleString()}
+                                  </td>
+                                )}
+                                {hasExclusion && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                    {d.exclusion_amount > 0 ? `-${d.exclusion_amount.toLocaleString()}` : ''}
+                                  </td>
+                                )}
+                                {(hasBaseRevenue || hasExclusion) && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                    {d.settlement_target.toLocaleString()}
+                                  </td>
+                                )}
+                                {hasAnyLaborCost && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
+                                    {d.revenue_share.toLocaleString()}
+                                  </td>
+                                )}
+                                {hasTeamLaborCost && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                    {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
+                                  </td>
+                                )}
+                                {hasSelfLaborCost && (
+                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
+                                    {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
+                                  </td>
+                                )}
+                                <td className="py-1.5 px-3 text-right tabular-nums">
+                                  {hasAnyLaborCost
+                                    ? d.net_share.toLocaleString()
+                                    : d.revenue_share.toLocaleString()}
                                 </td>
-                              )}
-                              {(hasBaseRevenue || hasExclusion) && (
                                 <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
-                                  {d.settlement_target.toLocaleString()}
+                                  {(d.rs_rate * 100).toFixed(1)}%
                                 </td>
-                              )}
-                              {hasAnyLaborCost && (
-                                <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
-                                  {d.revenue_share.toLocaleString()}
+                                <td className="py-1.5 px-3 text-muted-foreground text-xs hidden md:table-cell">
+                                  {work.is_mg_applied ? 'MG차감' : ''}
                                 </td>
-                              )}
-                              {hasTeamLaborCost && (
-                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                                  {d.team_labor_cost > 0 ? `-${d.team_labor_cost.toLocaleString()}` : ''}
-                                </td>
-                              )}
-                              {hasSelfLaborCost && (
-                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                                  {d.self_labor_cost > 0 ? `-${d.self_labor_cost.toLocaleString()}` : ''}
-                                </td>
-                              )}
-                              <td className="py-1.5 px-3 text-right tabular-nums">
-                                {hasAnyLaborCost
-                                  ? d.net_share.toLocaleString()
-                                  : d.revenue_share.toLocaleString()}
+                              </tr>
+                            ))}
+                          {/* 작품 매출 조정 → 더그림수익 + 수익정산 */}
+                          {work.revenue_adjustments?.map(adj => (
+                            <tr key={`revadj-${adj.id}`} className="border-b bg-amber-50/50 dark:bg-amber-950/20">
+                              <td className="py-1.5 px-3"></td>
+                              <td className="py-1.5 px-3 text-sm text-amber-700 dark:text-amber-400">{adj.label}</td>
+                              <td className="py-1.5 px-3 text-right tabular-nums text-amber-700 dark:text-amber-400 hidden md:table-cell">
+                                {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
                               </td>
-                              <td className="py-1.5 px-3 text-right tabular-nums hidden md:table-cell">
-                                {(d.rs_rate * 100).toFixed(1)}%
+                              {midCols > 0 && <td colSpan={midCols} className="hidden md:table-cell"></td>}
+                              <td className="py-1.5 px-3 text-right tabular-nums text-amber-700 dark:text-amber-400">
+                                {(() => { const rs = Math.round(adj.amount * (work.effective_rate || work.rs_rate)); return (rs >= 0 ? '+' : '') + rs.toLocaleString(); })()}
                               </td>
-                              <td className="py-1.5 px-3 text-muted-foreground text-xs hidden md:table-cell">
-                                {work.is_mg_applied ? 'MG차감' : ''}
-                              </td>
+                              <td className="hidden md:table-cell"></td>
+                              <td className="hidden md:table-cell"></td>
                             </tr>
-                          ))
-                      )}
+                          ))}
+                        </React.Fragment>
+                      ))}
+                      {/* 파트너 조정 항목 → 수익정산 컬럼 */}
+                      {data.adjustments.map(adj => (
+                        <tr key={`adj-${adj.id}`} className="border-b bg-amber-50/50 dark:bg-amber-950/20">
+                          <td colSpan={2} className="py-1.5 px-3 text-sm text-muted-foreground">{adj.label}</td>
+                          <td className="hidden md:table-cell"></td>
+                          {midCols > 0 && <td colSpan={midCols} className="hidden md:table-cell"></td>}
+                          <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                          </td>
+                          <td className="hidden md:table-cell"></td>
+                          <td className="hidden md:table-cell"></td>
+                        </tr>
+                      ))}
                       <tr className="border-t-2 font-semibold">
                         <td className="py-2 px-3">합계</td>
                         <td className="py-2 px-3"></td>
@@ -314,9 +350,9 @@ export default function StatementPage() {
                           </td>
                         )}
                         <td className="py-2 px-3 text-right tabular-nums">
-                          {hasAnyLaborCost
-                            ? data.grand_total_net_share.toLocaleString()
-                            : data.grand_total_share.toLocaleString()}
+                          {((hasAnyLaborCost
+                            ? data.grand_total_net_share
+                            : data.grand_total_share) + data.total_adjustment).toLocaleString()}
                         </td>
                         <td className="py-2 px-3 hidden md:table-cell"></td>
                         <td className="py-2 px-3 hidden md:table-cell"></td>
@@ -362,23 +398,13 @@ export default function StatementPage() {
                       )}
                     </tbody>
                   </table>
-                  {(data.total_mg_deduction > 0 || data.adjustments.length > 0) && (
+                  {data.total_mg_deduction > 0 && (
                     <table className="w-full text-sm mt-2">
                       <tbody>
-                        {data.total_mg_deduction > 0 && (
-                          <tr className="border-b">
-                            <td className="py-1.5 px-3 text-muted-foreground">MG 차감</td>
-                            <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_mg_deduction.toLocaleString()}</td>
-                          </tr>
-                        )}
-                        {data.adjustments.map(adj => (
-                          <tr key={adj.id} className="border-b">
-                            <td className="py-1.5 px-3 text-muted-foreground">{adj.label}</td>
-                            <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
-                              {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
+                        <tr className="border-b">
+                          <td className="py-1.5 px-3 text-muted-foreground">MG 차감</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_mg_deduction.toLocaleString()}</td>
+                        </tr>
                       </tbody>
                     </table>
                   )}

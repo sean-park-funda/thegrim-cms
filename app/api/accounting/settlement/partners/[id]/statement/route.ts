@@ -481,16 +481,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       // 매출 조정 항목 반영 (작품 전체 매출에 가감)
       const workRevAdj = revAdjByWork.get(wp.work_id) || 0;
+      const revAdjRS = blocked ? 0 : Math.round(workRevAdj * effectiveRate);
 
-      const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0);
+      const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0) + workRevAdj;
       const work_total_base_revenue = details.reduce((s, d) => s + d.base_revenue, 0) + workRevAdj;
       const work_total_exclusion = details.reduce((s, d) => s + d.exclusion_amount, 0);
       const work_total_settlement_target = details.reduce((s, d) => s + d.settlement_target, 0);
-      const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0);
+      const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0) + revAdjRS;
       const work_total_labor_cost = details.reduce((s, d) => s + d.labor_cost, 0);
       const work_total_team_labor_cost = details.reduce((s, d) => s + d.team_labor_cost, 0);
       const work_total_self_labor_cost = details.reduce((s, d) => s + d.self_labor_cost, 0);
-      const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0);
+      const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0) + revAdjRS;
 
       return {
         work_name: work?.name || '',
@@ -505,6 +506,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         mg_dep_info: mgDepInfo.get(wp.work_id) || null,
         revenue_adjustments: revAdjItemsByWork.get(wp.work_id) || [],
         revenue_adjustment_total: workRevAdj,
+        revenue_adjustment_rs: revAdjRS,
         details,
         work_total_revenue,
         work_total_base_revenue,
@@ -601,7 +603,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             otherNet += d.net_share;
           }
         }
+        // 매출 조정 RS → 글로벌유료수익 외에 포함
+        otherNet += w.revenue_adjustment_rs || 0;
       }
+      // 파트너 조정 → 글로벌유료수익 외에 포함
+      otherNet += total_adjustment;
 
       tax_invoice = [];
       if (domesticPaidNet > 0) {
@@ -635,7 +641,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const final_payment = isCorp
-      ? tax_invoice_total - total_mg_deduction + total_adjustment
+      ? tax_invoice_total - total_mg_deduction
       : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
 
     return NextResponse.json({
