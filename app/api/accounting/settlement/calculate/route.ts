@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         // 특약: 포함된 수익유형만 합산 (미설정 시 전체), 미확정 유형 제외
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
         const unconfirmed: string[] = rev.unconfirmed_types || [];
-        const grossRevenue = mgDependencyBlocked ? 0 : types
+        const grossRevenue = types
           .filter((col: string) => !unconfirmed.includes(col))
           .reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
 
@@ -161,21 +161,22 @@ export async function POST(request: NextRequest) {
           month,
         });
 
+        // MG 의존 차단: 매출은 그대로 보여주되 수익배분 이후 항목은 0
         const settlement = {
           month,
           partner_id: wp.partner_id,
           work_id: wp.work_id,
           gross_revenue: grossRevenue,
           rs_rate: effectiveRsRate,
-          revenue_share: calc.revenue_share,
-          production_cost: productionCost,
-          adjustment: adjustment,
+          revenue_share: mgDependencyBlocked ? 0 : calc.revenue_share,
+          production_cost: mgDependencyBlocked ? 0 : productionCost,
+          adjustment: mgDependencyBlocked ? 0 : adjustment,
           tax_rate: Number(wp.partner.tax_rate),
-          tax_amount: calc.tax_amount,
-          insurance: calc.insurance,
-          mg_deduction: calc.mg_deduction,
-          other_deduction: otherDeduction,
-          final_payment: calc.final_payment,
+          tax_amount: mgDependencyBlocked ? 0 : calc.tax_amount,
+          insurance: mgDependencyBlocked ? 0 : calc.insurance,
+          mg_deduction: mgDependencyBlocked ? 0 : calc.mg_deduction,
+          other_deduction: mgDependencyBlocked ? 0 : otherDeduction,
+          final_payment: mgDependencyBlocked ? 0 : calc.final_payment,
           status: 'draft' as const,
         };
 

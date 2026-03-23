@@ -144,7 +144,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
-        const grossRevenue = mgDependencyBlocked ? 0 : types
+        const grossRevenue = types
           .filter((col: string) => !unc.includes(col))
           .reduce((sum: number, col: string) => sum + (Number((rev as Record<string, unknown>)[col]) || 0), 0);
 
@@ -170,21 +170,22 @@ export async function PATCH(request: NextRequest) {
           month: rev.month,
         });
 
+        // MG 의존 차단: 매출은 그대로 보여주되 수익배분 이후 항목은 0
         await supabase.from('rs_settlements').upsert({
           month: rev.month,
           partner_id: wp.partner_id,
           work_id: wp.work_id,
           gross_revenue: grossRevenue,
           rs_rate: effectiveRsRate,
-          revenue_share: calc.revenue_share,
-          production_cost: productionCost,
-          adjustment,
+          revenue_share: mgDependencyBlocked ? 0 : calc.revenue_share,
+          production_cost: mgDependencyBlocked ? 0 : productionCost,
+          adjustment: mgDependencyBlocked ? 0 : adjustment,
           tax_rate: Number(wp.partner.tax_rate),
-          tax_amount: calc.tax_amount,
-          insurance: calc.insurance,
-          mg_deduction: calc.mg_deduction,
-          other_deduction: otherDeduction,
-          final_payment: calc.final_payment,
+          tax_amount: mgDependencyBlocked ? 0 : calc.tax_amount,
+          insurance: mgDependencyBlocked ? 0 : calc.insurance,
+          mg_deduction: mgDependencyBlocked ? 0 : calc.mg_deduction,
+          other_deduction: mgDependencyBlocked ? 0 : otherDeduction,
+          final_payment: mgDependencyBlocked ? 0 : calc.final_payment,
           status: 'draft',
         }, { onConflict: 'month,partner_id,work_id' });
       }

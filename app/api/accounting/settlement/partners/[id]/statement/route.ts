@@ -184,9 +184,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       let totalShare = 0;
       for (const col of REVENUE_COLUMNS) {
         if (!includedTypes.includes(col) || unc.includes(col)) continue;
-        const amount = (rev && !isBlocked) ? Number(rev[col]) : 0;
+        const amount = rev ? Number(rev[col]) : 0;
         const baseRevenue = Math.round(amount * revenueRate);
-        totalShare += Math.round(baseRevenue * effectiveRate);
+        // MG 의존 차단: 매출은 그대로 집계하되 수익배분만 0
+        totalShare += isBlocked ? 0 : Math.round(baseRevenue * effectiveRate);
       }
       revenueShareByWork.set(wp.work_id, totalShare);
     }
@@ -335,7 +336,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       let totalBaseRevenue = 0;
       for (const col of REVENUE_COLUMNS) {
         const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included && !blocked) ? Number(rev[col]) : 0;
+        const amount = (rev && included) ? Number(rev[col]) : 0;
         const br = Math.round(amount * revenueRate);
         baseRevenueByCol[col] = br;
         totalBaseRevenue += br;
@@ -349,7 +350,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       const details = REVENUE_COLUMNS.map(col => {
         const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included && !blocked) ? Number(rev[col]) : 0;
+        const amount = (rev && included) ? Number(rev[col]) : 0;
         const baseRevenue = baseRevenueByCol[col];
 
         return {
@@ -444,6 +445,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         for (const d of details) {
           d.labor_cost = d.self_labor_cost + d.team_labor_cost;
           d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
+        }
+      }
+
+      // MG 의존 차단: 매출은 그대로 보여주되 수익배분 이후 항목은 0
+      if (blocked) {
+        for (const d of details) {
+          d.revenue_share = 0;
+          d.team_labor_cost = 0;
+          d.self_labor_cost = 0;
+          d.labor_cost = 0;
+          d.net_share = 0;
         }
       }
 
