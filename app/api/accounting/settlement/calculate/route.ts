@@ -27,14 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
     }
 
-    // 해당 월의 수익 데이터 조회
+    // 해당 월의 수익 데이터 조회 (미확정 매출 제외)
     const { data: revenues } = await supabase
       .from('rs_revenues')
       .select('*')
-      .eq('month', month);
+      .eq('month', month)
+      .eq('is_confirmed', true);
 
     if (!revenues || revenues.length === 0) {
-      return NextResponse.json({ error: '해당 월의 수익 데이터가 없습니다.' }, { status: 404 });
+      return NextResponse.json({ error: '해당 월의 확정된 수익 데이터가 없습니다.' }, { status: 404 });
     }
 
     // 작품-파트너 연결 조회

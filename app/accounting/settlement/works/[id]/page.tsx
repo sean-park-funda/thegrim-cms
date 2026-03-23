@@ -201,18 +201,47 @@ export default function WorkDetailPage() {
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
                         <th className="py-2 px-3 font-medium text-right">합계</th>
+                        <th className="py-2 px-3 font-medium text-center">확정</th>
                       </tr>
                     </thead>
                     <tbody>
                       {revenues.map((r) => (
-                        <tr key={r.month} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-3 font-medium">{r.month}</td>
+                        <tr key={r.month} className={`border-b hover:bg-muted/50 ${!r.is_confirmed ? 'opacity-50' : ''}`}>
+                          <td className="py-2 px-3 font-medium">
+                            {r.month}
+                            {!r.is_confirmed && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정</Badge>}
+                          </td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_paid)}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_paid)}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_ad)}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_ad)}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.secondary)}</td>
                           <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
+                          <td className="py-2 px-3 text-center">
+                            {canManage ? (
+                              <Checkbox
+                                checked={r.is_confirmed}
+                                onCheckedChange={async (checked) => {
+                                  try {
+                                    const res = await settlementFetch('/api/accounting/settlement/revenue', {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ id: r.id, is_confirmed: !!checked }),
+                                    });
+                                    if (res.ok) {
+                                      setRevenues(prev => prev.map(rev =>
+                                        rev.id === r.id ? { ...rev, is_confirmed: !!checked } : rev
+                                      ));
+                                    }
+                                  } catch (e) {
+                                    console.error('확정 상태 변경 오류:', e);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              r.is_confirmed ? 'O' : '-'
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
