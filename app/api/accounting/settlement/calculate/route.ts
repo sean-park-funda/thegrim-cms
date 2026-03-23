@@ -59,6 +59,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 작품별 매출 조정 항목 조회
+    const workIds = revenues.map(r => r.work_id);
+    const { data: revAdjustments } = await supabase
+      .from('rs_revenue_adjustments')
+      .select('work_id, amount')
+      .eq('month', month)
+      .in('work_id', workIds);
+    const revAdjByWork = new Map<string, number>();
+    for (const ra of (revAdjustments || [])) {
+      revAdjByWork.set(ra.work_id, (revAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
+    }
+
     // 작품별 매출 맵 구성 (스태프 급여 배분용)
     const revenueByWorkId = new Map<string, number>();
     for (const rev of revenues) {
@@ -132,9 +144,10 @@ export async function POST(request: NextRequest) {
         // 특약: 포함된 수익유형만 합산 (미설정 시 전체), 미확정 유형 제외
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
         const unconfirmed: string[] = rev.unconfirmed_types || [];
-        const grossRevenue = types
+        const baseRevenue = types
           .filter((col: string) => !unconfirmed.includes(col))
           .reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
+        const grossRevenue = baseRevenue + (revAdjByWork.get(wp.work_id) || 0);
 
         const workData = wp.work as { serial_start_date: string | null; serial_end_date: string | null } | null;
 

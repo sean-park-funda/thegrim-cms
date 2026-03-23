@@ -221,6 +221,18 @@ export async function POST(request: NextRequest) {
         }
         const staffDeductions = await computeLaborCostDeductions(supabase, month, revenueByWorkId);
 
+        // 작품별 매출 조정 항목 조회
+        const uploadWorkIds = revenues.map(r => r.work_id);
+        const { data: uploadRevAdjs } = await supabase
+          .from('rs_revenue_adjustments')
+          .select('work_id, amount')
+          .eq('month', month)
+          .in('work_id', uploadWorkIds);
+        const uploadRevAdjByWork = new Map<string, number>();
+        for (const ra of (uploadRevAdjs || [])) {
+          uploadRevAdjByWork.set(ra.work_id, (uploadRevAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
+        }
+
         for (const rev of revenues) {
           const partners = workPartners.filter(wp => wp.work_id === rev.work_id);
           for (const wp of partners) {
@@ -248,8 +260,9 @@ export async function POST(request: NextRequest) {
 
             const productionCost = existing ? Number(existing.production_cost) : 0;
 
+            const revAdjAmount = uploadRevAdjByWork.get(wp.work_id) || 0;
             const calc = calculateSettlement({
-              gross_revenue: Number(rev.total),
+              gross_revenue: Number(rev.total) + revAdjAmount,
               rs_rate: Number(wp.rs_rate),
               mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
               production_cost: productionCost,
@@ -266,7 +279,7 @@ export async function POST(request: NextRequest) {
                 month,
                 partner_id: wp.partner_id,
                 work_id: wp.work_id,
-                gross_revenue: Number(rev.total),
+                gross_revenue: Number(rev.total) + revAdjAmount,
                 rs_rate: Number(wp.rs_rate),
                 revenue_share: calc.revenue_share,
                 production_cost: productionCost,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
@@ -15,9 +15,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Pencil, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Plus, X } from 'lucide-react';
 import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+
+interface RevAdjustment {
+  id: string;
+  work_id: string;
+  month: string;
+  label: string;
+  amount: number;
+}
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
   exclusive: '독점',
@@ -35,6 +43,7 @@ export default function WorkDetailPage() {
   const [work, setWork] = useState<RsWork | null>(null);
   const [workPartners, setWorkPartners] = useState<RsWorkPartner[]>([]);
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
+  const [revAdjustments, setRevAdjustments] = useState<RevAdjustment[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
   const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +51,12 @@ export default function WorkDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
+
+  const [adjDialogOpen, setAdjDialogOpen] = useState(false);
+  const [adjMonth, setAdjMonth] = useState('');
+  const [adjLabel, setAdjLabel] = useState('');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjSaving, setAdjSaving] = useState(false);
 
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkPartnerId, setLinkPartnerId] = useState('');
@@ -52,21 +67,24 @@ export default function WorkDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [workRes, wpRes, revRes, partnersRes, mgRes] = await Promise.all([
+      const [workRes, wpRes, revRes, partnersRes, mgRes, adjRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/works/${workId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/revenue?workId=${workId}`),
         settlementFetch(`/api/accounting/settlement/partners`),
         settlementFetch(`/api/accounting/settlement/mg?workId=${workId}`),
+        settlementFetch(`/api/accounting/settlement/revenue-adjustments?work_id=${workId}`),
       ]);
       const workData = await workRes.json();
       const wpData = await wpRes.json();
       const revData = await revRes.json();
       const partnersData = await partnersRes.json();
       const mgData = await mgRes.json();
+      const adjData = await adjRes.json();
       setWork(workData.work || null);
       setWorkPartners(wpData.work_partners || []);
       setRevenues((revData.revenues || []).sort((a: RsRevenue, b: RsRevenue) => b.month.localeCompare(a.month)));
+      setRevAdjustments(adjData.adjustments || []);
       setPartners(partnersData.partners || []);
       setMgBalances((mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month)));
     } catch (e) {
@@ -126,6 +144,36 @@ export default function WorkDetailPage() {
     } finally {
       setLinkSaving(false);
     }
+  };
+
+  const handleAddAdj = async () => {
+    if (!adjMonth || !adjLabel || !adjAmount) return;
+    setAdjSaving(true);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/revenue-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ work_id: workId, month: adjMonth, label: adjLabel, amount: Number(adjAmount) }),
+      });
+      if (res.ok) {
+        setAdjDialogOpen(false);
+        setAdjLabel('');
+        setAdjAmount('');
+        await load();
+      }
+    } finally {
+      setAdjSaving(false);
+    }
+  };
+
+  const handleDeleteAdj = async (adjId: string) => {
+    if (!confirm('매출 조정 항목을 삭제하시겠습니까?')) return;
+    const res = await settlementFetch('/api/accounting/settlement/revenue-adjustments', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: adjId }),
+    });
+    if (res.ok) await load();
   };
 
   const availablePartners = partners.filter(
@@ -207,6 +255,8 @@ export default function WorkDetailPage() {
                     <tbody>
                       {revenues.map((r) => {
                         const unc = r.unconfirmed_types || [];
+                        const monthAdjs = revAdjustments.filter(a => a.month === r.month);
+                        const adjTotal = monthAdjs.reduce((s, a) => s + a.amount, 0);
                         const TYPE_LABELS: Record<RevenueType, string> = {
                           domestic_paid: '국내유료', global_paid: '글로벌유료',
                           domestic_ad: '국내광고', global_ad: '글로벌광고', secondary: '2차사업',
@@ -235,18 +285,49 @@ export default function WorkDetailPage() {
                         const cellClass = (type: RevenueType) =>
                           `py-2 px-3 text-right tabular-nums hidden md:table-cell ${canManage ? 'cursor-pointer hover:bg-muted' : ''} ${unc.includes(type) ? 'line-through text-orange-400' : ''}`;
                         return (
-                          <tr key={r.month} className="border-b hover:bg-muted/50">
-                            <td className="py-2 px-3 font-medium">
-                              {r.month}
-                              {unc.length > 0 && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정 {unc.length}</Badge>}
-                            </td>
-                            <td className={cellClass('domestic_paid')} onClick={() => toggleUnconfirmed('domestic_paid')}>{fmt(r.domestic_paid)}</td>
-                            <td className={cellClass('global_paid')} onClick={() => toggleUnconfirmed('global_paid')}>{fmt(r.global_paid)}</td>
-                            <td className={cellClass('domestic_ad')} onClick={() => toggleUnconfirmed('domestic_ad')}>{fmt(r.domestic_ad)}</td>
-                            <td className={cellClass('global_ad')} onClick={() => toggleUnconfirmed('global_ad')}>{fmt(r.global_ad)}</td>
-                            <td className={cellClass('secondary')} onClick={() => toggleUnconfirmed('secondary')}>{fmt(r.secondary)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
-                          </tr>
+                          <React.Fragment key={r.month}>
+                            <tr className="border-b hover:bg-muted/50">
+                              <td className="py-2 px-3 font-medium">
+                                {r.month}
+                                {unc.length > 0 && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정 {unc.length}</Badge>}
+                              </td>
+                              <td className={cellClass('domestic_paid')} onClick={() => toggleUnconfirmed('domestic_paid')}>{fmt(r.domestic_paid)}</td>
+                              <td className={cellClass('global_paid')} onClick={() => toggleUnconfirmed('global_paid')}>{fmt(r.global_paid)}</td>
+                              <td className={cellClass('domestic_ad')} onClick={() => toggleUnconfirmed('domestic_ad')}>{fmt(r.domestic_ad)}</td>
+                              <td className={cellClass('global_ad')} onClick={() => toggleUnconfirmed('global_ad')}>{fmt(r.global_ad)}</td>
+                              <td className={cellClass('secondary')} onClick={() => toggleUnconfirmed('secondary')}>{fmt(r.secondary)}</td>
+                              <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total + adjTotal)}</td>
+                            </tr>
+                            {monthAdjs.map((adj) => (
+                              <tr key={adj.id} className="border-b bg-amber-50 dark:bg-amber-950/20">
+                                <td className="py-1 px-3 text-xs text-amber-700 dark:text-amber-400" colSpan={6}>
+                                  <span className="inline-flex items-center gap-1">
+                                    <span>↳ {adj.label}</span>
+                                    {canManage && (
+                                      <button onClick={() => handleDeleteAdj(adj.id)} className="hover:text-red-500">
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="py-1 px-3 text-right text-xs tabular-nums text-amber-700 dark:text-amber-400">
+                                  {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                            {canManage && (
+                              <tr className="border-b">
+                                <td colSpan={7} className="py-1 px-3">
+                                  <button
+                                    className="text-xs text-muted-foreground hover:text-primary flex items-center gap-0.5"
+                                    onClick={() => { setAdjMonth(r.month); setAdjDialogOpen(true); }}
+                                  >
+                                    <Plus className="h-3 w-3" /> 매출 조정 추가
+                                  </button>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
@@ -374,6 +455,30 @@ export default function WorkDetailPage() {
             onOpenChange={setContractDialogOpen}
             onSaved={load}
           />
+
+          <Dialog open={adjDialogOpen} onOpenChange={setAdjDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>매출 조정 추가 ({adjMonth})</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>항목명</Label>
+                  <Input value={adjLabel} onChange={(e) => setAdjLabel(e.target.value)} placeholder="예: 12월 시리즈광고 차액" />
+                </div>
+                <div className="space-y-2">
+                  <Label>금액 (음수 가능)</Label>
+                  <Input type="number" value={adjAmount} onChange={(e) => setAdjAmount(e.target.value)} placeholder="예: 3 또는 -2877000" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>취소</Button>
+                  <Button onClick={handleAddAdj} disabled={!adjLabel || !adjAmount || adjSaving}>
+                    {adjSaving ? '저장 중...' : '추가'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
             <DialogContent className="sm:max-w-md">

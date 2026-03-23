@@ -171,6 +171,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // 4-3) 작품별 매출 조정 항목 조회 (rs_revenue_adjustments)
+    const { data: revAdjustments } = await supabase
+      .from('rs_revenue_adjustments')
+      .select('*')
+      .eq('month', month)
+      .in('work_id', workIds);
+
+    const revAdjByWork = new Map<string, number>();
+    const revAdjItemsByWork = new Map<string, { id: string; label: string; amount: number }[]>();
+    for (const ra of (revAdjustments || [])) {
+      revAdjByWork.set(ra.work_id, (revAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
+      const list = revAdjItemsByWork.get(ra.work_id) || [];
+      list.push({ id: ra.id, label: ra.label, amount: Number(ra.amount) });
+      revAdjItemsByWork.set(ra.work_id, list);
+    }
+
     // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
     const revenueShareByWork = new Map<string, number>();
     for (const wp of workPartners) {
@@ -186,8 +202,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (!includedTypes.includes(col) || unc.includes(col)) continue;
         const amount = rev ? Number(rev[col]) : 0;
         const baseRevenue = Math.round(amount * revenueRate);
-        // MG 의존 차단: 매출은 그대로 집계하되 수익배분만 0
         totalShare += isBlocked ? 0 : Math.round(baseRevenue * effectiveRate);
+      }
+      // 매출 조정 반영
+      const revAdj = revAdjByWork.get(wp.work_id) || 0;
+      if (revAdj !== 0 && !isBlocked) {
+        totalShare += Math.round(revAdj * effectiveRate);
       }
       revenueShareByWork.set(wp.work_id, totalShare);
     }
@@ -459,8 +479,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
+      // 매출 조정 항목 반영 (작품 전체 매출에 가감)
+      const workRevAdj = revAdjByWork.get(wp.work_id) || 0;
+
       const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0);
-      const work_total_base_revenue = details.reduce((s, d) => s + d.base_revenue, 0);
+      const work_total_base_revenue = details.reduce((s, d) => s + d.base_revenue, 0) + workRevAdj;
       const work_total_exclusion = details.reduce((s, d) => s + d.exclusion_amount, 0);
       const work_total_settlement_target = details.reduce((s, d) => s + d.settlement_target, 0);
       const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0);
@@ -480,6 +503,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         mg_dependency_blocked: blocked,
         mg_depends_on: wp.mg_depends_on || null,
         mg_dep_info: mgDepInfo.get(wp.work_id) || null,
+        revenue_adjustments: revAdjItemsByWork.get(wp.work_id) || [],
+        revenue_adjustment_total: workRevAdj,
         details,
         work_total_revenue,
         work_total_base_revenue,

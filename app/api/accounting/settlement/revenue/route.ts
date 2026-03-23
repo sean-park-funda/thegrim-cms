@@ -91,6 +91,14 @@ export async function PATCH(request: NextRequest) {
       revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
       const staffDeductions = await computeLaborCostDeductions(supabase, rev.month, revenueByWorkId);
 
+      // 매출 조정 항목 조회
+      const { data: revAdjs } = await supabase
+        .from('rs_revenue_adjustments')
+        .select('amount')
+        .eq('work_id', rev.work_id)
+        .eq('month', rev.month);
+      const revAdjTotal = (revAdjs || []).reduce((s, a) => s + Number(a.amount), 0);
+
       const { data: existingSettlements } = await supabase
         .from('rs_settlements')
         .select('work_id, partner_id, production_cost')
@@ -140,9 +148,10 @@ export async function PATCH(request: NextRequest) {
         }
 
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
-        const grossRevenue = types
+        const baseRevenue = types
           .filter((col: string) => !unc.includes(col))
           .reduce((sum: number, col: string) => sum + (Number((rev as Record<string, unknown>)[col]) || 0), 0);
+        const grossRevenue = baseRevenue + revAdjTotal;
 
         const effectiveRsRate = wp.is_mg_applied && wp.mg_rs_rate != null
           ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
