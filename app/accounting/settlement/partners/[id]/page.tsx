@@ -676,6 +676,7 @@ export default function PartnerDetailPage() {
                               <td colSpan={2} className="py-1.5 px-3 text-sm text-muted-foreground">
                                 {adj.label}
                               </td>
+                              <td></td>
                               {midCols > 0 && <td colSpan={midCols}></td>}
                               <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                                 {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
