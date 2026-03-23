@@ -592,7 +592,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let tax_invoice_total = 0;
     const isCorp = partner.partner_type === 'domestic_corp' || partner.partner_type === 'naver';
     if (isCorp) {
-      const isVatSeparate = partner.vat_type === 'vat_separate';
+      const vatType = partner.vat_type as string;
+      const isTaxExempt = vatType === 'tax_exempt';
+      const isVatSeparate = vatType === 'vat_separate';
       let domesticPaidNet = 0;
       let otherNet = 0;
       for (const w of works) {
@@ -611,7 +613,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       tax_invoice = [];
       if (domesticPaidNet > 0) {
-        if (isVatSeparate) {
+        if (isTaxExempt) {
+          // 면세겸영: 국내유료수익은 VAT 없음 (면세매출)
+          tax_invoice.push({
+            item: '국내유료수익',
+            supply: domesticPaidNet,
+            vat: 0,
+            total: domesticPaidNet,
+          });
+        } else if (isVatSeparate) {
           const vat = Math.round(domesticPaidNet * 0.1);
           tax_invoice.push({
             item: '국내유료수익',

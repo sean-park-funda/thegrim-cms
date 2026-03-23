@@ -74,6 +74,7 @@ export interface RsPartner {
   bank_account: string | null;
   email: string | null;
   is_foreign: boolean;
+  vat_type: string;
   note: string | null;
   created_at: string;
   updated_at: string;

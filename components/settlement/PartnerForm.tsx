@@ -63,6 +63,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
   const [bankAccount, setBankAccount] = useState('');
   const [email, setEmail] = useState('');
   const [isForeign, setIsForeign] = useState(false);
+  const [vatType, setVatType] = useState('standard');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -80,6 +81,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
       setBankAccount(partner?.bank_account || '');
       setEmail(partner?.email || '');
       setIsForeign(partner?.is_foreign ?? false);
+      setVatType(partner?.vat_type || 'standard');
       setNote(partner?.note || '');
     }
   }, [open, partner]);
@@ -112,6 +114,7 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
         bank_account: bankAccount || null,
         email: email || null,
         is_foreign: isForeign,
+        vat_type: (partnerType === 'domestic_corp' || partnerType === 'naver') ? vatType : 'standard',
         note: note || null,
       });
       onOpenChange(false);
@@ -189,6 +192,21 @@ export function PartnerForm({ partner, open, onOpenChange, onSave }: PartnerForm
                   </Select>
                 </div>
               </div>
+              {(partnerType === 'domestic_corp' || partnerType === 'naver') && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">부가세 유형</Label>
+                  <Select value={vatType} onValueChange={setVatType}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">VAT 포함 (기본)</SelectItem>
+                      <SelectItem value="vat_separate">VAT 별도</SelectItem>
+                      <SelectItem value="tax_exempt">면세겸영</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label htmlFor="taxId" className="text-xs text-muted-foreground">사업자/주민번호</Label>
                 <Input id="taxId" value={taxId} onChange={e => setTaxId(e.target.value)} placeholder="000-00-00000" className="mt-1" />
