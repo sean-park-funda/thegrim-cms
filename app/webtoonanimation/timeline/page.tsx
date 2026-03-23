@@ -30,6 +30,7 @@ interface TimelineItem {
   id: string;
   cutIndex: number;
   videoUrl: string;
+  videoOptions: string[];  // [current, ...history]
   originalDuration: number;
   trimStart: number;
   trimEnd: number;
@@ -195,11 +196,12 @@ function TransitionEditor({ config, onChange }: { config: TransitionConfig; onCh
 // ─── Sortable Cut Card (트림 인라인) ──────────────────────────────────────────
 
 function SortableCutCard({
-  item, onTrimChange, onTransitionChange, isLast,
+  item, onTrimChange, onTransitionChange, onVideoSelect, isLast,
 }: {
   item: TimelineItem;
   onTrimChange: (id: string, trimStart: number, trimEnd: number) => void;
   onTransitionChange: (id: string, t: TransitionConfig) => void;
+  onVideoSelect: (id: string, url: string) => void;
   isLast: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -229,6 +231,26 @@ function SortableCutCard({
               {fmt(effectiveDur)}
             </span>
           </div>
+
+          {/* 영상 선택 버튼 (2개 이상일 때) */}
+          {item.videoOptions.length > 1 && (
+            <div className="flex gap-1 px-2 py-1 border-b bg-muted/20 flex-wrap">
+              {item.videoOptions.map((url, i) => (
+                <button
+                  key={url}
+                  onClick={() => onVideoSelect(item.id, url)}
+                  className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                    url === item.videoUrl
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                      : 'border-border text-muted-foreground hover:border-muted-foreground'
+                  )}
+                >
+                  {i === 0 ? '최신' : `#${i}`}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* 영상 (seek용) */}
           <video
@@ -304,11 +326,19 @@ function TimelinePageInner() {
 
         const resolved: TimelineItem[] = await Promise.all(
           withVideo.map(async (c) => {
-            const dur = await getVideoDuration(c.comfyui_video_url!);
             const saved = savedItems[c.id];
+            const videoOptions = [
+              c.comfyui_video_url!,
+              ...((c.video_history as string[] | null) || []),
+            ].filter(Boolean);
+            const videoUrl = saved?.selectedVideoUrl && videoOptions.includes(saved.selectedVideoUrl)
+              ? saved.selectedVideoUrl
+              : c.comfyui_video_url!;
+            const dur = await getVideoDuration(videoUrl);
             return {
               id: c.id, cutIndex: c.order_index,
-              videoUrl: c.comfyui_video_url!,
+              videoUrl,
+              videoOptions,
               originalDuration: dur,
               trimStart: saved?.trimStart ?? 0,
               trimEnd: saved?.trimEnd ?? 0,
@@ -343,7 +373,7 @@ function TimelinePageInner() {
       const config = {
         order: items.map((i) => i.id),
         items: Object.fromEntries(
-          items.map((i) => [i.id, { trimStart: i.trimStart, trimEnd: i.trimEnd, transition: i.transition }])
+          items.map((i) => [i.id, { trimStart: i.trimStart, trimEnd: i.trimEnd, transition: i.transition, selectedVideoUrl: i.videoUrl }])
         ),
       };
       await supabase
@@ -372,6 +402,11 @@ function TimelinePageInner() {
 
   const handleTransitionChange = useCallback((id: string, t: TransitionConfig) => {
     setItems((prev) => prev.map((i) => i.id === id ? { ...i, transition: t } : i));
+  }, []);
+
+  const handleVideoSelect = useCallback(async (id: string, url: string) => {
+    const dur = await getVideoDuration(url);
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, videoUrl: url, originalDuration: dur, trimStart: 0, trimEnd: 0 } : i));
   }, []);
 
   const totalDuration = items.reduce((acc, item, idx) => {
@@ -473,6 +508,7 @@ function TimelinePageInner() {
                     isLast={idx === items.length - 1}
                     onTrimChange={handleTrimChange}
                     onTransitionChange={handleTransitionChange}
+                    onVideoSelect={handleVideoSelect}
                   />
                 ))}
               </div>

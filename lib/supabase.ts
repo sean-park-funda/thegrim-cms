@@ -316,7 +316,7 @@ export interface WebtoonAnimationProject {
   timeline_rendered_url?: string | null;
   timeline_config?: {
     order: string[];
-    items: Record<string, { trimStart: number; trimEnd: number; transition: { type: string; duration: number } }>;
+    items: Record<string, { trimStart: number; trimEnd: number; transition: { type: string; duration: number }; selectedVideoUrl?: string }>;
   } | null;
 }
 

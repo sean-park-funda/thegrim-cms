@@ -218,6 +218,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   );
   const [videoUrl, setVideoUrl] = useState<string | null>(cut.comfyui_video_url || null);
   const [videoHistory, setVideoHistory] = useState<string[]>(cut.video_history || []);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(cut.comfyui_video_url || null);
 
   const [genPrompts, setGenPrompts] = useState(false);
   const [genColorize, setGenColorize] = useState(false);
@@ -461,6 +462,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             if (pollData.comfyui_video_url) {
               setVideoUrl(pollData.comfyui_video_url);
               setVideoHistory(pollData.video_history || []);
+              setSelectedVideoUrl(pollData.comfyui_video_url);
               update({ comfyui_video_url: pollData.comfyui_video_url });
               return;
             }
@@ -717,27 +719,38 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           stepNum={frameRole === 'middle' ? (useColorize ? 3 : 2) : (useColorize ? 4 : 3)}
           title="영상 (Wan 2.2)"
           disabled={!canVideo}
-          resultSlot={
-            videoUrl
-              ? (
-                <div className="w-full space-y-2">
-                  <video src={videoUrl} controls className="w-full rounded border" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
-                  <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline block text-center">새 탭</a>
-                  {videoHistory.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-muted-foreground font-medium">이전 생성 ({videoHistory.length})</p>
-                      {videoHistory.map((url, i) => (
-                        <div key={url} className="space-y-0.5">
-                          <video src={url} controls className="w-full rounded border opacity-70" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-muted-foreground underline block text-center">#{videoHistory.length - i} 새 탭</a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-              : <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} />
-          }
+          resultSlot={(() => {
+            const allVideos = [
+              ...(videoUrl ? [videoUrl] : []),
+              ...videoHistory,
+            ];
+            if (allVideos.length === 0) return <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} />;
+            const active = selectedVideoUrl ?? allVideos[0];
+            return (
+              <div className="w-full space-y-2">
+                <video src={active} controls className="w-full rounded border" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
+                <a href={active} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline block text-center">새 탭</a>
+                {allVideos.length > 1 && (
+                  <div className="flex flex-wrap gap-1">
+                    {allVideos.map((url, i) => (
+                      <button
+                        key={url}
+                        onClick={() => setSelectedVideoUrl(url)}
+                        className={cn(
+                          'text-[10px] px-2 py-1 rounded border transition-colors',
+                          url === active
+                            ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                            : 'border-border text-muted-foreground hover:border-muted-foreground'
+                        )}
+                      >
+                        {i === 0 ? '최신' : `#${i}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           promptEn={videoEn} promptKo={videoKo} enField="video_prompt"
           copied={copied} onCopy={handleCopy}
           onEnChange={(v) => { setVideoEn(v); save('video_prompt', v); }}
