@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH /api/accounting/settlement/revenue - 수익 레코드 업데이트 (is_confirmed 토글 등)
+// PATCH /api/accounting/settlement/revenue - 미확정 매출 유형 토글
 export async function PATCH(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -56,15 +56,15 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, is_confirmed } = body;
+    const { id, unconfirmed_types } = body;
 
-    if (!id || typeof is_confirmed !== 'boolean') {
-      return NextResponse.json({ error: 'id와 is_confirmed(boolean)이 필요합니다.' }, { status: 400 });
+    if (!id || !Array.isArray(unconfirmed_types)) {
+      return NextResponse.json({ error: 'id와 unconfirmed_types(배열)가 필요합니다.' }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from('rs_revenues')
-      .update({ is_confirmed })
+      .update({ unconfirmed_types })
       .eq('id', id)
       .select()
       .single();

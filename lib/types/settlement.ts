@@ -118,7 +118,7 @@ export interface RsRevenue {
   global_ad: number;
   secondary: number;
   total: number; // generated column
-  is_confirmed: boolean;
+  unconfirmed_types: RevenueType[];
   note: string | null;
   created_at: string;
   updated_at: string;

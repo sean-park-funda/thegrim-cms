@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Pencil, Trash2, Plus } from 'lucide-react';
-import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance } from '@/lib/types/settlement';
+import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -201,49 +201,46 @@ export default function WorkDetailPage() {
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">글로벌광고</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">2차사업</th>
                         <th className="py-2 px-3 font-medium text-right">합계</th>
-                        <th className="py-2 px-3 font-medium text-center">확정</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {revenues.map((r) => (
-                        <tr key={r.month} className={`border-b hover:bg-muted/50 ${!r.is_confirmed ? 'opacity-50' : ''}`}>
-                          <td className="py-2 px-3 font-medium">
-                            {r.month}
-                            {!r.is_confirmed && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정</Badge>}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_paid)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_paid)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.domestic_ad)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.global_ad)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(r.secondary)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
-                          <td className="py-2 px-3 text-center">
-                            {canManage ? (
-                              <Checkbox
-                                checked={r.is_confirmed}
-                                onCheckedChange={async (checked) => {
-                                  try {
-                                    const res = await settlementFetch('/api/accounting/settlement/revenue', {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ id: r.id, is_confirmed: !!checked }),
-                                    });
-                                    if (res.ok) {
-                                      setRevenues(prev => prev.map(rev =>
-                                        rev.id === r.id ? { ...rev, is_confirmed: !!checked } : rev
-                                      ));
-                                    }
-                                  } catch (e) {
-                                    console.error('확정 상태 변경 오류:', e);
-                                  }
-                                }}
-                              />
-                            ) : (
-                              r.is_confirmed ? 'O' : '-'
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {revenues.map((r) => {
+                        const unc = r.unconfirmed_types || [];
+                        const toggleUnconfirmed = async (type: RevenueType) => {
+                          if (!canManage) return;
+                          const next: RevenueType[] = unc.includes(type) ? unc.filter(t => t !== type) : [...unc, type];
+                          try {
+                            const res = await settlementFetch('/api/accounting/settlement/revenue', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: r.id, unconfirmed_types: next }),
+                            });
+                            if (res.ok) {
+                              setRevenues(prev => prev.map(rev =>
+                                rev.id === r.id ? { ...rev, unconfirmed_types: next } : rev
+                              ));
+                            }
+                          } catch (e) {
+                            console.error('미확정 상태 변경 오류:', e);
+                          }
+                        };
+                        const cellClass = (type: RevenueType) =>
+                          `py-2 px-3 text-right tabular-nums hidden md:table-cell ${canManage ? 'cursor-pointer hover:bg-muted' : ''} ${unc.includes(type) ? 'line-through text-orange-400' : ''}`;
+                        return (
+                          <tr key={r.month} className="border-b hover:bg-muted/50">
+                            <td className="py-2 px-3 font-medium">
+                              {r.month}
+                              {unc.length > 0 && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정 {unc.length}</Badge>}
+                            </td>
+                            <td className={cellClass('domestic_paid')} onClick={() => toggleUnconfirmed('domestic_paid')}>{fmt(r.domestic_paid)}</td>
+                            <td className={cellClass('global_paid')} onClick={() => toggleUnconfirmed('global_paid')}>{fmt(r.global_paid)}</td>
+                            <td className={cellClass('domestic_ad')} onClick={() => toggleUnconfirmed('domestic_ad')}>{fmt(r.domestic_ad)}</td>
+                            <td className={cellClass('global_ad')} onClick={() => toggleUnconfirmed('global_ad')}>{fmt(r.global_ad)}</td>
+                            <td className={cellClass('secondary')} onClick={() => toggleUnconfirmed('secondary')}>{fmt(r.secondary)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -27,15 +27,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
     }
 
-    // 해당 월의 수익 데이터 조회 (미확정 매출 제외)
+    // 해당 월의 수익 데이터 조회
     const { data: revenues } = await supabase
       .from('rs_revenues')
       .select('*')
-      .eq('month', month)
-      .eq('is_confirmed', true);
+      .eq('month', month);
 
     if (!revenues || revenues.length === 0) {
-      return NextResponse.json({ error: '해당 월의 확정된 수익 데이터가 없습니다.' }, { status: 404 });
+      return NextResponse.json({ error: '해당 월의 수익 데이터가 없습니다.' }, { status: 404 });
     }
 
     // 작품-파트너 연결 조회
@@ -119,9 +118,12 @@ export async function POST(request: NextRequest) {
           ? Number(wp.mg_rs_rate)
           : Number(wp.rs_rate);
 
-        // 특약: 포함된 수익유형만 합산 (미설정 시 전체)
+        // 특약: 포함된 수익유형만 합산 (미설정 시 전체), 미확정 유형 제외
         const types: RevenueType[] = wp.included_revenue_types || DEFAULT_REVENUE_TYPES;
-        const grossRevenue = types.reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
+        const unconfirmed: string[] = rev.unconfirmed_types || [];
+        const grossRevenue = types
+          .filter((col: string) => !unconfirmed.includes(col))
+          .reduce((sum: number, col: string) => sum + (Number(rev[col]) || 0), 0);
 
         const workData = wp.work as { serial_start_date: string | null; serial_end_date: string | null } | null;
 
