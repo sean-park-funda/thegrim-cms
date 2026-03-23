@@ -148,9 +148,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
       const revenueRate = Number(wp.revenue_rate) || 1;
       const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
+      const unc: string[] = rev?.unconfirmed_types || [];
       let totalShare = 0;
       for (const col of REVENUE_COLUMNS) {
-        if (!includedTypes.includes(col)) continue;
+        if (!includedTypes.includes(col) || unc.includes(col)) continue;
         const amount = rev ? Number(rev[col]) : 0;
         const baseRevenue = Math.round(amount * revenueRate);
         totalShare += Math.round(baseRevenue * effectiveRate);
@@ -296,10 +297,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const revenueRate = Number(wp.revenue_rate) || 1;
       const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
 
+      const unconfirmed: string[] = rev?.unconfirmed_types || [];
       const baseRevenueByCol: Record<string, number> = {};
       let totalBaseRevenue = 0;
       for (const col of REVENUE_COLUMNS) {
-        const included = includedTypes.includes(col);
+        const included = includedTypes.includes(col) && !unconfirmed.includes(col);
         const amount = (rev && included) ? Number(rev[col]) : 0;
         const br = Math.round(amount * revenueRate);
         baseRevenueByCol[col] = br;
@@ -313,7 +315,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const isExclusionMode = work?.labor_cost_as_exclusion && workFullLaborCost > 0;
 
       const details = REVENUE_COLUMNS.map(col => {
-        const included = includedTypes.includes(col);
+        const included = includedTypes.includes(col) && !unconfirmed.includes(col);
         const amount = (rev && included) ? Number(rev[col]) : 0;
         const baseRevenue = baseRevenueByCol[col];
 
