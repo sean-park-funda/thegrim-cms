@@ -126,13 +126,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .in('work_id', workIds)
       .order('month', { ascending: true });
 
-    // 4-2) 정산 데이터에서 other_deduction 조회
-    const { data: settlements } = await supabase
-      .from('rs_settlements')
-      .select('work_id, other_deduction')
-      .eq('month', month)
+    // 4-2) 조정 항목 조회 (rs_settlement_adjustments)
+    const { data: adjustmentItems } = await supabase
+      .from('rs_settlement_adjustments')
+      .select('*')
       .eq('partner_id', id)
-      .in('work_id', workIds);
+      .eq('month', month)
+      .order('created_at');
 
     // 5) 인건비 계산 — rs_labor_cost_items 기반 (공제유형별 분리)
     // key: `${workId}:${deductionType}`
@@ -535,8 +535,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // MG 차감: 세금·예고료 차감 후 남은 금액까지만 차감 가능
     const afterTax = subtotal - tax_amount - insurance;
     const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
-    const total_other_deduction = (settlements || []).reduce((s, st) => s + (Number(st.other_deduction) || 0), 0);
-    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, afterTax - total_other_deduction));
+    // 조정 항목 합산 (양수=추가, 음수=차감)
+    const total_adjustment = (adjustmentItems || []).reduce((s, a) => s + Number(a.amount), 0);
+    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, afterTax + total_adjustment));
 
     // MG 전체 이력을 작품별로 그룹핑
     const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
@@ -609,8 +610,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const final_payment = isCorp
-      ? tax_invoice_total - total_mg_deduction - total_other_deduction
-      : subtotal - tax_amount - insurance - total_mg_deduction - total_other_deduction;
+      ? tax_invoice_total - total_mg_deduction + total_adjustment
+      : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
 
     return NextResponse.json({
       partner,
@@ -631,7 +632,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tax_amount,
       insurance,
       total_mg_deduction,
-      total_other_deduction,
+      adjustments: (adjustmentItems || []).map(a => ({ id: a.id, label: a.label, amount: Number(a.amount) })),
+      total_adjustment,
       final_payment,
       mg_history,
       tax_invoice,

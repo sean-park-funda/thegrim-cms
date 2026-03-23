@@ -240,24 +240,20 @@ export async function POST(request: NextRequest) {
             // 기존 정산 레코드에서 수동 편집 필드 보존
             const { data: existing } = await supabase
               .from('rs_settlements')
-              .select('production_cost, adjustment, other_deduction, status, note')
+              .select('production_cost, status, note')
               .eq('month', month)
               .eq('partner_id', wp.partner_id)
               .eq('work_id', wp.work_id)
               .single();
 
             const productionCost = existing ? Number(existing.production_cost) : 0;
-            const adjustment = existing ? Number(existing.adjustment) : 0;
-            const otherDeduction = existing ? Number(existing.other_deduction) : 0;
 
             const calc = calculateSettlement({
               gross_revenue: Number(rev.total),
               rs_rate: Number(wp.rs_rate),
               mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
               production_cost: productionCost,
-              adjustment,
               salary_deduction: staffDeductions.get(`${wp.partner_id}|${wp.work_id}`) || 0,
-              other_deduction: otherDeduction,
               tax_rate: Number(wp.partner.tax_rate),
               partner_type: wp.partner.partner_type,
               is_mg_applied: wp.is_mg_applied,
@@ -274,12 +270,10 @@ export async function POST(request: NextRequest) {
                 rs_rate: Number(wp.rs_rate),
                 revenue_share: calc.revenue_share,
                 production_cost: productionCost,
-                adjustment,
                 tax_rate: Number(wp.partner.tax_rate),
                 tax_amount: calc.tax_amount,
                 insurance: calc.insurance,
                 mg_deduction: calc.mg_deduction,
-                other_deduction: otherDeduction,
                 final_payment: calc.final_payment,
                 ...(existing ? {} : { status: 'draft' as const }),
               }, { onConflict: 'month,partner_id,work_id' });

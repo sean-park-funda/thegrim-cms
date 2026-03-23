@@ -65,12 +65,10 @@ export async function GET(request: NextRequest) {
         'RS비율': `${(Number(s.rs_rate) * 100).toFixed(1)}%`,
         '수익배분': Number(s.revenue_share),
         '제작비': Number(s.production_cost),
-        '조정액': Number(s.adjustment),
         '세율': Number(s.tax_rate),
         '세액': Number(s.tax_amount),
         '예고료': Number(s.insurance),
         'MG 차감': Number(s.mg_deduction),
-        '기타공제': Number(s.other_deduction),
         '최종 지급액': Number(s.final_payment),
         '상태': s.status === 'draft' ? '임시' : s.status === 'confirmed' ? '확정' : '지급완료',
       }));
@@ -124,25 +122,22 @@ export async function GET(request: NextRequest) {
         const pt = p?.partner_type || 'individual';
         const workNames = items.map((s: Record<string, unknown>) => (s.work as Record<string, string>)?.name || '').join(', ');
 
-        let revenueShare = 0, prodCost = 0, adjustment = 0, vat = 0, incomeTax = 0, localTax = 0, totalInsurance = 0, mgDeduction = 0, otherDeduction = 0, finalPayment = 0;
+        let revenueShare = 0, prodCost = 0, vat = 0, incomeTax = 0, localTax = 0, totalInsurance = 0, mgDeduction = 0, finalPayment = 0;
         for (const i of items) {
           const rs = Number(i.revenue_share) || 0;
           const pc = Number(i.production_cost) || 0;
-          const adj = Number(i.adjustment) || 0;
-          const rowAmt = rs + pc + adj;
+          const rowAmt = rs + pc;
           const taxes = calcTaxes(pt, rowAmt);
           revenueShare += rs;
           prodCost += pc;
-          adjustment += adj;
           vat += taxes.vat;
           incomeTax += taxes.income_tax;
           localTax += taxes.local_tax;
           totalInsurance += Number(i.insurance) || 0;
           mgDeduction += Number(i.mg_deduction) || 0;
-          otherDeduction += Number(i.other_deduction) || 0;
           finalPayment += Number(i.final_payment) || 0;
         }
-        const settlementAmt = revenueShare + prodCost + adjustment;
+        const settlementAmt = revenueShare + prodCost;
         const insurance = totalInsurance > 0 ? totalInsurance : calculateInsurance(settlementAmt, pt);
 
         rows.push({
@@ -155,14 +150,12 @@ export async function GET(request: NextRequest) {
           '작품명': workNames,
           '수익분배금': revenueShare,
           '제작비': prodCost,
-          '조정': adjustment,
           '수익정산금': settlementAmt,
           '부가세': vat,
           '소득세': -incomeTax,
           '지방세': -localTax,
           '예고료': -insurance,
           'MG차감': mgDeduction,
-          '기타공제': -otherDeduction,
           '지급금액': finalPayment,
         });
       }

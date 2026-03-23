@@ -46,18 +46,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '작품-파트너 연결이 없습니다.' }, { status: 404 });
     }
 
-    // 기존 정산 데이터 조회 (production_cost, adjustment, other_deduction 유지용)
+    // 기존 정산 데이터 조회 (production_cost 유지용)
     const { data: existingSettlements } = await supabase
       .from('rs_settlements')
-      .select('work_id, partner_id, production_cost, adjustment, other_deduction')
+      .select('work_id, partner_id, production_cost')
       .eq('month', month);
 
-    const existingMap = new Map<string, { production_cost: number; adjustment: number; other_deduction: number }>();
+    const existingMap = new Map<string, { production_cost: number }>();
     for (const es of (existingSettlements || [])) {
       existingMap.set(`${es.work_id}:${es.partner_id}`, {
         production_cost: Number(es.production_cost) || 0,
-        adjustment: Number(es.adjustment) || 0,
-        other_deduction: Number(es.other_deduction) || 0,
       });
     }
 
@@ -77,12 +75,10 @@ export async function POST(request: NextRequest) {
       rs_rate: number;
       revenue_share: number;
       production_cost: number;
-      adjustment: number;
       tax_rate: number;
       tax_amount: number;
       insurance: number;
       mg_deduction: number;
-      other_deduction: number;
       final_payment: number;
     }[] = [];
 
@@ -111,8 +107,6 @@ export async function POST(request: NextRequest) {
         // 기존 수동 입력값 보존
         const existing = existingMap.get(`${wp.work_id}:${wp.partner_id}`);
         const productionCost = existing?.production_cost ?? 0;
-        const adjustment = existing?.adjustment ?? 0;
-        const otherDeduction = existing?.other_deduction ?? 0;
 
         const effectiveRsRate = wp.is_mg_applied && wp.mg_rs_rate != null
           ? Number(wp.mg_rs_rate)
@@ -149,9 +143,7 @@ export async function POST(request: NextRequest) {
           rs_rate: Number(wp.rs_rate),
           mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
           production_cost: productionCost,
-          adjustment: adjustment,
           salary_deduction: staffDeductions.get(`${wp.partner_id}|${wp.work_id}`) || 0,
-          other_deduction: otherDeduction,
           tax_rate: Number(wp.partner.tax_rate),
           partner_type: wp.partner.partner_type,
           is_mg_applied: wp.is_mg_applied,
@@ -170,12 +162,10 @@ export async function POST(request: NextRequest) {
           rs_rate: effectiveRsRate,
           revenue_share: mgDependencyBlocked ? 0 : calc.revenue_share,
           production_cost: mgDependencyBlocked ? 0 : productionCost,
-          adjustment: mgDependencyBlocked ? 0 : adjustment,
           tax_rate: Number(wp.partner.tax_rate),
           tax_amount: mgDependencyBlocked ? 0 : calc.tax_amount,
           insurance: mgDependencyBlocked ? 0 : calc.insurance,
           mg_deduction: mgDependencyBlocked ? 0 : calc.mg_deduction,
-          other_deduction: mgDependencyBlocked ? 0 : otherDeduction,
           final_payment: mgDependencyBlocked ? 0 : calc.final_payment,
           status: 'draft' as const,
         };
@@ -198,12 +188,10 @@ export async function POST(request: NextRequest) {
           rs_rate: effectiveRsRate,
           revenue_share: calc.revenue_share,
           production_cost: productionCost,
-          adjustment: adjustment,
           tax_rate: Number(wp.partner.tax_rate),
           tax_amount: calc.tax_amount,
           insurance: calc.insurance,
           mg_deduction: calc.mg_deduction,
-          other_deduction: otherDeduction,
           final_payment: calc.final_payment,
         });
       }

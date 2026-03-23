@@ -86,7 +86,8 @@ interface StatementData {
   tax_amount: number;
   insurance: number;
   total_mg_deduction: number;
-  total_other_deduction: number;
+  adjustments: { id: string; label: string; amount: number }[];
+  total_adjustment: number;
   final_payment: number;
   tax_invoice?: { item: string; supply: number; vat: number; total: number }[] | null;
   tax_invoice_total?: number;
@@ -361,7 +362,7 @@ export default function StatementPage() {
                       )}
                     </tbody>
                   </table>
-                  {(data.total_mg_deduction > 0 || data.total_other_deduction > 0) && (
+                  {(data.total_mg_deduction > 0 || data.adjustments.length > 0) && (
                     <table className="w-full text-sm mt-2">
                       <tbody>
                         {data.total_mg_deduction > 0 && (
@@ -370,12 +371,14 @@ export default function StatementPage() {
                             <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_mg_deduction.toLocaleString()}</td>
                           </tr>
                         )}
-                        {data.total_other_deduction > 0 && (
-                          <tr className="border-b">
-                            <td className="py-1.5 px-3 text-muted-foreground">기타 공제</td>
-                            <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{data.total_other_deduction.toLocaleString()}</td>
+                        {data.adjustments.map(adj => (
+                          <tr key={adj.id} className="border-b">
+                            <td className="py-1.5 px-3 text-muted-foreground">{adj.label}</td>
+                            <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
+                              {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                            </td>
                           </tr>
-                        )}
+                        ))}
                       </tbody>
                     </table>
                   )}
@@ -409,9 +412,9 @@ export default function StatementPage() {
                       {data.total_mg_deduction > 0 && (
                         <th className="py-2 px-3 font-medium text-right">MG 차감</th>
                       )}
-                      {data.total_other_deduction > 0 && (
-                        <th className="py-2 px-3 font-medium text-right">기타 공제</th>
-                      )}
+                      {data.adjustments.map(adj => (
+                        <th key={adj.id} className="py-2 px-3 font-medium text-right">{adj.label}</th>
+                      ))}
                       <th className="py-2 px-3 font-medium text-right">지급액</th>
                     </tr>
                   </thead>
@@ -440,11 +443,11 @@ export default function StatementPage() {
                           -{data.total_mg_deduction.toLocaleString()}
                         </td>
                       )}
-                      {data.total_other_deduction > 0 && (
-                        <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                          -{data.total_other_deduction.toLocaleString()}
+                      {data.adjustments.map(adj => (
+                        <td key={adj.id} className={`py-2 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
+                          {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
                         </td>
-                      )}
+                      ))}
                       <td className="py-2 px-3 text-right tabular-nums text-lg">
                         {data.final_payment.toLocaleString()}
                       </td>

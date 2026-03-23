@@ -136,12 +136,10 @@ export interface RsSettlement {
   rs_rate: number;
   revenue_share: number;
   production_cost: number;
-  adjustment: number;
   tax_rate: number;
   tax_amount: number;
   insurance: number;
   mg_deduction: number;
-  other_deduction: number;
   final_payment: number;
   status: SettlementStatus;
   note: string | null;

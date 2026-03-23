@@ -58,7 +58,7 @@ export default function SettlementsPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async (id: string, data: { status?: SettlementStatus; production_cost?: number; adjustment?: number; note?: string }) => {
+  const handleSave = async (id: string, data: { status?: SettlementStatus; production_cost?: number; note?: string }) => {
     const res = await settlementFetch('/api/accounting/settlement/settlements', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

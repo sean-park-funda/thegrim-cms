@@ -114,9 +114,7 @@ export interface CalculationInput {
   rs_rate: number;
   mg_rs_rate: number | null;
   production_cost: number;
-  adjustment: number;
   salary_deduction: number;
-  other_deduction: number;
   tax_rate: number;
   partner_type: string;
   is_mg_applied: boolean;
@@ -143,11 +141,12 @@ export interface CalculationResult {
  *
  * effective_rate = MG 적용 시 mg_rs_rate (있으면), 아니면 rs_rate
  * revenue_share = gross_revenue * effective_rate
- * subtotal = revenue_share - production_cost + adjustment - salary_deduction
+ * subtotal = revenue_share - production_cost - salary_deduction
  * tax = calculateTax(subtotal, partner_type)
  * insurance = calculateInsurance(subtotal, partner_type)
  * mg_deduction = min(mg_balance, max(0, subtotal - tax - insurance))  // MG 적용 시
- * final_payment = subtotal - tax - insurance - mg_deduction - other_deduction
+ * final_payment = subtotal - tax - insurance - mg_deduction
+ * (조정 항목은 rs_settlement_adjustments 테이블에서 별도 합산하여 최종 지급액에 가감)
  */
 export function calculateSettlement(input: CalculationInput): CalculationResult {
   // MG 적용 시 mg_rs_rate 사용
@@ -156,7 +155,7 @@ export function calculateSettlement(input: CalculationInput): CalculationResult 
     : input.rs_rate;
 
   const revenue_share = Math.round(input.gross_revenue * effectiveRate);
-  const subtotal = revenue_share - input.production_cost + input.adjustment - input.salary_deduction;
+  const subtotal = revenue_share - input.production_cost - input.salary_deduction;
   const tax_breakdown = calculateTax(subtotal, input.partner_type);
   const tax_amount = tax_breakdown.total;
   const insurance = calculateInsurance(subtotal, input.partner_type, {
@@ -172,7 +171,7 @@ export function calculateSettlement(input: CalculationInput): CalculationResult 
     mg_deduction = Math.min(input.mg_balance, Math.max(0, afterTaxAndInsurance));
   }
 
-  const final_payment = subtotal - tax_amount - insurance - mg_deduction - input.other_deduction;
+  const final_payment = subtotal - tax_amount - insurance - mg_deduction;
 
   return {
     revenue_share,

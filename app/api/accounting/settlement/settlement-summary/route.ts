@@ -68,13 +68,11 @@ export async function GET(request: NextRequest) {
       works: string[];
       revenue_share: number;
       production_cost: number;
-      adjustment: number;
       vat: number;
       income_tax: number;
       local_tax: number;
       insurance: number;
       mg_deduction: number;
-      other_deduction: number;
       final_payment: number;
     }>();
 
@@ -94,13 +92,11 @@ export async function GET(request: NextRequest) {
           works: [],
           revenue_share: 0,
           production_cost: 0,
-          adjustment: 0,
           vat: 0,
           income_tax: 0,
           local_tax: 0,
           insurance: 0,
           mg_deduction: 0,
-          other_deduction: 0,
           final_payment: 0,
         });
       }
@@ -112,21 +108,18 @@ export async function GET(request: NextRequest) {
 
       const revenueShare = Number(s.revenue_share) || 0;
       const prodCost = Number(s.production_cost) || 0;
-      const adj = Number(s.adjustment) || 0;
-      const rowSettlement = revenueShare + prodCost + adj;
+      const rowSettlement = revenueShare + prodCost;
 
       // 건별 세금 계산
       const taxes = calcTaxes(partner.partner_type || 'individual', rowSettlement);
 
       entry.revenue_share += revenueShare;
       entry.production_cost += prodCost;
-      entry.adjustment += adj;
       entry.vat += taxes.vat;
       entry.income_tax += taxes.income_tax;
       entry.local_tax += taxes.local_tax;
       entry.insurance += Number(s.insurance) || 0;
       entry.mg_deduction += Number(s.mg_deduction) || 0;
-      entry.other_deduction += Number(s.other_deduction) || 0;
       entry.final_payment += Number(s.final_payment) || 0;
     }
 
@@ -150,11 +143,11 @@ export async function GET(request: NextRequest) {
     };
 
     const summary = Array.from(partnerMap.values()).map((entry, idx) => {
-      const settlementAmount = entry.revenue_share + entry.production_cost + entry.adjustment;
+      const settlementAmount = entry.revenue_share + entry.production_cost;
       // DB에 저장된 insurance 사용, 없으면 재계산
       const insurance = entry.insurance > 0 ? entry.insurance : calculateInsurance(settlementAmount, entry.partner_type);
       const taxTotal = -(entry.income_tax + entry.local_tax); // 세금은 차감이므로 음수
-      const paymentAmount = settlementAmount + entry.vat + taxTotal - insurance + entry.mg_deduction - entry.other_deduction;
+      const paymentAmount = settlementAmount + entry.vat + taxTotal - insurance + entry.mg_deduction;
 
       return {
         no: idx + 1,
@@ -168,14 +161,12 @@ export async function GET(request: NextRequest) {
         works_list: entry.works.join(', '),
         revenue_share: entry.revenue_share,
         production_cost: entry.production_cost,
-        adjustment: entry.adjustment,
         settlement_amount: settlementAmount,
         vat: entry.vat,
         income_tax: -entry.income_tax, // 차감 표시
         local_tax: -entry.local_tax,   // 차감 표시
         insurance: -insurance,          // 예고료 차감 표시
         mg_deduction: entry.mg_deduction,
-        other_deduction: -entry.other_deduction, // 기타 공제 차감
         final_payment: entry.final_payment || paymentAmount,
         notes: partnerNotesMap.get(entry.partner_id)?.join('; ') || '',
       };

@@ -93,16 +93,14 @@ export async function PATCH(request: NextRequest) {
 
       const { data: existingSettlements } = await supabase
         .from('rs_settlements')
-        .select('work_id, partner_id, production_cost, adjustment, other_deduction')
+        .select('work_id, partner_id, production_cost')
         .eq('month', rev.month)
         .eq('work_id', rev.work_id);
 
-      const existingMap = new Map<string, { production_cost: number; adjustment: number; other_deduction: number }>();
+      const existingMap = new Map<string, { production_cost: number }>();
       for (const es of (existingSettlements || [])) {
         existingMap.set(`${es.work_id}:${es.partner_id}`, {
           production_cost: Number(es.production_cost) || 0,
-          adjustment: Number(es.adjustment) || 0,
-          other_deduction: Number(es.other_deduction) || 0,
         });
       }
 
@@ -125,8 +123,6 @@ export async function PATCH(request: NextRequest) {
 
         const existing = existingMap.get(`${wp.work_id}:${wp.partner_id}`);
         const productionCost = existing?.production_cost ?? 0;
-        const adjustment = existing?.adjustment ?? 0;
-        const otherDeduction = existing?.other_deduction ?? 0;
 
         // MG 의존 체크
         let mgDependencyBlocked = false;
@@ -158,9 +154,7 @@ export async function PATCH(request: NextRequest) {
           rs_rate: Number(wp.rs_rate),
           mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
           production_cost: productionCost,
-          adjustment,
           salary_deduction: staffDeductions.get(`${wp.partner_id}|${wp.work_id}`) || 0,
-          other_deduction: otherDeduction,
           tax_rate: Number(wp.partner.tax_rate),
           partner_type: wp.partner.partner_type,
           is_mg_applied: wp.is_mg_applied,
@@ -179,12 +173,10 @@ export async function PATCH(request: NextRequest) {
           rs_rate: effectiveRsRate,
           revenue_share: mgDependencyBlocked ? 0 : calc.revenue_share,
           production_cost: mgDependencyBlocked ? 0 : productionCost,
-          adjustment: mgDependencyBlocked ? 0 : adjustment,
           tax_rate: Number(wp.partner.tax_rate),
           tax_amount: mgDependencyBlocked ? 0 : calc.tax_amount,
           insurance: mgDependencyBlocked ? 0 : calc.insurance,
           mg_deduction: mgDependencyBlocked ? 0 : calc.mg_deduction,
-          other_deduction: mgDependencyBlocked ? 0 : otherDeduction,
           final_payment: mgDependencyBlocked ? 0 : calc.final_payment,
           status: 'draft',
         }, { onConflict: 'month,partner_id,work_id' });

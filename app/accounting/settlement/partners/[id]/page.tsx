@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Users, Trash2 } from 'lucide-react';
 import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -98,7 +98,8 @@ interface StatementData {
   tax_amount: number;
   insurance: number;
   total_mg_deduction: number;
-  total_other_deduction: number;
+  adjustments: { id: string; label: string; amount: number }[];
+  total_adjustment: number;
   final_payment: number;
   mg_history?: MgWorkHistory[];
   tax_invoice?: { item: string; supply: number; vat: number; total: number }[] | null;
@@ -139,6 +140,49 @@ export default function PartnerDetailPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
+
+  // 조정 항목 추가
+  const [adjDialogOpen, setAdjDialogOpen] = useState(false);
+  const [adjLabel, setAdjLabel] = useState('');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjSaving, setAdjSaving] = useState(false);
+
+  const handleAddAdjustment = async () => {
+    if (!adjLabel || !adjAmount || !statement) return;
+    setAdjSaving(true);
+    try {
+      await settlementFetch('/api/accounting/settlement/adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: partnerId,
+          month: statement.month,
+          label: adjLabel,
+          amount: Number(adjAmount),
+        }),
+      });
+      setAdjDialogOpen(false);
+      setAdjLabel('');
+      setAdjAmount('');
+      // reload statement
+      const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+      if (res.ok) setStatement(await res.json());
+    } finally {
+      setAdjSaving(false);
+    }
+  };
+
+  const handleDeleteAdjustment = async (adjId: string) => {
+    if (!confirm('이 조정 항목을 삭제하시겠습니까?')) return;
+    if (!statement) return;
+    await settlementFetch('/api/accounting/settlement/adjustments', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: adjId }),
+    });
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+    if (res.ok) setStatement(await res.json());
+  };
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
 
@@ -514,6 +558,8 @@ export default function PartnerDetailPage() {
                     const hasEarnedIncome = statement.grand_total_self_labor_cost > 0;
                     const hasLaborCostDed = statement.grand_total_team_labor_cost > 0;
                     const hasAnyDeduction = hasEarnedIncome || hasLaborCostDed;
+                    // 작품명, 수익유형, 총매출, [기준매출], [정산제외], [정산대상], [수익배분], [인건비공제], [근로소득공제], 정산금, RS율
+                    const colCount = 4 + (hasBaseRevenue ? 1 : 0) + (hasExclusion ? 1 : 0) + ((hasBaseRevenue || hasExclusion) ? 1 : 0) + (hasAnyDeduction ? 1 : 0) + (hasLaborCostDed ? 1 : 0) + (hasEarnedIncome ? 1 : 0);
                     return (
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">1. 정산상세내역</h4>
@@ -601,6 +647,37 @@ export default function PartnerDetailPage() {
                                 </tr>
                               ))
                           )}
+                          {/* 조정 항목 */}
+                          {statement.adjustments.map(adj => (
+                            <tr key={adj.id} className="border-b bg-amber-50/50 dark:bg-amber-950/20">
+                              <td colSpan={2} className="py-1.5 px-3 text-sm text-muted-foreground">
+                                {adj.label}
+                              </td>
+                              <td colSpan={colCount - 3} className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                              </td>
+                              <td className="py-1.5 px-3 text-center">
+                                {canManage && (
+                                  <button onClick={() => handleDeleteAdjustment(adj.id)} className="text-muted-foreground hover:text-red-500">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {canManage && (
+                            <tr className="border-b">
+                              <td colSpan={colCount} className="py-1 px-3">
+                                <button
+                                  onClick={() => setAdjDialogOpen(true)}
+                                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  조정 항목 추가
+                                </button>
+                              </td>
+                            </tr>
+                          )}
                           <tr className="border-t-2 font-semibold">
                             <td className="py-2 px-3">합계</td>
                             <td className="py-2 px-3"></td>
@@ -676,7 +753,7 @@ export default function PartnerDetailPage() {
                             )}
                           </tbody>
                         </table>
-                        {(statement.total_mg_deduction > 0 || statement.total_other_deduction > 0) && (
+                        {(statement.total_mg_deduction > 0 || statement.adjustments.length > 0) && (
                           <table className="w-full text-sm mt-2">
                             <tbody>
                               {statement.total_mg_deduction > 0 && (
@@ -685,12 +762,14 @@ export default function PartnerDetailPage() {
                                   <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{statement.total_mg_deduction.toLocaleString()}</td>
                                 </tr>
                               )}
-                              {statement.total_other_deduction > 0 && (
-                                <tr className="border-b">
-                                  <td className="py-1.5 px-3 text-muted-foreground">기타 공제</td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{statement.total_other_deduction.toLocaleString()}</td>
+                              {statement.adjustments.map(adj => (
+                                <tr key={adj.id} className="border-b">
+                                  <td className="py-1.5 px-3 text-muted-foreground">{adj.label}</td>
+                                  <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
+                                    {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                                  </td>
                                 </tr>
-                              )}
+                              ))}
                             </tbody>
                           </table>
                         )}
@@ -724,9 +803,9 @@ export default function PartnerDetailPage() {
                             {statement.total_mg_deduction > 0 && (
                               <th className="py-2 px-3 font-medium text-right">MG 차감</th>
                             )}
-                            {statement.total_other_deduction > 0 && (
-                              <th className="py-2 px-3 font-medium text-right">기타 공제</th>
-                            )}
+                            {statement.adjustments.map(adj => (
+                              <th key={adj.id} className="py-2 px-3 font-medium text-right">{adj.label}</th>
+                            ))}
                             <th className="py-2 px-3 font-medium text-right">지급액</th>
                           </tr>
                         </thead>
@@ -755,11 +834,11 @@ export default function PartnerDetailPage() {
                                 -{statement.total_mg_deduction.toLocaleString()}
                               </td>
                             )}
-                            {statement.total_other_deduction > 0 && (
-                              <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.total_other_deduction.toLocaleString()}
+                            {statement.adjustments.map(adj => (
+                              <td key={adj.id} className={`py-2 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
+                                {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
                               </td>
-                            )}
+                            ))}
                             <td className="py-2 px-3 text-right tabular-nums text-lg">{statement.final_payment.toLocaleString()}</td>
                           </tr>
                         </tbody>
@@ -1060,6 +1139,40 @@ export default function PartnerDetailPage() {
           </Dialog>
         </>
       )}
+
+      {/* 조정 항목 추가 다이얼로그 */}
+      <Dialog open={adjDialogOpen} onOpenChange={setAdjDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>조정 항목 추가</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>항목명</Label>
+              <Input
+                value={adjLabel}
+                onChange={(e) => setAdjLabel(e.target.value)}
+                placeholder="예: 12월 시리즈광고 차액"
+              />
+            </div>
+            <div>
+              <Label>금액 (음수=차감)</Label>
+              <Input
+                type="number"
+                value={adjAmount}
+                onChange={(e) => setAdjAmount(e.target.value)}
+                placeholder="예: -2877000"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>취소</Button>
+              <Button onClick={handleAddAdjustment} disabled={adjSaving || !adjLabel || !adjAmount}>
+                {adjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

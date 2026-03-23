@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       if (partner.partner_type !== 'individual' && partner.partner_type !== 'individual_simple_tax') continue;
       if (partner.is_foreign) continue;
 
-      const amount = (Number(s.revenue_share) || 0) + (Number(s.production_cost) || 0) + (Number(s.adjustment) || 0);
+      const amount = (Number(s.revenue_share) || 0) + (Number(s.production_cost) || 0);
       const prev = partnerTotals.get(partner.id) || { total: 0, hasActiveSerial: false };
       const isActive = !work?.serial_end_date || new Date(work.serial_end_date) >= new Date(month + '-01');
       partnerTotals.set(partner.id, {

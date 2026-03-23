@@ -12,14 +12,12 @@ interface SettlementDetailDialogProps {
   settlement: RsSettlement | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (id: string, data: { status?: SettlementStatus; production_cost?: number; adjustment?: number; other_deduction?: number; note?: string }) => Promise<void>;
+  onSave: (id: string, data: { status?: SettlementStatus; production_cost?: number; note?: string }) => Promise<void>;
 }
 
 export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave }: SettlementDetailDialogProps) {
   const [status, setStatus] = useState<SettlementStatus>(settlement?.status || 'draft');
   const [productionCost, setProductionCost] = useState(String(settlement?.production_cost || 0));
-  const [adjustment, setAdjustment] = useState(String(settlement?.adjustment || 0));
-  const [otherDeduction, setOtherDeduction] = useState(String(settlement?.other_deduction || 0));
   const [note, setNote] = useState(settlement?.note || '');
   const [saving, setSaving] = useState(false);
 
@@ -31,8 +29,6 @@ export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave 
       await onSave(settlement.id, {
         status,
         production_cost: Number(productionCost),
-        adjustment: Number(adjustment),
-        other_deduction: Number(otherDeduction),
         note: note || undefined,
       });
       onOpenChange(false);
@@ -86,14 +82,6 @@ export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave 
             <div>
               <Label>제작비</Label>
               <Input type="number" value={productionCost} onChange={(e) => setProductionCost(e.target.value)} />
-            </div>
-            <div>
-              <Label>조정액</Label>
-              <Input type="number" value={adjustment} onChange={(e) => setAdjustment(e.target.value)} />
-            </div>
-            <div>
-              <Label>기타 공제</Label>
-              <Input type="number" value={otherDeduction} onChange={(e) => setOtherDeduction(e.target.value)} />
             </div>
             <div>
               <Label>메모</Label>
