@@ -269,6 +269,7 @@ function parseGlobalPaid(
   const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
   // 행별로 Payment / 1.1 처리 후 작품별 합산
+  // 라인웹툰 인보이스 금액은 부가세(VAT 10%) 포함이므로 공급가액 산출 위해 ÷1.1
   const workAmounts = new Map<string, number>();
 
   for (let i = 6; i < data.length; i++) {
@@ -280,13 +281,14 @@ function parseGlobalPaid(
 
     const payment = parseNumber(row[8]);
     if (payment !== 0) {
-      // 수수료 10% 제외 (행별 반올림)
+      // 부가세 10% 제외 (행별 반올림)
       const net = Math.round(payment / 1.1);
       workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
     }
   }
 
   // "Prior Period Adjustment_상세" 시트에서 소급 추가지급액 합산
+  // 어드저스트 금액도 부가세 포함이므로 동일하게 ÷1.1
   const adjSheetName = workbook.SheetNames.find(n => n.includes('Prior Period Adjustment') && n.includes('상세'));
   if (adjSheetName) {
     const adjSheet = workbook.Sheets[adjSheetName];
@@ -299,12 +301,13 @@ function parseGlobalPaid(
       const itemName = String(row[1]).trim();
       if (!itemName) continue;
 
-      // col 10 = 추가지급액 (수수료 미포함 순액)
+      // col 10 = 추가지급액 (부가세 포함 → ÷1.1로 공급가액 산출)
       const adjAmount = parseNumber(row[10]);
       if (adjAmount !== 0) {
-        workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + adjAmount);
+        const net = Math.round(adjAmount / 1.1);
+        workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
         if (adjustments) {
-          adjustments.push({ work_name: itemName, amount: adjAmount });
+          adjustments.push({ work_name: itemName, amount: net });
         }
       }
     }
