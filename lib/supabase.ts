@@ -348,6 +348,7 @@ export interface WebtoonAnimationCut {
   end_frame_url?: string | null;
   start_frame_url?: string | null;
   comfyui_video_url?: string | null;
+  video_history?: string[] | null;
 }
 
 export interface WebtoonAnimationPromptGroup {

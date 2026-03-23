@@ -217,7 +217,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
     (cut.frame_role === 'start' ? cut.end_frame_url : cut.start_frame_url) || null
   );
   const [videoUrl, setVideoUrl] = useState<string | null>(cut.comfyui_video_url || null);
-  const [videoHistory, setVideoHistory] = useState<string[]>([]);
+  const [videoHistory, setVideoHistory] = useState<string[]>(cut.video_history || []);
 
   const [genPrompts, setGenPrompts] = useState(false);
   const [genColorize, setGenColorize] = useState(false);
@@ -451,13 +451,6 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      const applyNewVideo = (url: string) => {
-        setVideoUrl((prev) => {
-          if (prev && prev !== url) setVideoHistory((h) => [prev, ...h]);
-          return url;
-        });
-        update({ comfyui_video_url: url });
-      };
       if (data.polling) {
         const startTime = Date.now();
         while (Date.now() - startTime < 5 * 60 * 1000) {
@@ -466,14 +459,17 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           if (pollRes.ok) {
             const pollData = await pollRes.json();
             if (pollData.comfyui_video_url) {
-              applyNewVideo(pollData.comfyui_video_url);
+              setVideoUrl(pollData.comfyui_video_url);
+              setVideoHistory(pollData.video_history || []);
+              update({ comfyui_video_url: pollData.comfyui_video_url });
               return;
             }
           }
         }
         throw new Error('영상 생성 타임아웃 (5분)');
       } else {
-        applyNewVideo(data.video_url);
+        setVideoUrl(data.video_url);
+        update({ comfyui_video_url: data.video_url });
       }
     } catch (e) { alert(`영상 생성 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setGenVideo(false); }

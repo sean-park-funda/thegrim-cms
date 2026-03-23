@@ -13,7 +13,7 @@ export async function GET(
   const { cutId } = await params;
   const { data, error } = await supabase
     .from('webtoonanimation_cuts')
-    .select('id, comfyui_video_url, start_frame_url, end_frame_url')
+    .select('id, comfyui_video_url, video_history, start_frame_url, end_frame_url')
     .eq('id', cutId)
     .single();
 

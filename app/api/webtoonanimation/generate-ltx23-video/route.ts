@@ -47,10 +47,13 @@ export async function POST(request: NextRequest) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-    // 기존 video_url 초기화
+    // 기존 영상 URL을 history에 보존 후 초기화
+    const prevUrl = cut.comfyui_video_url;
+    const prevHistory: string[] = Array.isArray(cut.video_history) ? cut.video_history : [];
+    const newHistory = prevUrl ? [prevUrl, ...prevHistory] : prevHistory;
     await supabase
       .from('webtoonanimation_cuts')
-      .update({ comfyui_video_url: null })
+      .update({ comfyui_video_url: null, video_history: newHistory })
       .eq('id', cutId);
 
     const relayRes = await fetch(`${RELAY_URL}/comfyui/generate-video-ltx23`, {
