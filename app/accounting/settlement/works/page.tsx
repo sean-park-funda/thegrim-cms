@@ -7,11 +7,12 @@ import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { WorkForm } from '@/components/settlement/WorkForm';
 import { Plus, Search, Download, ArrowUpDown, ArrowUp, ArrowDown, Menu } from 'lucide-react';
-import { RsWork, RsWorkPartner, RsRevenue } from '@/lib/types/settlement';
+import { RsWork, RsWorkPartner, RsRevenue, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 import { useSidebar } from '@/components/ui/sidebar';
 
 const fmt = (n: number) => n > 0 ? n.toLocaleString() : '-';
+const DEFAULT_REVENUE_TYPES: RevenueType[] = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
 
 type SortKey = 'name' | 'partners' | 'domestic_paid' | 'global_paid' | 'domestic_ad' | 'global_ad' | 'secondary' | 'total';
 type SortDir = 'asc' | 'desc';
@@ -96,6 +97,22 @@ export default function WorksPage() {
     revenueMap.set(r.work_id, r);
   }
 
+  // 미확정 유형 제외한 확정 금액 반환
+  const confirmedVal = (rev: RsRevenue | undefined, key: RevenueType) => {
+    if (!rev) return 0;
+    if (rev.unconfirmed_types?.includes(key)) return 0;
+    return rev[key] || 0;
+  };
+  const confirmedTotal = (rev: RsRevenue | undefined) => {
+    if (!rev) return 0;
+    const unc = rev.unconfirmed_types || [];
+    let sum = 0;
+    for (const k of DEFAULT_REVENUE_TYPES) {
+      if (!unc.includes(k)) sum += (rev[k] || 0);
+    }
+    return sum;
+  };
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -141,8 +158,11 @@ export default function WorksPage() {
       case 'partners':
         cmp = workPartners.filter(wp => wp.work_id === a.id).length - workPartners.filter(wp => wp.work_id === b.id).length;
         break;
+      case 'total':
+        cmp = confirmedTotal(revA) - confirmedTotal(revB);
+        break;
       default:
-        cmp = (Number(revA?.[sortKey]) || 0) - (Number(revB?.[sortKey]) || 0);
+        cmp = confirmedVal(revA, sortKey as RevenueType) - confirmedVal(revB, sortKey as RevenueType);
     }
     return sortDir === 'asc' ? cmp : -cmp;
   });
@@ -151,12 +171,12 @@ export default function WorksPage() {
     const rev = revenueMap.get(w.id);
     if (!rev) return acc;
     return {
-      domestic_paid: acc.domestic_paid + (rev.domestic_paid || 0),
-      global_paid: acc.global_paid + (rev.global_paid || 0),
-      domestic_ad: acc.domestic_ad + (rev.domestic_ad || 0),
-      global_ad: acc.global_ad + (rev.global_ad || 0),
-      secondary: acc.secondary + (rev.secondary || 0),
-      total: acc.total + (rev.total || 0),
+      domestic_paid: acc.domestic_paid + confirmedVal(rev, 'domestic_paid'),
+      global_paid: acc.global_paid + confirmedVal(rev, 'global_paid'),
+      domestic_ad: acc.domestic_ad + confirmedVal(rev, 'domestic_ad'),
+      global_ad: acc.global_ad + confirmedVal(rev, 'global_ad'),
+      secondary: acc.secondary + confirmedVal(rev, 'secondary'),
+      total: acc.total + confirmedTotal(rev),
     };
   }, { domestic_paid: 0, global_paid: 0, domestic_ad: 0, global_ad: 0, secondary: 0, total: 0 });
 
@@ -246,15 +266,18 @@ export default function WorksPage() {
                           {!w.is_active && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-400">비활성</span>
                           )}
+                          {rev?.unconfirmed_types && rev.unconfirmed_types.length > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-orange-100 dark:bg-orange-900/30 text-orange-500">미확정 {rev.unconfirmed_types.length}</span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4 text-center tabular-nums text-zinc-500 hidden md:table-cell">{wps.length || '-'}</td>
-                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(rev?.domestic_paid || 0)}</td>
-                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(rev?.global_paid || 0)}</td>
-                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(rev?.domestic_ad || 0)}</td>
-                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(rev?.global_ad || 0)}</td>
-                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(rev?.secondary || 0)}</td>
-                      <td className="py-3 px-4 text-right tabular-nums font-semibold">{fmt(rev?.total || 0)}</td>
+                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(confirmedVal(rev, 'domestic_paid'))}</td>
+                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(confirmedVal(rev, 'global_paid'))}</td>
+                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(confirmedVal(rev, 'domestic_ad'))}</td>
+                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(confirmedVal(rev, 'global_ad'))}</td>
+                      <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(confirmedVal(rev, 'secondary'))}</td>
+                      <td className="py-3 px-4 text-right tabular-nums font-semibold">{fmt(confirmedTotal(rev))}</td>
                     </tr>
                   );
                 })}
