@@ -352,7 +352,7 @@ export default function WebtoonAnimationPage() {
   // ===== 렌더: 프로젝트 목록 =====
   if (!selectedProject) {
     return (
-      <div className="w-full px-6 py-6">
+      <div className="w-full h-full overflow-y-auto px-6 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold">웹툰 애니메이션</h1>
@@ -432,7 +432,7 @@ export default function WebtoonAnimationPage() {
 
   // ===== 렌더: 프로젝트 상세 =====
   return (
-    <div className="w-full px-6 py-6">
+    <div className="w-full h-full overflow-y-auto px-6 py-6">
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="sm" onClick={() => setSelectedProject(null)}>
