@@ -303,7 +303,8 @@ export default function StatementPage() {
                       {/* 파트너 조정 항목 → 수익정산 컬럼 */}
                       {data.adjustments.map(adj => (
                         <tr key={`adj-${adj.id}`} className="border-b bg-amber-50/50 dark:bg-amber-950/20">
-                          <td colSpan={2} className="py-1.5 px-3 text-sm text-muted-foreground">{adj.label}</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3 text-sm text-muted-foreground">{adj.label}</td>
                           <td className="hidden md:table-cell"></td>
                           {midCols > 0 && <td colSpan={midCols} className="hidden md:table-cell"></td>}
                           <td className={`py-1.5 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
