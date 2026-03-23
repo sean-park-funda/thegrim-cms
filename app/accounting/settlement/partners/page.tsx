@@ -8,6 +8,7 @@ import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { PartnerForm } from '@/components/settlement/PartnerForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2, FileText, Search, Menu } from 'lucide-react';
 import { RsPartner, PartnerType, ReportType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -45,6 +46,7 @@ interface PartnerWithRevenue extends RsPartner {
   total_revenue_share: number;
   work_count: number;
   mg_balance: number;
+  has_semi_annual: boolean;
 }
 
 export default function PartnersPage() {
@@ -70,12 +72,13 @@ export default function PartnersPage() {
       const revenueData = await revenueRes.json();
       const mgData = await mgRes.json();
 
-      const revenueMap = new Map<string, { total_revenue: number; total_revenue_share: number; work_count: number }>();
+      const revenueMap = new Map<string, { total_revenue: number; total_revenue_share: number; work_count: number; has_semi_annual: boolean }>();
       for (const pr of revenueData.partner_revenues || []) {
         revenueMap.set(pr.partner_id, {
           total_revenue: pr.total_revenue,
           total_revenue_share: pr.total_revenue_share,
           work_count: pr.works.length,
+          has_semi_annual: pr.has_semi_annual || false,
         });
       }
 
@@ -93,6 +96,7 @@ export default function PartnersPage() {
           total_revenue_share: rev?.total_revenue_share || 0,
           work_count: rev?.work_count || 0,
           mg_balance: mgMap.get(p.id) || 0,
+          has_semi_annual: rev?.has_semi_annual || false,
         };
       });
 
@@ -237,7 +241,14 @@ export default function PartnersPage() {
                     className="border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
                     onClick={() => router.push(`/accounting/settlement/partners/${p.id}`)}
                   >
-                    <td className="py-3 px-4 font-medium">{p.name}</td>
+                    <td className="py-3 px-4 font-medium">
+                      <span className="flex items-center gap-1.5">
+                        {p.name}
+                        {p.has_semi_annual && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-pink-400 text-pink-600">반기</Badge>
+                        )}
+                      </span>
+                    </td>
                     <td className="py-3 px-4 text-zinc-400 hidden md:table-cell">{p.company_name || '-'}</td>
                     <td className="py-3 px-4 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
                       {canManage ? (

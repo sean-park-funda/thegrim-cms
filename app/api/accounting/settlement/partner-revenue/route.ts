@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const workIds = revenues.map(r => r.work_id);
     const { data: workPartners, error: wpError } = await supabase
       .from('rs_work_partners')
-      .select('work_id, partner_id, rs_rate, is_mg_applied, partner:rs_partners(id, name, company_name, partner_type)')
+      .select('work_id, partner_id, rs_rate, is_mg_applied, settlement_cycle, partner:rs_partners(id, name, company_name, partner_type)')
       .in('work_id', workIds);
 
     if (wpError) {
@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
       }[];
       total_revenue: number;
       total_revenue_share: number;
+      has_semi_annual: boolean;
     }>();
 
     for (const wp of (workPartners || [])) {
@@ -85,6 +86,7 @@ export async function GET(request: NextRequest) {
           works: [],
           total_revenue: 0,
           total_revenue_share: 0,
+          has_semi_annual: false,
         });
       }
 
@@ -98,6 +100,7 @@ export async function GET(request: NextRequest) {
       });
       entry.total_revenue += workTotal;
       entry.total_revenue_share += revenueShare;
+      if (wp.settlement_cycle === 'semi_annual') entry.has_semi_annual = true;
     }
 
     const partner_revenues = Array.from(partnerMap.values())
