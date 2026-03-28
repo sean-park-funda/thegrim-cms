@@ -339,6 +339,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // 사업자 판별 (작품별 MG 차감 시 VAT 반영 필요)
+    const isCorp = partner.partner_type === 'domestic_corp' || partner.partner_type === 'naver';
+    const corpVatType = isCorp ? (partner.vat_type as string) : '';
+
     // 6) 작품별 정산 상세 조합
     const works = workPartners.map(wp => {
       const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null; labor_cost_as_exclusion: boolean } | null;
@@ -519,9 +523,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         work_total_net_share,
         ...(() => {
           const prevBalance = mgPrevBalanceByWork.get(wp.work_id) || 0;
-          const mgDeduction = wp.is_mg_applied && prevBalance > 0
-            ? Math.min(prevBalance, Math.max(0, work_total_net_share))
-            : 0;
+          if (!wp.is_mg_applied || prevBalance <= 0) {
+            return { mg_balance: prevBalance, mg_deduction: 0, mg_remaining: prevBalance };
+          }
+
+          // 사업자: 작품별 세금계산서 합계(VAT 포함)를 MG 차감 cap으로 사용
+          let mgCap = Math.max(0, work_total_net_share);
+          if (isCorp && work_total_net_share > 0) {
+            const domesticPaidNet = details.find(d => d.revenue_type === 'domestic_paid')?.net_share || 0;
+            const otherNet = work_total_net_share - domesticPaidNet;
+            let workInvoiceTotal = 0;
+            if (domesticPaidNet > 0) {
+              if (corpVatType === 'tax_exempt') {
+                workInvoiceTotal += domesticPaidNet;
+              } else if (corpVatType === 'vat_separate') {
+                workInvoiceTotal += domesticPaidNet + Math.round(domesticPaidNet * 0.1);
+              } else {
+                workInvoiceTotal += domesticPaidNet; // 내세 (VAT 포함가)
+              }
+            }
+            if (otherNet > 0) {
+              workInvoiceTotal += otherNet + Math.round(otherNet * 0.1);
+            }
+            mgCap = workInvoiceTotal;
+          }
+
+          const mgDeduction = Math.min(prevBalance, mgCap);
           return {
             mg_balance: prevBalance,
             mg_deduction: mgDeduction,
@@ -587,11 +614,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 국내법인/네이버: 세금계산서 breakdown
     let tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null = null;
     let tax_invoice_total = 0;
-    const isCorp = partner.partner_type === 'domestic_corp' || partner.partner_type === 'naver';
     if (isCorp) {
-      const vatType = partner.vat_type as string;
-      const isTaxExempt = vatType === 'tax_exempt';
-      const isVatSeparate = vatType === 'vat_separate';
+      const isTaxExempt = corpVatType === 'tax_exempt';
+      const isVatSeparate = corpVatType === 'vat_separate';
       let domesticPaidNet = 0;
       let otherNet = 0;
       for (const w of works) {
@@ -647,27 +672,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tax_invoice_total = tax_invoice.reduce((s, t) => s + t.total, 0);
     }
 
-    // MG 차감: 사업자는 세금계산서 합계(VAT 포함) 전액까지, 개인은 세금·예고료 차감 후 남은 금액까지
-    const totalMgBalance = works.reduce((s, w) => s + w.mg_balance, 0);
+    // MG 차감: 사업자는 작품별 세금계산서 합계(VAT 포함)로 이미 계산됨, 개인은 세금·예고료 차감 후
     const total_mg_deduction = isCorp
-      ? Math.min(totalMgBalance, Math.max(0, tax_invoice_total))
+      ? total_mg_raw  // 작품별 mg_deduction에 이미 VAT 반영됨
       : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
-
-    // 사업자: 작품별 mg_deduction/mg_remaining을 total_mg_deduction 기준으로 재배분
-    if (isCorp && total_mg_deduction > total_mg_raw) {
-      const mgWorks = works.filter(w => w.is_mg_applied && w.mg_balance > 0);
-      const diff = total_mg_deduction - total_mg_raw;
-      const totalBalance = mgWorks.reduce((s, w) => s + w.mg_balance, 0);
-      let distributed = 0;
-      for (let i = 0; i < mgWorks.length; i++) {
-        const extra = i === mgWorks.length - 1
-          ? diff - distributed
-          : Math.round(diff * (mgWorks[i].mg_balance / totalBalance));
-        mgWorks[i].mg_deduction += extra;
-        mgWorks[i].mg_remaining -= extra;
-        distributed += extra;
-      }
-    }
 
     const final_payment = isCorp
       ? tax_invoice_total - total_mg_deduction
