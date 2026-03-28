@@ -653,6 +653,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? Math.min(totalMgBalance, Math.max(0, tax_invoice_total))
       : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
 
+    // 사업자: 작품별 mg_deduction/mg_remaining을 total_mg_deduction 기준으로 재배분
+    if (isCorp && total_mg_deduction > total_mg_raw) {
+      const mgWorks = works.filter(w => w.is_mg_applied && w.mg_balance > 0);
+      const diff = total_mg_deduction - total_mg_raw;
+      const totalBalance = mgWorks.reduce((s, w) => s + w.mg_balance, 0);
+      let distributed = 0;
+      for (let i = 0; i < mgWorks.length; i++) {
+        const extra = i === mgWorks.length - 1
+          ? diff - distributed
+          : Math.round(diff * (mgWorks[i].mg_balance / totalBalance));
+        mgWorks[i].mg_deduction += extra;
+        mgWorks[i].mg_remaining -= extra;
+        distributed += extra;
+      }
+    }
+
     const final_payment = isCorp
       ? tax_invoice_total - total_mg_deduction
       : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
