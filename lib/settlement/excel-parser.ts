@@ -281,8 +281,8 @@ function parseGlobalPaid(
 
     const payment = parseNumber(row[8]);
     if (payment !== 0) {
-      // 부가세 10% 제외 (행별 내림 — 정산 엑셀 기준과 일치)
-      const net = Math.floor(payment / 1.1);
+      // 부가세 10% 제외 (행별 반올림)
+      const net = Math.round(payment / 1.1);
       workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
     }
   }
@@ -304,7 +304,7 @@ function parseGlobalPaid(
       // col 10 = 추가지급액 (부가세 포함 → ÷1.1로 공급가액 산출)
       const adjAmount = parseNumber(row[10]);
       if (adjAmount !== 0) {
-        const net = Math.floor(adjAmount / 1.1);
+        const net = Math.round(adjAmount / 1.1);
         workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
         if (adjustments) {
           adjustments.push({ work_name: itemName, amount: net });
