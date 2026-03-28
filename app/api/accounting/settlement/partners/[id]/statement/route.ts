@@ -647,11 +647,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tax_invoice_total = tax_invoice.reduce((s, t) => s + t.total, 0);
     }
 
-    // MG 차감: 사업자는 세금계산서 합계(VAT 포함), 개인은 세금·예고료 차감 후 남은 금액까지
-    const mgDeductionCap = isCorp
-      ? tax_invoice_total
-      : Math.max(0, subtotal - tax_amount - insurance + total_adjustment);
-    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, mgDeductionCap));
+    // MG 차감: 사업자는 세금계산서 합계(VAT 포함) 전액까지, 개인은 세금·예고료 차감 후 남은 금액까지
+    const totalMgBalance = works.reduce((s, w) => s + w.mg_balance, 0);
+    const total_mg_deduction = isCorp
+      ? Math.min(totalMgBalance, Math.max(0, tax_invoice_total))
+      : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
 
     const final_payment = isCorp
       ? tax_invoice_total - total_mg_deduction
