@@ -3,8 +3,6 @@ import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions'
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel, normalizeWorkName } from '@/lib/settlement/excel-parser';
 import { deduplicateWorks } from '@/lib/settlement/dedup-works';
-import { calculateSettlement } from '@/lib/settlement/calculator';
-import { computeLaborCostDeductions } from '@/lib/settlement/staff-salary';
 import { RevenueType } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
@@ -202,101 +200,8 @@ export async function POST(request: NextRequest) {
       uploaded_by: auth.userId,
     });
 
-    // 6) 정산 자동 계산 — 해당 월의 모든 수익 + 작품-파트너 조합으로 rs_settlements 갱신
-    try {
-      const { data: revenues } = await supabase
-        .from('rs_revenues')
-        .select('*')
-        .eq('month', month);
-
-      const { data: workPartners } = await supabase
-        .from('rs_work_partners')
-        .select('*, partner:rs_partners(*)');
-
-      if (revenues && workPartners) {
-        // 스태프 급여 비례 배분 계산
-        const revenueByWorkId = new Map<string, number>();
-        for (const rev of revenues) {
-          revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
-        }
-        const staffDeductions = await computeLaborCostDeductions(supabase, month, revenueByWorkId);
-
-        // 작품별 매출 조정 항목 조회
-        const uploadWorkIds = revenues.map(r => r.work_id);
-        const { data: uploadRevAdjs } = await supabase
-          .from('rs_revenue_adjustments')
-          .select('work_id, amount')
-          .eq('month', month)
-          .in('work_id', uploadWorkIds);
-        const uploadRevAdjByWork = new Map<string, number>();
-        for (const ra of (uploadRevAdjs || [])) {
-          uploadRevAdjByWork.set(ra.work_id, (uploadRevAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
-        }
-
-        for (const rev of revenues) {
-          const partners = workPartners.filter(wp => wp.work_id === rev.work_id);
-          for (const wp of partners) {
-            let mgBalance = 0;
-            if (wp.is_mg_applied) {
-              const { data: mgData } = await supabase
-                .from('rs_mg_balances')
-                .select('current_balance')
-                .eq('partner_id', wp.partner_id)
-                .eq('work_id', wp.work_id)
-                .order('month', { ascending: false })
-                .limit(1)
-                .single();
-              if (mgData) mgBalance = Number(mgData.current_balance);
-            }
-
-            // 기존 정산 레코드에서 수동 편집 필드 보존
-            const { data: existing } = await supabase
-              .from('rs_settlements')
-              .select('production_cost, status, note')
-              .eq('month', month)
-              .eq('partner_id', wp.partner_id)
-              .eq('work_id', wp.work_id)
-              .single();
-
-            const productionCost = existing ? Number(existing.production_cost) : 0;
-
-            const revAdjAmount = uploadRevAdjByWork.get(wp.work_id) || 0;
-            const calc = calculateSettlement({
-              gross_revenue: Number(rev.total) + revAdjAmount,
-              rs_rate: Number(wp.rs_rate),
-              mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
-              production_cost: productionCost,
-              salary_deduction: staffDeductions.get(`${wp.partner_id}|${wp.work_id}`) || 0,
-              tax_rate: Number(wp.partner.tax_rate),
-              partner_type: wp.partner.partner_type,
-              is_mg_applied: wp.is_mg_applied,
-              mg_balance: mgBalance,
-            });
-
-            await supabase
-              .from('rs_settlements')
-              .upsert({
-                month,
-                partner_id: wp.partner_id,
-                work_id: wp.work_id,
-                gross_revenue: Number(rev.total) + revAdjAmount,
-                rs_rate: Number(wp.rs_rate),
-                revenue_share: calc.revenue_share,
-                production_cost: productionCost,
-                tax_rate: Number(wp.partner.tax_rate),
-                tax_amount: calc.tax_amount,
-                insurance: calc.insurance,
-                mg_deduction: calc.mg_deduction,
-                final_payment: calc.final_payment,
-                ...(existing ? {} : { status: 'draft' as const }),
-              }, { onConflict: 'month,partner_id,work_id' });
-          }
-        }
-      }
-    } catch (calcError) {
-      console.error('자동 정산 계산 오류:', calcError);
-      // 업로드 자체는 성공이므로 에러를 무시하고 응답에 경고 포함
-    }
+    // 정산은 settlement-list API에서 실시간 계산되므로 자동 계산 불필요
+    // 확정은 confirm API를 통해 일괄 처리
 
     return NextResponse.json({
       matched,

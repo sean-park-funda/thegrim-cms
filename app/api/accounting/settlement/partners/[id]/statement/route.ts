@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
-import { calculateTax, calculateInsurance } from '@/lib/settlement/calculator';
-
-const REVENUE_TYPE_LABELS: Record<string, string> = {
-  domestic_paid: '국내유료수익',
-  global_paid: '글로벌유료수익',
-  domestic_ad: '국내 광고',
-  global_ad: '글로벌 광고',
-  secondary: '2차 사업',
-};
-
-const REVENUE_COLUMNS = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'] as const;
+import {
+  computeStatement,
+  REVENUE_COLUMNS,
+  type PartnerComputeInput,
+  type PartnerData,
+  type WorkPartnerData,
+  type RevenueData,
+  type MgBalanceEntry,
+  type MgDepInfoEntry,
+  type MgHistoryEntry,
+  type LaborCostItem,
+  type LaborCostPartnerLink,
+  type LaborCostWorkLink,
+  type LaborCostWpData,
+} from '@/lib/settlement/compute-statement';
 
 // GET /api/accounting/settlement/partners/[id]/statement?month=YYYY-MM
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +38,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
     }
 
+    // ─── 데이터 조회 ──────────────────────────────────────────
+
     // 1) 파트너 정보
     const { data: partner, error: pErr } = await supabase
       .from('rs_partners')
@@ -45,7 +51,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: '파트너를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 2) 파트너의 작품 연결 (RS비율 + MG요율)
+    const partnerData: PartnerData = {
+      id: partner.id,
+      name: partner.name,
+      company_name: partner.company_name,
+      partner_type: partner.partner_type,
+      vat_type: partner.vat_type,
+      report_type: partner.report_type,
+      is_foreign: partner.is_foreign,
+      tax_id: partner.tax_id,
+    };
+
+    // 2) 작품 연결
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
       .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
@@ -56,33 +73,50 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json({
-        partner,
-        month,
-        works: [],
-        grand_total_revenue: 0,
-        grand_total_share: 0,
-        tax_amount: 0,
-        insurance: 0,
-        final_payment: 0,
-      });
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], productionCosts: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
-    // 3) 해당 월 수익
-    const workIds = workPartners.map(wp => wp.work_id);
-    const { data: revenues, error: rErr } = await supabase
-      .from('rs_revenues')
-      .select('*')
-      .eq('month', month)
-      .in('work_id', workIds);
+    const wpData: WorkPartnerData[] = workPartners.map(wp => ({
+      work_id: wp.work_id,
+      rs_rate: Number(wp.rs_rate),
+      mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
+      is_mg_applied: wp.is_mg_applied,
+      included_revenue_types: wp.included_revenue_types as string[] | null,
+      labor_cost_excluded: wp.labor_cost_excluded,
+      revenue_rate: wp.revenue_rate != null ? Number(wp.revenue_rate) : null,
+      tax_type: wp.tax_type as string | null,
+      mg_depends_on: wp.mg_depends_on as { partner_id: string; work_id: string } | null,
+      work: wp.work as unknown as WorkPartnerData['work'],
+    }));
 
-    if (rErr) {
-      return NextResponse.json({ error: '수익 조회 실패' }, { status: 500 });
-    }
+    const workIds = wpData.map(wp => wp.work_id);
+
+    // 3) 매출, 조정, 제작비용, 정산조정 — 병렬 조회
+    const [
+      { data: revenues },
+      { data: revAdjustments },
+      { data: productionCosts },
+      { data: adjustmentItems },
+    ] = await Promise.all([
+      supabase.from('rs_revenues').select('*').eq('month', month).in('work_id', workIds),
+      supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
+      supabase.from('rs_production_costs').select('*').eq('month', month).eq('partner_id', id).in('work_id', workIds),
+      supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
+    ]);
+
+    const revenueData: RevenueData[] = (revenues || []).map(r => ({
+      work_id: r.work_id,
+      domestic_paid: Number(r.domestic_paid),
+      global_paid: Number(r.global_paid),
+      domestic_ad: Number(r.domestic_ad),
+      global_ad: Number(r.global_ad),
+      secondary: Number(r.secondary),
+      unconfirmed_types: r.unconfirmed_types || [],
+    }));
 
     // 4) MG 잔액
-    const mgAppliedWorkIds = workPartners.filter(wp => wp.is_mg_applied).map(wp => wp.work_id);
-    const mgPrevBalanceByWork = new Map<string, number>();
+    const mgAppliedWorkIds = wpData.filter(wp => wp.is_mg_applied).map(wp => wp.work_id);
+    const mgBalances: MgBalanceEntry[] = [];
 
     if (mgAppliedWorkIds.length > 0) {
       const { data: currentMonthMg } = await supabase
@@ -94,7 +128,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       const foundWorkIds = new Set<string>();
       for (const mg of (currentMonthMg || [])) {
-        mgPrevBalanceByWork.set(mg.work_id, Number(mg.previous_balance));
+        mgBalances.push({ work_id: mg.work_id, previous_balance: Number(mg.previous_balance) });
         foundWorkIds.add(mg.work_id);
       }
 
@@ -111,41 +145,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const seen = new Set<string>();
         for (const mg of (prevMonthMg || [])) {
           if (!seen.has(mg.work_id)) {
-            mgPrevBalanceByWork.set(mg.work_id, Number(mg.current_balance));
+            mgBalances.push({ work_id: mg.work_id, previous_balance: Number(mg.current_balance) });
             seen.add(mg.work_id);
           }
         }
       }
     }
 
-    // 4-1) MG 전체 이력
-    const { data: mgHistory } = await supabase
-      .from('rs_mg_balances')
-      .select('*, work:rs_works(name)')
-      .eq('partner_id', id)
-      .in('work_id', workIds)
-      .order('month', { ascending: true });
-
-    // 4-2) 조정 항목 조회 (rs_settlement_adjustments)
-    const { data: adjustmentItems } = await supabase
-      .from('rs_settlement_adjustments')
-      .select('*')
-      .eq('partner_id', id)
-      .eq('month', month)
-      .order('created_at');
-
-    // 5) 인건비 계산 — rs_labor_cost_items 기반 (공제유형별 분리)
-    // key: `${workId}:${deductionType}`
-    const laborCostByWorkType = new Map<string, number>();
-    // 정산제외금 모드용: 분담 전 원래 금액 (공제인원 전액)
-    const laborCostFullByWorkType = new Map<string, number>();
-
-    // MG 의존 체크: mg_depends_on이 있는 작품의 의존 대상 MG 잔액 조회
-    const mgDepBlockedWorks = new Set<string>();
-    const mgDepInfo = new Map<string, { partner_name: string; balance: number }>();
-    for (const wp of workPartners) {
+    // 5) MG 의존 차단 조회
+    const mgDepBlocked = new Map<string, MgDepInfoEntry>();
+    for (const wp of wpData) {
       if (!wp.mg_depends_on) continue;
-      const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+      const dep = wp.mg_depends_on;
       const [{ data: depMg }, { data: depPartner }] = await Promise.all([
         supabase
           .from('rs_mg_balances')
@@ -161,63 +172,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .eq('id', dep.partner_id)
           .single(),
       ]);
-      const balance = depMg ? Number(depMg.current_balance) : 0;
-      mgDepInfo.set(wp.work_id, {
+      mgDepBlocked.set(wp.work_id, {
         partner_name: depPartner?.name || '',
-        balance,
+        balance: depMg ? Number(depMg.current_balance) : 0,
       });
-      if (balance > 0) {
-        mgDepBlockedWorks.add(wp.work_id);
-      }
     }
 
-    // 4-3) 작품별 매출 조정 항목 조회 (rs_revenue_adjustments)
-    const { data: revAdjustments } = await supabase
-      .from('rs_revenue_adjustments')
-      .select('*')
-      .eq('month', month)
-      .in('work_id', workIds);
+    // 6) MG 이력
+    const { data: mgHistory } = await supabase
+      .from('rs_mg_balances')
+      .select('*, work:rs_works(name)')
+      .eq('partner_id', id)
+      .in('work_id', workIds)
+      .order('month', { ascending: true });
 
-    const revAdjByWork = new Map<string, number>();
-    const revAdjItemsByWork = new Map<string, { id: string; label: string; amount: number }[]>();
-    for (const ra of (revAdjustments || [])) {
-      revAdjByWork.set(ra.work_id, (revAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
-      const list = revAdjItemsByWork.get(ra.work_id) || [];
-      list.push({ id: ra.id, label: ra.label, amount: Number(ra.amount) });
-      revAdjItemsByWork.set(ra.work_id, list);
-    }
+    const mgHistoryData: MgHistoryEntry[] = (mgHistory || []).map(mg => ({
+      work_id: mg.work_id,
+      work_name: (mg.work as { name: string } | null)?.name || mg.work_id,
+      month: mg.month,
+      previous_balance: Number(mg.previous_balance),
+      mg_added: Number(mg.mg_added),
+      mg_deducted: Number(mg.mg_deducted),
+      current_balance: Number(mg.current_balance),
+      note: mg.note || '',
+    }));
 
-    // 작품별 수익배분액(revenue_share) 사전 계산 — 인건비 안분 기준
-    const revenueShareByWork = new Map<string, number>();
-    for (const wp of workPartners) {
-      const rev = revenues?.find(r => r.work_id === wp.work_id);
-      const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
-        ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
-      const revenueRate = Number(wp.revenue_rate) || 1;
-      const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
-      const unc: string[] = rev?.unconfirmed_types || [];
-      const isBlocked = mgDepBlockedWorks.has(wp.work_id);
-      let totalShare = 0;
-      for (const col of REVENUE_COLUMNS) {
-        if (!includedTypes.includes(col) || unc.includes(col)) continue;
-        const amount = rev ? Number(rev[col]) : 0;
-        const baseRevenue = Math.round(amount * revenueRate);
-        totalShare += isBlocked ? 0 : Math.round(baseRevenue * effectiveRate);
-      }
-      // 매출 조정 반영
-      const revAdj = revAdjByWork.get(wp.work_id) || 0;
-      if (revAdj !== 0 && !isBlocked) {
-        totalShare += Math.round(revAdj * effectiveRate);
-      }
-      revenueShareByWork.set(wp.work_id, totalShare);
-    }
+    // 7) 인건비 데이터 조회
+    let laborCostItems: LaborCostItem[] = [];
+    let laborCostPartnerLinks: LaborCostPartnerLink[] = [];
+    let laborCostWorkLinks: LaborCostWorkLink[] = [];
+    let laborCostWpData: LaborCostWpData[] = [];
 
-    // 인건비공제제외 작품 세트
-    const laborCostExcludedWorkIds = new Set(
-      workPartners.filter(wp => wp.labor_cost_excluded).map(wp => wp.work_id)
-    );
-
-    // rs_labor_cost_items에서 이 파트너가 대상자인 아이템 조회
     const { data: partnerItemLinks } = await supabase
       .from('rs_labor_cost_item_partners')
       .select('item_id')
@@ -226,487 +211,68 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (partnerItemLinks && partnerItemLinks.length > 0) {
       const itemIds = partnerItemLinks.map(l => l.item_id);
 
-      // 아이템 정보 + 아이템별 대상자 + 아이템별 작품
-      const { data: items } = await supabase
-        .from('rs_labor_cost_items')
-        .select('id, amount, deduction_type')
-        .eq('month', month)
-        .in('id', itemIds);
+      const [
+        { data: items },
+        { data: allPartnerLinks },
+        { data: allWorkLinks },
+      ] = await Promise.all([
+        supabase.from('rs_labor_cost_items').select('id, amount, deduction_type').eq('month', month).in('id', itemIds),
+        supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('item_id', itemIds),
+        supabase.from('rs_labor_cost_item_works').select('item_id, work_id').in('item_id', itemIds),
+      ]);
 
-      const { data: allPartnerLinks } = await supabase
-        .from('rs_labor_cost_item_partners')
-        .select('item_id, partner_id')
-        .in('item_id', itemIds);
+      laborCostItems = (items || []).map(i => ({ id: i.id, amount: Number(i.amount), deduction_type: i.deduction_type }));
+      laborCostPartnerLinks = (allPartnerLinks || []).map(l => ({ item_id: l.item_id, partner_id: l.partner_id }));
+      laborCostWorkLinks = (allWorkLinks || []).map(l => ({ item_id: l.item_id, work_id: l.work_id }));
 
-      const { data: allWorkLinks } = await supabase
-        .from('rs_labor_cost_item_works')
-        .select('item_id, work_id')
-        .in('item_id', itemIds);
+      // 인건비 분담 비율 계산을 위한 WP 데이터
+      const allLinkedPartnerIds = [...new Set(laborCostPartnerLinks.map(l => l.partner_id))];
+      const allLinkedWorkIds = [...new Set(laborCostWorkLinks.map(l => l.work_id))];
 
-      // 대상자별 RS율 조회 (분담비율 계산용)
-      const allLinkedPartnerIds = [...new Set((allPartnerLinks || []).map(l => l.partner_id))];
-      const allLinkedWorkIds = [...new Set((allWorkLinks || []).map(l => l.work_id))];
-
-      let wpData: { partner_id: string; work_id: string; rs_rate: number; mg_rs_rate: number | null; is_mg_applied: boolean }[] = [];
       if (allLinkedPartnerIds.length > 0 && allLinkedWorkIds.length > 0) {
-        const { data } = await supabase
+        const { data: wpRows } = await supabase
           .from('rs_work_partners')
           .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
           .in('partner_id', allLinkedPartnerIds)
           .in('work_id', allLinkedWorkIds);
-        wpData = data || [];
-      }
 
-      // Build maps
-      const partnersByItem = new Map<string, string[]>();
-      for (const link of (allPartnerLinks || [])) {
-        const list = partnersByItem.get(link.item_id) || [];
-        list.push(link.partner_id);
-        partnersByItem.set(link.item_id, list);
-      }
-      const worksByItem = new Map<string, string[]>();
-      for (const link of (allWorkLinks || [])) {
-        const list = worksByItem.get(link.item_id) || [];
-        list.push(link.work_id);
-        worksByItem.set(link.item_id, list);
-      }
-
-      // 각 아이템 → 이 파트너의 부담액 → 작품별 안분
-      for (const item of (items || [])) {
-        const amount = Number(item.amount);
-        if (amount <= 0) continue;
-
-        const partnerIds = partnersByItem.get(item.id) || [];
-        const itemWorkIds = worksByItem.get(item.id) || [];
-        if (partnerIds.length === 0 || itemWorkIds.length === 0) continue;
-
-        // 규칙 1: 이 파트너의 부담액
-        let myBurden = amount;
-        if (partnerIds.length > 1) {
-          let myRs = 0;
-          let totalRs = 0;
-          for (const pid of partnerIds) {
-            let rsSum = 0;
-            for (const wid of itemWorkIds) {
-              const wp = wpData.find(w => w.partner_id === pid && w.work_id === wid);
-              if (wp) {
-                rsSum += wp.is_mg_applied && wp.mg_rs_rate != null
-                  ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
-              }
-            }
-            if (pid === id) myRs = rsSum;
-            totalRs += rsSum;
-          }
-          myBurden = totalRs > 0 ? Math.round(amount * (myRs / totalRs)) : Math.round(amount / partnerIds.length);
-        }
-
-        if (myBurden <= 0) continue;
-
-        // 규칙 2: 작품별 안분 (이 파트너의 작품만, 제외 작품 필터링)
-        const eligibleWorkIds = itemWorkIds.filter(wid =>
-          workIds.includes(wid) && !laborCostExcludedWorkIds.has(wid)
-        );
-
-        if (eligibleWorkIds.length === 0) continue;
-
-        const dtype = item.deduction_type as string;
-        if (eligibleWorkIds.length === 1) {
-          const key = `${eligibleWorkIds[0]}:${dtype}`;
-          laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + myBurden);
-          laborCostFullByWorkType.set(key, (laborCostFullByWorkType.get(key) || 0) + amount);
-        } else {
-          let totalShare = 0;
-          const shares: { wid: string; share: number }[] = [];
-          for (const wid of eligibleWorkIds) {
-            const share = revenueShareByWork.get(wid) || 0;
-            shares.push({ wid, share });
-            totalShare += share;
-          }
-          for (const ws of shares) {
-            const allocatedBurden = totalShare > 0
-              ? Math.round(myBurden * (ws.share / totalShare))
-              : Math.round(myBurden / shares.length);
-            const allocatedFull = totalShare > 0
-              ? Math.round(amount * (ws.share / totalShare))
-              : Math.round(amount / shares.length);
-            if (allocatedBurden > 0) {
-              const key = `${ws.wid}:${dtype}`;
-              laborCostByWorkType.set(key, (laborCostByWorkType.get(key) || 0) + allocatedBurden);
-              laborCostFullByWorkType.set(key, (laborCostFullByWorkType.get(key) || 0) + allocatedFull);
-            }
-          }
-        }
+        laborCostWpData = (wpRows || []).map(w => ({
+          partner_id: w.partner_id,
+          work_id: w.work_id,
+          rs_rate: Number(w.rs_rate),
+          mg_rs_rate: w.mg_rs_rate != null ? Number(w.mg_rs_rate) : null,
+          is_mg_applied: w.is_mg_applied,
+        }));
       }
     }
 
-    // 사업자 판별 (작품별 MG 차감 시 VAT 반영 필요)
-    const isCorp = partner.partner_type === 'domestic_corp' || partner.partner_type === 'naver';
-    const corpVatType = isCorp ? (partner.vat_type as string) : '';
+    // ─── 계산 ─────────────────────────────────────────────────
 
-    // 6) 작품별 정산 상세 조합
-    const works = workPartners.map(wp => {
-      const work = wp.work as unknown as { id: string; name: string; serial_start_date: string | null; serial_end_date: string | null; labor_cost_as_exclusion: boolean } | null;
-      const rev = revenues?.find(r => r.work_id === wp.work_id);
-
-      const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
-        ? Number(wp.mg_rs_rate)
-        : Number(wp.rs_rate);
-      const revenueRate = Number(wp.revenue_rate) || 1;
-      const includedTypes = (wp.included_revenue_types as string[] | null) || REVENUE_COLUMNS;
-
-      const unconfirmed: string[] = rev?.unconfirmed_types || [];
-      const blocked = mgDepBlockedWorks.has(wp.work_id);
-      const baseRevenueByCol: Record<string, number> = {};
-      let totalBaseRevenue = 0;
-      for (const col of REVENUE_COLUMNS) {
-        const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included) ? Number(rev[col]) : 0;
-        const br = Math.round(amount * revenueRate);
-        baseRevenueByCol[col] = br;
-        totalBaseRevenue += br;
-      }
-
-      // 정산제외금 모드: 공동부담 인건비 공제만 정산제외금으로 처리 (근로소득공제는 제외)
-      const workFullLaborCost =
-        (laborCostFullByWorkType.get(`${wp.work_id}:인건비 공제`) || 0);
-
-      const isExclusionMode = work?.labor_cost_as_exclusion && workFullLaborCost > 0;
-
-      const details = REVENUE_COLUMNS.map(col => {
-        const included = includedTypes.includes(col) && !unconfirmed.includes(col);
-        const amount = (rev && included) ? Number(rev[col]) : 0;
-        const baseRevenue = baseRevenueByCol[col];
-
-        return {
-          revenue_type: col,
-          revenue_type_label: REVENUE_TYPE_LABELS[col],
-          gross_revenue: amount,
-          base_revenue: baseRevenue,
-          exclusion_amount: 0,
-          settlement_target: baseRevenue,
-          revenue_share: 0,
-          team_labor_cost: 0,
-          self_labor_cost: 0,
-          labor_cost: 0,
-          net_share: 0,
-          rs_rate: effectiveRate,
-          excluded: !included,
-        };
-      });
-
-      if (isExclusionMode) {
-        // 정산제외금 모드: 공제인원 인건비 전액을 기준매출에서 먼저 차감 후 RS 적용
-        // (RS 분담은 settlement_target × RS율에서 자연스럽게 반영됨)
-        const eligibleForExcl = details.filter(d => d.base_revenue > 0);
-        const totalBase = eligibleForExcl.reduce((s, d) => s + d.base_revenue, 0);
-        if (totalBase > 0) {
-          let distributed = 0;
-          for (let i = 0; i < eligibleForExcl.length; i++) {
-            const excl = i === eligibleForExcl.length - 1
-              ? workFullLaborCost - distributed
-              : Math.round(workFullLaborCost * (eligibleForExcl[i].base_revenue / totalBase));
-            eligibleForExcl[i].exclusion_amount = excl;
-            distributed += excl;
-          }
-        }
-        for (const d of details) {
-          d.settlement_target = d.base_revenue - d.exclusion_amount;
-          d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
-        }
-
-        // 근로소득공제는 정산제외금이 아니므로 RS 적용 후 별도 차감
-        const earnedKey = `${wp.work_id}:근로소득공제`;
-        const earnedCost = laborCostByWorkType.get(earnedKey) || 0;
-        if (earnedCost > 0) {
-          const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
-          if (totalBasis > 0) {
-            const eligible = details.filter(d => d.revenue_share > 0);
-            let distributed = 0;
-            for (let i = 0; i < eligible.length; i++) {
-              const cost = i === eligible.length - 1
-                ? earnedCost - distributed
-                : Math.round(earnedCost * (eligible[i].revenue_share / totalBasis));
-              eligible[i].self_labor_cost += cost;
-              distributed += cost;
-            }
-          }
-        }
-
-        for (const d of details) {
-          d.labor_cost = d.self_labor_cost;
-          d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
-        }
-      } else {
-        // 일반 모드: RS 적용 후 인건비 차감
-        for (const d of details) {
-          d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
-        }
-
-        // 공제유형별로 수익구분 비중에 따라 배분
-        for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
-          const key = `${wp.work_id}:${dtype}`;
-          const typeCost = laborCostByWorkType.get(key) || 0;
-          if (typeCost <= 0) continue;
-
-          const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
-          if (totalBasis > 0) {
-            const eligible = details.filter(d => d.revenue_share > 0);
-            let distributed = 0;
-            for (let i = 0; i < eligible.length; i++) {
-              const cost = i === eligible.length - 1
-                ? typeCost - distributed
-                : Math.round(typeCost * (eligible[i].revenue_share / totalBasis));
-              if (dtype === '근로소득공제') {
-                eligible[i].self_labor_cost += cost;
-              } else {
-                eligible[i].team_labor_cost += cost;
-              }
-              distributed += cost;
-            }
-          }
-        }
-
-        for (const d of details) {
-          d.labor_cost = d.self_labor_cost + d.team_labor_cost;
-          d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
-        }
-      }
-
-      // MG 의존 차단: 매출은 그대로 보여주되 수익배분 이후 항목은 0
-      if (blocked) {
-        for (const d of details) {
-          d.revenue_share = 0;
-          d.team_labor_cost = 0;
-          d.self_labor_cost = 0;
-          d.labor_cost = 0;
-          d.net_share = 0;
-        }
-      }
-
-      // 매출 조정 항목 반영 (작품 전체 매출에 가감)
-      const workRevAdj = revAdjByWork.get(wp.work_id) || 0;
-      const revAdjRS = blocked ? 0 : Math.round(workRevAdj * effectiveRate);
-
-      const work_total_revenue = details.reduce((s, d) => s + d.gross_revenue, 0) + workRevAdj;
-      const work_total_base_revenue = details.reduce((s, d) => s + d.base_revenue, 0) + workRevAdj;
-      const work_total_exclusion = details.reduce((s, d) => s + d.exclusion_amount, 0);
-      const work_total_settlement_target = details.reduce((s, d) => s + d.settlement_target, 0);
-      const work_total_share = details.reduce((s, d) => s + d.revenue_share, 0) + revAdjRS;
-      const work_total_labor_cost = details.reduce((s, d) => s + d.labor_cost, 0);
-      const work_total_team_labor_cost = details.reduce((s, d) => s + d.team_labor_cost, 0);
-      const work_total_self_labor_cost = details.reduce((s, d) => s + d.self_labor_cost, 0);
-      const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0) + revAdjRS;
-
-      return {
-        work_name: work?.name || '',
-        work_id: wp.work_id,
-        rs_rate: Number(wp.rs_rate),
-        mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
-        effective_rate: effectiveRate,
-        revenue_rate: revenueRate,
-        is_mg_applied: wp.is_mg_applied,
-        mg_dependency_blocked: blocked,
-        mg_depends_on: wp.mg_depends_on || null,
-        mg_dep_info: mgDepInfo.get(wp.work_id) || null,
-        revenue_adjustments: revAdjItemsByWork.get(wp.work_id) || [],
-        revenue_adjustment_total: workRevAdj,
-        revenue_adjustment_rs: revAdjRS,
-        details,
-        work_total_revenue,
-        work_total_base_revenue,
-        work_total_exclusion,
-        work_total_settlement_target,
-        work_total_share,
-        work_total_labor_cost,
-        work_total_team_labor_cost,
-        work_total_self_labor_cost,
-        work_total_net_share,
-        ...(() => {
-          const prevBalance = mgPrevBalanceByWork.get(wp.work_id) || 0;
-          if (!wp.is_mg_applied || prevBalance <= 0) {
-            return { mg_balance: prevBalance, mg_deduction: 0, mg_remaining: prevBalance };
-          }
-
-          // 사업자: 작품별 세금계산서 합계(VAT 포함)를 MG 차감 cap으로 사용
-          let mgCap = Math.max(0, work_total_net_share);
-          if (isCorp && work_total_net_share > 0) {
-            const domesticPaidNet = details.find(d => d.revenue_type === 'domestic_paid')?.net_share || 0;
-            const otherNet = work_total_net_share - domesticPaidNet;
-            let workInvoiceTotal = 0;
-            if (domesticPaidNet > 0) {
-              if (corpVatType === 'tax_exempt') {
-                workInvoiceTotal += domesticPaidNet;
-              } else if (corpVatType === 'vat_separate') {
-                workInvoiceTotal += domesticPaidNet + Math.round(domesticPaidNet * 0.1);
-              } else {
-                workInvoiceTotal += domesticPaidNet; // 내세 (VAT 포함가)
-              }
-            }
-            if (otherNet > 0) {
-              workInvoiceTotal += otherNet + Math.round(otherNet * 0.1);
-            }
-            mgCap = workInvoiceTotal;
-          }
-
-          const mgDeduction = Math.min(prevBalance, mgCap);
-          return {
-            mg_balance: prevBalance,
-            mg_deduction: mgDeduction,
-            mg_remaining: prevBalance - mgDeduction,
-          };
-        })(),
-      };
-    }).filter(w => w.work_total_revenue > 0 || w.mg_balance > 0);
-
-    const grand_total_revenue = works.reduce((s, w) => s + w.work_total_revenue, 0);
-    const grand_total_base_revenue = works.reduce((s, w) => s + w.work_total_base_revenue, 0);
-    const grand_total_exclusion = works.reduce((s, w) => s + w.work_total_exclusion, 0);
-    const grand_total_settlement_target = works.reduce((s, w) => s + w.work_total_settlement_target, 0);
-    const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
-    const grand_total_labor_cost = works.reduce((s, w) => s + w.work_total_labor_cost, 0);
-    const grand_total_team_labor_cost = works.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
-    const grand_total_self_labor_cost = works.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
-    const grand_total_net_share = works.reduce((s, w) => s + w.work_total_net_share, 0);
-
-    const subtotal = grand_total_net_share;
-
-    const taxType = workPartners[0]?.tax_type as string || 'standard';
-    const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
-    const tax_amount = tax_breakdown.total;
-
-    const hasActiveSerial = works.some(w => {
-      const wk = workPartners.find(wp => wp.work_id === w.work_id);
-      const wkData = wk?.work as unknown as { serial_end_date: string | null } | null;
-      return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-    });
-    const insurance = calculateInsurance(subtotal, partner.partner_type, {
-      serialEndDate: hasActiveSerial ? null : '1900-01-01',
-      reportType: partner.report_type ?? null,
+    const input: PartnerComputeInput = {
+      partner: partnerData,
       month,
-      isForeign: partner.is_foreign ?? false,
-    });
+      workPartners: wpData,
+      revenues: revenueData,
+      mgBalances,
+      mgDepBlocked,
+      revenueAdjustments: (revAdjustments || []).map(ra => ({
+        id: ra.id, work_id: ra.work_id, label: ra.label, amount: Number(ra.amount),
+      })),
+      settlementAdjustments: (adjustmentItems || []).map(a => ({
+        id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount),
+      })),
+      productionCosts: (productionCosts || []).map(pc => ({
+        partner_id: pc.partner_id, work_id: pc.work_id, amount: Number(pc.amount),
+      })),
+      laborCostItems,
+      laborCostPartnerLinks,
+      laborCostWorkLinks,
+      laborCostWpData,
+      mgHistory: mgHistoryData,
+    };
 
-    // 조정 항목 합산 (양수=추가, 음수=차감)
-    const total_adjustment = (adjustmentItems || []).reduce((s, a) => s + Number(a.amount), 0);
-    const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
-
-    // MG 전체 이력을 작품별로 그룹핑
-    const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
-    for (const mg of (mgHistory || [])) {
-      const workName = (mg.work as { name: string } | null)?.name || mg.work_id;
-      const list = mgHistoryByWork.get(workName) || [];
-      list.push({
-        month: mg.month,
-        previous_balance: Number(mg.previous_balance),
-        mg_added: Number(mg.mg_added),
-        mg_deducted: Number(mg.mg_deducted),
-        current_balance: Number(mg.current_balance),
-        note: mg.note || '',
-      });
-      mgHistoryByWork.set(workName, list);
-    }
-
-    const mg_history = Array.from(mgHistoryByWork.entries()).map(([work_name, history]) => ({
-      work_name,
-      history,
-    }));
-
-    // 국내법인/네이버: 세금계산서 breakdown
-    let tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null = null;
-    let tax_invoice_total = 0;
-    if (isCorp) {
-      const isTaxExempt = corpVatType === 'tax_exempt';
-      const isVatSeparate = corpVatType === 'vat_separate';
-      let domesticPaidNet = 0;
-      let otherNet = 0;
-      for (const w of works) {
-        for (const d of w.details) {
-          if (d.revenue_type === 'domestic_paid') {
-            domesticPaidNet += d.net_share;
-          } else {
-            otherNet += d.net_share;
-          }
-        }
-        // 매출 조정 RS → 글로벌유료수익 외에 포함
-        otherNet += w.revenue_adjustment_rs || 0;
-      }
-      // 파트너 조정 → 글로벌유료수익 외에 포함
-      otherNet += total_adjustment;
-
-      tax_invoice = [];
-      if (domesticPaidNet > 0) {
-        if (isTaxExempt) {
-          // 면세겸영: 국내유료수익은 VAT 없음 (면세매출)
-          tax_invoice.push({
-            item: '국내유료수익',
-            supply: domesticPaidNet,
-            vat: 0,
-            total: domesticPaidNet,
-          });
-        } else if (isVatSeparate) {
-          const vat = Math.round(domesticPaidNet * 0.1);
-          tax_invoice.push({
-            item: '국내유료수익',
-            supply: domesticPaidNet,
-            vat,
-            total: domesticPaidNet + vat,
-          });
-        } else {
-          tax_invoice.push({
-            item: '국내유료수익',
-            supply: Math.round(domesticPaidNet * 10 / 11),
-            vat: Math.round(domesticPaidNet * 1 / 11),
-            total: domesticPaidNet,
-          });
-        }
-      }
-      if (otherNet > 0) {
-        const vat = Math.round(otherNet * 0.1);
-        tax_invoice.push({
-          item: '글로벌유료수익 외',
-          supply: otherNet,
-          vat,
-          total: otherNet + vat,
-        });
-      }
-      tax_invoice_total = tax_invoice.reduce((s, t) => s + t.total, 0);
-    }
-
-    // MG 차감: 사업자는 작품별 세금계산서 합계(VAT 포함)로 이미 계산됨, 개인은 세금·예고료 차감 후
-    const total_mg_deduction = isCorp
-      ? total_mg_raw  // 작품별 mg_deduction에 이미 VAT 반영됨
-      : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
-
-    const final_payment = isCorp
-      ? tax_invoice_total - total_mg_deduction
-      : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
-
-    return NextResponse.json({
-      partner,
-      month,
-      works,
-      grand_total_revenue,
-      grand_total_base_revenue,
-      grand_total_exclusion,
-      grand_total_settlement_target,
-      grand_total_share,
-      grand_total_labor_cost,
-      grand_total_team_labor_cost,
-      grand_total_self_labor_cost,
-      grand_total_net_share,
-      subtotal,
-      tax_type: taxType,
-      tax_breakdown,
-      tax_amount,
-      insurance,
-      total_mg_deduction,
-      adjustments: (adjustmentItems || []).map(a => ({ id: a.id, label: a.label, amount: Number(a.amount) })),
-      total_adjustment,
-      final_payment,
-      mg_history,
-      tax_invoice,
-      tax_invoice_total,
-    });
+    const result = computeStatement(input);
+    return NextResponse.json(result);
   } catch (error) {
     console.error('정산서 조회 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,7 +23,9 @@ interface SummaryRow {
   local_tax: number;
   insurance: number;
   mg_deduction: number;
+  adjustment: number;
   final_payment: number;
+  is_confirmed: boolean;
   notes: string;
 }
 
@@ -143,6 +146,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
               <th className="px-2 py-2 text-right text-purple-600">예고료</th>
               <th className="px-2 py-2 text-right text-red-600">MG차감</th>
               <th className="px-2 py-2 text-right font-semibold">지급금액</th>
+              <th className="px-2 py-2 text-center">상태</th>
               <th className="px-2 py-2 text-center">정산서</th>
               <th className="px-2 py-2 text-left">특이사항</th>
             </tr>
@@ -150,7 +154,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={17} className="py-8 text-center text-muted-foreground">
+                <td colSpan={18} className="py-8 text-center text-muted-foreground">
                   데이터가 없습니다.
                 </td>
               </tr>
@@ -186,6 +190,13 @@ export function SettlementSummaryTable({ data, loading }: Props) {
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(r.final_payment)}</td>
                   <td className="px-2 py-2 text-center">
+                    {r.is_confirmed ? (
+                      <Badge variant="default" className="text-xs">확정</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">미확정</Badge>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center">
                     <Link
                       href={`/accounting/settlement/partners/${r.partner_id}/statement`}
                       className="text-primary hover:underline text-xs"
@@ -213,6 +224,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
                 <td className="px-2 py-2 text-right tabular-nums text-purple-600">{fmtSigned(totals.insurance)}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-red-600">{fmtSigned(totals.mg_deduction)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.final_payment)}</td>
+                <td></td>
                 <td></td>
                 <td></td>
               </tr>

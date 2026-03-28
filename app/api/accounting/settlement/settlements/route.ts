@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT /api/accounting/settlement/settlements - 정산 수정 (상태, 금액 등)
+// PUT /api/accounting/settlement/settlements - 제작비용/메모 수정
+// 확정은 POST /confirm API를 사용
 export async function PUT(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -60,70 +61,41 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, status, production_cost, note } = body;
+    const { partner_id, work_id, month, production_cost, note } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
+    if (!partner_id || !work_id || !month) {
+      return NextResponse.json({ error: 'partner_id, work_id, month은 필수입니다.' }, { status: 400 });
     }
 
-    const updateData: Record<string, unknown> = {};
-    if (status !== undefined) updateData.status = status;
-    if (production_cost !== undefined) updateData.production_cost = production_cost;
-    if (note !== undefined) updateData.note = note;
-
-    const { data, error } = await supabase
-      .from('rs_settlements')
-      .update(updateData)
-      .eq('id', id)
-      .select('*, partner:rs_partners(*), work:rs_works(id, name)')
-      .single();
-
-    if (error) {
-      console.error('정산 수정 오류:', error);
-      return NextResponse.json({ error: '정산 수정 실패' }, { status: 500 });
-    }
-
-    // 정산 확정 시 MG 잔액 자동 갱신
-    if (status === 'confirmed' && data && Number(data.mg_deduction) > 0) {
-      // 이전 월 잔액 조회
-      const { data: prevMg } = await supabase
-        .from('rs_mg_balances')
-        .select('current_balance')
-        .eq('partner_id', data.partner_id)
-        .eq('work_id', data.work_id)
-        .lt('month', data.month)
-        .order('month', { ascending: false })
-        .limit(1)
-        .single();
-
-      const previousBalance = prevMg ? Number(prevMg.current_balance) : 0;
-      const mgDeducted = Number(data.mg_deduction);
-
-      // 현재 월 MG 잔액이 이미 있으면 mg_added 보존
-      const { data: currentMg } = await supabase
-        .from('rs_mg_balances')
-        .select('mg_added')
-        .eq('partner_id', data.partner_id)
-        .eq('work_id', data.work_id)
-        .eq('month', data.month)
-        .single();
-
-      const mgAdded = currentMg ? Number(currentMg.mg_added) : 0;
-
-      await supabase
-        .from('rs_mg_balances')
+    // 제작비용 → rs_production_costs에 저장
+    if (production_cost !== undefined) {
+      const { error: pcErr } = await supabase
+        .from('rs_production_costs')
         .upsert({
-          month: data.month,
-          partner_id: data.partner_id,
-          work_id: data.work_id,
-          previous_balance: previousBalance,
-          mg_added: mgAdded,
-          mg_deducted: mgDeducted,
-          current_balance: previousBalance + mgAdded - mgDeducted,
-        }, { onConflict: 'month,partner_id,work_id' });
+          partner_id,
+          work_id,
+          month,
+          amount: production_cost,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'partner_id,work_id,month' });
+
+      if (pcErr) {
+        console.error('제작비용 수정 오류:', pcErr);
+        return NextResponse.json({ error: '제작비용 수정 실패' }, { status: 500 });
+      }
     }
 
-    return NextResponse.json({ settlement: data });
+    // 메모 → rs_settlements에 저장 (확정 레코드가 있는 경우만)
+    if (note !== undefined) {
+      await supabase
+        .from('rs_settlements')
+        .update({ note })
+        .eq('partner_id', partner_id)
+        .eq('work_id', work_id)
+        .eq('month', month);
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('정산 수정 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
