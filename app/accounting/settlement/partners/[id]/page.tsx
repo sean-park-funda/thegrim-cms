@@ -482,7 +482,6 @@ export default function PartnerDetailPage() {
                         <th className="py-2 px-3 font-medium">작품명</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">매출액적용율</th>
                         <th className="py-2 px-3 font-medium text-right">RS 요율</th>
-                        <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">계약구분</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">계약기간</th>
                         {canManage && <th className="py-2 px-3 font-medium w-10"></th>}
@@ -508,14 +507,6 @@ export default function PartnerDetailPage() {
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums">
                             {(wp.rs_rate * 100).toFixed(1)}%
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums">
-                            {(() => {
-                              const latestMg = mgBalances
-                                .filter(mg => mg.work_id === wp.work_id)
-                                .sort((a, b) => b.month.localeCompare(a.month))[0];
-                              return latestMg ? fmt(latestMg.current_balance) : '-';
-                            })()}
                           </td>
                           <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_category || '-'}</td>
                           <td className="py-2 px-3 text-xs hidden md:table-cell">{wp.contract_period || '-'}</td>
