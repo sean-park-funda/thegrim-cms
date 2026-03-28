@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus, ChevronDown, ChevronRight, Users, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Plus, Users, Trash2 } from 'lucide-react';
 import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -190,7 +190,6 @@ export default function PartnerDetailPage() {
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
 
-  const [mgHistoryOpen, setMgHistoryOpen] = useState(false);
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
   const [mgWorkId, setMgWorkId] = useState('');
   const [mgAmount, setMgAmount] = useState('');
@@ -863,88 +862,6 @@ export default function PartnerDetailPage() {
                     )}
                   </div>
 
-                  {/* 3. MG 정산 */}
-                  {statement.works.some(w => w.is_mg_applied && w.mg_balance > 0) && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold">3. MG 정산</h4>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left bg-muted/50">
-                              <th className="py-2 px-3 font-medium">작품명</th>
-                              <th className="py-2 px-3 font-medium text-right">잔액</th>
-                              <th className="py-2 px-3 font-medium text-right">MG 차감</th>
-                              <th className="py-2 px-3 font-medium text-right">차감 후 잔액</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {statement.works
-                              .filter(w => w.is_mg_applied && w.mg_balance > 0)
-                              .map(w => (
-                                <tr key={w.work_id} className="border-b">
-                                  <td className="py-1.5 px-3">{w.work_name}</td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums">{w.mg_balance.toLocaleString()}</td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                    {w.mg_deduction !== 0 ? w.mg_deduction.toLocaleString() : '0'}
-                                  </td>
-                                  <td className="py-1.5 px-3 text-right tabular-nums">{w.mg_remaining.toLocaleString()}</td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* MG 전체 이력 (접기/펼치기) */}
-                      {statement.mg_history && statement.mg_history.length > 0 && (
-                        <div className="mt-3">
-                          <button
-                            onClick={() => setMgHistoryOpen(!mgHistoryOpen)}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {mgHistoryOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                            MG 전체 이력 {mgHistoryOpen ? '접기' : '펼치기'}
-                          </button>
-                          {mgHistoryOpen && (
-                            <div className="mt-2 space-y-3">
-                              {statement.mg_history.map((wh) => (
-                                <div key={wh.work_name}>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">{wh.work_name}</p>
-                                  <table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="border-b bg-muted/30">
-                                        <th className="py-1 px-2 text-left">월</th>
-                                        <th className="py-1 px-2 text-right hidden md:table-cell">전월이월</th>
-                                        <th className="py-1 px-2 text-right">MG 추가</th>
-                                        <th className="py-1 px-2 text-right">MG 차감</th>
-                                        <th className="py-1 px-2 text-right">잔액</th>
-                                        <th className="py-1 px-2 text-left hidden md:table-cell">비고</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {wh.history.map((h) => (
-                                        <tr key={h.month} className="border-b">
-                                          <td className="py-1 px-2">{h.month}</td>
-                                          <td className="py-1 px-2 text-right tabular-nums hidden md:table-cell">{h.previous_balance.toLocaleString()}</td>
-                                          <td className="py-1 px-2 text-right tabular-nums text-blue-600">
-                                            {h.mg_added > 0 ? `+${h.mg_added.toLocaleString()}` : '-'}
-                                          </td>
-                                          <td className="py-1 px-2 text-right tabular-nums text-red-600">
-                                            {h.mg_deducted > 0 ? `-${h.mg_deducted.toLocaleString()}` : '-'}
-                                          </td>
-                                          <td className="py-1 px-2 text-right tabular-nums font-medium">{h.current_balance.toLocaleString()}</td>
-                                          <td className="py-1 px-2 text-muted-foreground hidden md:table-cell">{h.note}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -979,7 +896,18 @@ export default function PartnerDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mgBalances.map((mg) => (
+                      {mgBalances.map((mg) => {
+                        // 선택월의 statement가 있으면 MG 차감액을 statement 기준으로 오버라이드
+                        let mgDeducted = mg.mg_deducted;
+                        let currentBalance = mg.current_balance;
+                        if (statement && mg.month === statement.month) {
+                          const stWork = statement.works.find(w => w.work_id === mg.work_id);
+                          if (stWork && stWork.is_mg_applied) {
+                            mgDeducted = stWork.mg_deduction;
+                            currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                          }
+                        }
+                        return (
                         <tr key={mg.id} className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3 font-medium">{mg.month}</td>
                           <td className="py-2 px-3">{mg.work?.name || '-'}</td>
@@ -988,27 +916,39 @@ export default function PartnerDetailPage() {
                             {mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : '-'}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                            {mg.mg_deducted > 0 ? `-${mg.mg_deducted.toLocaleString()}` : '-'}
+                            {mgDeducted > 0 ? `-${mgDeducted.toLocaleString()}` : '-'}
                           </td>
-                          <td className={`py-2 px-3 text-right tabular-nums font-semibold ${mg.current_balance > 0 ? 'text-orange-600' : ''}`}>
-                            {fmt(mg.current_balance)}
+                          <td className={`py-2 px-3 text-right tabular-nums font-semibold ${currentBalance > 0 ? 'text-orange-600' : ''}`}>
+                            {fmt(currentBalance)}
                           </td>
                           <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate hidden md:table-cell" title={mg.note || ''}>
                             {mg.note || ''}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {/* 합계행 - 최신 월 기준 */}
                       {(() => {
                         const latestMonth = mgBalances[0]?.month;
                         if (!latestMonth) return null;
                         const latestItems = mgBalances.filter(mg => mg.month === latestMonth);
-                        const totals = latestItems.reduce((acc, mg) => ({
-                          previous_balance: acc.previous_balance + mg.previous_balance,
-                          mg_added: acc.mg_added + mg.mg_added,
-                          mg_deducted: acc.mg_deducted + mg.mg_deducted,
-                          current_balance: acc.current_balance + mg.current_balance,
-                        }), { previous_balance: 0, mg_added: 0, mg_deducted: 0, current_balance: 0 });
+                        const totals = latestItems.reduce((acc, mg) => {
+                          let mgDeducted = mg.mg_deducted;
+                          let currentBalance = mg.current_balance;
+                          if (statement && mg.month === statement.month) {
+                            const stWork = statement.works.find(w => w.work_id === mg.work_id);
+                            if (stWork && stWork.is_mg_applied) {
+                              mgDeducted = stWork.mg_deduction;
+                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                            }
+                          }
+                          return {
+                            previous_balance: acc.previous_balance + mg.previous_balance,
+                            mg_added: acc.mg_added + mg.mg_added,
+                            mg_deducted: acc.mg_deducted + mgDeducted,
+                            current_balance: acc.current_balance + currentBalance,
+                          };
+                        }, { previous_balance: 0, mg_added: 0, mg_deducted: 0, current_balance: 0 });
                         return (
                           <tr className="border-t-2 bg-muted/30 font-semibold">
                             <td className="py-2 px-3">{latestMonth}</td>
