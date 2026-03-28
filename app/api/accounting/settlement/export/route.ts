@@ -124,18 +124,18 @@ export async function GET(request: NextRequest) {
       XLSX.utils.book_append_sheet(workbook, ws, '계약 테이블');
 
     } else if (type === 'mg-summary') {
-      const { data: mgBalances } = await supabase
-        .from('rs_mg_balances')
-        .select('*, partner:rs_partners(name, company_name, partner_type), work:rs_works(name)')
+      const { data: poolBalances } = await supabase
+        .from('rs_mg_pool_balances')
+        .select('*, pool:rs_mg_pools(name, partner_id, partner:rs_partners(name, company_name, partner_type))')
         .eq('month', month)
-        .order('partner_id');
+        .order('mg_pool_id');
 
-      const rows = (mgBalances || []).map((mg: any, i: number) => ({
+      const rows = (poolBalances || []).map((mg: any, i: number) => ({
         'NO': i + 1,
-        '파트너명': mg.partner?.name || '',
-        '거래처명': mg.partner?.company_name || '',
-        '소득구분': incomeTypeMap[mg.partner?.partner_type] || '',
-        '작품명': mg.work?.name || '',
+        '파트너명': mg.pool?.partner?.name || '',
+        '거래처명': mg.pool?.partner?.company_name || '',
+        '소득구분': incomeTypeMap[mg.pool?.partner?.partner_type] || '',
+        'MG 풀': mg.pool?.name || '',
         '전월이월': Number(mg.previous_balance),
         '당월 MG 추가': Number(mg.mg_added),
         '당월 MG 차감': Number(mg.mg_deducted),

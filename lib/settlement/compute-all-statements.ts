@@ -12,6 +12,7 @@ import {
   type WorkPartnerData,
   type RevenueData,
   type MgBalanceEntry,
+  type MgPoolEntry,
   type MgDepInfoEntry,
   type LaborCostItem,
   type LaborCostPartnerLink,
@@ -33,9 +34,11 @@ export interface PartnerStatementResult {
 
 export interface BulkComputeResult {
   partners: PartnerStatementResult[];
-  /** raw data needed for confirm API to build upsert rows */
+  /** raw data needed for confirm API */
   _raw?: {
-    allMgBalancesCurrent: { partner_id: string; work_id: string; previous_balance: number }[];
+    allMgPools: any[];
+    allPoolWorks: any[];
+    allPoolBalCurrent: any[];
   };
 }
 
@@ -73,19 +76,34 @@ export async function computeAllStatements(
     { data: allRevAdj },
     { data: allSettlementAdj },
     { data: allProductionCosts },
-    { data: allMgBalancesCurrent },
-    { data: allMgBalancesPrev },
+    { data: allMgPools },
     { data: allPartnerItemLinks },
     { data: confirmedSettlements },
   ] = await Promise.all([
     supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
     supabase.from('rs_settlement_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
     supabase.from('rs_production_costs').select('*').eq('month', month).in('partner_id', partnerIds),
-    supabase.from('rs_mg_balances').select('work_id, partner_id, previous_balance').eq('month', month).in('partner_id', partnerIds),
-    supabase.from('rs_mg_balances').select('work_id, partner_id, month, current_balance').lt('month', month).in('partner_id', partnerIds).order('month', { ascending: false }),
+    supabase.from('rs_mg_pools').select('id, partner_id, name, mg_rs_rate').in('partner_id', partnerIds),
     supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('partner_id', partnerIds),
     supabase.from('rs_settlements').select('partner_id').eq('month', month).eq('status', 'confirmed'),
   ]);
+
+  // MG 풀 관련 벌크 조회
+  const allPoolIds = (allMgPools || []).map((p: any) => p.id) as string[];
+  let allPoolWorks: any[] = [];
+  let allPoolBalCurrent: any[] = [];
+  let allPoolBalPrev: any[] = [];
+
+  if (allPoolIds.length > 0) {
+    const [{ data: pw }, { data: bCur }, { data: bPrev }] = await Promise.all([
+      supabase.from('rs_mg_pool_works').select('mg_pool_id, work_id, mg_rs_rate').in('mg_pool_id', allPoolIds),
+      supabase.from('rs_mg_pool_balances').select('mg_pool_id, previous_balance').eq('month', month).in('mg_pool_id', allPoolIds),
+      supabase.from('rs_mg_pool_balances').select('mg_pool_id, current_balance, month').lt('month', month).in('mg_pool_id', allPoolIds).order('month', { ascending: false }),
+    ]);
+    allPoolWorks = pw || [];
+    allPoolBalCurrent = bCur || [];
+    allPoolBalPrev = bPrev || [];
+  }
 
   const confirmedPartnerIds = new Set((confirmedSettlements || []).map((s: any) => s.partner_id));
 
@@ -120,19 +138,47 @@ export async function computeAllStatements(
     }
   }
 
-  // MG 의존 벌크
+  // MG 의존 벌크 (mg_depends_on은 여전히 partner_id + work_id 기반 → pool_balances로 조회)
   const mgDeps = allWorkPartners.filter((wp: any) => wp.mg_depends_on);
   const depPartnerIds = [...new Set(mgDeps.map((wp: any) => (wp.mg_depends_on as { partner_id: string }).partner_id))] as string[];
-  const depWorkIds = [...new Set(mgDeps.map((wp: any) => (wp.mg_depends_on as { work_id: string }).work_id))] as string[];
-  let depMgBalances: { partner_id: string; work_id: string; current_balance: number }[] = [];
   let depPartnerNames: { id: string; name: string }[] = [];
+  let depPoolBalances: { pool_id: string; partner_id: string; current_balance: number }[] = [];
   if (depPartnerIds.length > 0) {
-    const [{ data: depMg }, { data: depP }] = await Promise.all([
-      supabase.from('rs_mg_balances').select('partner_id, work_id, current_balance, month').in('partner_id', depPartnerIds).in('work_id', depWorkIds).order('month', { ascending: false }),
+    // 의존 대상 파트너의 풀 정보 조회
+    const [{ data: depPools }, { data: depP }] = await Promise.all([
+      supabase.from('rs_mg_pools').select('id, partner_id').in('partner_id', depPartnerIds),
       supabase.from('rs_partners').select('id, name').in('id', depPartnerIds),
     ]);
-    depMgBalances = depMg || [];
     depPartnerNames = depP || [];
+
+    if (depPools && depPools.length > 0) {
+      const depPoolIds = depPools.map((p: any) => p.id);
+      const { data: depBal } = await supabase
+        .from('rs_mg_pool_balances')
+        .select('mg_pool_id, current_balance, month')
+        .in('mg_pool_id', depPoolIds)
+        .order('month', { ascending: false });
+
+      // 풀별 최신 잔액
+      const seen = new Set<string>();
+      for (const b of (depBal || [])) {
+        if (!seen.has(b.mg_pool_id)) {
+          const pool = depPools.find((p: any) => p.id === b.mg_pool_id);
+          depPoolBalances.push({
+            pool_id: b.mg_pool_id,
+            partner_id: pool?.partner_id || '',
+            current_balance: Number(b.current_balance),
+          });
+          seen.add(b.mg_pool_id);
+        }
+      }
+    }
+  }
+
+  // 의존 대상 파트너의 풀별 잔액 합산 맵 (partner_id → total balance)
+  const depPartnerTotalBalance = new Map<string, number>();
+  for (const pb of depPoolBalances) {
+    depPartnerTotalBalance.set(pb.partner_id, (depPartnerTotalBalance.get(pb.partner_id) || 0) + pb.current_balance);
   }
 
   // 파트너별 특이사항
@@ -190,37 +236,48 @@ export async function computeAllStatements(
       work: wp.work as unknown as WorkPartnerData['work'],
     }));
 
-    // MG 잔액
-    const mgBalances: MgBalanceEntry[] = [];
-    const mgApplied = workPartnerData.filter(wp => wp.is_mg_applied).map(wp => wp.work_id);
-    if (mgApplied.length > 0) {
-      const found = new Set<string>();
-      for (const mb of (allMgBalancesCurrent || [])) {
-        if ((mb as any).partner_id === partnerId && mgApplied.includes((mb as any).work_id)) {
-          mgBalances.push({ work_id: (mb as any).work_id, previous_balance: Number((mb as any).previous_balance) });
-          found.add((mb as any).work_id);
-        }
+    // MG 풀
+    const mgPools: MgPoolEntry[] = [];
+    const mgBalances: MgBalanceEntry[] = []; // 하위호환 (빈 배열)
+    const partnerPoolList = (allMgPools || []).filter((p: any) => p.partner_id === partnerId);
+
+    for (const pool of partnerPoolList) {
+      const pWorks = allPoolWorks.filter((pw: any) => pw.mg_pool_id === pool.id);
+      const pWorkIds = pWorks.map((pw: any) => pw.work_id);
+
+      // 잔액
+      const curBal = allPoolBalCurrent.find((b: any) => b.mg_pool_id === pool.id);
+      let balance = 0;
+      if (curBal) {
+        balance = Number(curBal.previous_balance);
+      } else {
+        const prevBal = allPoolBalPrev.find((b: any) => b.mg_pool_id === pool.id);
+        if (prevBal) balance = Number(prevBal.current_balance);
       }
-      const missing = mgApplied.filter(wid => !found.has(wid));
-      if (missing.length > 0) {
-        const seen = new Set<string>();
-        for (const mb of (allMgBalancesPrev || [])) {
-          if ((mb as any).partner_id === partnerId && missing.includes((mb as any).work_id) && !seen.has((mb as any).work_id)) {
-            mgBalances.push({ work_id: (mb as any).work_id, previous_balance: Number((mb as any).current_balance) });
-            seen.add((mb as any).work_id);
-          }
-        }
+
+      const mgRsRates: Record<string, number | null> = {};
+      for (const pw of pWorks) {
+        mgRsRates[pw.work_id] = pw.mg_rs_rate != null ? Number(pw.mg_rs_rate) : null;
       }
+
+      mgPools.push({
+        pool_id: pool.id,
+        pool_name: pool.name,
+        balance,
+        work_ids: pWorkIds,
+        mg_rs_rates: mgRsRates,
+        pool_mg_rs_rate: pool.mg_rs_rate != null ? Number(pool.mg_rs_rate) : null,
+      });
     }
 
-    // MG 의존
+    // MG 의존 (풀 단위 잔액으로 판단)
     const mgDepBlocked = new Map<string, MgDepInfoEntry>();
     for (const wp of workPartnerData) {
       if (!wp.mg_depends_on) continue;
       const dep = wp.mg_depends_on;
       const depName = depPartnerNames.find(p => p.id === dep.partner_id)?.name || '';
-      const depMg = depMgBalances.find(m => m.partner_id === dep.partner_id && m.work_id === dep.work_id);
-      mgDepBlocked.set(wp.work_id, { partner_name: depName, balance: depMg ? Number(depMg.current_balance) : 0 });
+      const depBalance = depPartnerTotalBalance.get(dep.partner_id) || 0;
+      mgDepBlocked.set(wp.work_id, { partner_name: depName, balance: depBalance });
     }
 
     const myItemIds = new Set(
@@ -230,7 +287,7 @@ export async function computeAllStatements(
     const input: PartnerComputeInput = {
       partner, month, workPartners: workPartnerData,
       revenues: revenueData.filter(r => partnerWorkIds.includes(r.work_id)),
-      mgBalances, mgDepBlocked,
+      mgBalances, mgPools, mgDepBlocked,
       revenueAdjustments: (allRevAdj || []).filter((ra: any) => partnerWorkIds.includes(ra.work_id))
         .map((ra: any) => ({ id: ra.id, work_id: ra.work_id, label: ra.label, amount: Number(ra.amount) })),
       settlementAdjustments: (allSettlementAdj || []).filter((a: any) => a.partner_id === partnerId)
@@ -256,6 +313,6 @@ export async function computeAllStatements(
 
   return {
     partners: results,
-    _raw: { allMgBalancesCurrent: allMgBalancesCurrent || [] },
+    _raw: { allMgPools: allMgPools || [], allPoolWorks, allPoolBalCurrent },
   };
 }

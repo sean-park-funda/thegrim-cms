@@ -29,10 +29,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '해당 월의 정산 데이터가 없습니다.' }, { status: 404 });
     }
 
-    // 작품별 rs_settlements UPSERT + MG 잔액 갱신
+    // 작품별 rs_settlements UPSERT + MG 풀 잔액 갱신
     const upsertRows: Record<string, unknown>[] = [];
-    const mgUpsertRows: Record<string, unknown>[] = [];
-    const allMgBalancesCurrent = _raw?.allMgBalancesCurrent || [];
+    const mgPoolUpsertRows: Record<string, unknown>[] = [];
+    const processedPools = new Set<string>();
+    const allMgPools = _raw?.allMgPools || [];
+    const allPoolWorks = _raw?.allPoolWorks || [];
+    const allPoolBalCurrent = _raw?.allPoolBalCurrent || [];
 
     for (const { partnerId, result } of partners) {
       for (const w of result.works) {
@@ -51,18 +54,33 @@ export async function POST(request: NextRequest) {
           status: 'confirmed',
           snapshot: JSON.stringify(result),
         });
+      }
 
-        if (w.is_mg_applied && w.mg_deduction > 0) {
-          mgUpsertRows.push({
-            month,
-            partner_id: partnerId,
-            work_id: w.work_id,
-            previous_balance: w.mg_balance,
-            mg_added: 0,
-            mg_deducted: w.mg_deduction,
-            current_balance: w.mg_balance - w.mg_deduction,
-          });
-        }
+      // MG 풀별 잔액 갱신
+      const partnerPools = allMgPools.filter((p: any) => p.partner_id === partnerId);
+      for (const pool of partnerPools) {
+        if (processedPools.has(pool.id)) continue;
+        processedPools.add(pool.id);
+
+        const poolWorkIds = allPoolWorks.filter((pw: any) => pw.mg_pool_id === pool.id).map((pw: any) => pw.work_id);
+        const totalDeduction = result.works
+          .filter(w => poolWorkIds.includes(w.work_id))
+          .reduce((s, w) => s + w.mg_deduction, 0);
+
+        if (totalDeduction <= 0) continue;
+
+        // 이번달 풀 잔액
+        const curBal = allPoolBalCurrent.find((b: any) => b.mg_pool_id === pool.id);
+        const prevBalance = curBal ? Number(curBal.previous_balance) : 0;
+
+        mgPoolUpsertRows.push({
+          mg_pool_id: pool.id,
+          month,
+          previous_balance: prevBalance,
+          mg_added: 0,
+          mg_deducted: totalDeduction,
+          current_balance: prevBalance - totalDeduction,
+        });
       }
     }
 
@@ -78,14 +96,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (mgUpsertRows.length > 0) {
+    if (mgPoolUpsertRows.length > 0) {
       const { error: mgErr } = await supabase
-        .from('rs_mg_balances')
-        .upsert(mgUpsertRows, { onConflict: 'month,partner_id,work_id' });
+        .from('rs_mg_pool_balances')
+        .upsert(mgPoolUpsertRows, { onConflict: 'mg_pool_id,month' });
 
       if (mgErr) {
-        console.error('MG 잔액 갱신 오류:', mgErr);
-        return NextResponse.json({ error: 'MG 잔액 갱신 실패: ' + mgErr.message }, { status: 500 });
+        console.error('MG 풀 잔액 갱신 오류:', mgErr);
+        return NextResponse.json({ error: 'MG 풀 잔액 갱신 실패: ' + mgErr.message }, { status: 500 });
       }
     }
 
@@ -93,7 +111,7 @@ export async function POST(request: NextRequest) {
       message: `${month} 정산 확정 완료`,
       confirmed_partners: partners.length,
       settlement_rows: upsertRows.length,
-      mg_updated: mgUpsertRows.length,
+      mg_pool_updated: mgPoolUpsertRows.length,
     });
   } catch (error) {
     console.error('정산 확정 오류:', error);

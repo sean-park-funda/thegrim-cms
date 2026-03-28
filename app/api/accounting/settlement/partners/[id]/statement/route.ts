@@ -9,6 +9,7 @@ import {
   type WorkPartnerData,
   type RevenueData,
   type MgBalanceEntry,
+  type MgPoolEntry,
   type MgDepInfoEntry,
   type MgHistoryEntry,
   type LaborCostItem,
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], productionCosts: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgPools: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], productionCosts: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -114,41 +115,53 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       unconfirmed_types: r.unconfirmed_types || [],
     }));
 
-    // 4) MG 잔액
-    const mgAppliedWorkIds = wpData.filter(wp => wp.is_mg_applied).map(wp => wp.work_id);
-    const mgBalances: MgBalanceEntry[] = [];
+    // 4) MG 풀 잔액
+    const mgPools: MgPoolEntry[] = [];
+    const mgBalances: MgBalanceEntry[] = []; // 하위호환
 
-    if (mgAppliedWorkIds.length > 0) {
-      const { data: currentMonthMg } = await supabase
-        .from('rs_mg_balances')
-        .select('work_id, previous_balance')
-        .eq('month', month)
-        .eq('partner_id', id)
-        .in('work_id', mgAppliedWorkIds);
+    // 이 파트너의 MG 풀 조회
+    const { data: partnerPools } = await supabase
+      .from('rs_mg_pools')
+      .select('id, name, mg_rs_rate')
+      .eq('partner_id', id);
 
-      const foundWorkIds = new Set<string>();
-      for (const mg of (currentMonthMg || [])) {
-        mgBalances.push({ work_id: mg.work_id, previous_balance: Number(mg.previous_balance) });
-        foundWorkIds.add(mg.work_id);
-      }
+    if (partnerPools && partnerPools.length > 0) {
+      const poolIds = partnerPools.map((p: any) => p.id);
 
-      const missingWorkIds = mgAppliedWorkIds.filter(wid => !foundWorkIds.has(wid));
-      if (missingWorkIds.length > 0) {
-        const { data: prevMonthMg } = await supabase
-          .from('rs_mg_balances')
-          .select('work_id, current_balance')
-          .lt('month', month)
-          .eq('partner_id', id)
-          .in('work_id', missingWorkIds)
-          .order('month', { ascending: false });
+      // 풀-작품 연결 + 풀 잔액 병렬 조회
+      const [{ data: poolWorks }, { data: poolBalCurrent }, { data: poolBalPrev }] = await Promise.all([
+        supabase.from('rs_mg_pool_works').select('mg_pool_id, work_id, mg_rs_rate').in('mg_pool_id', poolIds),
+        supabase.from('rs_mg_pool_balances').select('mg_pool_id, previous_balance').eq('month', month).in('mg_pool_id', poolIds),
+        supabase.from('rs_mg_pool_balances').select('mg_pool_id, current_balance, month').lt('month', month).in('mg_pool_id', poolIds).order('month', { ascending: false }),
+      ]);
 
-        const seen = new Set<string>();
-        for (const mg of (prevMonthMg || [])) {
-          if (!seen.has(mg.work_id)) {
-            mgBalances.push({ work_id: mg.work_id, previous_balance: Number(mg.current_balance) });
-            seen.add(mg.work_id);
-          }
+      for (const pool of partnerPools) {
+        const pWorks = (poolWorks || []).filter((pw: any) => pw.mg_pool_id === pool.id);
+        const pWorkIds = pWorks.map((pw: any) => pw.work_id);
+
+        // 잔액: 이번 달 있으면 사용, 없으면 직전 달 current_balance
+        const curBal = (poolBalCurrent || []).find((b: any) => b.mg_pool_id === pool.id);
+        let balance = 0;
+        if (curBal) {
+          balance = Number(curBal.previous_balance);
+        } else {
+          const prevBal = (poolBalPrev || []).find((b: any) => b.mg_pool_id === pool.id);
+          if (prevBal) balance = Number(prevBal.current_balance);
         }
+
+        const mgRsRates: Record<string, number | null> = {};
+        for (const pw of pWorks) {
+          mgRsRates[pw.work_id] = pw.mg_rs_rate != null ? Number(pw.mg_rs_rate) : null;
+        }
+
+        mgPools.push({
+          pool_id: pool.id,
+          pool_name: pool.name,
+          balance,
+          work_ids: pWorkIds,
+          mg_rs_rates: mgRsRates,
+          pool_mg_rs_rate: pool.mg_rs_rate != null ? Number(pool.mg_rs_rate) : null,
+        });
       }
     }
 
@@ -178,24 +191,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
-    // 6) MG 이력
-    const { data: mgHistory } = await supabase
-      .from('rs_mg_balances')
-      .select('*, work:rs_works(name)')
-      .eq('partner_id', id)
-      .in('work_id', workIds)
-      .order('month', { ascending: true });
+    // 6) MG 이력 (풀 단위)
+    const poolIds = mgPools.map(p => p.pool_id);
+    let mgHistoryData: MgHistoryEntry[] = [];
+    if (poolIds.length > 0) {
+      const { data: poolHistory } = await supabase
+        .from('rs_mg_pool_balances')
+        .select('*, pool:rs_mg_pools(name)')
+        .in('mg_pool_id', poolIds)
+        .order('month', { ascending: true });
 
-    const mgHistoryData: MgHistoryEntry[] = (mgHistory || []).map(mg => ({
-      work_id: mg.work_id,
-      work_name: (mg.work as { name: string } | null)?.name || mg.work_id,
-      month: mg.month,
-      previous_balance: Number(mg.previous_balance),
-      mg_added: Number(mg.mg_added),
-      mg_deducted: Number(mg.mg_deducted),
-      current_balance: Number(mg.current_balance),
-      note: mg.note || '',
-    }));
+      mgHistoryData = (poolHistory || []).map((mg: any) => ({
+        work_id: mg.mg_pool_id, // pool_id를 work_id 자리에 사용
+        work_name: (mg.pool as { name: string } | null)?.name || '',
+        month: mg.month,
+        previous_balance: Number(mg.previous_balance),
+        mg_added: Number(mg.mg_added),
+        mg_deducted: Number(mg.mg_deducted),
+        current_balance: Number(mg.current_balance),
+        note: mg.note || '',
+      }));
+    }
 
     // 7) 인건비 데이터 조회
     let laborCostItems: LaborCostItem[] = [];
@@ -254,6 +270,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       workPartners: wpData,
       revenues: revenueData,
       mgBalances,
+      mgPools,
       mgDepBlocked,
       revenueAdjustments: (revAdjustments || []).map(ra => ({
         id: ra.id, work_id: ra.work_id, label: ra.label, amount: Number(ra.amount),

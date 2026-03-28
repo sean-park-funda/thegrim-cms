@@ -111,6 +111,15 @@ export interface MgBalanceEntry {
   previous_balance: number;
 }
 
+export interface MgPoolEntry {
+  pool_id: string;
+  pool_name: string;
+  balance: number;           // 이번달 이월 잔액
+  work_ids: string[];        // 이 풀에 속한 작품 ID들
+  mg_rs_rates: Record<string, number | null>;  // work_id → MG RS율 (null이면 풀 기본값)
+  pool_mg_rs_rate: number | null;  // 풀 기본 MG RS율
+}
+
 export interface MgHistoryEntry {
   work_id: string;
   work_name: string;
@@ -134,7 +143,8 @@ export interface PartnerComputeInput {
   month: string;
   workPartners: WorkPartnerData[];
   revenues: RevenueData[];
-  mgBalances: MgBalanceEntry[];  // 이 파트너의 이번달 MG 잔액
+  mgBalances: MgBalanceEntry[];  // 하위호환: 기존 작품별 MG 잔액
+  mgPools: MgPoolEntry[];       // MG 풀 단위 잔액 (새 방식)
   mgDepBlocked: Map<string, MgDepInfoEntry>;  // work_id → {partner_name, balance}
   revenueAdjustments: RevenueAdjustmentItem[];
   settlementAdjustments: SettlementAdjustmentItem[];
@@ -188,6 +198,8 @@ export interface WorkStatement {
   work_total_team_labor_cost: number;
   work_total_self_labor_cost: number;
   work_total_net_share: number;
+  mg_pool_id: string | null;
+  mg_pool_name: string | null;
   mg_balance: number;
   mg_deduction: number;
   mg_remaining: number;
@@ -228,17 +240,35 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const { partner, month, workPartners, revenues } = input;
 
   if (workPartners.length === 0) {
-    return emptyResult(partner, month);
+    return emptyResult(partner, month, input.mgPools || []);
   }
 
   const workIds = workPartners.map(wp => wp.work_id);
   const isCorp = partner.partner_type === 'domestic_corp' || partner.partner_type === 'naver';
   const corpVatType = isCorp ? (partner.vat_type || '') : '';
 
-  // MG 잔액 맵
-  const mgPrevBalanceByWork = new Map<string, number>();
-  for (const mb of input.mgBalances) {
-    mgPrevBalanceByWork.set(mb.work_id, mb.previous_balance);
+  // MG 풀 → 작품 매핑
+  const mgPoolByWork = new Map<string, MgPoolEntry>();
+  for (const pool of (input.mgPools || [])) {
+    for (const wid of pool.work_ids) {
+      mgPoolByWork.set(wid, pool);
+    }
+  }
+
+  // 하위호환: mgPools가 비어있으면 mgBalances에서 1:1 풀 생성
+  if ((!input.mgPools || input.mgPools.length === 0) && input.mgBalances.length > 0) {
+    for (const mb of input.mgBalances) {
+      const wp = workPartners.find(w => w.work_id === mb.work_id);
+      const fakePool: MgPoolEntry = {
+        pool_id: mb.work_id,
+        pool_name: '',
+        balance: mb.previous_balance,
+        work_ids: [mb.work_id],
+        mg_rs_rates: { [mb.work_id]: wp?.mg_rs_rate ?? null },
+        pool_mg_rs_rate: wp?.mg_rs_rate ?? null,
+      };
+      mgPoolByWork.set(mb.work_id, fakePool);
+    }
   }
 
   // MG 의존 차단 작품
@@ -384,16 +414,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const revAdjRS = blocked ? 0 : Math.round(workRevAdj * effectiveRate);
     const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0) + revAdjRS;
 
-    // MG 차감 (작품별)
-    const prevBalance = mgPrevBalanceByWork.get(wp.work_id) || 0;
-    let mg_deduction = 0;
-    if (wp.is_mg_applied && prevBalance > 0) {
-      let mgCap = Math.max(0, work_total_net_share);
-      if (isCorp && work_total_net_share > 0) {
-        mgCap = computeCorpMgCap(details, work_total_net_share, corpVatType);
-      }
-      mg_deduction = Math.min(prevBalance, mgCap);
-    }
+    // MG 차감은 풀 단위로 아래에서 처리 — 여기서는 0으로 초기화
+    const pool = mgPoolByWork.get(wp.work_id) || null;
 
     const prodCost = productionCostByWork.get(wp.work_id) || 0;
 
@@ -421,24 +443,95 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       work_total_team_labor_cost: details.reduce((s, d) => s + d.team_labor_cost, 0),
       work_total_self_labor_cost: details.reduce((s, d) => s + d.self_labor_cost, 0),
       work_total_net_share,
-      mg_balance: prevBalance,
-      mg_deduction,
-      mg_remaining: prevBalance - mg_deduction,
+      mg_pool_id: pool?.pool_id || null,
+      mg_pool_name: pool?.pool_name || null,
+      mg_balance: 0,        // 풀 단위로 아래에서 설정
+      mg_deduction: 0,      // 풀 단위로 아래에서 설정
+      mg_remaining: 0,      // 풀 단위로 아래에서 설정
       production_cost: prodCost,
     };
-  }).filter(w => w.work_total_revenue > 0 || w.mg_balance > 0);
+  }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
+
+  // ─── MG 풀 단위 차감 ──────────────────────────────
+  const processedPools = new Set<string>();
+  for (const pool of (input.mgPools || [])) {
+    if (processedPools.has(pool.pool_id)) continue;
+    processedPools.add(pool.pool_id);
+
+    const poolBalance = pool.balance;
+    if (poolBalance <= 0) {
+      // 잔액이 0이어도 mg_balance는 표시
+      const firstWork = works.find(w => pool.work_ids.includes(w.work_id));
+      if (firstWork) {
+        firstWork.mg_balance = poolBalance;
+        firstWork.mg_remaining = poolBalance;
+      }
+      continue;
+    }
+
+    // 풀에 속한 작품들의 net_share 합산
+    const poolWorks = works.filter(w => pool.work_ids.includes(w.work_id));
+    if (poolWorks.length === 0) {
+      // 매출이 없는 작품만 있는 풀 — 잔액만 표시
+      continue;
+    }
+
+    // 풀 단위 MG cap 계산
+    let poolCap = 0;
+    if (isCorp) {
+      // 사업자: 풀 내 전체 작품의 세금계산서 합계(VAT 포함)를 cap으로
+      for (const w of poolWorks) {
+        if (w.work_total_net_share > 0) {
+          poolCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
+        }
+      }
+    } else {
+      // 개인: 풀 내 전체 작품의 net_share 합산
+      poolCap = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+    }
+
+    const poolDeduction = Math.min(poolBalance, Math.max(0, poolCap));
+
+    // 풀 차감을 작품별로 비율 배분 (net_share 비율)
+    const totalNetShare = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+    let distributed = 0;
+    for (let i = 0; i < poolWorks.length; i++) {
+      const w = poolWorks[i];
+      const workShare = Math.max(0, w.work_total_net_share);
+      let workDeduction: number;
+      if (i === poolWorks.length - 1) {
+        workDeduction = poolDeduction - distributed;
+      } else {
+        workDeduction = totalNetShare > 0
+          ? Math.round(poolDeduction * (workShare / totalNetShare))
+          : Math.round(poolDeduction / poolWorks.length);
+      }
+      w.mg_deduction = Math.max(0, workDeduction);
+      distributed += w.mg_deduction;
+    }
+
+    // 첫 번째 작품에 풀 잔액 표시 (정산서 표시용)
+    if (poolWorks.length > 0) {
+      poolWorks[0].mg_balance = poolBalance;
+      poolWorks[0].mg_remaining = poolBalance - poolDeduction;
+    }
+  }
+
+  // 풀이 없는 작품 필터링 (매출도 없고 MG도 없으면 제외)
+  const filteredWorks = works.filter(w => w.work_total_revenue > 0 || w.mg_balance > 0 || w.mg_deduction > 0);
+  const works_final = filteredWorks;
 
   // ─── 파트너 합산 ──────────────────────────────
-  const grand_total_revenue = works.reduce((s, w) => s + w.work_total_revenue, 0);
-  const grand_total_base_revenue = works.reduce((s, w) => s + w.work_total_base_revenue, 0);
-  const grand_total_exclusion = works.reduce((s, w) => s + w.work_total_exclusion, 0);
-  const grand_total_settlement_target = works.reduce((s, w) => s + w.work_total_settlement_target, 0);
-  const grand_total_share = works.reduce((s, w) => s + w.work_total_share, 0);
-  const grand_total_labor_cost = works.reduce((s, w) => s + w.work_total_labor_cost, 0);
-  const grand_total_team_labor_cost = works.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
-  const grand_total_self_labor_cost = works.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
-  const grand_total_net_share = works.reduce((s, w) => s + w.work_total_net_share, 0);
-  const total_production_cost = works.reduce((s, w) => s + w.production_cost, 0);
+  const grand_total_revenue = works_final.reduce((s, w) => s + w.work_total_revenue, 0);
+  const grand_total_base_revenue = works_final.reduce((s, w) => s + w.work_total_base_revenue, 0);
+  const grand_total_exclusion = works_final.reduce((s, w) => s + w.work_total_exclusion, 0);
+  const grand_total_settlement_target = works_final.reduce((s, w) => s + w.work_total_settlement_target, 0);
+  const grand_total_share = works_final.reduce((s, w) => s + w.work_total_share, 0);
+  const grand_total_labor_cost = works_final.reduce((s, w) => s + w.work_total_labor_cost, 0);
+  const grand_total_team_labor_cost = works_final.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
+  const grand_total_self_labor_cost = works_final.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
+  const grand_total_net_share = works_final.reduce((s, w) => s + w.work_total_net_share, 0);
+  const total_production_cost = works_final.reduce((s, w) => s + w.production_cost, 0);
 
   const subtotal = grand_total_net_share - total_production_cost;
 
@@ -446,7 +539,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
-  const hasActiveSerial = works.some(w => {
+  const hasActiveSerial = works_final.some(w => {
     const wk = workPartners.find(wp => wp.work_id === w.work_id);
     const wkData = wk?.work;
     return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
@@ -461,7 +554,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // 조정 항목
   const adjustments = input.settlementAdjustments.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
   const total_adjustment = adjustments.reduce((s, a) => s + a.amount, 0);
-  const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
+  const total_mg_raw = works_final.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
 
   // MG 이력
   const mgHistoryByWork = new Map<string, Omit<MgHistoryEntry, 'work_id' | 'work_name'>[]>();
@@ -483,7 +576,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   let tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null = null;
   let tax_invoice_total = 0;
   if (isCorp) {
-    const result = computeTaxInvoice(works, corpVatType, total_adjustment);
+    const result = computeTaxInvoice(works_final, corpVatType, total_adjustment);
     tax_invoice = result.lines;
     tax_invoice_total = result.total;
   }
@@ -500,7 +593,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   return {
     partner,
     month,
-    works,
+    works: works_final,
     grand_total_revenue,
     grand_total_base_revenue,
     grand_total_exclusion,
@@ -528,7 +621,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
 // ─── 헬퍼 함수 ──────────────────────────────────────────────
 
-function emptyResult(partner: PartnerData, month: string): StatementResult {
+function emptyResult(partner: PartnerData, month: string, _mgPools?: MgPoolEntry[]): StatementResult {
   return {
     partner, month, works: [],
     grand_total_revenue: 0, grand_total_base_revenue: 0, grand_total_exclusion: 0,
