@@ -570,7 +570,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   // 개인: 세금/보험은 MG 차감 후 남은 금액에 대해 계산
   // (MG는 선지급금 회수이므로, 실제 지급되는 금액에 대해서만 원천징수)
-  const taxable_base = isCorp ? subtotal : Math.max(0, subtotal - total_mg_deduction + total_adjustment);
+  // 조정 항목은 세금 기준에 포함하지 않음 (최종 지급액에만 반영)
+  const taxable_base = isCorp ? subtotal : Math.max(0, subtotal - total_mg_deduction);
   const taxType = workPartners[0]?.tax_type || 'standard';
   const tax_breakdown = calculateTax(taxable_base, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
@@ -589,7 +590,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   const final_payment = isCorp
     ? tax_invoice_total - total_mg_deduction
-    : taxable_base - tax_amount - insurance;
+    : taxable_base - tax_amount - insurance + total_adjustment;
 
   return {
     partner,
