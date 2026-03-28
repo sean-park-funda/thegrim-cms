@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { computeLaborCostDeductions } from '@/lib/settlement/staff-salary';
+
+const REVENUE_COLUMNS = ['domestic_paid', 'global_paid', 'domestic_ad', 'global_ad', 'secondary'];
 
 // GET /api/accounting/settlement/mg - MG 잔액 조회
 export async function GET(request: NextRequest) {
@@ -34,6 +37,135 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('MG 잔액 조회 오류:', error);
       return NextResponse.json({ error: 'MG 잔액 조회 실패' }, { status: 500 });
+    }
+
+    // 미확정 건에 대해 mg_deducted를 실시간 계산 (확정 전에도 차감 예상액 표시)
+    if (month && data && data.length > 0) {
+      // 1. 확정 상태 확인
+      const mgPartnerIds = [...new Set(data.map((mg: any) => mg.partner_id))];
+      const mgWorkIds = [...new Set(data.map((mg: any) => mg.work_id))];
+
+      const { data: settlements } = await supabase
+        .from('rs_settlements')
+        .select('partner_id, work_id, status')
+        .eq('month', month)
+        .in('partner_id', mgPartnerIds)
+        .in('work_id', mgWorkIds);
+
+      const confirmedSet = new Set(
+        (settlements || []).filter((s: any) => s.status === 'confirmed')
+          .map((s: any) => `${s.partner_id}:${s.work_id}`)
+      );
+
+      const needsCalc = data.filter((mg: any) => !confirmedSet.has(`${mg.partner_id}:${mg.work_id}`));
+
+      if (needsCalc.length > 0) {
+        // 2. 매출 데이터 조회
+        const { data: allRevenues } = await supabase
+          .from('rs_revenues')
+          .select('*')
+          .eq('month', month);
+
+        const revenueByWorkId = new Map<string, number>();
+        for (const rev of (allRevenues || [])) {
+          revenueByWorkId.set(rev.work_id, Number(rev.total) || 0);
+        }
+
+        // 3. 인건비 공제 계산
+        const laborDeductions = await computeLaborCostDeductions(supabase, month, revenueByWorkId);
+
+        // 4. 작품-파트너 계약 설정
+        const ncPartnerIds = [...new Set(needsCalc.map((mg: any) => mg.partner_id))];
+        const ncWorkIds = [...new Set(needsCalc.map((mg: any) => mg.work_id))];
+
+        const { data: wpSettings } = await supabase
+          .from('rs_work_partners')
+          .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, revenue_rate, mg_depends_on')
+          .in('partner_id', ncPartnerIds)
+          .in('work_id', ncWorkIds);
+
+        // 5. 매출 조정
+        const { data: revAdj } = await supabase
+          .from('rs_revenue_adjustments')
+          .select('work_id, amount')
+          .eq('month', month)
+          .in('work_id', ncWorkIds);
+
+        const revAdjByWork = new Map<string, number>();
+        for (const ra of (revAdj || [])) {
+          revAdjByWork.set(ra.work_id, (revAdjByWork.get(ra.work_id) || 0) + Number(ra.amount));
+        }
+
+        // 6. MG 의존관계 일괄 확인
+        const depTargets = new Map<string, { partner_id: string; work_id: string }>();
+        for (const mg of needsCalc) {
+          const wp = (wpSettings || []).find((w: any) => w.partner_id === mg.partner_id && w.work_id === mg.work_id);
+          if (wp?.mg_depends_on) {
+            const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+            depTargets.set(`${dep.partner_id}:${dep.work_id}`, dep);
+          }
+        }
+
+        const depBalances = new Map<string, number>();
+        for (const [key, dep] of depTargets) {
+          const { data: depMg } = await supabase
+            .from('rs_mg_balances')
+            .select('current_balance')
+            .eq('partner_id', dep.partner_id)
+            .eq('work_id', dep.work_id)
+            .order('month', { ascending: false })
+            .limit(1)
+            .single();
+          depBalances.set(key, depMg ? Number(depMg.current_balance) : 0);
+        }
+
+        // 7. 미확정 건별 mg_deducted 실시간 계산
+        for (const mg of needsCalc) {
+          const wp = (wpSettings || []).find((w: any) => w.partner_id === mg.partner_id && w.work_id === mg.work_id);
+          if (!wp) continue;
+
+          // MG 의존관계 차단 확인
+          if (wp.mg_depends_on) {
+            const dep = wp.mg_depends_on as { partner_id: string; work_id: string };
+            const balance = depBalances.get(`${dep.partner_id}:${dep.work_id}`) || 0;
+            if (balance > 0) {
+              mg.mg_deducted = 0;
+              mg.current_balance = Number(mg.previous_balance) + Number(mg.mg_added);
+              continue;
+            }
+          }
+
+          const rev = (allRevenues || []).find((r: any) => r.work_id === mg.work_id);
+          const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
+            ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+          const revenueRate = Number(wp.revenue_rate) || 1;
+          const includedTypes: string[] = wp.included_revenue_types || REVENUE_COLUMNS;
+          const unconfirmed: string[] = rev?.unconfirmed_types || [];
+
+          // 수익분배금 계산 (매출유형별 revenue_rate 적용 후 RS율 적용)
+          let revenueShare = 0;
+          for (const col of REVENUE_COLUMNS) {
+            if (!includedTypes.includes(col) || unconfirmed.includes(col)) continue;
+            const amount = rev ? Number(rev[col]) || 0 : 0;
+            revenueShare += Math.round(Math.round(amount * revenueRate) * effectiveRate);
+          }
+
+          // 매출 조정 반영
+          const revAdjAmount = revAdjByWork.get(mg.work_id) || 0;
+          revenueShare += Math.round(revAdjAmount * effectiveRate);
+
+          // 인건비 공제
+          const laborCost = laborDeductions.get(`${mg.partner_id}|${mg.work_id}`) || 0;
+
+          // 순수익분배금 → MG 차감액 (statement API와 동일 공식)
+          const netShare = Math.max(0, revenueShare - laborCost);
+          const prevBalance = Number(mg.previous_balance);
+          const mgDeducted = prevBalance > 0 ? Math.min(prevBalance, netShare) : 0;
+
+          mg.mg_deducted = mgDeducted;
+          mg.current_balance = Number(mg.previous_balance) + Number(mg.mg_added) - mgDeducted;
+        }
+      }
     }
 
     return NextResponse.json({ mg_balances: data });
