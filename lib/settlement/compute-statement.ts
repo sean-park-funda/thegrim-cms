@@ -535,22 +535,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   const subtotal = grand_total_net_share - total_production_cost;
 
-  const taxType = workPartners[0]?.tax_type || 'standard';
-  const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
-  const tax_amount = tax_breakdown.total;
-
-  const hasActiveSerial = works_final.some(w => {
-    const wk = workPartners.find(wp => wp.work_id === w.work_id);
-    const wkData = wk?.work;
-    return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-  });
-  const insurance = calculateInsurance(subtotal, partner.partner_type, {
-    serialEndDate: hasActiveSerial ? null : '1900-01-01',
-    reportType: partner.report_type ?? null,
-    month,
-    isForeign: partner.is_foreign ?? false,
-  });
-
   // 조정 항목
   const adjustments = input.settlementAdjustments.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
   const total_adjustment = adjustments.reduce((s, a) => s + a.amount, 0);
@@ -581,14 +565,31 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     tax_invoice_total = result.total;
   }
 
-  // 최종 MG 차감
-  const total_mg_deduction = isCorp
-    ? total_mg_raw
-    : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
+  // MG 차감 (법인/개인 모두 net_share 기준)
+  const total_mg_deduction = total_mg_raw;
+
+  // 개인: 세금/보험은 MG 차감 후 남은 금액에 대해 계산
+  // (MG는 선지급금 회수이므로, 실제 지급되는 금액에 대해서만 원천징수)
+  const taxable_base = isCorp ? subtotal : Math.max(0, subtotal - total_mg_deduction + total_adjustment);
+  const taxType = workPartners[0]?.tax_type || 'standard';
+  const tax_breakdown = calculateTax(taxable_base, partner.partner_type, taxType);
+  const tax_amount = tax_breakdown.total;
+
+  const hasActiveSerial = works_final.some(w => {
+    const wk = workPartners.find(wp => wp.work_id === w.work_id);
+    const wkData = wk?.work;
+    return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
+  });
+  const insurance = calculateInsurance(taxable_base, partner.partner_type, {
+    serialEndDate: hasActiveSerial ? null : '1900-01-01',
+    reportType: partner.report_type ?? null,
+    month,
+    isForeign: partner.is_foreign ?? false,
+  });
 
   const final_payment = isCorp
     ? tax_invoice_total - total_mg_deduction
-    : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
+    : taxable_base - tax_amount - insurance;
 
   return {
     partner,
