@@ -65,20 +65,38 @@ export default function MgPage() {
     }
   }, [profile, selectedMonth]);
 
-  const getWpNote = (partnerId: string, workId: string) => {
-    const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === workId);
+  // 풀의 작품 ID 목록에서 work-partner 찾기
+  const getPoolWorkIds = (mg: RsMgBalance): string[] => {
+    const poolWorks = (mg as any).pool_works || [];
+    return poolWorks.map((pw: any) => pw.work_id).filter(Boolean);
+  };
+
+  const getWpNote = (partnerId: string, mgEntry: RsMgBalance) => {
+    const poolWorkIds = getPoolWorkIds(mgEntry);
+    // 풀 내 첫 번째 work-partner의 note 사용
+    for (const wid of poolWorkIds) {
+      const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === wid);
+      if (wp?.note) return wp.note;
+    }
+    // 하위호환: 직접 work_id로도 시도
+    const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === mgEntry.work_id);
     return wp?.note || '';
   };
 
-  const getWpId = (partnerId: string, workId: string) => {
-    const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === workId);
+  const getWpId = (partnerId: string, mgEntry: RsMgBalance) => {
+    const poolWorkIds = getPoolWorkIds(mgEntry);
+    for (const wid of poolWorkIds) {
+      const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === wid);
+      if (wp) return wp.id;
+    }
+    const wp = workPartners.find(w => w.partner_id === partnerId && w.work_id === mgEntry.work_id);
     return wp?.id;
   };
 
   const openEdit = (mg: RsMgBalance) => {
     setEditMg(mg);
     setEditMonthNote(mg.note || '');
-    setEditCondition(getWpNote(mg.partner_id, mg.work_id));
+    setEditCondition(getWpNote(mg.partner_id, mg));
   };
 
   const handleSave = async () => {
@@ -96,7 +114,7 @@ export default function MgPage() {
       });
 
       // 2) 상시 MG 조건 업데이트 (rs_work_partners.note)
-      const wpId = getWpId(editMg.partner_id, editMg.work_id);
+      const wpId = getWpId(editMg.partner_id, editMg);
       if (wpId) {
         await settlementFetch('/api/accounting/settlement/work-partners', {
           method: 'PUT',
@@ -195,7 +213,7 @@ export default function MgPage() {
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {filtered.map((mg) => {
-                const condition = getWpNote(mg.partner_id, mg.work_id);
+                const condition = getWpNote(mg.partner_id, mg);
                 return (
                   <div key={mg.id} className="border rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
@@ -289,19 +307,25 @@ export default function MgPage() {
                 </thead>
                 <tbody>
                   {filtered.map((mg, i) => {
-                    const condition = getWpNote(mg.partner_id, mg.work_id);
+                    const condition = getWpNote(mg.partner_id, mg);
                     return (
                       <tr key={mg.id} className="border-b hover:bg-muted/50">
                         <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
                         {viewMode === 'work' ? (
                           <>
                             <td className="py-2 px-3 font-medium">
-                              <Link
-                                href={`/accounting/settlement/works/${mg.work_id}`}
-                                className="text-primary hover:underline"
-                              >
-                                {mg.work?.name || '-'}
-                              </Link>
+                              {(() => {
+                                const poolWorkIds = getPoolWorkIds(mg);
+                                const firstWorkId = poolWorkIds[0] || mg.work_id;
+                                return (
+                                  <Link
+                                    href={`/accounting/settlement/works/${firstWorkId}`}
+                                    className="text-primary hover:underline"
+                                  >
+                                    {mg.work?.name || '-'}
+                                  </Link>
+                                );
+                              })()}
                             </td>
                             <td className="py-2 px-3">
                               <Link

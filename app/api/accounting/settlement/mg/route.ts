@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { computeAllStatements } from '@/lib/settlement/compute-all-statements';
 
 // GET /api/accounting/settlement/mg - MG 풀 잔액 조회
 export async function GET(request: NextRequest) {
@@ -20,6 +21,17 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get('month');
     const partnerId = searchParams.get('partnerId');
     const poolId = searchParams.get('poolId');
+    const workId = searchParams.get('workId');
+
+    // workId가 있으면 해당 작품이 속한 풀 ID를 먼저 찾기
+    let workPoolIds: string[] | null = null;
+    if (workId) {
+      const { data: poolWorks } = await supabase
+        .from('rs_mg_pool_works')
+        .select('mg_pool_id')
+        .eq('work_id', workId);
+      workPoolIds = (poolWorks || []).map((pw: any) => pw.mg_pool_id);
+    }
 
     let query = supabase
       .from('rs_mg_pool_balances')
@@ -28,36 +40,85 @@ export async function GET(request: NextRequest) {
 
     if (month) query = query.eq('month', month);
     if (poolId) query = query.eq('mg_pool_id', poolId);
+    if (workPoolIds && workPoolIds.length > 0) query = query.in('mg_pool_id', workPoolIds);
 
-    // partnerId 필터: 풀의 partner_id로
     const { data, error } = await query;
     if (error) {
       console.error('MG 풀 잔액 조회 오류:', error);
       return NextResponse.json({ error: 'MG 풀 잔액 조회 실패' }, { status: 500 });
     }
 
-    // partnerId 필터 (PostgREST에서 nested FK 필터 제한으로 JS에서 필터)
     let filtered = data || [];
     if (partnerId) {
       filtered = filtered.filter((d: any) => d.pool?.partner_id === partnerId);
     }
+    // workPoolIds가 빈 배열이면 결과 없음
+    if (workPoolIds && workPoolIds.length === 0) {
+      filtered = [];
+    }
 
-    // 하위호환: 기존 프론트엔드가 mg_balances 형태를 기대할 수 있으므로 변환
+    // 미확정 건의 mg_deducted를 실시간 계산으로 오버라이드
+    // 확정된 파트너의 풀은 DB 저장값 그대로 사용
+    let poolDeductionOverrides = new Map<string, number>(); // mg_pool_id → deduction
+    if (month && filtered.length > 0) {
+      // 확정 상태 확인
+      const { data: confirmedSettlements } = await supabase
+        .from('rs_settlements')
+        .select('partner_id')
+        .eq('month', month)
+        .eq('status', 'confirmed');
+      const confirmedPartnerIds = new Set((confirmedSettlements || []).map((s: any) => s.partner_id));
+
+      // 미확정 풀이 있는지 확인
+      const unconfirmedPools = filtered.filter((d: any) =>
+        !confirmedPartnerIds.has(d.pool?.partner_id)
+      );
+
+      if (unconfirmedPools.length > 0) {
+        // computeAllStatements로 실시간 차감액 계산
+        const bulkResult = await computeAllStatements(supabase, month);
+
+        // 풀별 차감액 합산
+        for (const { result } of bulkResult.partners) {
+          for (const w of result.works) {
+            if (w.mg_pool_id && w.mg_deduction > 0) {
+              poolDeductionOverrides.set(
+                w.mg_pool_id,
+                (poolDeductionOverrides.get(w.mg_pool_id) || 0) + w.mg_deduction
+              );
+            }
+          }
+        }
+      }
+    }
+
     const mg_balances = filtered.map((d: any) => {
       const poolWorks = d.pool?.works || [];
       const workNames = poolWorks.map((pw: any) => pw.work?.name || '').filter(Boolean);
+
+      let mgDeducted = Number(d.mg_deducted);
+      let currentBalance = Number(d.current_balance);
+
+      // 미확정 건은 실시간 계산값으로 오버라이드
+      if (poolDeductionOverrides.has(d.mg_pool_id)) {
+        mgDeducted = poolDeductionOverrides.get(d.mg_pool_id)!;
+        currentBalance = Number(d.previous_balance) + Number(d.mg_added) - mgDeducted;
+      }
+
       return {
         id: d.id,
         mg_pool_id: d.mg_pool_id,
+        partner_id: d.pool?.partner_id || '',
         month: d.month,
-        previous_balance: d.previous_balance,
-        mg_added: d.mg_added,
-        mg_deducted: d.mg_deducted,
-        current_balance: d.current_balance,
+        previous_balance: Number(d.previous_balance),
+        mg_added: Number(d.mg_added),
+        mg_deducted: mgDeducted,
+        current_balance: currentBalance,
         note: d.note,
         pool_name: d.pool?.name || '',
         partner: d.pool?.partner || null,
         work: { id: d.mg_pool_id, name: d.pool?.name || workNames.join(', ') },
+        work_id: d.mg_pool_id, // 하위호환
         pool_works: poolWorks,
       };
     });
