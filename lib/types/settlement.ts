@@ -156,6 +156,7 @@ export interface RsMgBalance {
   month: string;
   partner_id: string;
   work_id: string;
+  mg_pool_id?: string;
   previous_balance: number;
   mg_added: number;
   mg_deducted: number;
@@ -166,6 +167,8 @@ export interface RsMgBalance {
   // joined
   partner?: RsPartner;
   work?: RsWork;
+  pool_name?: string;
+  pool_works?: { work_id: string; mg_rs_rate: number | null; work?: RsWork }[];
 }
 
 export interface RsUploadHistory {

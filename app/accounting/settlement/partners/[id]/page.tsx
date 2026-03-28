@@ -892,10 +892,23 @@ export default function PartnerDetailPage() {
                         let mgDeducted = mg.mg_deducted;
                         let currentBalance = mg.current_balance;
                         if (statement && mg.month === statement.month) {
-                          const stWork = statement.works.find(w => w.work_id === mg.work_id);
-                          if (stWork && stWork.is_mg_applied) {
-                            mgDeducted = stWork.mg_deduction;
-                            currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                          // 풀 기반: mg_pool_id로 매칭하여 풀 내 전체 작품 차감 합산
+                          const poolId = mg.mg_pool_id;
+                          if (poolId) {
+                            const poolDeduction = statement.works
+                              .filter((w: any) => w.mg_pool_id === poolId)
+                              .reduce((s: number, w: any) => s + (w.mg_deduction || 0), 0);
+                            if (poolDeduction > 0) {
+                              mgDeducted = poolDeduction;
+                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                            }
+                          } else {
+                            // 하위호환: 작품별 매칭
+                            const stWork = statement.works.find((w: any) => w.work_id === mg.work_id);
+                            if (stWork && stWork.is_mg_applied) {
+                              mgDeducted = stWork.mg_deduction;
+                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                            }
                           }
                         }
                         return (
@@ -927,10 +940,21 @@ export default function PartnerDetailPage() {
                           let mgDeducted = mg.mg_deducted;
                           let currentBalance = mg.current_balance;
                           if (statement && mg.month === statement.month) {
-                            const stWork = statement.works.find(w => w.work_id === mg.work_id);
-                            if (stWork && stWork.is_mg_applied) {
-                              mgDeducted = stWork.mg_deduction;
-                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                            const poolId = mg.mg_pool_id;
+                            if (poolId) {
+                              const poolDeduction = statement.works
+                                .filter((w: any) => w.mg_pool_id === poolId)
+                                .reduce((s: number, w: any) => s + (w.mg_deduction || 0), 0);
+                              if (poolDeduction > 0) {
+                                mgDeducted = poolDeduction;
+                                currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                              }
+                            } else {
+                              const stWork = statement.works.find((w: any) => w.work_id === mg.work_id);
+                              if (stWork && stWork.is_mg_applied) {
+                                mgDeducted = stWork.mg_deduction;
+                                currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
+                              }
                             }
                           }
                           return {
