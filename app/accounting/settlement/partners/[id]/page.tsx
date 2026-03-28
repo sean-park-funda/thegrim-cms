@@ -903,8 +903,8 @@ export default function PartnerDetailPage() {
                           <td className="py-2 px-3 font-medium">{mg.month}</td>
                           <td className="py-2 px-3">{mg.work?.name || '-'}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(mg.previous_balance)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
-                            {mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : '-'}
+                          <td className={`py-2 px-3 text-right tabular-nums hidden md:table-cell ${mg.mg_added > 0 ? 'text-blue-600' : mg.mg_added < 0 ? 'text-red-600' : ''}`}>
+                            {mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : mg.mg_added < 0 ? mg.mg_added.toLocaleString() : '-'}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                             {mgDeducted > 0 ? `-${mgDeducted.toLocaleString()}` : '-'}
