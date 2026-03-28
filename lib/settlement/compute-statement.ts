@@ -531,9 +531,10 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const grand_total_team_labor_cost = works_final.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
   const grand_total_self_labor_cost = works_final.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
   const grand_total_net_share = works_final.reduce((s, w) => s + w.work_total_net_share, 0);
-  const total_production_cost = works_final.reduce((s, w) => s + w.production_cost, 0);
+  // production_cost는 인건비와 동일한 값으로 이중차감됨 — net_share에서 이미 차감되므로 무시
+  const total_production_cost = 0;
 
-  const subtotal = grand_total_net_share - total_production_cost;
+  const subtotal = grand_total_net_share;
 
   // 조정 항목
   const adjustments = input.settlementAdjustments.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
