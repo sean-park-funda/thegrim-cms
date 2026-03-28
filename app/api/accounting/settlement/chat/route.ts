@@ -113,7 +113,7 @@ async function executeGetRevenue(args: Record<string, string>) {
 async function executeGetSettlement(args: Record<string, string>) {
   let query = supabase
     .from('rs_settlements')
-    .select('month, gross_revenue, rs_rate, revenue_share, production_cost, adjustment, tax_rate, tax_amount, insurance, mg_deduction, other_deduction, final_payment, status, partner:rs_partners!inner(name), work:rs_works!inner(name)')
+    .select('month, gross_revenue, rs_rate, revenue_share, adjustment, tax_rate, tax_amount, insurance, mg_deduction, other_deduction, final_payment, status, partner:rs_partners!inner(name), work:rs_works!inner(name)')
     .order('month', { ascending: false });
 
   if (args.partner_name) {

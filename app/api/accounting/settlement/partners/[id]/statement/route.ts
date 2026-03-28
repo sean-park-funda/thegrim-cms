@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgPools: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], productionCosts: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgPools: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -92,16 +92,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const workIds = wpData.map(wp => wp.work_id);
 
-    // 3) 매출, 조정, 제작비용, 정산조정 — 병렬 조회
+    // 3) 매출, 조정, 정산조정 — 병렬 조회
     const [
       { data: revenues },
       { data: revAdjustments },
-      { data: productionCosts },
       { data: adjustmentItems },
     ] = await Promise.all([
       supabase.from('rs_revenues').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
-      supabase.from('rs_production_costs').select('*').eq('month', month).eq('partner_id', id).in('work_id', workIds),
       supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
     ]);
 
@@ -278,9 +276,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       settlementAdjustments: (adjustmentItems || []).map(a => ({
         id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount),
       })),
-      productionCosts: (productionCosts || []).map(pc => ({
-        partner_id: pc.partner_id, work_id: pc.work_id, amount: Number(pc.amount),
-      })),
+      productionCosts: [],
       laborCostItems,
       laborCostPartnerLinks,
       laborCostWorkLinks,

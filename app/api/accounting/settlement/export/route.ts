@@ -82,7 +82,6 @@ export async function GET(request: NextRequest) {
           '사업자번호': partner.tax_id || '',
           '작품명': result.works.map(w => w.work_name).join(', '),
           '수익분배금': result.grand_total_net_share,
-          '제작비': result.total_production_cost,
           '수익정산금': result.subtotal,
           '부가세': result.tax_breakdown.vat,
           '소득세': -result.tax_breakdown.income_tax,

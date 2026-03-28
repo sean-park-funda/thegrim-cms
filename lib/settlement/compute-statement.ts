@@ -131,12 +131,6 @@ export interface MgHistoryEntry {
   note: string;
 }
 
-export interface ProductionCostEntry {
-  partner_id: string;
-  work_id: string;
-  amount: number;
-}
-
 /** 한 파트너에 대한 계산에 필요한 모든 데이터 */
 export interface PartnerComputeInput {
   partner: PartnerData;
@@ -148,7 +142,8 @@ export interface PartnerComputeInput {
   mgDepBlocked: Map<string, MgDepInfoEntry>;  // work_id → {partner_name, balance}
   revenueAdjustments: RevenueAdjustmentItem[];
   settlementAdjustments: SettlementAdjustmentItem[];
-  productionCosts: ProductionCostEntry[];
+  /** @deprecated production costs table has been dropped */
+  productionCosts?: { partner_id: string; work_id: string; amount: number }[];
   laborCostItems: LaborCostItem[];
   laborCostPartnerLinks: LaborCostPartnerLink[];
   laborCostWorkLinks: LaborCostWorkLink[];
@@ -203,7 +198,6 @@ export interface WorkStatement {
   mg_balance: number;
   mg_deduction: number;
   mg_remaining: number;
-  production_cost: number;
 }
 
 export interface StatementResult {
@@ -227,7 +221,6 @@ export interface StatementResult {
   total_mg_deduction: number;
   adjustments: { id: string; label: string; amount: number }[];
   total_adjustment: number;
-  total_production_cost: number;
   final_payment: number;
   mg_history: { work_name: string; history: Omit<MgHistoryEntry, 'work_id' | 'work_name'>[] }[];
   tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null;
@@ -285,14 +278,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const list = revAdjItemsByWork.get(ra.work_id) || [];
     list.push({ id: ra.id, label: ra.label, amount: ra.amount });
     revAdjItemsByWork.set(ra.work_id, list);
-  }
-
-  // 제작비용 맵
-  const productionCostByWork = new Map<string, number>();
-  for (const pc of input.productionCosts) {
-    if (pc.partner_id === partner.id) {
-      productionCostByWork.set(pc.work_id, pc.amount);
-    }
   }
 
   // ─── 인건비 계산 ──────────────────────────────
@@ -417,8 +402,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     // MG 차감은 풀 단위로 아래에서 처리 — 여기서는 0으로 초기화
     const pool = mgPoolByWork.get(wp.work_id) || null;
 
-    const prodCost = productionCostByWork.get(wp.work_id) || 0;
-
     return {
       work_name: work?.name || '',
       work_id: wp.work_id,
@@ -448,7 +431,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       mg_balance: 0,        // 풀 단위로 아래에서 설정
       mg_deduction: 0,      // 풀 단위로 아래에서 설정
       mg_remaining: 0,      // 풀 단위로 아래에서 설정
-      production_cost: prodCost,
     };
   }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
 
@@ -531,9 +513,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const grand_total_team_labor_cost = works_final.reduce((s, w) => s + w.work_total_team_labor_cost, 0);
   const grand_total_self_labor_cost = works_final.reduce((s, w) => s + w.work_total_self_labor_cost, 0);
   const grand_total_net_share = works_final.reduce((s, w) => s + w.work_total_net_share, 0);
-  // production_cost는 인건비와 동일한 값으로 이중차감됨 — net_share에서 이미 차감되므로 무시
-  const total_production_cost = 0;
-
   const subtotal = grand_total_net_share;
 
   // 조정 항목
@@ -614,7 +593,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     total_mg_deduction,
     adjustments,
     total_adjustment,
-    total_production_cost,
     final_payment,
     mg_history,
     tax_invoice,
@@ -633,7 +611,7 @@ function emptyResult(partner: PartnerData, month: string, _mgPools?: MgPoolEntry
     subtotal: 0, tax_type: 'standard',
     tax_breakdown: { income_tax: 0, local_tax: 0, vat: 0, total: 0 },
     tax_amount: 0, insurance: 0, total_mg_deduction: 0,
-    adjustments: [], total_adjustment: 0, total_production_cost: 0, final_payment: 0,
+    adjustments: [], total_adjustment: 0, final_payment: 0,
     mg_history: [], tax_invoice: null, tax_invoice_total: 0,
   };
 }

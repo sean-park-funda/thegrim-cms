@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
           gross_revenue: w.work_total_revenue,
           rs_rate: w.effective_rate,
           revenue_share: w.work_total_net_share,
-          production_cost: w.production_cost,
+          production_cost: 0,
           tax_amount: result.tax_amount,
           insurance: result.insurance,
           mg_deduction: w.mg_deduction,

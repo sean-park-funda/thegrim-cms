@@ -16,7 +16,6 @@ interface SummaryRow {
   tax_id: string;
   works_list: string;
   revenue_share: number;
-  production_cost: number;
   settlement_amount: number;
   vat: number;
   income_tax: number;
@@ -57,7 +56,6 @@ export function SettlementSummaryTable({ data, loading }: Props) {
   const totals = filtered.reduce(
     (acc, r) => ({
       revenue_share: acc.revenue_share + r.revenue_share,
-      production_cost: acc.production_cost + r.production_cost,
       settlement_amount: acc.settlement_amount + r.settlement_amount,
       vat: acc.vat + r.vat,
       income_tax: acc.income_tax + r.income_tax,
@@ -66,7 +64,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
       mg_deduction: acc.mg_deduction + r.mg_deduction,
       final_payment: acc.final_payment + r.final_payment,
     }),
-    { revenue_share: 0, production_cost: 0, settlement_amount: 0, vat: 0, income_tax: 0, local_tax: 0, insurance: 0, mg_deduction: 0, final_payment: 0 }
+    { revenue_share: 0, settlement_amount: 0, vat: 0, income_tax: 0, local_tax: 0, insurance: 0, mg_deduction: 0, final_payment: 0 }
   );
 
   return (
@@ -138,7 +136,6 @@ export function SettlementSummaryTable({ data, loading }: Props) {
               <th className="px-2 py-2 text-left text-xs">사업자번호</th>
               <th className="px-2 py-2 text-left max-w-[180px]">작품명</th>
               <th className="px-2 py-2 text-right">수익분배금</th>
-              <th className="px-2 py-2 text-right">제작비</th>
               <th className="px-2 py-2 text-right font-medium">수익정산금</th>
               <th className="px-2 py-2 text-right text-blue-600">부가세</th>
               <th className="px-2 py-2 text-right text-orange-600">소득세</th>
@@ -154,7 +151,7 @@ export function SettlementSummaryTable({ data, loading }: Props) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={18} className="py-8 text-center text-muted-foreground">
+                <td colSpan={17} className="py-8 text-center text-muted-foreground">
                   데이터가 없습니다.
                 </td>
               </tr>
@@ -171,7 +168,6 @@ export function SettlementSummaryTable({ data, loading }: Props) {
                     {r.works_list}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmt(r.revenue_share)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{fmtSigned(r.production_cost)}</td>
                   <td className="px-2 py-2 text-right tabular-nums font-medium">{fmt(r.settlement_amount)}</td>
                   <td className={`px-2 py-2 text-right tabular-nums ${r.vat > 0 ? 'text-blue-600' : ''}`}>
                     {fmtSigned(r.vat)}
@@ -216,7 +212,6 @@ export function SettlementSummaryTable({ data, loading }: Props) {
               <tr className="border-t-2 font-semibold">
                 <td colSpan={7} className="px-2 py-2">합계 ({filtered.length}건)</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.revenue_share)}</td>
-                <td className="px-2 py-2 text-right tabular-nums">{fmtSigned(totals.production_cost)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.settlement_amount)}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-blue-600">{fmtSigned(totals.vat)}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-orange-600">{fmtSigned(totals.income_tax)}</td>

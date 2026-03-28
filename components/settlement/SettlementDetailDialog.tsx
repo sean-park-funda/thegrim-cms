@@ -12,12 +12,11 @@ interface SettlementDetailDialogProps {
   settlement: RsSettlement | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (id: string, data: { status?: SettlementStatus; production_cost?: number; note?: string }) => Promise<void>;
+  onSave: (id: string, data: { status?: SettlementStatus; note?: string }) => Promise<void>;
 }
 
 export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave }: SettlementDetailDialogProps) {
   const [status, setStatus] = useState<SettlementStatus>(settlement?.status || 'draft');
-  const [productionCost, setProductionCost] = useState(String(settlement?.production_cost || 0));
   const [note, setNote] = useState(settlement?.note || '');
   const [saving, setSaving] = useState(false);
 
@@ -28,7 +27,6 @@ export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave 
     try {
       await onSave(settlement.id, {
         status,
-        production_cost: Number(productionCost),
         note: note || undefined,
       });
       onOpenChange(false);
@@ -78,10 +76,6 @@ export function SettlementDetailDialog({ settlement, open, onOpenChange, onSave 
                   <SelectItem value="paid">지급완료</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label>제작비</Label>
-              <Input type="number" value={productionCost} onChange={(e) => setProductionCost(e.target.value)} />
             </div>
             <div>
               <Label>메모</Label>

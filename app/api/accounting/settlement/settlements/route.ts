@@ -61,28 +61,10 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { partner_id, work_id, month, production_cost, note } = body;
+    const { partner_id, work_id, month, note } = body;
 
     if (!partner_id || !work_id || !month) {
       return NextResponse.json({ error: 'partner_id, work_id, month은 필수입니다.' }, { status: 400 });
-    }
-
-    // 제작비용 → rs_production_costs에 저장
-    if (production_cost !== undefined) {
-      const { error: pcErr } = await supabase
-        .from('rs_production_costs')
-        .upsert({
-          partner_id,
-          work_id,
-          month,
-          amount: production_cost,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'partner_id,work_id,month' });
-
-      if (pcErr) {
-        console.error('제작비용 수정 오류:', pcErr);
-        return NextResponse.json({ error: '제작비용 수정 실패' }, { status: 500 });
-      }
     }
 
     // 메모 → rs_settlements에 저장 (확정 레코드가 있는 경우만)

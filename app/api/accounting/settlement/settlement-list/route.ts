@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       tax_id: partner.tax_id || '',
       works_list: result.works.map(w => w.work_name).join(', '),
       revenue_share: result.grand_total_net_share,
-      production_cost: result.total_production_cost,
+      production_cost: 0,
       settlement_amount: result.subtotal,
       vat: result.tax_breakdown.vat,
       income_tax: -result.tax_breakdown.income_tax,
