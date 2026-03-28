@@ -144,23 +144,63 @@ export async function GET(request: NextRequest) {
 
           // 수익분배금 계산 (매출유형별 revenue_rate 적용 후 RS율 적용)
           let revenueShare = 0;
+          let domesticPaidShare = 0;
           for (const col of REVENUE_COLUMNS) {
             if (!includedTypes.includes(col) || unconfirmed.includes(col)) continue;
             const amount = rev ? Number(rev[col]) || 0 : 0;
-            revenueShare += Math.round(Math.round(amount * revenueRate) * effectiveRate);
+            const colShare = Math.round(Math.round(amount * revenueRate) * effectiveRate);
+            revenueShare += colShare;
+            if (col === 'domestic_paid') domesticPaidShare = colShare;
           }
 
           // 매출 조정 반영
           const revAdjAmount = revAdjByWork.get(mg.work_id) || 0;
-          revenueShare += Math.round(revAdjAmount * effectiveRate);
+          const revAdjRS = Math.round(revAdjAmount * effectiveRate);
+          revenueShare += revAdjRS;
 
           // 인건비 공제
           const laborCost = laborDeductions.get(`${mg.partner_id}|${mg.work_id}`) || 0;
 
-          // 순수익분배금 → MG 차감액 (statement API와 동일 공식)
+          // 순수익분배금
           const netShare = Math.max(0, revenueShare - laborCost);
+
+          // MG 차감 cap 결정: 사업자는 세금계산서 합계(VAT 포함), 개인은 순수익분배금
+          const partnerType = mg.partner?.partner_type;
+          const isCorp = partnerType === 'domestic_corp' || partnerType === 'naver';
+          let mgCap = netShare;
+
+          if (isCorp && netShare > 0) {
+            // 인건비를 국내유료/기타에 비례 배분하여 net 산출
+            const otherShare = revenueShare - revAdjRS - domesticPaidShare;
+            const totalShareForRatio = domesticPaidShare + otherShare;
+            let domesticPaidNet = domesticPaidShare;
+            let otherNet = otherShare + revAdjRS;
+            if (totalShareForRatio > 0 && laborCost > 0) {
+              const domesticLabor = Math.round(laborCost * (domesticPaidShare / totalShareForRatio));
+              domesticPaidNet = Math.max(0, domesticPaidShare - domesticLabor);
+              otherNet = Math.max(0, otherShare - (laborCost - domesticLabor)) + revAdjRS;
+            }
+
+            // VAT 계산 (statement API와 동일 로직)
+            const vatType = mg.partner?.vat_type as string;
+            let taxInvoiceTotal = 0;
+            if (domesticPaidNet > 0) {
+              if (vatType === 'tax_exempt') {
+                taxInvoiceTotal += domesticPaidNet; // 면세
+              } else if (vatType === 'vat_separate') {
+                taxInvoiceTotal += domesticPaidNet + Math.round(domesticPaidNet * 0.1); // 외세
+              } else {
+                taxInvoiceTotal += domesticPaidNet; // 내세 (VAT 포함가)
+              }
+            }
+            if (otherNet > 0) {
+              taxInvoiceTotal += otherNet + Math.round(otherNet * 0.1);
+            }
+            mgCap = taxInvoiceTotal;
+          }
+
           const prevBalance = Number(mg.previous_balance);
-          const mgDeducted = prevBalance > 0 ? Math.min(prevBalance, netShare) : 0;
+          const mgDeducted = prevBalance > 0 ? Math.min(prevBalance, Math.max(0, mgCap)) : 0;
 
           mg.mg_deducted = mgDeducted;
           mg.current_balance = Number(mg.previous_balance) + Number(mg.mg_added) - mgDeducted;

@@ -559,12 +559,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       isForeign: partner.is_foreign ?? false,
     });
 
-    // MG 차감: 세금·예고료 차감 후 남은 금액까지만 차감 가능
-    const afterTax = subtotal - tax_amount - insurance;
-    const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
     // 조정 항목 합산 (양수=추가, 음수=차감)
     const total_adjustment = (adjustmentItems || []).reduce((s, a) => s + Number(a.amount), 0);
-    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, afterTax + total_adjustment));
+    const total_mg_raw = works.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
 
     // MG 전체 이력을 작품별로 그룹핑
     const mgHistoryByWork = new Map<string, { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number; note: string }[]>();
@@ -649,6 +646,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
       tax_invoice_total = tax_invoice.reduce((s, t) => s + t.total, 0);
     }
+
+    // MG 차감: 사업자는 세금계산서 합계(VAT 포함), 개인은 세금·예고료 차감 후 남은 금액까지
+    const mgDeductionCap = isCorp
+      ? tax_invoice_total
+      : Math.max(0, subtotal - tax_amount - insurance + total_adjustment);
+    const total_mg_deduction = Math.min(total_mg_raw, Math.max(0, mgDeductionCap));
 
     const final_payment = isCorp
       ? tax_invoice_total - total_mg_deduction
