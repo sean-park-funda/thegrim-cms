@@ -384,14 +384,11 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const revAdjRS = blocked ? 0 : Math.round(workRevAdj * effectiveRate);
     const work_total_net_share = details.reduce((s, d) => s + d.net_share, 0) + revAdjRS;
 
-    // MG 차감 (작품별)
+    // MG 잔액 (사업자는 파트너 레벨에서 일괄 차감, 개인은 작품별 차감)
     const prevBalance = mgPrevBalanceByWork.get(wp.work_id) || 0;
     let mg_deduction = 0;
-    if (wp.is_mg_applied && prevBalance > 0) {
-      let mgCap = Math.max(0, work_total_net_share);
-      if (isCorp && work_total_net_share > 0) {
-        mgCap = computeCorpMgCap(details, work_total_net_share, corpVatType);
-      }
+    if (!isCorp && wp.is_mg_applied && prevBalance > 0) {
+      const mgCap = Math.max(0, work_total_net_share);
       mg_deduction = Math.min(prevBalance, mgCap);
     }
 
@@ -489,9 +486,34 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   }
 
   // 최종 MG 차감
-  const total_mg_deduction = isCorp
-    ? total_mg_raw
-    : Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
+  let total_mg_deduction: number;
+  if (isCorp) {
+    // 사업자: 전체 MG 잔액 합계를 세금계산서 합계로 cap
+    const totalMgBalance = works.reduce((s, w) => s + w.mg_balance, 0);
+    total_mg_deduction = Math.min(totalMgBalance, Math.max(0, tax_invoice_total));
+    // 작품별 mg_deduction 재배분 (세금계산서 기여 비율)
+    if (total_mg_deduction > 0 && works.some(w => w.mg_balance > 0)) {
+      // 각 작품의 VAT 포함 금액 비율로 배분
+      const workInvoiceAmounts = works.map(w => {
+        if (w.work_total_net_share <= 0) return 0;
+        return computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
+      });
+      const totalInvoice = workInvoiceAmounts.reduce((s, a) => s + a, 0);
+      let distributed = 0;
+      for (let i = 0; i < works.length; i++) {
+        if (works[i].mg_balance <= 0) continue;
+        const share = totalInvoice > 0
+          ? (i === works.length - 1 ? total_mg_deduction - distributed : Math.round(total_mg_deduction * (workInvoiceAmounts[i] / totalInvoice)))
+          : Math.round(total_mg_deduction / works.filter(w => w.mg_balance > 0).length);
+        const capped = Math.min(works[i].mg_balance, share);
+        works[i].mg_deduction = capped;
+        works[i].mg_remaining = works[i].mg_balance - capped;
+        distributed += capped;
+      }
+    }
+  } else {
+    total_mg_deduction = Math.min(total_mg_raw, Math.max(0, subtotal - tax_amount - insurance + total_adjustment));
+  }
 
   const final_payment = isCorp
     ? tax_invoice_total - total_mg_deduction
