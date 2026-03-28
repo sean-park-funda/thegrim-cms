@@ -248,6 +248,17 @@ export default function WorksPage() {
                 </tr>
               </thead>
               <tbody>
+                {/* 합계 행 (상단 고정) */}
+                <tr className="border-b-2 border-zinc-200 dark:border-zinc-700 font-semibold bg-zinc-50/50 dark:bg-zinc-800/30">
+                  <td className="py-3 px-4">합계 ({filtered.length}건)</td>
+                  <td className="py-3 px-4 hidden md:table-cell"></td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_paid)}</td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_paid)}</td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_ad)}</td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_ad)}</td>
+                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.secondary)}</td>
+                  <td className="py-3 px-4 text-right tabular-nums">{fmt(totals.total)}</td>
+                </tr>
                 {sorted.map((w) => {
                   const rev = revenueMap.get(w.id);
                   const wps = workPartners.filter(wp => wp.work_id === w.id);
@@ -282,18 +293,6 @@ export default function WorksPage() {
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-zinc-200 dark:border-zinc-700 font-semibold bg-zinc-50/50 dark:bg-zinc-800/30">
-                  <td className="py-3 px-4">합계 ({filtered.length}건)</td>
-                  <td className="py-3 px-4 hidden md:table-cell"></td>
-                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_paid)}</td>
-                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_paid)}</td>
-                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.domestic_ad)}</td>
-                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.global_ad)}</td>
-                  <td className="py-3 px-4 text-right tabular-nums hidden md:table-cell">{fmt(totals.secondary)}</td>
-                  <td className="py-3 px-4 text-right tabular-nums">{fmt(totals.total)}</td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         )}
