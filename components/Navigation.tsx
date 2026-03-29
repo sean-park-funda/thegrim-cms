@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store/useStore';
 import { signOut } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Film, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn, DollarSign, TrendingUp } from 'lucide-react';
+import { Film, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn, DollarSign, TrendingUp, Clapperboard } from 'lucide-react';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 import { type ApiProvider } from '@/lib/supabase';
 import {
@@ -103,17 +103,31 @@ export function Navigation() {
           {/* 탭 네비게이션 - Linear 스타일: 미니멀한 탭 */}
           <div className="flex items-center gap-1 flex-shrink-0">
             <Link href="/webtoons">
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
-                  pathname?.startsWith('/webtoons') 
-                    ? 'bg-background/20 text-background' 
+                  pathname?.startsWith('/webtoons')
+                    ? 'bg-background/20 text-background'
                     : 'text-background/70 hover:text-background hover:bg-background/10'
                 }`}
               >
                 <Film className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">웹툰</span>
+              </Button>
+            </Link>
+            <Link href="/shortstoon">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 px-2 sm:px-3 text-xs font-medium transition-colors duration-150 ${
+                  pathname?.startsWith('/shortstoon')
+                    ? 'bg-background/20 text-background'
+                    : 'text-background/70 hover:text-background hover:bg-background/10'
+                }`}
+              >
+                <Clapperboard className="h-4 w-4 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">숏스툰</span>
               </Button>
             </Link>
             {profile && (profile.role === 'admin' || profile.role === 'executive' || profile.role === 'accountant' || profile.role === 'strategy' || profile.role === 'manager') && (

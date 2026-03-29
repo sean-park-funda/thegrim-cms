@@ -476,3 +476,81 @@ export const MOTION_TYPE_PRESETS: Record<MovingWebtoonMotionType, { label: strin
     prompt: '',
   },
 };
+
+// ─── Shortstoon ───────────────────────────────────────────────────────────────
+
+export type ShortstoonEffectType =
+  | 'none'
+  | 'scroll_h'
+  | 'scroll_v'
+  | 'zoom_in'
+  | 'zoom_out'
+  | 'shake'
+  | 'flash'
+  | 'ai_motion';
+
+export type ShortstoonTransitionType =
+  | 'none'
+  | 'fade'
+  | 'fadeblack'
+  | 'fadewhite'
+  | 'slideleft'
+  | 'slidedown'
+  | 'zoom';
+
+export interface ShortstoonViewport {
+  scale: number;     // 1.0 = cover (9:16 최소 커버 배율)
+  offset_x: number;  // 0~1, 0.5 = 중앙
+  offset_y: number;  // 0~1, 0.5 = 중앙
+}
+
+export interface ShortstoonBlock {
+  id: string;
+  shortstoon_project_id: string;
+  order_index: number;
+  image_path: string;
+  image_url: string;
+  file_name: string;
+  viewport: ShortstoonViewport;
+  effect_type: ShortstoonEffectType;
+  effect_params: Record<string, unknown>;
+  duration_ms: number;
+  transition_type: ShortstoonTransitionType;
+  transition_duration_ms: number;
+  status: 'pending' | 'rendering' | 'completed' | 'failed';
+  video_url: string | null;
+  video_path: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShortstoonProject {
+  id: string;
+  name: string;
+  aspect_ratio: string;
+  created_at: string;
+  updated_at: string;
+  blocks?: ShortstoonBlock[];
+}
+
+export const SHORTSTOON_EFFECT_LABELS: Record<ShortstoonEffectType, string> = {
+  none: '없음',
+  scroll_h: '좌우 스크롤',
+  scroll_v: '상하 스크롤',
+  zoom_in: '줌인',
+  zoom_out: '줌아웃',
+  shake: '흔들림',
+  flash: '반짝임',
+  ai_motion: 'AI 모션',
+};
+
+export const SHORTSTOON_TRANSITION_LABELS: Record<ShortstoonTransitionType, string> = {
+  none: '없음',
+  fade: '페이드',
+  fadeblack: '블랙 페이드',
+  fadewhite: '화이트 페이드',
+  slideleft: '슬라이드 →',
+  slidedown: '슬라이드 ↑',
+  zoom: '줌 전환',
+};
