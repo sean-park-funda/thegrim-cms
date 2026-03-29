@@ -226,7 +226,7 @@ export async function PATCH(request: NextRequest) {
 
     const allowed = [
       'cut_synopsis', 'frame_role', 'frame_strategy', 'use_colorize', 'aspect_ratio',
-      'colorize_reference_url', 'use_prev_cut_as_start', 'video_duration',
+      'colorize_reference_url', 'use_prev_cut_as_start', 'use_start_frame_bg_ref', 'video_duration',
       'start_frame_url', 'end_frame_url',
       'gemini_colorize_prompt', 'gemini_colorize_prompt_ko',
       'gemini_expand_prompt', 'gemini_expand_prompt_ko',

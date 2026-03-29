@@ -195,6 +195,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [useColorize, setUseColorize] = useState(cut.use_colorize !== false);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
   const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
+  const [useStartFrameBgRef, setUseStartFrameBgRef] = useState(cut.use_start_frame_bg_ref || false);
   const [videoDuration, setVideoDuration] = useState<number>(cut.video_duration || 7);
   const [videoModel, setVideoModel] = useState<'wan22' | 'ltx23'>('wan22');
   const [colorizeRefUrl, setColorizeRefUrl] = useState(cut.colorize_reference_url || '');
@@ -387,10 +388,14 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const handleGenAnchor = async () => {
     setGenAnchor(true);
     try {
+      const startFrameBgRefUrl =
+        useStartFrameBgRef && usePrevCut
+          ? (prevCut?.end_frame_url || null)
+          : null;
       const res = await fetch('/api/webtoonanimation/generate-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cutId: cut.id, step: 'anchor' }),
+        body: JSON.stringify({ cutId: cut.id, step: 'anchor', ...(startFrameBgRefUrl ? { startFrameBgRefUrl } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -662,16 +667,31 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           afterRefine={handleGenAnchor}
           refining={refiningType === 'expand'}
           actionSlot={
-            <Button
-              onClick={handleGenAnchor}
-              disabled={genAnchor || !expandEn}
-              variant={hasAnchor ? 'outline' : 'default'}
-              size="sm" className="w-full"
-            >
-              {genAnchor
-                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />생성 중...</>
-                : <><ImageIcon className="h-3 w-3 mr-1" />{hasAnchor ? '재생성' : '생성'}</>}
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              <Button
+                onClick={handleGenAnchor}
+                disabled={genAnchor || !expandEn}
+                variant={hasAnchor ? 'outline' : 'default'}
+                size="sm" className="w-full"
+              >
+                {genAnchor
+                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />생성 중...</>
+                  : <><ImageIcon className="h-3 w-3 mr-1" />{hasAnchor ? '재생성' : '생성'}</>}
+              </Button>
+              {usePrevCut && prevCut?.end_frame_url && (
+                <div className="flex items-center justify-between px-0.5">
+                  <span className="text-[11px] text-muted-foreground">시작프레임 배경 일치</span>
+                  <Switch
+                    checked={useStartFrameBgRef}
+                    onCheckedChange={(v) => {
+                      setUseStartFrameBgRef(v);
+                      save('use_start_frame_bg_ref', v);
+                    }}
+                    className="scale-75 origin-right"
+                  />
+                </div>
+              )}
+            </div>
           }
         />
 

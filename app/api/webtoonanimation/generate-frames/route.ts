@@ -47,7 +47,7 @@ async function uploadToStorage(base64: string, mimeType: string, path: string): 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { cutId, step, instruction } = await request.json();
+    const { cutId, step, instruction, startFrameBgRefUrl } = await request.json();
     if (!cutId) return NextResponse.json({ error: 'cutId 필요' }, { status: 400 });
 
     const { data: cut, error: cutError } = await supabase
@@ -163,6 +163,12 @@ export async function POST(request: NextRequest) {
         // 이전 컷 레퍼런스 — 배경 일관성 유지
         const bgRef = await downloadToBase64(cut.colorize_reference_url);
         expandParts.push({ inlineData: { mimeType: bgRef.mimeType, data: bgRef.data } });
+      }
+      if (startFrameBgRefUrl) {
+        // 시작프레임 배경 일치 옵션 — 시작프레임(이전 컷)을 배경 레퍼런스로 추가
+        const startRef = await downloadToBase64(startFrameBgRefUrl);
+        expandParts.push({ text: '[Background reference — match the background, environment, and lighting exactly from this image. Only the character poses and expressions should differ:]' });
+        expandParts.push({ inlineData: { mimeType: startRef.mimeType, data: startRef.data } });
       }
       const expandResult = await generateGeminiImage({
         provider: 'gemini',
