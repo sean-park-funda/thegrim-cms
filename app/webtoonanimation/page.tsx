@@ -444,6 +444,16 @@ export default function WebtoonAnimationPage() {
             onChange={(e) => {
               setSelectedProject({ ...selectedProject, title: e.target.value });
             }}
+            onBlur={async (e) => {
+              const title = e.target.value.trim();
+              if (!title || title === selectedProject.title) return;
+              await fetch('/api/webtoonanimation/projects', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: selectedProject.id, title }),
+              });
+              setProjects((prev) => prev.map((p) => p.id === selectedProject.id ? { ...p, title } : p));
+            }}
             className="text-lg font-bold border-none shadow-none h-auto p-0 focus-visible:ring-0"
             placeholder="프로젝트 제목"
           />
