@@ -23,12 +23,14 @@ import { CutDetailSheet } from '@/components/webtoonanimation/CutDetailSheet';
 import { Wan22CutCard } from '@/components/webtoonanimation/Wan22CutCard';
 
 export default function WebtoonAnimationPage() {
+
   // State: 프로젝트 목록
   const [projects, setProjects] = useState<WebtoonAnimationProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
 
   // State: 선택된 프로젝트
   const [selectedProject, setSelectedProject] = useState<WebtoonAnimationProject | null>(null);
+  const savedTitleRef = useRef<string>('');
   const [cuts, setCuts] = useState<WebtoonAnimationCut[]>([]);
   const [loadingCuts, setLoadingCuts] = useState(false);
 
@@ -70,7 +72,19 @@ export default function WebtoonAnimationPage() {
     }
   }, []);
 
-  useEffect(() => { loadProjects(); }, [loadProjects]);
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  // URL의 projectId로 자동 선택
+  useEffect(() => {
+    if (projects.length === 0) return;
+    const projectId = new URLSearchParams(window.location.search).get('projectId');
+    if (!projectId || selectedProject?.id === projectId) return;
+    const found = projects.find((p) => p.id === projectId);
+    if (found) selectProject(found);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   const createProject = async () => {
     try {
@@ -106,7 +120,9 @@ export default function WebtoonAnimationPage() {
 
   // ===== 프로젝트 상세 =====
   const selectProject = async (project: WebtoonAnimationProject) => {
+    history.replaceState(null, '', `?projectId=${project.id}`);
     setSelectedProject(project);
+    savedTitleRef.current = project.title;
     setActiveGroup(null);
     await loadCuts(project.id);
     await loadPromptGroups(project.id);
@@ -435,7 +451,7 @@ export default function WebtoonAnimationPage() {
     <div className="w-full h-full overflow-y-auto px-6 py-6">
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => setSelectedProject(null)}>
+        <Button variant="ghost" size="sm" onClick={() => { setSelectedProject(null); history.replaceState(null, '', '?'); }}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -444,9 +460,10 @@ export default function WebtoonAnimationPage() {
             onChange={(e) => {
               setSelectedProject({ ...selectedProject, title: e.target.value });
             }}
+            onFocus={() => { savedTitleRef.current = selectedProject.title; }}
             onBlur={async (e) => {
               const title = e.target.value.trim();
-              if (!title || title === selectedProject.title) return;
+              if (!title || title === savedTitleRef.current) return;
               await fetch('/api/webtoonanimation/projects', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
