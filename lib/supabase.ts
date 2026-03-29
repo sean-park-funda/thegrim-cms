@@ -343,6 +343,7 @@ export interface WebtoonAnimationCut {
   aspect_ratio?: string | null;
   colorize_reference_url?: string | null;
   use_prev_cut_as_start?: boolean | null;
+  use_start_frame_bg_ref?: boolean | null;
   video_duration?: number | null;
   color_image_url?: string | null;
   end_frame_url?: string | null;
