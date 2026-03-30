@@ -20,16 +20,17 @@ import {
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft,
   Upload,
   Loader2,
   Download,
   Film,
-  CheckCircle2,
   Video,
+  Pencil,
+  Check,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import {
   ShortstoonProject,
@@ -41,6 +42,7 @@ import {
 import { ViewportEditor } from '@/components/shortstoon/ViewportEditor';
 import { EffectSelector, TransitionSelector } from '@/components/shortstoon/EffectSelector';
 import { BlockCard } from '@/components/shortstoon/BlockCard';
+import { cn } from '@/lib/utils';
 
 export default function ShortstoonEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -52,6 +54,7 @@ export default function ShortstoonEditPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState('');
   const [renderingIds, setRenderingIds] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -63,7 +66,6 @@ export default function ShortstoonEditPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // 데이터 로드
   const loadProject = useCallback(async () => {
     setLoading(true);
     const res = await fetch(`/api/shortstoon?projectId=${id}`);
@@ -76,39 +78,33 @@ export default function ShortstoonEditPage() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
-  // 선택된 블록
   const selectedBlock = blocks.find(b => b.id === selectedId) ?? null;
 
-  // 블록 로컬 업데이트 + 서버 저장 (디바운스)
-  const updateBlock = useCallback((id: string, fields: Partial<ShortstoonBlock>) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...fields } : b));
+  const updateBlock = useCallback((blockId: string, fields: Partial<ShortstoonBlock>) => {
+    setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...fields } : b));
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       await fetch('/api/shortstoon', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'block', id, ...fields }),
+        body: JSON.stringify({ type: 'block', id: blockId, ...fields }),
       });
     }, 500);
   }, []);
 
-  // PSD 파일: 브라우저 Canvas로 합성 → PNG blob → 서명 URL로 직접 업로드
+  // PSD: Canvas 합성 → 서명 URL로 직접 업로드
   const uploadPsd = async (file: File, projectId: string, orderIndex: number): Promise<ShortstoonBlock> => {
     const { readPsd } = await import('ag-psd');
-
-    // 1. PSD → PNG blob
     const arrayBuffer = await file.arrayBuffer();
     const psd = readPsd(arrayBuffer);
     const canvas = psd.canvas as HTMLCanvasElement | undefined;
-    if (!canvas) throw new Error('PSD 합성 실패: canvas 없음');
+    if (!canvas) throw new Error('PSD 합성 실패');
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG 변환 실패')), 'image/png');
     });
 
     const pngName = file.name.replace(/\.psd$/i, '.png');
-
-    // 2. 서버에서 서명 URL 발급
     const signRes = await fetch('/api/shortstoon/upload-sign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,7 +113,6 @@ export default function ShortstoonEditPage() {
     if (!signRes.ok) throw new Error('서명 URL 발급 실패');
     const { signedUrl, storagePath } = await signRes.json();
 
-    // 3. 서명 URL로 PNG 직접 업로드
     const uploadRes = await fetch(signedUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
@@ -125,7 +120,6 @@ export default function ShortstoonEditPage() {
     });
     if (!uploadRes.ok) throw new Error(`Storage 업로드 실패: ${uploadRes.status}`);
 
-    // 4. DB 블록 생성 (storagePath만 전달)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const publicUrl = `${supabaseUrl}/storage/v1/object/public/webtoon-files/${storagePath}`;
 
@@ -138,7 +132,6 @@ export default function ShortstoonEditPage() {
     return res.json();
   };
 
-  // 벌크 업로드
   const onDrop = useCallback(async (files: File[]) => {
     if (files.length === 0 || !id) return;
     setUploading(true);
@@ -149,6 +142,7 @@ export default function ShortstoonEditPage() {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      setUploadLabel(`${file.name} (${i + 1}/${files.length})`);
 
       if (file.name.toLowerCase().endsWith('.psd')) {
         try {
@@ -188,11 +182,10 @@ export default function ShortstoonEditPage() {
     }
 
     setBlocks(prev => [...prev, ...newBlocks]);
-    if (newBlocks.length > 0 && !selectedId) {
-      setSelectedId(newBlocks[0].id);
-    }
+    if (newBlocks.length > 0 && !selectedId) setSelectedId(newBlocks[0].id);
     setUploading(false);
     setUploadProgress(0);
+    setUploadLabel('');
   }, [id, blocks.length, selectedId]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -203,17 +196,13 @@ export default function ShortstoonEditPage() {
     noClick: false,
   });
 
-  // 드래그 정렬
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
     const oldIndex = blocks.findIndex(b => b.id === active.id);
     const newIndex = blocks.findIndex(b => b.id === over.id);
-    const reordered = arrayMove(blocks, oldIndex, newIndex).map((b, i) => ({
-      ...b,
-      order_index: i,
-    }));
+    const reordered = arrayMove(blocks, oldIndex, newIndex).map((b, i) => ({ ...b, order_index: i }));
     setBlocks(reordered);
 
     await fetch('/api/shortstoon', {
@@ -226,7 +215,6 @@ export default function ShortstoonEditPage() {
     });
   };
 
-  // 블록 복사
   const handleCopy = async (block: ShortstoonBlock) => {
     const res = await fetch('/api/shortstoon/upload', {
       method: 'POST',
@@ -241,13 +229,11 @@ export default function ShortstoonEditPage() {
     });
     if (!res.ok) return;
     const newBlock: ShortstoonBlock = await res.json();
-    // viewport/effect 복사
     await fetch('/api/shortstoon', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'block',
-        id: newBlock.id,
+        type: 'block', id: newBlock.id,
         viewport: block.viewport,
         effect_type: block.effect_type,
         effect_params: block.effect_params,
@@ -267,18 +253,15 @@ export default function ShortstoonEditPage() {
     }]);
   };
 
-  // 블록 삭제
   const handleDelete = async (blockId: string) => {
     await fetch(`/api/shortstoon?blockId=${blockId}`, { method: 'DELETE' });
     setBlocks(prev => prev.filter(b => b.id !== blockId));
     if (selectedId === blockId) setSelectedId(null);
   };
 
-  // 개별 블록 렌더링
   const handleRender = async (blockId: string) => {
     setRenderingIds(prev => new Set(prev).add(blockId));
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, status: 'rendering' } : b));
-
     const res = await fetch('/api/shortstoon/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -289,22 +272,15 @@ export default function ShortstoonEditPage() {
     setRenderingIds(prev => { const s = new Set(prev); s.delete(blockId); return s; });
   };
 
-  // 전체 렌더링
   const handleRenderAll = async () => {
     for (const block of blocks) {
-      if (block.status !== 'completed') {
-        await handleRender(block.id);
-      }
+      if (block.status !== 'completed') await handleRender(block.id);
     }
   };
 
-  // 병합 다운로드
   const handleMerge = async () => {
     const completedCount = blocks.filter(b => b.status === 'completed').length;
-    if (completedCount === 0) {
-      alert('먼저 블록을 렌더링해주세요');
-      return;
-    }
+    if (completedCount === 0) { alert('먼저 블록을 렌더링해주세요'); return; }
     setMerging(true);
     const res = await fetch('/api/shortstoon/merge', {
       method: 'POST',
@@ -325,7 +301,6 @@ export default function ShortstoonEditPage() {
     setMerging(false);
   };
 
-  // 프로젝트 이름 저장
   const handleNameSave = async () => {
     if (!project || !nameInput.trim()) { setEditingName(false); return; }
     await fetch('/api/shortstoon', {
@@ -339,227 +314,332 @@ export default function ShortstoonEditPage() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="h-full flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">불러오는 중...</p>
+        </div>
       </div>
     );
   }
 
   const completedCount = blocks.filter(b => b.status === 'completed').length;
+  const totalCount = blocks.length;
 
   return (
-    <div className="h-full flex flex-col">
-      {/* 상단 툴바 */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b bg-background/95 flex-shrink-0">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => router.push('/shortstoon')}>
+    <div className="h-full flex flex-col bg-background">
+
+      {/* ── 상단 툴바 ─────────────────────────────────────────── */}
+      <header className="flex items-center gap-2 px-3 h-11 border-b bg-background/95 backdrop-blur-sm flex-shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          onClick={() => router.push('/shortstoon')}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
+        <div className="w-px h-4 bg-border mx-1" />
+
         {/* 프로젝트 이름 */}
         {editingName ? (
-          <Input
-            className="h-7 text-sm max-w-[200px]"
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleNameSave(); if (e.key === 'Escape') setEditingName(false); }}
-            onBlur={handleNameSave}
-            autoFocus
-          />
+          <div className="flex items-center gap-1">
+            <Input
+              className="h-7 text-sm w-44 px-2"
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleNameSave();
+                if (e.key === 'Escape') setEditingName(false);
+              }}
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-green-500" onClick={handleNameSave}>
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setEditingName(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         ) : (
-          <span
-            className="text-sm font-medium cursor-pointer hover:text-primary transition-colors"
+          <button
+            className="group flex items-center gap-1.5 text-sm font-medium hover:text-primary transition-colors"
             onClick={() => { setNameInput(project?.name ?? ''); setEditingName(true); }}
           >
             {project?.name}
-          </span>
+            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+          </button>
         )}
 
         <div className="flex-1" />
 
-        {/* 상태 표시 */}
-        {blocks.length > 0 && (
-          <Badge variant="outline" className="text-xs">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
-            {completedCount}/{blocks.length}
-          </Badge>
+        {/* 진행률 표시 */}
+        {totalCount > 0 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <div className="flex gap-0.5">
+                {blocks.slice(0, Math.min(totalCount, 10)).map(b => (
+                  <div
+                    key={b.id}
+                    className={cn(
+                      'w-1.5 h-3 rounded-sm',
+                      b.status === 'completed' ? 'bg-green-500' :
+                      b.status === 'rendering' ? 'bg-blue-400 animate-pulse' :
+                      b.status === 'failed' ? 'bg-red-400' :
+                      'bg-muted-foreground/30'
+                    )}
+                  />
+                ))}
+                {totalCount > 10 && <span className="text-muted-foreground/50 ml-0.5">+{totalCount - 10}</span>}
+              </div>
+              <span>{completedCount}/{totalCount}</span>
+            </div>
+          </div>
         )}
 
-        {/* 전체 렌더링 */}
+        <div className="w-px h-4 bg-border mx-1" />
+
         <Button
           size="sm"
-          variant="outline"
-          className="h-7 text-xs"
+          variant="ghost"
+          className="h-7 text-xs gap-1.5"
           onClick={handleRenderAll}
-          disabled={blocks.length === 0 || blocks.every(b => b.status === 'completed')}
+          disabled={totalCount === 0 || blocks.every(b => b.status === 'completed')}
         >
-          <Video className="h-3.5 w-3.5 mr-1" />
+          <Video className="h-3.5 w-3.5" />
           전체 렌더링
         </Button>
 
-        {/* 병합 다운로드 */}
         <Button
           size="sm"
-          className="h-7 text-xs"
+          className="h-7 text-xs gap-1.5 bg-primary"
           onClick={handleMerge}
           disabled={merging || completedCount === 0}
         >
           {merging
-            ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-            : <Download className="h-3.5 w-3.5 mr-1" />
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Download className="h-3.5 w-3.5" />
           }
           내보내기
         </Button>
-      </div>
+      </header>
 
-      {/* 메인 레이아웃 */}
+      {/* ── 메인 레이아웃 ─────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
-        {/* 좌측: 블록 목록 */}
-        <div className="w-64 flex-shrink-0 border-r flex flex-col">
-          {/* 업로드 영역 */}
-          <div className="p-3 border-b">
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}
-                ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <input {...getInputProps()} />
-              {uploading ? (
-                <div className="space-y-1">
-                  <Loader2 className="h-5 w-5 mx-auto animate-spin text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">{uploadProgress}%</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Upload className="h-5 w-5 mx-auto text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">
-                    {isDragActive ? '놓으세요' : '이미지 업로드 (벌크)'}
-                  </p>
-                </div>
+
+        {/* 좌측: 컷 목록 패널 */}
+        <aside className="w-[220px] flex-shrink-0 border-r flex flex-col bg-[#111111]">
+
+          {/* 패널 헤더 + 업로드 */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+            <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+              컷 목록
+              {totalCount > 0 && (
+                <span className="ml-1.5 text-white/30 font-normal normal-case tracking-normal">
+                  {totalCount}
+                </span>
               )}
+            </span>
+            <div {...getRootProps()}>
+              <input {...getInputProps()} />
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={uploading}
+                className={cn(
+                  'h-6 px-2 text-xs gap-1 text-white/50 hover:text-white hover:bg-white/10',
+                  isDragActive && 'text-primary bg-primary/10'
+                )}
+              >
+                {uploading
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <Upload className="h-3 w-3" />
+                }
+                {uploading ? `${uploadProgress}%` : '추가'}
+              </Button>
             </div>
           </div>
 
+          {/* 업로드 중 파일명 표시 */}
+          {uploading && uploadLabel && (
+            <div className="px-3 py-1.5 border-b border-white/5">
+              <p className="text-[10px] text-white/30 truncate">{uploadLabel}</p>
+              <div className="mt-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 드래그 오버레이 */}
+          {isDragActive && (
+            <div className="mx-2 mt-2 border border-dashed border-primary/50 rounded-lg p-3 text-center bg-primary/5">
+              <p className="text-xs text-primary/70">여기에 놓으세요</p>
+            </div>
+          )}
+
           {/* 블록 목록 */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {blocks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Film className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p className="text-xs">이미지를 업로드하세요</p>
+          <div className="flex-1 overflow-y-auto py-2">
+            {totalCount === 0 ? (
+              <div
+                {...getRootProps()}
+                className="mx-3 mt-2 border border-dashed border-white/10 rounded-lg p-6 text-center cursor-pointer hover:border-white/20 transition-colors"
+              >
+                <input {...getInputProps()} />
+                <Film className="h-7 w-7 mx-auto mb-2 text-white/20" />
+                <p className="text-xs text-white/30">이미지를 드래그하거나</p>
+                <p className="text-xs text-white/30">클릭해서 업로드</p>
+                <p className="text-[10px] text-white/15 mt-1">PNG · JPG · PSD</p>
               </div>
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-                  {blocks.map((block, i) => (
-                    <BlockCard
-                      key={block.id}
-                      block={block}
-                      index={i}
-                      isSelected={selectedId === block.id}
-                      onSelect={() => setSelectedId(block.id)}
-                      onCopy={() => handleCopy(block)}
-                      onDelete={() => handleDelete(block.id)}
-                    />
-                  ))}
+                  <div className="space-y-0.5 px-2">
+                    {blocks.map((block, i) => (
+                      <BlockCard
+                        key={block.id}
+                        block={block}
+                        index={i}
+                        isSelected={selectedId === block.id}
+                        onSelect={() => setSelectedId(block.id)}
+                        onCopy={() => handleCopy(block)}
+                        onDelete={() => handleDelete(block.id)}
+                      />
+                    ))}
+                  </div>
                 </SortableContext>
               </DndContext>
             )}
           </div>
-        </div>
+        </aside>
 
         {/* 우측: 편집 패널 */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <main className="flex-1 overflow-y-auto">
           {!selectedBlock ? (
-            <div className="h-full flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <Film className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">블록을 선택하면 편집할 수 있습니다</p>
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
+                  <Film className="h-7 w-7 text-muted-foreground/50" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground/70">컷을 선택하세요</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">왼쪽 목록에서 컷을 클릭하면 편집할 수 있습니다</p>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="max-w-sm mx-auto space-y-6">
-              {/* 뷰포트 편집기 */}
-              <div>
-                <h3 className="text-sm font-medium mb-3">뷰포트 설정</h3>
-                <ViewportEditor
-                  imageUrl={selectedBlock.image_url}
-                  viewport={selectedBlock.viewport}
-                  onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
-                  effectType={selectedBlock.effect_type}
-                  effectParams={selectedBlock.effect_params}
-                  durationMs={selectedBlock.duration_ms}
-                />
-              </div>
+            <div className="max-w-[360px] mx-auto py-6 px-4 space-y-4">
 
-              <Separator />
-
-              {/* 효과 설정 */}
-              <div>
-                <h3 className="text-sm font-medium mb-3">효과</h3>
-                <EffectSelector
-                  effectType={selectedBlock.effect_type}
-                  effectParams={selectedBlock.effect_params}
-                  durationMs={selectedBlock.duration_ms}
-                  onChange={(type: ShortstoonEffectType, params: Record<string, unknown>) =>
-                    updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
-                  }
-                  onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
-                />
-              </div>
-
-              <Separator />
-
-              {/* 트랜지션 */}
-              <div>
-                <h3 className="text-sm font-medium mb-3">다음 블록으로 전환</h3>
-                <TransitionSelector
-                  transitionType={selectedBlock.transition_type}
-                  transitionDurationMs={selectedBlock.transition_duration_ms}
-                  onChange={(type: ShortstoonTransitionType, durationMs: number) =>
-                    updateBlock(selectedBlock.id, { transition_type: type, transition_duration_ms: durationMs })
-                  }
-                />
-              </div>
-
-              <Separator />
-
-              {/* 렌더링 */}
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">렌더링</h3>
-                {selectedBlock.status === 'completed' && selectedBlock.video_url && (
-                  <video
-                    src={selectedBlock.video_url}
-                    controls
-                    className="w-full rounded border"
-                    style={{ maxHeight: 300 }}
+              {/* 뷰포트 섹션 */}
+              <section>
+                <SectionHeader icon={<Film className="h-3.5 w-3.5" />} title="뷰포트" />
+                <div className="mt-3">
+                  <ViewportEditor
+                    imageUrl={selectedBlock.image_url}
+                    viewport={selectedBlock.viewport}
+                    onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
+                    effectType={selectedBlock.effect_type}
+                    effectParams={selectedBlock.effect_params}
+                    durationMs={selectedBlock.duration_ms}
                   />
-                )}
-                {selectedBlock.status === 'failed' && (
-                  <p className="text-xs text-destructive">{selectedBlock.error_message}</p>
-                )}
-                <Button
-                  className="w-full"
-                  size="sm"
-                  onClick={() => handleRender(selectedBlock.id)}
-                  disabled={renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering'}
-                >
-                  {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering')
-                    ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />렌더링 중...</>
-                    : selectedBlock.status === 'completed'
-                    ? '다시 렌더링'
-                    : '이 블록 렌더링'
-                  }
-                </Button>
-              </div>
+                </div>
+              </section>
+
+              <Divider />
+
+              {/* 효과 섹션 */}
+              <section>
+                <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="효과" />
+                <div className="mt-3">
+                  <EffectSelector
+                    effectType={selectedBlock.effect_type}
+                    effectParams={selectedBlock.effect_params}
+                    durationMs={selectedBlock.duration_ms}
+                    onChange={(type: ShortstoonEffectType, params: Record<string, unknown>) =>
+                      updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
+                    }
+                    onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
+                  />
+                </div>
+              </section>
+
+              <Divider />
+
+              {/* 전환 섹션 */}
+              <section>
+                <SectionHeader icon={<Video className="h-3.5 w-3.5" />} title="다음 컷으로 전환" />
+                <div className="mt-3">
+                  <TransitionSelector
+                    transitionType={selectedBlock.transition_type}
+                    transitionDurationMs={selectedBlock.transition_duration_ms}
+                    onChange={(type: ShortstoonTransitionType, durationMs: number) =>
+                      updateBlock(selectedBlock.id, { transition_type: type, transition_duration_ms: durationMs })
+                    }
+                  />
+                </div>
+              </section>
+
+              <Divider />
+
+              {/* 렌더링 섹션 */}
+              <section className="pb-6">
+                <SectionHeader icon={<Download className="h-3.5 w-3.5" />} title="렌더링" />
+                <div className="mt-3 space-y-3">
+                  {selectedBlock.status === 'completed' && selectedBlock.video_url && (
+                    <video
+                      src={selectedBlock.video_url}
+                      controls
+                      className="w-full rounded-xl border bg-black"
+                      style={{ maxHeight: 320 }}
+                    />
+                  )}
+                  {selectedBlock.status === 'failed' && (
+                    <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
+                      <p className="text-xs text-destructive">{selectedBlock.error_message ?? '렌더링 실패'}</p>
+                    </div>
+                  )}
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    variant={selectedBlock.status === 'completed' ? 'outline' : 'default'}
+                    onClick={() => handleRender(selectedBlock.id)}
+                    disabled={renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering'}
+                  >
+                    {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering') ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />렌더링 중...</>
+                    ) : selectedBlock.status === 'completed' ? (
+                      '다시 렌더링'
+                    ) : (
+                      '이 컷 렌더링'
+                    )}
+                  </Button>
+                </div>
+              </section>
+
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
 }
 
-// 이미지 URL → base64 (복사 시 사용)
+function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground">{icon}</span>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+    </div>
+  );
+}
+
+function Divider() {
+  return <div className="border-t border-border/60" />;
+}
+
 async function imageUrlToBase64(url: string): Promise<string> {
   const res = await fetch(url);
   const blob = await res.blob();

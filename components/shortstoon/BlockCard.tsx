@@ -2,14 +2,9 @@
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Copy, Trash2, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  ShortstoonBlock,
-  SHORTSTOON_EFFECT_LABELS,
-  SHORTSTOON_TRANSITION_LABELS,
-} from '@/lib/supabase';
+import { GripVertical, Copy, Trash2, Loader2 } from 'lucide-react';
+import { ShortstoonBlock, SHORTSTOON_EFFECT_LABELS } from '@/lib/supabase';
+import { cn } from '@/lib/utils';
 
 interface BlockCardProps {
   block: ShortstoonBlock;
@@ -20,11 +15,11 @@ interface BlockCardProps {
   onDelete: () => void;
 }
 
-const STATUS_ICON = {
-  pending: <Clock className="h-3 w-3 text-muted-foreground" />,
-  rendering: <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />,
-  completed: <CheckCircle className="h-3 w-3 text-green-500" />,
-  failed: <AlertCircle className="h-3 w-3 text-destructive" />,
+const STATUS_DOT: Record<string, string> = {
+  pending:   'bg-white/20',
+  rendering: 'bg-blue-400 animate-pulse',
+  completed: 'bg-green-500',
+  failed:    'bg-red-500',
 };
 
 export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete }: BlockCardProps) {
@@ -33,81 +28,83 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : 1,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-        isSelected
-          ? 'border-primary bg-primary/5'
-          : 'border-border hover:border-border/80 hover:bg-muted/30'
-      }`}
       onClick={onSelect}
+      className={cn(
+        'group relative flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all',
+        isSelected
+          ? 'bg-white/10 ring-1 ring-white/20'
+          : 'hover:bg-white/5'
+      )}
     >
       {/* 드래그 핸들 */}
       <button
         {...attributes}
         {...listeners}
-        className="mt-1 text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
+        className="flex-shrink-0 text-white/15 hover:text-white/40 cursor-grab active:cursor-grabbing transition-colors"
         onClick={e => e.stopPropagation()}
       >
-        <GripVertical className="h-4 w-4" />
+        <GripVertical className="h-3.5 w-3.5" />
       </button>
 
-      {/* 썸네일 */}
-      <div className="flex-shrink-0 w-12 h-[85px] rounded overflow-hidden bg-muted">
+      {/* 썸네일 (9:16 비율) */}
+      <div className="relative flex-shrink-0 w-[38px] h-[67px] rounded overflow-hidden bg-white/5">
         <img
           src={block.image_url}
           alt={block.file_name}
           className="w-full h-full object-cover"
         />
-      </div>
-
-      {/* 정보 */}
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-muted-foreground">#{index + 1}</span>
-          {STATUS_ICON[block.status]}
-          {block.status === 'failed' && (
-            <span className="text-xs text-destructive truncate">{block.error_message}</span>
-          )}
-        </div>
-        <div className="text-xs text-muted-foreground truncate">
-          {(block.duration_ms / 1000).toFixed(1)}초
-          {block.effect_type !== 'none' && (
-            <span className="ml-1 text-primary/70">· {SHORTSTOON_EFFECT_LABELS[block.effect_type]}</span>
-          )}
-        </div>
-        {block.transition_type !== 'none' && (
-          <Badge variant="outline" className="text-[10px] h-4 px-1">
-            → {SHORTSTOON_TRANSITION_LABELS[block.transition_type]}
-          </Badge>
+        {/* 렌더링 중 오버레이 */}
+        {block.status === 'rendering' && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />
+          </div>
+        )}
+        {/* 완료 표시 */}
+        {block.status === 'completed' && (
+          <div className="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-green-500 ring-1 ring-black/50" />
         )}
       </div>
 
-      {/* 액션 버튼 */}
-      <div className="flex flex-col gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
+      {/* 정보 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-white/60">#{index + 1}</span>
+          <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_DOT[block.status])} />
+        </div>
+        <p className="text-[11px] text-white/35 mt-0.5">
+          {(block.duration_ms / 1000).toFixed(1)}s
+          {block.effect_type !== 'none' && (
+            <span className="ml-1 text-primary/60">· {SHORTSTOON_EFFECT_LABELS[block.effect_type]}</span>
+          )}
+        </p>
+      </div>
+
+      {/* 호버 액션 */}
+      <div
+        className="flex-shrink-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          className="w-6 h-6 flex items-center justify-center rounded text-white/30 hover:text-white hover:bg-white/10 transition-colors"
           title="복사"
           onClick={onCopy}
         >
           <Copy className="h-3 w-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-destructive hover:text-destructive"
+        </button>
+        <button
+          className="w-6 h-6 flex items-center justify-center rounded text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           title="삭제"
           onClick={onDelete}
         >
           <Trash2 className="h-3 w-3" />
-        </Button>
+        </button>
       </div>
     </div>
   );
