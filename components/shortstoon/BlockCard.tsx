@@ -56,9 +56,10 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
       {/* 썸네일 (9:16 비율) */}
       <div className="relative flex-shrink-0 w-[38px] h-[67px] rounded overflow-hidden bg-white/5">
         <img
-          src={block.image_url}
+          src={block.image_url.replace('/object/', '/render/image/') + '?width=120&quality=70'}
           alt={block.file_name}
           className="w-full h-full object-cover"
+          loading="lazy"
         />
         {/* 렌더링 중 오버레이 */}
         {block.status === 'rendering' && (
