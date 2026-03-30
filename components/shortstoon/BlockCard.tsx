@@ -73,10 +73,11 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
           <span className="text-[11px] font-semibold text-white/60">#{index + 1}</span>
           <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_DOT[block.status])} />
         </div>
-        <p className="text-[11px] text-white/35 mt-0.5 truncate">
+        <p className="text-[11px] text-white/60 mt-0.5 truncate">{block.file_name}</p>
+        <p className="text-[10px] text-white/25 mt-0.5 truncate">
           {(block.duration_ms / 1000).toFixed(1)}s
           {block.effect_type !== 'none' && (
-            <span className="ml-1 text-primary/60">· {SHORTSTOON_EFFECT_LABELS[block.effect_type]}</span>
+            <span className="ml-1 text-primary/50">· {SHORTSTOON_EFFECT_LABELS[block.effect_type]}</span>
           )}
         </p>
       </div>
