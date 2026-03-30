@@ -703,24 +703,13 @@ export default function ShortstoonEditPage() {
                       onAiMotionChange={(enabled, params) =>
                         setAiMotionMap(prev => ({ ...prev, [selectedBlock.id]: { ...params, enabled } }))
                       }
-                    />
-                  </div>
-                  {selectedBlock.effect_type !== 'none' && (
-                    <Button
-                      variant={previewPlaying ? 'destructive' : 'secondary'}
-                      size="sm"
-                      className="w-full mt-3 text-xs h-7 gap-1.5"
-                      onClick={() => {
+                      previewPlaying={previewPlaying}
+                      onPreviewToggle={() => {
                         viewportEditorRef.current?.togglePlay();
                         setPreviewPlaying(p => !p);
                       }}
-                    >
-                      {previewPlaying
-                        ? <><Square className="h-3 w-3" />중지</>
-                        : <><Play className="h-3 w-3" />미리보기</>
-                      }
-                    </Button>
-                  )}
+                    />
+                  </div>
                 </section>
 
                 <Divider />

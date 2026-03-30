@@ -42,6 +42,8 @@ interface EffectSelectorProps {
   aiMotionEnabled: boolean;
   aiMotionParams: { motion_type: string; prompt: string };
   onAiMotionChange: (enabled: boolean, params: { motion_type: string; prompt: string }) => void;
+  previewPlaying?: boolean;
+  onPreviewToggle?: () => void;
 }
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10];
@@ -77,6 +79,7 @@ export function EffectSelector({
   effectType, effectParams, durationMs,
   onChange, onDurationChange,
   aiMotionEnabled, aiMotionParams, onAiMotionChange,
+  previewPlaying, onPreviewToggle,
 }: EffectSelectorProps) {
   const setParam = (key: string, value: unknown) => onChange(effectType, { ...effectParams, [key]: value });
 
@@ -196,6 +199,21 @@ export function EffectSelector({
             onChange={v => setParam('min_brightness', v / 10)}
           />
         </div>
+      )}
+
+      {/* 미리보기 버튼 */}
+      {effectType !== 'none' && onPreviewToggle && (
+        <button
+          onClick={onPreviewToggle}
+          className={cn(
+            'w-full py-1.5 rounded-md text-xs font-medium border transition-all flex items-center justify-center gap-1.5',
+            previewPlaying
+              ? 'border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/20'
+              : 'border-border bg-muted/30 text-muted-foreground hover:bg-muted/60'
+          )}
+        >
+          {previewPlaying ? '⏹ 중지' : '▶ 미리보기'}
+        </button>
       )}
 
       {/* ── AI 모션 섹션 ── */}
