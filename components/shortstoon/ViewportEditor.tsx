@@ -69,7 +69,7 @@ export const ViewportEditor = forwardRef<ViewportEditorHandle, ViewportEditorPro
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
       if (t < 1) animFrameRef.current = requestAnimationFrame(loop);
-      else { setPlaying(false); drawStatic(); }
+      else setPlaying(false);
     };
     animFrameRef.current = requestAnimationFrame(loop);
   }, [effectType, effectParams, durationMs, drawStatic]);
