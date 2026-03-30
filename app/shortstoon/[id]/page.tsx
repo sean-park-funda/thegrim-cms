@@ -458,8 +458,25 @@ export default function ShortstoonEditPage() {
       {/* ── 메인 레이아웃 ─────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
 
-        {/* 좌측: 컷 목록 패널 */}
-        <aside className="w-[220px] flex-shrink-0 border-r flex flex-col bg-[#111111]">
+        {/* 좌측: 컷 목록 패널 — aside 전체가 드롭존 */}
+        <aside
+          {...getRootProps()}
+          className={cn(
+            'w-[220px] flex-shrink-0 border-r flex flex-col bg-[#111111] transition-colors relative',
+            isDragActive && 'bg-primary/5'
+          )}
+        >
+          <input {...getInputProps()} />
+
+          {/* 드래그 오버레이 */}
+          {isDragActive && (
+            <div className="absolute inset-0 z-10 border-2 border-primary/60 rounded-none pointer-events-none flex items-center justify-center">
+              <div className="bg-[#111111]/90 rounded-xl px-5 py-4 flex flex-col items-center gap-2">
+                <Upload className="h-6 w-6 text-primary" />
+                <p className="text-sm font-medium text-primary">여기에 놓으세요</p>
+              </div>
+            </div>
+          )}
 
           {/* 패널 헤더 */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 flex-shrink-0">
@@ -472,35 +489,25 @@ export default function ShortstoonEditPage() {
               )}
             </span>
             <Button
-              variant="ghost"
-              size="sm"
+              variant="ghost" size="sm"
               disabled={uploading}
-              onClick={open}
+              onClick={e => { e.stopPropagation(); open(); }}
               className="h-6 px-2 text-xs gap-1 text-white/50 hover:text-white hover:bg-white/10"
             >
-              {uploading
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <Upload className="h-3 w-3" />
-              }
+              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               {uploading ? `${uploadProgress}%` : '추가'}
             </Button>
           </div>
 
-          {/* 업로드 중 진행바 */}
-          {uploading && uploadLabel && (
-            <div className="px-3 py-1.5 border-b border-white/5 flex-shrink-0">
-              <p className="text-[10px] text-white/30 truncate">{uploadLabel}</p>
-              <div className="mt-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-300 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
           {/* 블록 목록 */}
           <div className="flex-1 overflow-y-auto py-2 min-h-0">
+            {totalCount === 0 && !uploading && (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-4">
+                <Film className="h-7 w-7 text-white/15" />
+                <p className="text-xs text-white/25">이미지를 드래그하거나<br />추가 버튼을 눌러주세요</p>
+                <p className="text-[10px] text-white/15">PNG · JPG · PSD</p>
+              </div>
+            )}
             {totalCount > 0 && (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
@@ -522,32 +529,19 @@ export default function ShortstoonEditPage() {
             )}
           </div>
 
-          {/* 하단 드롭존 — 항상 표시 */}
-          <div
-            {...getRootProps()}
-            className={cn(
-              'flex-shrink-0 mx-2 mb-2 rounded-xl border-2 border-dashed cursor-pointer transition-all',
-              'flex flex-col items-center justify-center gap-1.5 py-5',
-              isDragActive
-                ? 'border-primary bg-primary/10 scale-[0.98]'
-                : 'border-white/10 hover:border-white/25 hover:bg-white/3',
-              uploading && 'opacity-40 pointer-events-none'
-            )}
-          >
-            <input {...getInputProps()} />
-            {isDragActive ? (
-              <>
-                <Upload className="h-5 w-5 text-primary" />
-                <p className="text-xs font-medium text-primary">여기에 놓으세요</p>
-              </>
-            ) : (
-              <>
-                <Upload className="h-5 w-5 text-white/20" />
-                <p className="text-xs text-white/30">드래그하거나 클릭</p>
-                <p className="text-[10px] text-white/15">PNG · JPG · PSD</p>
-              </>
-            )}
-          </div>
+          {/* 업로드 진행 상태 — 하단 */}
+          {uploading && (
+            <div className="flex-shrink-0 px-3 py-2.5 border-t border-white/5">
+              <p className="text-[10px] text-white/40 truncate mb-1">{uploadLabel}</p>
+              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-white/25 mt-1 text-right">{uploadProgress}%</p>
+            </div>
+          )}
         </aside>
 
         {/* 우측: 편집 패널 */}
