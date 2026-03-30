@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import {
   ShortstoonEffectType,
   ShortstoonTransitionType,
-  SHORTSTOON_EFFECT_LABELS,
   SHORTSTOON_TRANSITION_LABELS,
 } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -23,28 +22,25 @@ interface EffectSelectorProps {
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10];
 
-const EFFECT_ICONS: Record<ShortstoonEffectType, string> = {
-  none:      '—',
-  scroll_h:  '↔',
-  scroll_v:  '↕',
-  zoom_in:   '🔍',
-  zoom_out:  '🔎',
-  shake:     '〜',
-  flash:     '✦',
-  ai_motion: '✨',
-};
+// 효과 칩 정의 — scroll 방향을 처음부터 분리
+const EFFECT_CHIPS: { icon: string; label: string; type: ShortstoonEffectType; params: Record<string, unknown> }[] = [
+  { icon: '—',  label: '없음',     type: 'none',      params: {} },
+  { icon: '←',  label: '좌 스크롤', type: 'scroll_h',  params: { direction: 'left',  speed: 0.3 } },
+  { icon: '→',  label: '우 스크롤', type: 'scroll_h',  params: { direction: 'right', speed: 0.3 } },
+  { icon: '↑',  label: '상 스크롤', type: 'scroll_v',  params: { direction: 'up',    speed: 0.3 } },
+  { icon: '↓',  label: '하 스크롤', type: 'scroll_v',  params: { direction: 'down',  speed: 0.3 } },
+  { icon: '🔍', label: '줌 인',    type: 'zoom_in',   params: { from: 1.0, to: 1.3 } },
+  { icon: '🔎', label: '줌 아웃',  type: 'zoom_out',  params: { from: 1.3, to: 1.0 } },
+  { icon: '〜', label: '흔들기',   type: 'shake',     params: { amplitude: 8, frequency: 8 } },
+  { icon: '✦',  label: '번쩍임',   type: 'flash',     params: { interval: 0.5, min_brightness: 0.6 } },
+  { icon: '✨', label: 'AI 모션',  type: 'ai_motion', params: { motion_type: 'blink', prompt: '' } },
+];
 
-function defaultParams(type: ShortstoonEffectType): Record<string, unknown> {
-  switch (type) {
-    case 'scroll_h':  return { direction: 'left',  speed: 0.3 };
-    case 'scroll_v':  return { direction: 'up',    speed: 0.3 };
-    case 'zoom_in':   return { from: 1.0, to: 1.3 };
-    case 'zoom_out':  return { from: 1.3, to: 1.0 };
-    case 'shake':     return { amplitude: 8,  frequency: 8 };
-    case 'flash':     return { interval: 0.5, min_brightness: 0.6 };
-    case 'ai_motion': return { motion_type: 'blink', prompt: '' };
-    default:          return {};
-  }
+function isChipActive(chip: typeof EFFECT_CHIPS[number], effectType: ShortstoonEffectType, effectParams: Record<string, unknown>) {
+  if (chip.type !== effectType) return false;
+  if (chip.type === 'scroll_h') return (effectParams.direction ?? 'left') === chip.params.direction;
+  if (chip.type === 'scroll_v') return (effectParams.direction ?? 'up')   === chip.params.direction;
+  return true;
 }
 
 export function EffectSelector({ effectType, effectParams, durationMs, onChange, onDurationChange }: EffectSelectorProps) {
@@ -56,15 +52,15 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
       {/* 효과 종류 */}
       <div>
         <p className="text-xs text-muted-foreground mb-2">효과</p>
-        <div className="grid grid-cols-4 gap-1.5">
-          {(Object.keys(SHORTSTOON_EFFECT_LABELS) as ShortstoonEffectType[]).map(key => (
+        <div className="grid grid-cols-5 gap-1.5">
+          {EFFECT_CHIPS.map(chip => (
             <Chip
-              key={key}
-              active={effectType === key}
-              onClick={() => onChange(key, defaultParams(key))}
+              key={`${chip.type}-${String(chip.params.direction ?? '')}`}
+              active={isChipActive(chip, effectType, effectParams)}
+              onClick={() => onChange(chip.type, chip.params)}
             >
-              <span className="text-sm leading-none">{EFFECT_ICONS[key]}</span>
-              <span className="text-[10px] leading-tight text-center">{SHORTSTOON_EFFECT_LABELS[key]}</span>
+              <span className="text-sm leading-none">{chip.icon}</span>
+              <span className="text-[10px] leading-tight text-center">{chip.label}</span>
             </Chip>
           ))}
         </div>
@@ -83,28 +79,6 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
       </div>
 
       {/* ── 효과별 파라미터 ── */}
-
-      {/* 좌우 스크롤 */}
-      {effectType === 'scroll_h' && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-2">방향</p>
-          <div className="flex gap-1.5">
-            <PillBtn wide active={(effectParams.direction as string) === 'left'}  onClick={() => setParam('direction', 'left')}>← 좌</PillBtn>
-            <PillBtn wide active={(effectParams.direction as string) === 'right'} onClick={() => setParam('direction', 'right')}>우 →</PillBtn>
-          </div>
-        </div>
-      )}
-
-      {/* 상하 스크롤 */}
-      {effectType === 'scroll_v' && (
-        <div>
-          <p className="text-xs text-muted-foreground mb-2">방향</p>
-          <div className="flex gap-1.5">
-            <PillBtn wide active={(effectParams.direction as string) === 'up'}   onClick={() => setParam('direction', 'up')}>↑ 상</PillBtn>
-            <PillBtn wide active={(effectParams.direction as string) === 'down'} onClick={() => setParam('direction', 'down')}>하 ↓</PillBtn>
-          </div>
-        </div>
-      )}
 
       {/* 줌인/줌아웃 */}
       {(effectType === 'zoom_in' || effectType === 'zoom_out') && (
