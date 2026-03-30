@@ -159,17 +159,20 @@ function computeDraw(
 
   let drawX = bx(), drawY = by(), drawW = sw(), drawH = sh();
 
+  // ease-out: 시작 등속, 끝 감속 (quadratic ease-out)
+  const et = 2 * t - t * t;
+
   if (effect === 'scroll_h') {
     const dir = (params.direction as string) === 'right' ? 1 : -1;
     const amount = (params.amount as number) ?? 0.5;
-    drawX = bx() + dir * t * Math.max(CANVAS_W, sw() - CANVAS_W) * amount;
+    drawX = bx() + dir * et * Math.max(CANVAS_W, sw() - CANVAS_W) * amount;
   } else if (effect === 'scroll_v') {
     const dir = (params.direction as string) === 'down' ? 1 : -1;
     const amount = (params.amount as number) ?? 0.5;
-    drawY = by() + dir * t * Math.max(CANVAS_H, sh() - CANVAS_H) * amount;
+    drawY = by() + dir * et * Math.max(CANVAS_H, sh() - CANVAS_H) * amount;
   } else if (effect === 'zoom_in' || effect === 'zoom_out') {
     const delta = (params.delta as number) ?? 0.3;
-    const factor = effect === 'zoom_in' ? (1.0 + delta * t) : (1.0 + delta * (1 - t));
+    const factor = effect === 'zoom_in' ? (1.0 + delta * et) : (1.0 + delta * (1 - et));
     actualScale = coverScale * vp.scale * factor;
     drawW = imgW * actualScale; drawH = imgH * actualScale;
     drawX = -(drawW - CANVAS_W) * vp.offset_x;
