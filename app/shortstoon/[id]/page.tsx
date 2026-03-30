@@ -296,14 +296,31 @@ export default function ShortstoonEditPage() {
   const handleRender = async (blockId: string) => {
     setRenderingIds(prev => new Set(prev).add(blockId));
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, status: 'rendering' } : b));
-    const res = await fetch('/api/shortstoon/render', {
+
+    // Lightsail에 렌더링 위임 (즉시 반환)
+    await fetch('/api/shortstoon/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ blockId }),
     });
-    const updated: ShortstoonBlock = await res.json();
-    setBlocks(prev => prev.map(b => b.id === blockId ? updated : b));
-    setRenderingIds(prev => { const s = new Set(prev); s.delete(blockId); return s; });
+
+    // 완료될 때까지 2초 간격 폴링
+    const poll = setInterval(async () => {
+      const res = await fetch(`/api/shortstoon/blocks/${blockId}`);
+      if (!res.ok) return;
+      const block: ShortstoonBlock = await res.json();
+      if (block.status === 'completed' || block.status === 'failed') {
+        setBlocks(prev => prev.map(b => b.id === blockId ? block : b));
+        setRenderingIds(prev => { const s = new Set(prev); s.delete(blockId); return s; });
+        clearInterval(poll);
+      }
+    }, 2000);
+
+    // 최대 3분 후 타임아웃
+    setTimeout(() => {
+      clearInterval(poll);
+      setRenderingIds(prev => { const s = new Set(prev); s.delete(blockId); return s; });
+    }, 180000);
   };
 
   const handleRenderAll = async () => {
