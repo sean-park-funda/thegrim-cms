@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Play, Square, RotateCcw } from 'lucide-react';
 import { ShortstoonViewport, ShortstoonEffectType } from '@/lib/supabase';
@@ -101,6 +100,13 @@ export function ViewportEditor({
 
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
 
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const next = Math.min(5.0, Math.max(1.0, viewportRef.current.scale + delta));
+    onChange({ ...viewportRef.current, scale: Math.round(next * 10) / 10 });
+  }, [onChange]);
+
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -118,23 +124,14 @@ export function ViewportEditor({
           width={CANVAS_W}
           height={CANVAS_H}
           onMouseDown={handleMouseDown}
+          onWheel={handleWheel}
           className="block cursor-grab active:cursor-grabbing bg-black"
         />
         <div className="absolute inset-0 rounded-lg ring-1 ring-white/10 pointer-events-none" />
-      </div>
-
-      {/* 배율 슬라이더 (라벨 없음, 값만 표시) */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground w-8 text-right flex-shrink-0">
-          {viewport.scale.toFixed(1)}x
-        </span>
-        <Slider
-          min={10} max={50} step={1}
-          value={[Math.round(viewport.scale * 10)]}
-          onValueChange={([v]) => onChange({ ...viewport, scale: v / 10 })}
-          className="flex-1"
-        />
-        <span className="text-xs text-muted-foreground w-8 flex-shrink-0">5.0x</span>
+        {/* 배율 표시 (우상단 오버레이) */}
+        <div className="absolute top-2 right-2 bg-black/50 text-white/60 text-[11px] px-1.5 py-0.5 rounded pointer-events-none">
+          {viewport.scale.toFixed(1)}×
+        </div>
       </div>
 
       {/* 초기화 + 미리보기 */}
