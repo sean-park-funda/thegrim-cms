@@ -9,7 +9,7 @@ const supabase = createClient(
 const RELAY_URL = process.env.COMFYUI_RELAY_URL ?? 'https://api.rewardpang.com/thegrim-cms';
 
 export async function POST(request: NextRequest) {
-  const { blockId, aiMotionEnabled, aiMotionType, aiMotionPrompt } = await request.json();
+  const { blockId, durationMs, aiMotionEnabled, aiMotionType, aiMotionPrompt } = await request.json();
   if (!blockId) return NextResponse.json({ error: 'blockId 필요' }, { status: 400 });
 
   const { data: block, error: bErr } = await supabase
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       viewport: block.viewport,
       effect_type: effectType,
       effect_params: effectParams,
-      duration_ms: block.duration_ms ?? 3000,
+      duration_ms: durationMs ?? block.duration_ms ?? 3000,
       project_id: block.shortstoon_project_id,
       supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL,
       supabase_key: process.env.SUPABASE_SERVICE_ROLE_KEY,

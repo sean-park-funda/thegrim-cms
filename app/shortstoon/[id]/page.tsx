@@ -378,12 +378,16 @@ export default function ShortstoonEditPage() {
     setRenderingIds(prev => new Set(prev).add(blockId));
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, status: 'rendering' } : b));
 
+    const currentBlock = blocks.find(b => b.id === blockId);
+
     // Lightsail에 렌더링 위임 (즉시 반환)
+    // duration_ms를 클라이언트 상태에서 직접 전달 — DB 저장 딜레이 무관하게 최신값 사용
     await fetch('/api/shortstoon/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         blockId,
+        durationMs: currentBlock?.duration_ms,
         aiMotionEnabled: ai.enabled,
         aiMotionType: ai.motion_type,
         aiMotionPrompt: ai.prompt,
