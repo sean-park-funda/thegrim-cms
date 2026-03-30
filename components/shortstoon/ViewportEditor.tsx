@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Square, RotateCcw } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { ShortstoonViewport, ShortstoonEffectType } from '@/lib/supabase';
 
 interface ViewportEditorProps {
@@ -134,26 +134,16 @@ export function ViewportEditor({
         </div>
       </div>
 
-      {/* 초기화 + 미리보기 */}
-      <div className="flex gap-2">
+      {/* 미리보기 */}
+      {effectType !== 'none' && (
         <Button
-          variant="outline" size="sm"
-          className="flex-1 text-xs h-7 gap-1"
-          onClick={() => onChange({ scale: 1.0, offset_x: 0.5, offset_y: 0.5 })}
+          variant={playing ? 'destructive' : 'secondary'} size="sm"
+          className="w-full text-xs h-7 gap-1"
+          onClick={() => playing ? stopAnimation() : (setPlaying(true), startAnimation())}
         >
-          <RotateCcw className="h-3 w-3" />
-          초기화
+          {playing ? <><Square className="h-3 w-3" />중지</> : <><Play className="h-3 w-3" />미리보기</>}
         </Button>
-        {effectType !== 'none' && (
-          <Button
-            variant={playing ? 'destructive' : 'secondary'} size="sm"
-            className="flex-1 text-xs h-7 gap-1"
-            onClick={() => playing ? stopAnimation() : (setPlaying(true), startAnimation())}
-          >
-            {playing ? <><Square className="h-3 w-3" />중지</> : <><Play className="h-3 w-3" />미리보기</>}
-          </Button>
-        )}
-      </div>
+      )}
     </div>
   );
 }
