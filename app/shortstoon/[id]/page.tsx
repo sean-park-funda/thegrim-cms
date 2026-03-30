@@ -62,7 +62,7 @@ export default function ShortstoonEditPage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 

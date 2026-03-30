@@ -2,7 +2,7 @@
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Copy, Trash2, Loader2 } from 'lucide-react';
+import { Copy, Trash2, Loader2 } from 'lucide-react';
 import { ShortstoonBlock, SHORTSTOON_EFFECT_LABELS } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
@@ -29,30 +29,25 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       onClick={onSelect}
       className={cn(
-        'group relative flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all',
+        'group relative flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all',
+        'cursor-grab active:cursor-grabbing select-none',
         isSelected
           ? 'bg-white/10 ring-1 ring-white/20'
-          : 'hover:bg-white/5'
+          : 'hover:bg-white/5',
+        isDragging && 'shadow-2xl ring-1 ring-white/20 bg-white/10'
       )}
     >
-      {/* 드래그 핸들 */}
-      <button
-        {...attributes}
-        {...listeners}
-        className="flex-shrink-0 text-white/15 hover:text-white/40 cursor-grab active:cursor-grabbing transition-colors"
-        onClick={e => e.stopPropagation()}
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-
       {/* 썸네일 (9:16 비율) */}
       <div className="relative flex-shrink-0 w-[38px] h-[67px] rounded overflow-hidden bg-white/5">
         <img
@@ -60,14 +55,13 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
           alt={block.file_name}
           className="w-full h-full object-cover"
           loading="lazy"
+          draggable={false}
         />
-        {/* 렌더링 중 오버레이 */}
         {block.status === 'rendering' && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />
           </div>
         )}
-        {/* 완료 표시 */}
         {block.status === 'completed' && (
           <div className="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-green-500 ring-1 ring-black/50" />
         )}
@@ -79,7 +73,7 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
           <span className="text-[11px] font-semibold text-white/60">#{index + 1}</span>
           <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_DOT[block.status])} />
         </div>
-        <p className="text-[11px] text-white/35 mt-0.5">
+        <p className="text-[11px] text-white/35 mt-0.5 truncate">
           {(block.duration_ms / 1000).toFixed(1)}s
           {block.effect_type !== 'none' && (
             <span className="ml-1 text-primary/60">· {SHORTSTOON_EFFECT_LABELS[block.effect_type]}</span>
@@ -87,9 +81,10 @@ export function BlockCard({ block, index, isSelected, onSelect, onCopy, onDelete
         </p>
       </div>
 
-      {/* 호버 액션 */}
+      {/* 호버 액션 — 클릭 이벤트 차단 */}
       <div
         className="flex-shrink-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        onPointerDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
         <button
