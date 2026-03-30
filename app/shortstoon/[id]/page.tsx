@@ -711,21 +711,6 @@ export default function ShortstoonEditPage() {
 
                 <Divider />
 
-                <section>
-                  <SectionHeader icon={<Video className="h-3.5 w-3.5" />} title="다음 컷으로 전환" />
-                  <div className="mt-3">
-                    <TransitionSelector
-                      transitionType={selectedBlock.transition_type}
-                      transitionDurationMs={selectedBlock.transition_duration_ms}
-                      onChange={(type: ShortstoonTransitionType, durationMs: number) =>
-                        updateBlock(selectedBlock.id, { transition_type: type, transition_duration_ms: durationMs })
-                      }
-                    />
-                  </div>
-                </section>
-
-                <Divider />
-
                 <section className="pb-6">
                   <SectionHeader icon={<Download className="h-3.5 w-3.5" />} title="렌더링" />
                   <div className="mt-3 space-y-3">
