@@ -92,15 +92,39 @@ export default function ShortstoonEditPage() {
     }, 500);
   }, []);
 
-  // PSD 파일을 브라우저 Canvas로 합성 → PNG data URL 반환
-  const flattenPsd = async (file: File): Promise<{ dataUrl: string; fileName: string }> => {
+  // PSD 파일: 브라우저 Canvas로 합성 → PNG blob → Supabase Storage 직접 업로드
+  const uploadPsd = async (file: File, projectId: string, orderIndex: number): Promise<ShortstoonBlock> => {
     const { readPsd } = await import('ag-psd');
+    const { supabase } = await import('@/lib/supabase');
+
     const arrayBuffer = await file.arrayBuffer();
     const psd = readPsd(arrayBuffer);
-    const canvas = psd.canvas;
+    const canvas = psd.canvas as HTMLCanvasElement | undefined;
     if (!canvas) throw new Error('PSD 합성 실패: canvas 없음');
-    const dataUrl = (canvas as HTMLCanvasElement).toDataURL('image/png');
-    return { dataUrl, fileName: file.name.replace(/\.psd$/i, '.png') };
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG 변환 실패')), 'image/png');
+    });
+
+    const pngName = file.name.replace(/\.psd$/i, '.png');
+    const timestamp = Date.now();
+    const sanitized = pngName.replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_+/g, '_').substring(0, 100) || 'file';
+    const storagePath = `shortstoon/${projectId}/${timestamp}-${sanitized}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('webtoon-files')
+      .upload(storagePath, blob, { contentType: 'image/png', cacheControl: '3600', upsert: false });
+    if (uploadError) throw new Error(`Storage 업로드 실패: ${uploadError.message}`);
+
+    const { data: { publicUrl } } = supabase.storage.from('webtoon-files').getPublicUrl(storagePath);
+
+    const res = await fetch('/api/shortstoon/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, fileName: pngName, orderIndex, storagePath, publicUrl }),
+    });
+    if (!res.ok) throw new Error('블록 생성 실패');
+    return res.json();
   };
 
   // 벌크 업로드
@@ -115,24 +139,22 @@ export default function ShortstoonEditPage() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
 
-      let imageData: string;
-      let mimeType: string;
-      let fileName: string;
-
       if (file.name.toLowerCase().endsWith('.psd')) {
-        const { dataUrl, fileName: pngName } = await flattenPsd(file);
-        imageData = dataUrl;
-        mimeType = 'image/png';
-        fileName = pngName;
-      } else {
-        const reader = new FileReader();
-        imageData = await new Promise<string>(resolve => {
-          reader.onload = e => resolve(e.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-        mimeType = file.type || 'image/jpeg';
-        fileName = file.name;
+        try {
+          const block = await uploadPsd(file, id, startIndex + i);
+          newBlocks.push(block);
+        } catch (e) {
+          console.error('[PSD 업로드 실패]', e);
+        }
+        setUploadProgress(Math.round(((i + 1) / files.length) * 100));
+        continue;
       }
+
+      const reader = new FileReader();
+      const imageData = await new Promise<string>(resolve => {
+        reader.onload = e => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      });
 
       const res = await fetch('/api/shortstoon/upload', {
         method: 'POST',
@@ -140,8 +162,8 @@ export default function ShortstoonEditPage() {
         body: JSON.stringify({
           projectId: id,
           imageData,
-          mimeType,
-          fileName,
+          mimeType: file.type || 'image/jpeg',
+          fileName: file.name,
           orderIndex: startIndex + i,
         }),
       });

@@ -7,46 +7,59 @@ const supabase = createClient(
 );
 
 // POST: base64 이미지 → Storage 업로드 → shortstoon_blocks 생성
+//       OR: 이미 업로드된 storagePath + publicUrl → shortstoon_blocks 생성만
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, imageData, mimeType, fileName, orderIndex } = body;
+    const { projectId, fileName, orderIndex, imageData, mimeType, storagePath: preUploadedPath, publicUrl: preUploadedUrl } = body;
 
-    if (!projectId || !imageData || !mimeType || !fileName || orderIndex === undefined) {
+    if (!projectId || !fileName || orderIndex === undefined) {
       return NextResponse.json(
-        { error: 'projectId, imageData, mimeType, fileName, orderIndex 필요' },
+        { error: 'projectId, fileName, orderIndex 필요' },
         { status: 400 }
       );
     }
 
-    const base64Data = imageData.replace(/^data:[^;]+;base64,/, '');
-    const binaryData = Buffer.from(base64Data, 'base64');
+    let storagePath: string;
+    let publicUrl: string;
 
-    const timestamp = Date.now();
-    const sanitized = fileName
-      .replace(/[^a-zA-Z0-9_.-]/g, '_')
-      .replace(/_+/g, '_')
-      .substring(0, 100) || 'file';
-    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-    const fullFileName = `${timestamp}-${sanitized}.${ext}`;
-    const storagePath = `shortstoon/${projectId}/${fullFileName}`;
+    if (preUploadedPath && preUploadedUrl) {
+      // 클라이언트에서 직접 업로드한 경우 (PSD 등 대용량)
+      storagePath = preUploadedPath;
+      publicUrl = preUploadedUrl;
+    } else {
+      // base64 → 서버에서 Storage 업로드
+      if (!imageData || !mimeType) {
+        return NextResponse.json({ error: 'imageData, mimeType 필요' }, { status: 400 });
+      }
 
-    const { error: uploadError } = await supabase.storage
-      .from('webtoon-files')
-      .upload(storagePath, binaryData, {
-        contentType: mimeType,
-        cacheControl: '3600',
-        upsert: false,
-      });
+      const base64Data = imageData.replace(/^data:[^;]+;base64,/, '');
+      const binaryData = Buffer.from(base64Data, 'base64');
 
-    if (uploadError) {
-      console.error('[shortstoon/upload] Storage 업로드 실패:', uploadError);
-      return NextResponse.json({ error: '파일 업로드 실패', details: uploadError }, { status: 500 });
+      const timestamp = Date.now();
+      const sanitized = fileName
+        .replace(/[^a-zA-Z0-9_.-]/g, '_')
+        .replace(/_+/g, '_')
+        .substring(0, 100) || 'file';
+      const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const fullFileName = `${timestamp}-${sanitized}.${ext}`;
+      storagePath = `shortstoon/${projectId}/${fullFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('webtoon-files')
+        .upload(storagePath, binaryData, {
+          contentType: mimeType,
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error('[shortstoon/upload] Storage 업로드 실패:', uploadError);
+        return NextResponse.json({ error: '파일 업로드 실패', details: uploadError }, { status: 500 });
+      }
+
+      publicUrl = supabase.storage.from('webtoon-files').getPublicUrl(storagePath).data.publicUrl;
     }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('webtoon-files')
-      .getPublicUrl(storagePath);
 
     const { data, error: dbError } = await supabase
       .from('shortstoon_blocks')
