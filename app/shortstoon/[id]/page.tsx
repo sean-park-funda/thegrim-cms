@@ -92,7 +92,38 @@ export default function ShortstoonEditPage() {
     }, 500);
   }, []);
 
-  // PSD: Canvas 합성 → 서명 URL로 직접 업로드
+  // 긴 쪽 기준 maxPx 이하로 리사이즈 (Canvas → Blob)
+  const resizeCanvas = (src: HTMLCanvasElement, maxPx = 1920): Blob | Promise<Blob> => {
+    const { width: w, height: h } = src;
+    const scale = Math.min(1, maxPx / Math.max(w, h));
+    if (scale === 1) {
+      return new Promise<Blob>((res, rej) => src.toBlob(b => b ? res(b) : rej(new Error('toBlob 실패')), 'image/png'));
+    }
+    const out = document.createElement('canvas');
+    out.width = Math.round(w * scale);
+    out.height = Math.round(h * scale);
+    out.getContext('2d')!.drawImage(src, 0, 0, out.width, out.height);
+    return new Promise<Blob>((res, rej) => out.toBlob(b => b ? res(b) : rej(new Error('toBlob 실패')), 'image/png'));
+  };
+
+  // 일반 이미지 dataURL → 리사이즈 후 dataURL 반환
+  const resizeDataUrl = (dataUrl: string, maxPx = 1920): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        const scale = Math.min(1, maxPx / Math.max(w, h));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+
+  // PSD: Canvas 합성 → 리사이즈 → 서명 URL로 직접 업로드
   const uploadPsd = async (file: File, projectId: string, orderIndex: number): Promise<ShortstoonBlock> => {
     const { readPsd } = await import('ag-psd');
     const arrayBuffer = await file.arrayBuffer();
@@ -100,9 +131,7 @@ export default function ShortstoonEditPage() {
     const canvas = psd.canvas as HTMLCanvasElement | undefined;
     if (!canvas) throw new Error('PSD 합성 실패');
 
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG 변환 실패')), 'image/png');
-    });
+    const blob = await resizeCanvas(canvas);
 
     const pngName = file.name.replace(/\.psd$/i, '.png');
     const signRes = await fetch('/api/shortstoon/upload-sign', {
@@ -156,10 +185,11 @@ export default function ShortstoonEditPage() {
       }
 
       const reader = new FileReader();
-      const imageData = await new Promise<string>(resolve => {
+      const rawData = await new Promise<string>(resolve => {
         reader.onload = e => resolve(e.target?.result as string);
         reader.readAsDataURL(file);
       });
+      const imageData = await resizeDataUrl(rawData);
 
       const res = await fetch('/api/shortstoon/upload', {
         method: 'POST',
@@ -167,8 +197,8 @@ export default function ShortstoonEditPage() {
         body: JSON.stringify({
           projectId: id,
           imageData,
-          mimeType: file.type || 'image/jpeg',
-          fileName: file.name,
+          mimeType: 'image/png',
+          fileName: file.name.replace(/\.(jpe?g|webp)$/i, '.png'),
           orderIndex: startIndex + i,
         }),
       });
