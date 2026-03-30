@@ -565,94 +565,88 @@ export default function ShortstoonEditPage() {
               </div>
             </div>
           ) : (
-            <div className="max-w-[360px] mx-auto py-6 px-4 space-y-4">
+            <div className="flex gap-6 py-6 px-6 min-h-full">
 
-              {/* 뷰포트 섹션 */}
-              <section>
-                <SectionHeader icon={<Film className="h-3.5 w-3.5" />} title="뷰포트" />
-                <div className="mt-3">
-                  <ViewportEditor
-                    imageUrl={selectedBlock.image_url}
-                    viewport={selectedBlock.viewport}
-                    onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
-                    effectType={selectedBlock.effect_type}
-                    effectParams={selectedBlock.effect_params}
-                    durationMs={selectedBlock.duration_ms}
-                  />
-                </div>
-              </section>
+              {/* 좌: 뷰포트 */}
+              <div className="flex-shrink-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <Film className="h-3.5 w-3.5" />뷰포트
+                </p>
+                <ViewportEditor
+                  imageUrl={selectedBlock.image_url}
+                  viewport={selectedBlock.viewport}
+                  onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
+                  effectType={selectedBlock.effect_type}
+                  effectParams={selectedBlock.effect_params}
+                  durationMs={selectedBlock.duration_ms}
+                />
+              </div>
 
-              <Divider />
+              {/* 우: 효과 + 전환 + 렌더링 */}
+              <div className="flex-1 min-w-[260px] max-w-[380px] space-y-5 py-0">
 
-              {/* 효과 섹션 */}
-              <section>
-                <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="효과" />
-                <div className="mt-3">
-                  <EffectSelector
-                    effectType={selectedBlock.effect_type}
-                    effectParams={selectedBlock.effect_params}
-                    durationMs={selectedBlock.duration_ms}
-                    onChange={(type: ShortstoonEffectType, params: Record<string, unknown>) =>
-                      updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
-                    }
-                    onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
-                  />
-                </div>
-              </section>
-
-              <Divider />
-
-              {/* 전환 섹션 */}
-              <section>
-                <SectionHeader icon={<Video className="h-3.5 w-3.5" />} title="다음 컷으로 전환" />
-                <div className="mt-3">
-                  <TransitionSelector
-                    transitionType={selectedBlock.transition_type}
-                    transitionDurationMs={selectedBlock.transition_duration_ms}
-                    onChange={(type: ShortstoonTransitionType, durationMs: number) =>
-                      updateBlock(selectedBlock.id, { transition_type: type, transition_duration_ms: durationMs })
-                    }
-                  />
-                </div>
-              </section>
-
-              <Divider />
-
-              {/* 렌더링 섹션 */}
-              <section className="pb-6">
-                <SectionHeader icon={<Download className="h-3.5 w-3.5" />} title="렌더링" />
-                <div className="mt-3 space-y-3">
-                  {selectedBlock.status === 'completed' && selectedBlock.video_url && (
-                    <video
-                      src={selectedBlock.video_url}
-                      controls
-                      className="w-full rounded-xl border bg-black"
-                      style={{ maxHeight: 320 }}
+                <section>
+                  <SectionHeader icon={<Sparkles className="h-3.5 w-3.5" />} title="효과" />
+                  <div className="mt-3">
+                    <EffectSelector
+                      effectType={selectedBlock.effect_type}
+                      effectParams={selectedBlock.effect_params}
+                      durationMs={selectedBlock.duration_ms}
+                      onChange={(type: ShortstoonEffectType, params: Record<string, unknown>) =>
+                        updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
+                      }
+                      onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
                     />
-                  )}
-                  {selectedBlock.status === 'failed' && (
-                    <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
-                      <p className="text-xs text-destructive">{selectedBlock.error_message ?? '렌더링 실패'}</p>
-                    </div>
-                  )}
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    variant={selectedBlock.status === 'completed' ? 'outline' : 'default'}
-                    onClick={() => handleRender(selectedBlock.id)}
-                    disabled={renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering'}
-                  >
-                    {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering') ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />렌더링 중...</>
-                    ) : selectedBlock.status === 'completed' ? (
-                      '다시 렌더링'
-                    ) : (
-                      '이 컷 렌더링'
-                    )}
-                  </Button>
-                </div>
-              </section>
+                  </div>
+                </section>
 
+                <Divider />
+
+                <section>
+                  <SectionHeader icon={<Video className="h-3.5 w-3.5" />} title="다음 컷으로 전환" />
+                  <div className="mt-3">
+                    <TransitionSelector
+                      transitionType={selectedBlock.transition_type}
+                      transitionDurationMs={selectedBlock.transition_duration_ms}
+                      onChange={(type: ShortstoonTransitionType, durationMs: number) =>
+                        updateBlock(selectedBlock.id, { transition_type: type, transition_duration_ms: durationMs })
+                      }
+                    />
+                  </div>
+                </section>
+
+                <Divider />
+
+                <section className="pb-6">
+                  <SectionHeader icon={<Download className="h-3.5 w-3.5" />} title="렌더링" />
+                  <div className="mt-3 space-y-3">
+                    {selectedBlock.status === 'completed' && selectedBlock.video_url && (
+                      <video
+                        src={selectedBlock.video_url}
+                        controls
+                        className="w-full rounded-xl border bg-black"
+                        style={{ maxHeight: 280 }}
+                      />
+                    )}
+                    {selectedBlock.status === 'failed' && (
+                      <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
+                        <p className="text-xs text-destructive">{selectedBlock.error_message ?? '렌더링 실패'}</p>
+                      </div>
+                    )}
+                    <Button
+                      className="w-full" size="sm"
+                      variant={selectedBlock.status === 'completed' ? 'outline' : 'default'}
+                      onClick={() => handleRender(selectedBlock.id)}
+                      disabled={renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering'}
+                    >
+                      {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering') ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />렌더링 중...</>
+                      ) : selectedBlock.status === 'completed' ? '다시 렌더링' : '이 컷 렌더링'}
+                    </Button>
+                  </div>
+                </section>
+
+              </div>
             </div>
           )}
         </main>
