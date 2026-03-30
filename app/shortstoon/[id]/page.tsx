@@ -31,6 +31,8 @@ import {
   Check,
   X,
   Sparkles,
+  Play,
+  Square,
 } from 'lucide-react';
 import {
   ShortstoonProject,
@@ -39,7 +41,7 @@ import {
   ShortstoonEffectType,
   ShortstoonTransitionType,
 } from '@/lib/supabase';
-import { ViewportEditor } from '@/components/shortstoon/ViewportEditor';
+import { ViewportEditor, ViewportEditorHandle } from '@/components/shortstoon/ViewportEditor';
 import { EffectSelector, TransitionSelector } from '@/components/shortstoon/EffectSelector';
 import { BlockCard } from '@/components/shortstoon/BlockCard';
 import { cn } from '@/lib/utils';
@@ -60,6 +62,8 @@ export default function ShortstoonEditPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportEditorRef = useRef<ViewportEditorHandle>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -567,6 +571,7 @@ export default function ShortstoonEditPage() {
                   <Film className="h-3.5 w-3.5" />뷰포트
                 </p>
                 <ViewportEditor
+                  ref={viewportEditorRef}
                   imageUrl={selectedBlock.image_url}
                   viewport={selectedBlock.viewport}
                   onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
@@ -592,6 +597,22 @@ export default function ShortstoonEditPage() {
                       onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
                     />
                   </div>
+                  {selectedBlock.effect_type !== 'none' && (
+                    <Button
+                      variant={previewPlaying ? 'destructive' : 'secondary'}
+                      size="sm"
+                      className="w-full mt-3 text-xs h-7 gap-1.5"
+                      onClick={() => {
+                        viewportEditorRef.current?.togglePlay();
+                        setPreviewPlaying(p => !p);
+                      }}
+                    >
+                      {previewPlaying
+                        ? <><Square className="h-3 w-3" />중지</>
+                        : <><Play className="h-3 w-3" />미리보기</>
+                      }
+                    </Button>
+                  )}
                 </section>
 
                 <Divider />

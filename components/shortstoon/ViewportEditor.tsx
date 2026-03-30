@@ -1,8 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Play, Square } from 'lucide-react';
+import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { ShortstoonViewport, ShortstoonEffectType } from '@/lib/supabase';
 
 interface ViewportEditorProps {
@@ -14,12 +12,18 @@ interface ViewportEditorProps {
   durationMs: number;
 }
 
+export interface ViewportEditorHandle {
+  togglePlay: () => void;
+  playing: boolean;
+}
+
 const CANVAS_W = 432;
 const CANVAS_H = 768;
 
-export function ViewportEditor({
-  imageUrl, viewport, onChange, effectType, effectParams, durationMs,
-}: ViewportEditorProps) {
+export const ViewportEditor = forwardRef<ViewportEditorHandle, ViewportEditorProps>(function ViewportEditor(
+  { imageUrl, viewport, onChange, effectType, effectParams, durationMs },
+  ref
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const imgLoadedRef = useRef(false);
@@ -76,6 +80,13 @@ export function ViewportEditor({
     drawStatic();
   }, [drawStatic]);
 
+  const togglePlay = useCallback(() => {
+    if (playing) stopAnimation();
+    else { setPlaying(true); startAnimation(); }
+  }, [playing, startAnimation, stopAnimation]);
+
+  useImperativeHandle(ref, () => ({ togglePlay, playing }), [togglePlay, playing]);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (playing) return;
     dragRef.current = { startX: e.clientX, startY: e.clientY, startOX: viewport.offset_x, startOY: viewport.offset_y };
@@ -116,8 +127,7 @@ export function ViewportEditor({
   useEffect(() => () => { cancelAnimationFrame(animFrameRef.current); }, []);
 
   return (
-    <div className="flex flex-col gap-2" style={{ width: CANVAS_W }}>
-      {/* 캔버스 */}
+    <div style={{ width: CANVAS_W }}>
       <div className="relative rounded-lg overflow-hidden" style={{ width: CANVAS_W, height: CANVAS_H }}>
         <canvas
           ref={canvasRef}
@@ -128,25 +138,13 @@ export function ViewportEditor({
           className="block cursor-grab active:cursor-grabbing bg-black"
         />
         <div className="absolute inset-0 rounded-lg ring-1 ring-white/10 pointer-events-none" />
-        {/* 배율 표시 (우상단 오버레이) */}
         <div className="absolute top-2 right-2 bg-black/50 text-white/60 text-[11px] px-1.5 py-0.5 rounded pointer-events-none">
           {viewport.scale.toFixed(1)}×
         </div>
       </div>
-
-      {/* 미리보기 */}
-      {effectType !== 'none' && (
-        <Button
-          variant={playing ? 'destructive' : 'secondary'} size="sm"
-          className="w-full text-xs h-7 gap-1"
-          onClick={() => playing ? stopAnimation() : (setPlaying(true), startAnimation())}
-        >
-          {playing ? <><Square className="h-3 w-3" />중지</> : <><Play className="h-3 w-3" />미리보기</>}
-        </Button>
-      )}
     </div>
   );
-}
+});
 
 function computeDraw(
   imgW: number, imgH: number, vp: ShortstoonViewport,
