@@ -3,6 +3,7 @@
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   ShortstoonEffectType,
   ShortstoonTransitionType,
@@ -18,11 +19,14 @@ interface EffectSelectorProps {
   durationMs: number;
   onChange: (type: ShortstoonEffectType, params: Record<string, unknown>) => void;
   onDurationChange: (ms: number) => void;
+  aiMotionEnabled: boolean;
+  aiMotionParams: { motion_type: string; prompt: string };
+  onAiMotionChange: (enabled: boolean, params: { motion_type: string; prompt: string }) => void;
 }
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10];
 
-// 효과 칩 정의
+// 효과 칩 정의 (AI 모션 제외 — 별도 섹션)
 const EFFECT_CHIPS: { icon: string; label: string; type: ShortstoonEffectType; params: Record<string, unknown> }[] = [
   { icon: '—',  label: '없음',     type: 'none',      params: {} },
   { icon: '←',  label: '좌 스크롤', type: 'scroll_h',  params: { direction: 'left',  amount: 0.5 } },
@@ -33,7 +37,6 @@ const EFFECT_CHIPS: { icon: string; label: string; type: ShortstoonEffectType; p
   { icon: '🔎', label: '줌 아웃',  type: 'zoom_out',  params: { delta: 0.3 } },
   { icon: '〜', label: '흔들기',   type: 'shake',     params: { amplitude: 8, frequency: 8 } },
   { icon: '✦',  label: '번쩍임',   type: 'flash',     params: { interval: 0.5, min_brightness: 0.6 } },
-  { icon: '✨', label: 'AI 모션',  type: 'ai_motion', params: { motion_type: 'blink', prompt: '' } },
 ];
 
 function isChipActive(chip: typeof EFFECT_CHIPS[number], effectType: ShortstoonEffectType, effectParams: Record<string, unknown>) {
@@ -43,7 +46,11 @@ function isChipActive(chip: typeof EFFECT_CHIPS[number], effectType: ShortstoonE
   return true;
 }
 
-export function EffectSelector({ effectType, effectParams, durationMs, onChange, onDurationChange }: EffectSelectorProps) {
+export function EffectSelector({
+  effectType, effectParams, durationMs,
+  onChange, onDurationChange,
+  aiMotionEnabled, aiMotionParams, onAiMotionChange,
+}: EffectSelectorProps) {
   const setParam = (key: string, value: unknown) => onChange(effectType, { ...effectParams, [key]: value });
 
   return (
@@ -142,38 +149,69 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
         </div>
       )}
 
-      {/* AI 모션 */}
-      {effectType === 'ai_motion' && (
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">모션 종류</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[['blink','눈 깜빡임'],['hair','머리 흔들림'],['breathing','호흡'],['lip_sync','입 움직임'],['custom','커스텀']].map(([val, label]) => (
-                <PillBtn key={val} active={(effectParams.motion_type as string) === val} onClick={() => setParam('motion_type', val)}>
-                  {label}
-                </PillBtn>
-              ))}
-            </div>
-          </div>
-          {(effectParams.motion_type as string) === 'custom' && (
-            <div>
-              <Label className="text-xs text-muted-foreground">커스텀 프롬프트</Label>
-              <Input
-                className="mt-1 h-8 text-xs"
-                placeholder="영어 프롬프트..."
-                value={(effectParams.prompt as string) ?? ''}
-                onChange={e => setParam('prompt', e.target.value)}
-              />
-            </div>
-          )}
-          <p className="text-[11px] text-amber-500/80 bg-amber-500/10 rounded-md px-2.5 py-1.5">
-            렌더링 시 Wan2.2 API 호출 (수 분 소요)
+      {/* ── AI 모션 섹션 ── */}
+      <div className="border-t border-border pt-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <span>✨</span> AI 모션
           </p>
+          <Switch
+            checked={aiMotionEnabled}
+            onCheckedChange={enabled => onAiMotionChange(enabled, aiMotionParams)}
+          />
         </div>
-      )}
+
+        {aiMotionEnabled && (
+          <div className="space-y-3">
+            {effectType !== 'none' && (
+              <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
+                {effectTypeLabel(effectType, effectParams)} 효과를 프롬프트 힌트로 활용합니다
+              </p>
+            )}
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">모션 종류</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([['blink','눈 깜빡임'],['hair','머리 흔들림'],['breathing','호흡'],['lip_sync','입 움직임'],['custom','커스텀']] as [string, string][]).map(([val, label]) => (
+                  <PillBtn key={val} active={aiMotionParams.motion_type === val}
+                    onClick={() => onAiMotionChange(true, { ...aiMotionParams, motion_type: val })}>
+                    {label}
+                  </PillBtn>
+                ))}
+              </div>
+            </div>
+            {aiMotionParams.motion_type === 'custom' && (
+              <div>
+                <Label className="text-xs text-muted-foreground">커스텀 프롬프트</Label>
+                <Input
+                  className="mt-1 h-8 text-xs"
+                  placeholder="영어 프롬프트..."
+                  value={aiMotionParams.prompt}
+                  onChange={e => onAiMotionChange(true, { ...aiMotionParams, prompt: e.target.value })}
+                />
+              </div>
+            )}
+            <p className="text-[11px] text-amber-500/80 bg-amber-500/10 rounded-md px-2.5 py-1.5">
+              렌더링 시 Wan2.2 AI 영상 생성 (수 분 소요)
+            </p>
+          </div>
+        )}
+      </div>
 
     </div>
   );
+}
+
+function effectTypeLabel(type: ShortstoonEffectType, params: Record<string, unknown>): string {
+  const dir = params.direction as string;
+  const map: Partial<Record<ShortstoonEffectType, string>> = {
+    scroll_h: dir === 'right' ? '우 스크롤' : '좌 스크롤',
+    scroll_v: dir === 'down' ? '하 스크롤' : '상 스크롤',
+    zoom_in: '줌 인',
+    zoom_out: '줌 아웃',
+    shake: '흔들기',
+    flash: '번쩍임',
+  };
+  return map[type] ?? '';
 }
 
 // ─── 트랜지션 선택 ─────────────────────────────────────────────────────────────

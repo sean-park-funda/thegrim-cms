@@ -135,6 +135,7 @@ export default function ShortstoonEditPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadLabel, setUploadLabel] = useState('');
   const [renderingIds, setRenderingIds] = useState<Set<string>>(new Set());
+  const [aiMotionMap, setAiMotionMap] = useState<Record<string, { enabled: boolean; motion_type: string; prompt: string }>>({});
   const [merging, setMerging] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -370,7 +371,10 @@ export default function ShortstoonEditPage() {
     if (selectedId === blockId) setSelectedId(null);
   };
 
+  const getAiMotion = (blockId: string) => aiMotionMap[blockId] ?? { enabled: false, motion_type: 'blink', prompt: '' };
+
   const handleRender = async (blockId: string) => {
+    const ai = getAiMotion(blockId);
     setRenderingIds(prev => new Set(prev).add(blockId));
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, status: 'rendering' } : b));
 
@@ -378,7 +382,12 @@ export default function ShortstoonEditPage() {
     await fetch('/api/shortstoon/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blockId }),
+      body: JSON.stringify({
+        blockId,
+        aiMotionEnabled: ai.enabled,
+        aiMotionType: ai.motion_type,
+        aiMotionPrompt: ai.prompt,
+      }),
     });
 
     // 완료될 때까지 2초 간격 폴링
@@ -689,6 +698,11 @@ export default function ShortstoonEditPage() {
                         updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
                       }
                       onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
+                      aiMotionEnabled={getAiMotion(selectedBlock.id).enabled}
+                      aiMotionParams={getAiMotion(selectedBlock.id)}
+                      onAiMotionChange={(enabled, params) =>
+                        setAiMotionMap(prev => ({ ...prev, [selectedBlock.id]: { ...params, enabled } }))
+                      }
                     />
                   </div>
                   {selectedBlock.effect_type !== 'none' && (

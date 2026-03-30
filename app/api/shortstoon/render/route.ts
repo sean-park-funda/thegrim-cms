@@ -9,7 +9,7 @@ const supabase = createClient(
 const RELAY_URL = process.env.COMFYUI_RELAY_URL ?? 'https://api.rewardpang.com/thegrim-cms';
 
 export async function POST(request: NextRequest) {
-  const { blockId } = await request.json();
+  const { blockId, aiMotionEnabled, aiMotionType, aiMotionPrompt } = await request.json();
   if (!blockId) return NextResponse.json({ error: 'blockId 필요' }, { status: 400 });
 
   const { data: block, error: bErr } = await supabase
@@ -25,6 +25,17 @@ export async function POST(request: NextRequest) {
     .update({ status: 'rendering', error_message: null, updated_at: new Date().toISOString() })
     .eq('id', blockId);
 
+  // AI 모션 활성 시 effect_type 오버라이드
+  const effectType = aiMotionEnabled ? 'ai_motion' : (block.effect_type ?? 'none');
+  const effectParams = aiMotionEnabled
+    ? {
+        motion_type: aiMotionType ?? 'blink',
+        prompt: aiMotionPrompt ?? '',
+        base_effect: block.effect_type ?? 'none',
+        base_effect_params: block.effect_params ?? {},
+      }
+    : (block.effect_params ?? {});
+
   // Lightsail에 렌더링 위임 (fire & forget — await 없음)
   fetch(`${RELAY_URL}/ffmpeg/render-cut`, {
     method: 'POST',
@@ -33,8 +44,8 @@ export async function POST(request: NextRequest) {
       block_id: blockId,
       image_url: block.image_url,
       viewport: block.viewport,
-      effect_type: block.effect_type ?? 'none',
-      effect_params: block.effect_params ?? {},
+      effect_type: effectType,
+      effect_params: effectParams,
       duration_ms: block.duration_ms ?? 3000,
       project_id: block.shortstoon_project_id,
       supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL,
