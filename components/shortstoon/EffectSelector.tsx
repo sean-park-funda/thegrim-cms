@@ -1,8 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
   ShortstoonEffectType,
@@ -10,6 +10,26 @@ import {
   SHORTSTOON_TRANSITION_LABELS,
 } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+
+// ─── 상수 ─────────────────────────────────────────────────────────────────────
+
+// Lightsail comfyui.py의 MOTION_PROMPTS와 동일
+const MOTION_PROMPTS: Record<string, string> = {
+  blink:     'Natural eye blinking, subtle facial micro-expressions, slight head sway',
+  breathing: 'Gentle chest rise and fall with slow breathing, subtle body movement',
+  hair:      'Hair sways gently in a light breeze, soft flowing motion',
+  lip_sync:  'Lips move naturally as if speaking softly, subtle jaw movement',
+};
+
+// Lightsail comfyui.py의 BASE_EFFECT_HINTS와 동일
+const EFFECT_HINTS: Partial<Record<ShortstoonEffectType, string>> = {
+  scroll_h: 'with subtle horizontal panning movement',
+  scroll_v: 'with subtle vertical panning movement',
+  zoom_in:  'with a slow gentle zoom in toward the subject',
+  zoom_out: 'with a slow gentle zoom out from the subject',
+  shake:    'with slight camera shake and trembling',
+  flash:    'with flickering light changes',
+};
 
 // ─── 효과 선택 ────────────────────────────────────────────────────────────────
 
@@ -26,7 +46,6 @@ interface EffectSelectorProps {
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10];
 
-// 효과 칩 정의 (AI 모션 제외 — 별도 섹션)
 const EFFECT_CHIPS: { icon: string; label: string; type: ShortstoonEffectType; params: Record<string, unknown> }[] = [
   { icon: '—',  label: '없음',     type: 'none',      params: {} },
   { icon: '←',  label: '좌 스크롤', type: 'scroll_h',  params: { direction: 'left',  amount: 0.5 } },
@@ -46,12 +65,46 @@ function isChipActive(chip: typeof EFFECT_CHIPS[number], effectType: ShortstoonE
   return true;
 }
 
+const MOTION_LABELS: [string, string][] = [
+  ['blink', '눈 깜빡임'],
+  ['hair', '머리 흔들림'],
+  ['breathing', '호흡'],
+  ['lip_sync', '입 움직임'],
+  ['custom', '커스텀'],
+];
+
 export function EffectSelector({
   effectType, effectParams, durationMs,
   onChange, onDurationChange,
   aiMotionEnabled, aiMotionParams, onAiMotionChange,
 }: EffectSelectorProps) {
   const setParam = (key: string, value: unknown) => onChange(effectType, { ...effectParams, [key]: value });
+
+  const [koreanInput, setKoreanInput] = useState('');
+  const [translating, setTranslating] = useState(false);
+
+  const handleTranslate = async () => {
+    if (!koreanInput.trim()) return;
+    setTranslating(true);
+    try {
+      const res = await fetch('/api/shortstoon/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: koreanInput }),
+      });
+      const { translated } = await res.json();
+      if (translated) onAiMotionChange(true, { ...aiMotionParams, prompt: translated });
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  // AI 렌더링 시 최종 합성 프롬프트
+  const motionPrompt = aiMotionParams.motion_type === 'custom'
+    ? aiMotionParams.prompt
+    : MOTION_PROMPTS[aiMotionParams.motion_type] ?? '';
+  const effectHint = EFFECT_HINTS[effectType] ?? '';
+  const finalPrompt = [motionPrompt, effectHint].filter(Boolean).join(', ');
 
   return (
     <div className="space-y-5">
@@ -87,7 +140,6 @@ export function EffectSelector({
 
       {/* ── 효과별 파라미터 ── */}
 
-      {/* 스크롤 크기 */}
       {(effectType === 'scroll_h' || effectType === 'scroll_v') && (
         <SliderParam
           label="스크롤 크기" unit="%"
@@ -98,7 +150,6 @@ export function EffectSelector({
         />
       )}
 
-      {/* 줌 차이 */}
       {(effectType === 'zoom_in' || effectType === 'zoom_out') && (
         <SliderParam
           label="줌 차이" unit="x"
@@ -109,7 +160,6 @@ export function EffectSelector({
         />
       )}
 
-      {/* 흔들기 */}
       {effectType === 'shake' && (
         <div className="space-y-3">
           <div>
@@ -129,7 +179,6 @@ export function EffectSelector({
         </div>
       )}
 
-      {/* 번쩍임 */}
       {effectType === 'flash' && (
         <div className="space-y-3">
           <SliderParam
@@ -163,15 +212,12 @@ export function EffectSelector({
 
         {aiMotionEnabled && (
           <div className="space-y-3">
-            {effectType !== 'none' && (
-              <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
-                {effectTypeLabel(effectType, effectParams)} 효과를 프롬프트 힌트로 활용합니다
-              </p>
-            )}
+
+            {/* 모션 종류 */}
             <div>
-              <p className="text-xs text-muted-foreground mb-2">모션 종류</p>
+              <p className="text-xs text-muted-foreground mb-2">모션</p>
               <div className="grid grid-cols-3 gap-1.5">
-                {([['blink','눈 깜빡임'],['hair','머리 흔들림'],['breathing','호흡'],['lip_sync','입 움직임'],['custom','커스텀']] as [string, string][]).map(([val, label]) => (
+                {MOTION_LABELS.map(([val, label]) => (
                   <PillBtn key={val} active={aiMotionParams.motion_type === val}
                     onClick={() => onAiMotionChange(true, { ...aiMotionParams, motion_type: val })}>
                     {label}
@@ -179,17 +225,66 @@ export function EffectSelector({
                 ))}
               </div>
             </div>
+
+            {/* 커스텀: 한글 입력 + 번역 */}
             {aiMotionParams.motion_type === 'custom' && (
-              <div>
-                <Label className="text-xs text-muted-foreground">커스텀 프롬프트</Label>
-                <Input
-                  className="mt-1 h-8 text-xs"
-                  placeholder="영어 프롬프트..."
-                  value={aiMotionParams.prompt}
-                  onChange={e => onAiMotionChange(true, { ...aiMotionParams, prompt: e.target.value })}
-                />
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">한글로 동작 설명</p>
+                <div className="flex gap-1.5">
+                  <textarea
+                    className="flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                    rows={2}
+                    placeholder="예: 눈을 천천히 깜빡이며 고개를 살짝 돌린다"
+                    value={koreanInput}
+                    onChange={e => setKoreanInput(e.target.value)}
+                  />
+                  <button
+                    onClick={handleTranslate}
+                    disabled={translating || !koreanInput.trim()}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-medium border transition-all self-start',
+                      translating || !koreanInput.trim()
+                        ? 'border-border text-muted-foreground opacity-50 cursor-not-allowed'
+                        : 'border-primary text-primary hover:bg-primary/10'
+                    )}
+                  >
+                    {translating ? '...' : '번역'}
+                  </button>
+                </div>
+                {aiMotionParams.prompt && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">번역된 프롬프트 (수정 가능)</p>
+                    <textarea
+                      className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary text-foreground/80"
+                      rows={2}
+                      value={aiMotionParams.prompt}
+                      onChange={e => onAiMotionChange(true, { ...aiMotionParams, prompt: e.target.value })}
+                    />
+                  </div>
+                )}
               </div>
             )}
+
+            {/* 최종 프롬프트 미리보기 */}
+            <div className="rounded-md bg-muted/40 border border-border/60 px-2.5 py-2 space-y-1.5">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">최종 AI 프롬프트</p>
+              {motionPrompt && (
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">액션</span>
+                  <p className="text-[11px] text-foreground/70 leading-snug">{motionPrompt}</p>
+                </div>
+              )}
+              {effectHint && (
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">이펙트</span>
+                  <p className="text-[11px] text-foreground/70 leading-snug">{effectHint}</p>
+                </div>
+              )}
+              {!finalPrompt && (
+                <p className="text-[11px] text-muted-foreground/50 italic">모션을 선택하세요</p>
+              )}
+            </div>
+
             <p className="text-[11px] text-amber-500/80 bg-amber-500/10 rounded-md px-2.5 py-1.5">
               렌더링 시 Wan2.2 AI 영상 생성 (수 분 소요)
             </p>
@@ -199,19 +294,6 @@ export function EffectSelector({
 
     </div>
   );
-}
-
-function effectTypeLabel(type: ShortstoonEffectType, params: Record<string, unknown>): string {
-  const dir = params.direction as string;
-  const map: Partial<Record<ShortstoonEffectType, string>> = {
-    scroll_h: dir === 'right' ? '우 스크롤' : '좌 스크롤',
-    scroll_v: dir === 'down' ? '하 스크롤' : '상 스크롤',
-    zoom_in: '줌 인',
-    zoom_out: '줌 아웃',
-    shake: '흔들기',
-    flash: '번쩍임',
-  };
-  return map[type] ?? '';
 }
 
 // ─── 트랜지션 선택 ─────────────────────────────────────────────────────────────
