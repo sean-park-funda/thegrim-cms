@@ -22,15 +22,15 @@ interface EffectSelectorProps {
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10];
 
-// 효과 칩 정의 — scroll 방향을 처음부터 분리
+// 효과 칩 정의
 const EFFECT_CHIPS: { icon: string; label: string; type: ShortstoonEffectType; params: Record<string, unknown> }[] = [
   { icon: '—',  label: '없음',     type: 'none',      params: {} },
-  { icon: '←',  label: '좌 스크롤', type: 'scroll_h',  params: { direction: 'left',  speed: 0.3 } },
-  { icon: '→',  label: '우 스크롤', type: 'scroll_h',  params: { direction: 'right', speed: 0.3 } },
-  { icon: '↑',  label: '상 스크롤', type: 'scroll_v',  params: { direction: 'up',    speed: 0.3 } },
-  { icon: '↓',  label: '하 스크롤', type: 'scroll_v',  params: { direction: 'down',  speed: 0.3 } },
-  { icon: '🔍', label: '줌 인',    type: 'zoom_in',   params: { from: 1.0, to: 1.3 } },
-  { icon: '🔎', label: '줌 아웃',  type: 'zoom_out',  params: { from: 1.3, to: 1.0 } },
+  { icon: '←',  label: '좌 스크롤', type: 'scroll_h',  params: { direction: 'left',  amount: 0.5 } },
+  { icon: '→',  label: '우 스크롤', type: 'scroll_h',  params: { direction: 'right', amount: 0.5 } },
+  { icon: '↑',  label: '상 스크롤', type: 'scroll_v',  params: { direction: 'up',    amount: 0.5 } },
+  { icon: '↓',  label: '하 스크롤', type: 'scroll_v',  params: { direction: 'down',  amount: 0.5 } },
+  { icon: '🔍', label: '줌 인',    type: 'zoom_in',   params: { delta: 0.3 } },
+  { icon: '🔎', label: '줌 아웃',  type: 'zoom_out',  params: { delta: 0.3 } },
   { icon: '〜', label: '흔들기',   type: 'shake',     params: { amplitude: 8, frequency: 8 } },
   { icon: '✦',  label: '번쩍임',   type: 'flash',     params: { interval: 0.5, min_brightness: 0.6 } },
   { icon: '✨', label: 'AI 모션',  type: 'ai_motion', params: { motion_type: 'blink', prompt: '' } },
@@ -80,42 +80,44 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
 
       {/* ── 효과별 파라미터 ── */}
 
-      {/* 줌인/줌아웃 */}
+      {/* 스크롤 크기 */}
+      {(effectType === 'scroll_h' || effectType === 'scroll_v') && (
+        <SliderParam
+          label="스크롤 크기" unit="%"
+          min={10} max={100} step={5}
+          value={Math.round(((effectParams.amount as number) ?? 0.5) * 100)}
+          display={String(Math.round(((effectParams.amount as number) ?? 0.5) * 100))}
+          onChange={v => setParam('amount', v / 100)}
+        />
+      )}
+
+      {/* 줌 차이 */}
       {(effectType === 'zoom_in' || effectType === 'zoom_out') && (
-        <div className="space-y-3">
-          <SliderParam
-            label="시작 배율" unit="x"
-            min={10} max={50} step={1}
-            value={Math.round(((effectParams.from as number) ?? 1.0) * 10)}
-            display={((effectParams.from as number) ?? 1.0).toFixed(1)}
-            onChange={v => setParam('from', v / 10)}
-          />
-          <SliderParam
-            label="끝 배율" unit="x"
-            min={10} max={50} step={1}
-            value={Math.round(((effectParams.to as number) ?? 1.3) * 10)}
-            display={((effectParams.to as number) ?? 1.3).toFixed(1)}
-            onChange={v => setParam('to', v / 10)}
-          />
-        </div>
+        <SliderParam
+          label="줌 차이" unit="x"
+          min={1} max={30} step={1}
+          value={Math.round(((effectParams.delta as number) ?? 0.3) * 10)}
+          display={((effectParams.delta as number) ?? 0.3).toFixed(1)}
+          onChange={v => setParam('delta', v / 10)}
+        />
       )}
 
       {/* 흔들기 */}
       {effectType === 'shake' && (
         <div className="space-y-3">
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">속도</p>
+            <div className="flex gap-1.5">
+              <PillBtn wide active={(effectParams.frequency as number) >= 12} onClick={() => setParam('frequency', 15)}>빠르게</PillBtn>
+              <PillBtn wide active={((effectParams.frequency as number) ?? 8) < 12} onClick={() => setParam('frequency', 4)}>천천히</PillBtn>
+            </div>
+          </div>
           <SliderParam
             label="진폭" unit="px"
             min={1} max={30} step={1}
             value={(effectParams.amplitude as number) ?? 8}
             display={String((effectParams.amplitude as number) ?? 8)}
             onChange={v => setParam('amplitude', v)}
-          />
-          <SliderParam
-            label="주파수" unit="Hz"
-            min={1} max={30} step={1}
-            value={(effectParams.frequency as number) ?? 8}
-            display={String((effectParams.frequency as number) ?? 8)}
-            onChange={v => setParam('frequency', v)}
           />
         </div>
       )}
