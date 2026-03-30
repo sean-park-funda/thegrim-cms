@@ -92,6 +92,17 @@ export default function ShortstoonEditPage() {
     }, 500);
   }, []);
 
+  // PSD 파일을 브라우저 Canvas로 합성 → PNG data URL 반환
+  const flattenPsd = async (file: File): Promise<{ dataUrl: string; fileName: string }> => {
+    const { readPsd } = await import('ag-psd');
+    const arrayBuffer = await file.arrayBuffer();
+    const psd = readPsd(arrayBuffer);
+    const canvas = psd.canvas;
+    if (!canvas) throw new Error('PSD 합성 실패: canvas 없음');
+    const dataUrl = (canvas as HTMLCanvasElement).toDataURL('image/png');
+    return { dataUrl, fileName: file.name.replace(/\.psd$/i, '.png') };
+  };
+
   // 벌크 업로드
   const onDrop = useCallback(async (files: File[]) => {
     if (files.length === 0 || !id) return;
@@ -103,11 +114,25 @@ export default function ShortstoonEditPage() {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const reader = new FileReader();
-      const imageData = await new Promise<string>(resolve => {
-        reader.onload = e => resolve(e.target?.result as string);
-        reader.readAsDataURL(file);
-      });
+
+      let imageData: string;
+      let mimeType: string;
+      let fileName: string;
+
+      if (file.name.toLowerCase().endsWith('.psd')) {
+        const { dataUrl, fileName: pngName } = await flattenPsd(file);
+        imageData = dataUrl;
+        mimeType = 'image/png';
+        fileName = pngName;
+      } else {
+        const reader = new FileReader();
+        imageData = await new Promise<string>(resolve => {
+          reader.onload = e => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        mimeType = file.type || 'image/jpeg';
+        fileName = file.name;
+      }
 
       const res = await fetch('/api/shortstoon/upload', {
         method: 'POST',
@@ -115,8 +140,8 @@ export default function ShortstoonEditPage() {
         body: JSON.stringify({
           projectId: id,
           imageData,
-          mimeType: file.type || 'image/jpeg',
-          fileName: file.name,
+          mimeType,
+          fileName,
           orderIndex: startIndex + i,
         }),
       });
@@ -139,7 +164,7 @@ export default function ShortstoonEditPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'], 'application/octet-stream': ['.psd'] },
     disabled: uploading,
     multiple: true,
     noClick: false,
