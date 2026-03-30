@@ -49,6 +49,18 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
   return (
     <div className="space-y-5">
 
+      {/* 재생 시간 */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">재생 시간</p>
+        <div className="flex flex-wrap gap-1.5">
+          {DURATION_OPTIONS.map(s => (
+            <PillBtn key={s} active={durationMs === s * 1000} onClick={() => onDurationChange(s * 1000)}>
+              {s}s
+            </PillBtn>
+          ))}
+        </div>
+      </div>
+
       {/* 효과 종류 */}
       <div>
         <p className="text-xs text-muted-foreground mb-2">효과</p>
@@ -62,18 +74,6 @@ export function EffectSelector({ effectType, effectParams, durationMs, onChange,
               <span className="text-sm leading-none">{chip.icon}</span>
               <span className="text-[10px] leading-tight text-center">{chip.label}</span>
             </Chip>
-          ))}
-        </div>
-      </div>
-
-      {/* 재생 시간 */}
-      <div>
-        <p className="text-xs text-muted-foreground mb-2">재생 시간</p>
-        <div className="flex flex-wrap gap-1.5">
-          {DURATION_OPTIONS.map(s => (
-            <PillBtn key={s} active={durationMs === s * 1000} onClick={() => onDurationChange(s * 1000)}>
-              {s}s
-            </PillBtn>
           ))}
         </div>
       </div>
