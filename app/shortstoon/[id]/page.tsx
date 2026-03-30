@@ -582,34 +582,23 @@ export default function ShortstoonEditPage() {
           ) : (
             <div className="flex gap-6 py-6 px-6 min-h-full">
 
-              {/* 좌: 뷰포트 or 렌더링 결과 */}
+              {/* 좌: 뷰포트 */}
               <div className="flex-shrink-0">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                  <Film className="h-3.5 w-3.5" />
-                  {selectedBlock.status === 'completed' && selectedBlock.video_url ? '렌더링 결과' : '뷰포트'}
+                  <Film className="h-3.5 w-3.5" />뷰포트
                 </p>
-                {selectedBlock.status === 'completed' && selectedBlock.video_url ? (
-                  <video
-                    src={selectedBlock.video_url}
-                    controls
-                    autoPlay
-                    loop
-                    style={{ width: 432, height: 768, borderRadius: 12, background: '#000', display: 'block' }}
-                  />
-                ) : (
-                  <ViewportEditor
-                    ref={viewportEditorRef}
-                    imageUrl={selectedBlock.image_url}
-                    viewport={selectedBlock.viewport}
-                    onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
-                    effectType={selectedBlock.effect_type}
-                    effectParams={selectedBlock.effect_params}
-                    durationMs={selectedBlock.duration_ms}
-                  />
-                )}
+                <ViewportEditor
+                  ref={viewportEditorRef}
+                  imageUrl={selectedBlock.image_url}
+                  viewport={selectedBlock.viewport}
+                  onChange={(vp: ShortstoonViewport) => updateBlock(selectedBlock.id, { viewport: vp })}
+                  effectType={selectedBlock.effect_type}
+                  effectParams={selectedBlock.effect_params}
+                  durationMs={selectedBlock.duration_ms}
+                />
               </div>
 
-              {/* 우: 효과 + 전환 + 렌더링 */}
+              {/* 중: 효과 + 전환 + 렌더링 */}
               <div className="flex-1 min-w-[260px] max-w-[380px] space-y-5 py-0">
 
                 <section>
@@ -682,6 +671,35 @@ export default function ShortstoonEditPage() {
                 </section>
 
               </div>
+
+              {/* 우: 렌더링 결과 영상 */}
+              <div className="flex-shrink-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <Video className="h-3.5 w-3.5" />렌더링 결과
+                </p>
+                {selectedBlock.status === 'completed' && selectedBlock.video_url ? (
+                  <video
+                    key={selectedBlock.video_url}
+                    src={selectedBlock.video_url}
+                    controls
+                    autoPlay
+                    loop
+                    style={{ width: 432, height: 768, borderRadius: 12, background: '#000', display: 'block' }}
+                  />
+                ) : (
+                  <div
+                    style={{ width: 432, height: 768, borderRadius: 12 }}
+                    className="bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center"
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering')
+                        ? '렌더링 중...'
+                        : '렌더링 전'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
         </main>
