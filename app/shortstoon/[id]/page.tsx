@@ -92,11 +92,11 @@ export default function ShortstoonEditPage() {
     }, 500);
   }, []);
 
-  // PSD 파일: 브라우저 Canvas로 합성 → PNG blob → Supabase Storage 직접 업로드
+  // PSD 파일: 브라우저 Canvas로 합성 → PNG blob → 서명 URL로 직접 업로드
   const uploadPsd = async (file: File, projectId: string, orderIndex: number): Promise<ShortstoonBlock> => {
     const { readPsd } = await import('ag-psd');
-    const { supabase } = await import('@/lib/supabase');
 
+    // 1. PSD → PNG blob
     const arrayBuffer = await file.arrayBuffer();
     const psd = readPsd(arrayBuffer);
     const canvas = psd.canvas as HTMLCanvasElement | undefined;
@@ -107,16 +107,27 @@ export default function ShortstoonEditPage() {
     });
 
     const pngName = file.name.replace(/\.psd$/i, '.png');
-    const timestamp = Date.now();
-    const sanitized = pngName.replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_+/g, '_').substring(0, 100) || 'file';
-    const storagePath = `shortstoon/${projectId}/${timestamp}-${sanitized}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('webtoon-files')
-      .upload(storagePath, blob, { contentType: 'image/png', cacheControl: '3600', upsert: false });
-    if (uploadError) throw new Error(`Storage 업로드 실패: ${uploadError.message}`);
+    // 2. 서버에서 서명 URL 발급
+    const signRes = await fetch('/api/shortstoon/upload-sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, fileName: pngName }),
+    });
+    if (!signRes.ok) throw new Error('서명 URL 발급 실패');
+    const { signedUrl, storagePath } = await signRes.json();
 
-    const { data: { publicUrl } } = supabase.storage.from('webtoon-files').getPublicUrl(storagePath);
+    // 3. 서명 URL로 PNG 직접 업로드
+    const uploadRes = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: blob,
+    });
+    if (!uploadRes.ok) throw new Error(`Storage 업로드 실패: ${uploadRes.status}`);
+
+    // 4. DB 블록 생성 (storagePath만 전달)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/webtoon-files/${storagePath}`;
 
     const res = await fetch('/api/shortstoon/upload', {
       method: 'POST',
