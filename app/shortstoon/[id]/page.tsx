@@ -135,7 +135,6 @@ export default function ShortstoonEditPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadLabel, setUploadLabel] = useState('');
   const [renderingIds, setRenderingIds] = useState<Set<string>>(new Set());
-  const [aiMotionMap, setAiMotionMap] = useState<Record<string, { enabled: boolean; motion_type: string; prompt: string }>>({});
   const [merging, setMerging] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -371,26 +370,24 @@ export default function ShortstoonEditPage() {
     if (selectedId === blockId) setSelectedId(null);
   };
 
-  const getAiMotion = (blockId: string) => aiMotionMap[blockId] ?? { enabled: false, motion_type: 'blink', prompt: '' };
-
   const handleRender = async (blockId: string) => {
-    const ai = getAiMotion(blockId);
+    const currentBlock = blocks.find(b => b.id === blockId);
+    const ai = (currentBlock?.effect_params?.ai_motion as { enabled?: boolean; motion_type?: string; prompt?: string } | undefined) ?? {};
+
     setRenderingIds(prev => new Set(prev).add(blockId));
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, status: 'rendering' } : b));
 
-    const currentBlock = blocks.find(b => b.id === blockId);
-
     // Lightsail에 렌더링 위임 (즉시 반환)
-    // duration_ms를 클라이언트 상태에서 직접 전달 — DB 저장 딜레이 무관하게 최신값 사용
+    // duration_ms와 ai_motion을 클라이언트 상태에서 직접 전달 — DB 저장 딜레이 무관
     await fetch('/api/shortstoon/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         blockId,
         durationMs: currentBlock?.duration_ms,
-        aiMotionEnabled: ai.enabled,
-        aiMotionType: ai.motion_type,
-        aiMotionPrompt: ai.prompt,
+        aiMotionEnabled: ai.enabled ?? false,
+        aiMotionType: ai.motion_type ?? 'blink',
+        aiMotionPrompt: ai.prompt ?? '',
       }),
     });
 
@@ -702,10 +699,15 @@ export default function ShortstoonEditPage() {
                         updateBlock(selectedBlock.id, { effect_type: type, effect_params: params })
                       }
                       onDurationChange={(ms: number) => updateBlock(selectedBlock.id, { duration_ms: ms })}
-                      aiMotionEnabled={getAiMotion(selectedBlock.id).enabled}
-                      aiMotionParams={getAiMotion(selectedBlock.id)}
+                      aiMotionEnabled={(selectedBlock.effect_params?.ai_motion as { enabled?: boolean } | undefined)?.enabled ?? false}
+                      aiMotionParams={{
+                        motion_type: (selectedBlock.effect_params?.ai_motion as { motion_type?: string } | undefined)?.motion_type ?? 'blink',
+                        prompt: (selectedBlock.effect_params?.ai_motion as { prompt?: string } | undefined)?.prompt ?? '',
+                      }}
                       onAiMotionChange={(enabled, params) =>
-                        setAiMotionMap(prev => ({ ...prev, [selectedBlock.id]: { ...params, enabled } }))
+                        updateBlock(selectedBlock.id, {
+                          effect_params: { ...selectedBlock.effect_params, ai_motion: { ...params, enabled } },
+                        })
                       }
                       previewPlaying={previewPlaying}
                       onPreviewToggle={() => {
