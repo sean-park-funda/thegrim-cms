@@ -33,6 +33,8 @@ import {
   Sparkles,
   Play,
   Square,
+  StopCircle,
+  Pause,
 } from 'lucide-react';
 import {
   ShortstoonProject,
@@ -45,6 +47,81 @@ import { ViewportEditor, ViewportEditorHandle } from '@/components/shortstoon/Vi
 import { EffectSelector, TransitionSelector } from '@/components/shortstoon/EffectSelector';
 import { BlockCard } from '@/components/shortstoon/BlockCard';
 import { cn } from '@/lib/utils';
+
+function VideoPlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  };
+
+  const handleStop = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.pause();
+    v.currentTime = 0;
+    setPlaying(false);
+    setProgress(0);
+  };
+
+  const handleTimeUpdate = () => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    setProgress(v.currentTime / v.duration);
+  };
+
+  const handleEnded = () => setPlaying(false);
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const t = Number(e.target.value) / 1000 * v.duration;
+    v.currentTime = t;
+    setProgress(Number(e.target.value) / 1000);
+  };
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  return (
+    <div style={{ width: 432 }}>
+      <video
+        ref={videoRef}
+        src={src}
+        style={{ width: 432, height: 768, borderRadius: 12, background: '#000', display: 'block' }}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={() => setDuration(videoRef.current?.duration ?? 0)}
+        onEnded={handleEnded}
+      />
+      <div className="mt-2 space-y-1.5">
+        <input
+          type="range" min={0} max={1000} step={1}
+          value={Math.round(progress * 1000)}
+          onChange={handleSeek}
+          className="w-full h-1.5 accent-primary cursor-pointer"
+        />
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={togglePlay}>
+              {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={handleStop}>
+              <StopCircle className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {fmt(progress * duration)} / {fmt(duration)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ShortstoonEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -677,27 +754,20 @@ export default function ShortstoonEditPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
                   <Video className="h-3.5 w-3.5" />렌더링 결과
                 </p>
-                {selectedBlock.status === 'completed' && selectedBlock.video_url ? (
-                  <video
-                    key={selectedBlock.video_url}
-                    src={selectedBlock.video_url}
-                    controls
-                    autoPlay
-                    loop
-                    style={{ width: 432, height: 768, borderRadius: 12, background: '#000', display: 'block' }}
-                  />
-                ) : (
-                  <div
-                    style={{ width: 432, height: 768, borderRadius: 12 }}
-                    className="bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center"
-                  >
-                    <p className="text-xs text-muted-foreground">
-                      {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering')
-                        ? '렌더링 중...'
-                        : '렌더링 전'}
-                    </p>
-                  </div>
-                )}
+                {selectedBlock.status === 'completed' && selectedBlock.video_url
+                  ? <VideoPlayer key={selectedBlock.video_url} src={selectedBlock.video_url} />
+                  : (
+                    <div
+                      style={{ width: 432, height: 768, borderRadius: 12 }}
+                      className="bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center"
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        {(renderingIds.has(selectedBlock.id) || selectedBlock.status === 'rendering')
+                          ? '렌더링 중...' : '렌더링 전'}
+                      </p>
+                    </div>
+                  )
+                }
               </div>
 
             </div>
