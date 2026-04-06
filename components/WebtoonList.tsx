@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon, Video, Clapperboard, Scissors } from 'lucide-react';
+import { Plus, Film, MoreVertical, Edit, Trash2, FileImage, Sparkles, X, Upload, ImageIcon, Video, Clapperboard, Scissors, Wand2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Webtoon, supabase } from '@/lib/supabase';
 import { canCreateContent, canEditContent, canDeleteContent, UserRole } from '@/lib/utils/permissions';
@@ -420,6 +420,19 @@ export function WebtoonList({ initialWebtoons }: WebtoonListProps = {}) {
               <Clapperboard className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
               <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
                 웹툰to애니메이션
+              </span>
+            </div>
+          </div>
+          {/* 중기작가스타일 버튼 */}
+          <div
+            className="group cursor-pointer rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+            style={{ aspectRatio: '4/5' }}
+            onClick={() => router.push('/jungki-style')}
+          >
+            <div className="h-full flex flex-col items-center justify-center gap-3">
+              <Wand2 className="h-10 w-10 text-zinc-400 group-hover:text-zinc-100 transition-colors" />
+              <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-100 transition-colors">
+                중기작가스타일
               </span>
             </div>
           </div>
