@@ -151,115 +151,124 @@ export default function JungkiStylePage() {
   const setCurrentPrompt = activeTab === 'line' ? setLinePrompt : setMangaPrompt;
 
   return (
-    <div className="w-full h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-6 py-6 space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold">중기작가스타일</h1>
-          <p className="text-sm text-muted-foreground mt-1">스케치 이미지를 중기 작가 스타일로 변환합니다</p>
-        </div>
+    <div className="w-full h-full flex flex-col overflow-hidden">
+      <div className="px-6 py-4 border-b flex-shrink-0">
+        <h1 className="text-xl font-bold">중기작가스타일</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">스케치 이미지를 중기 작가 스타일로 변환합니다</p>
+      </div>
 
-        {/* 1. 스케치 업로드 */}
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            {!sketchPreview ? (
-              <div
-                className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-10 text-center cursor-pointer hover:border-muted-foreground/60 transition-colors"
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">클릭하거나 드래그하여 스케치 이미지 업로드</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG, WEBP 지원</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileChange(file);
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="relative">
-                <img src={sketchPreview} alt="스케치" className="w-full rounded border" />
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2 h-7 w-7 p-0"
-                  onClick={clearSketch}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 2. 탭 선택 */}
-        <div className="flex rounded-lg border p-1 bg-muted/50">
-          {(['line', 'manga'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab === 'line' ? <Pencil className="h-3.5 w-3.5" /> : <BookImage className="h-3.5 w-3.5" />}
-              {tab === 'line' ? '라인드로잉' : '완성된 만화'}
-            </button>
-          ))}
-        </div>
-
-        {/* 3. 프롬프트 (탭에 따라 표시) */}
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <Textarea
-              value={currentPrompt}
-              onChange={(e) => setCurrentPrompt(e.target.value)}
-              className="text-xs font-mono min-h-[200px] resize-y"
-            />
-          </CardContent>
-        </Card>
-
-        {/* 4. 생성 버튼 */}
-        <Button
-          onClick={generate}
-          disabled={!sketchFile || loading}
-          className="w-full gap-2"
-          size="lg"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              생성 중... (약 1~3분 소요)
-            </>
-          ) : (
-            <>
-              {activeTab === 'line' ? <Pencil className="h-4 w-4" /> : <BookImage className="h-4 w-4" />}
-              {activeTab === 'line' ? '라인드로잉 생성' : '완성된 만화 생성'}
-            </>
-          )}
-        </Button>
-
-        {/* 에러 */}
-        {error && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {/* 5. 결과 이미지 */}
-        {currentResult && (
+      <div className="flex-1 min-h-0 flex gap-0">
+        {/* 왼쪽 컨트롤 패널 */}
+        <div className="w-[420px] flex-shrink-0 border-r overflow-y-auto px-4 py-4 space-y-3">
+          {/* 1. 스케치 업로드 */}
           <Card>
-            <CardContent className="pt-4 pb-4 space-y-3">
+            <CardContent className="pt-3 pb-3">
+              {!sketchPreview ? (
+                <div
+                  className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-8 text-center cursor-pointer hover:border-muted-foreground/60 transition-colors"
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-7 w-7 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">클릭하거나 드래그하여 스케치 업로드</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG, WEBP 지원</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileChange(file);
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="relative">
+                  <img src={sketchPreview} alt="스케치" className="w-full rounded border" />
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="absolute top-2 right-2 h-7 w-7 p-0"
+                    onClick={clearSketch}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 2. 탭 선택 */}
+          <div className="flex rounded-lg border p-1 bg-muted/50">
+            {(['line', 'manga'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === tab
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab === 'line' ? <Pencil className="h-3.5 w-3.5" /> : <BookImage className="h-3.5 w-3.5" />}
+                {tab === 'line' ? '라인드로잉' : '완성된 만화'}
+              </button>
+            ))}
+          </div>
+
+          {/* 3. 프롬프트 */}
+          <Card>
+            <CardContent className="pt-3 pb-3">
+              <Textarea
+                value={currentPrompt}
+                onChange={(e) => setCurrentPrompt(e.target.value)}
+                className="text-xs font-mono min-h-[180px] resize-y"
+              />
+            </CardContent>
+          </Card>
+
+          {/* 4. 생성 버튼 */}
+          <Button
+            onClick={generate}
+            disabled={!sketchFile || loading}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                생성 중... (약 1~3분 소요)
+              </>
+            ) : (
+              <>
+                {activeTab === 'line' ? <Pencil className="h-4 w-4" /> : <BookImage className="h-4 w-4" />}
+                {activeTab === 'line' ? '라인드로잉 생성' : '완성된 만화 생성'}
+              </>
+            )}
+          </Button>
+
+          {/* 에러 */}
+          {error && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* 오른쪽 결과 패널 */}
+        <div className="flex-1 overflow-y-auto flex flex-col">
+          {loading ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Loader2 className="h-10 w-10 animate-spin" />
+              <p className="text-sm">{activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 생성 중...</p>
+              <p className="text-xs opacity-60">약 1~3분 소요될 수 있습니다</p>
+            </div>
+          ) : currentResult ? (
+            <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
+                <span className="text-sm font-medium text-muted-foreground">
                   {activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 결과
                 </span>
                 <Button
@@ -273,9 +282,14 @@ export default function JungkiStylePage() {
                 </Button>
               </div>
               <img src={currentResult} alt="결과" className="w-full rounded border" />
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground/40">
+              <BookImage className="h-16 w-16" />
+              <p className="text-sm">생성된 이미지가 여기에 표시됩니다</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
