@@ -108,6 +108,7 @@ interface StatementData {
   mg_history?: MgWorkHistory[];
   tax_invoice?: { item: string; supply: number; vat: number; total: number }[] | null;
   tax_invoice_total?: number;
+  mg_dep_references?: { work_name: string; partner_name: string; history: { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number }[] }[];
 }
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
@@ -852,6 +853,44 @@ export default function PartnerDetailPage() {
                     </div>
                     )}
                   </div>
+
+                  {/* MG 의존 참고자료 */}
+                  {statement.mg_dep_references && statement.mg_dep_references.length > 0 && (
+                    <div className="space-y-3 mt-4 pt-4 border-t">
+                      <h4 className="font-semibold text-sm">참고: 의존 작가 MG 현황</h4>
+                      {statement.mg_dep_references.map((ref, idx) => (
+                        <div key={idx} className="space-y-1">
+                          <p className="text-sm text-muted-foreground">
+                            {ref.work_name} — {ref.partner_name} MG
+                          </p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b text-left bg-muted/50">
+                                  <th className="py-2 px-3 font-medium">월</th>
+                                  <th className="py-2 px-3 font-medium text-right">이월</th>
+                                  <th className="py-2 px-3 font-medium text-right">추가</th>
+                                  <th className="py-2 px-3 font-medium text-right">차감</th>
+                                  <th className="py-2 px-3 font-medium text-right">잔액</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {ref.history.map((h) => (
+                                  <tr key={h.month} className="border-b">
+                                    <td className="py-1.5 px-3">{h.month}</td>
+                                    <td className="py-1.5 px-3 text-right tabular-nums">{h.previous_balance.toLocaleString()}</td>
+                                    <td className="py-1.5 px-3 text-right tabular-nums">{h.mg_added !== 0 ? h.mg_added.toLocaleString() : '-'}</td>
+                                    <td className="py-1.5 px-3 text-right tabular-nums text-red-600">{h.mg_deducted !== 0 ? h.mg_deducted.toLocaleString() : '-'}</td>
+                                    <td className="py-1.5 px-3 text-right tabular-nums font-medium">{h.current_balance.toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                 </div>
               )}
