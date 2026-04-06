@@ -80,7 +80,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
       work_id: wp.work_id,
       rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
+      mg_rs_rate: null, // deprecated
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         const mgRsRates: Record<string, number | null> = {};
         for (const pw of pWorks) {
-          mgRsRates[pw.work_id] = pw.mg_rs_rate != null ? Number(pw.mg_rs_rate) : null;
+          mgRsRates[pw.work_id] = null; // deprecated
         }
 
         mgPools.push({
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           balance,
           work_ids: pWorkIds,
           mg_rs_rates: mgRsRates,
-          pool_mg_rs_rate: pool.mg_rs_rate != null ? Number(pool.mg_rs_rate) : null,
+          pool_mg_rs_rate: null, // deprecated
         });
       }
     }
@@ -295,7 +295,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           partner_id: w.partner_id,
           work_id: w.work_id,
           rs_rate: Number(w.rs_rate),
-          mg_rs_rate: w.mg_rs_rate != null ? Number(w.mg_rs_rate) : null,
+          mg_rs_rate: null, // deprecated
           is_mg_applied: w.is_mg_applied,
         }));
       }

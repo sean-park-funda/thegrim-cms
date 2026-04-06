@@ -112,6 +112,19 @@ export interface MgBalanceEntry {
   previous_balance: number;
 }
 
+// ─── 신규 MG entry 기반 타입 ─────────────────────────
+export interface MgEntryData {
+  id: string;
+  partner_id: string;
+  amount: number;
+  withheld_tax: boolean;
+  contracted_at: string;
+  note: string | null;
+  work_ids: string[];       // rs_mg_entry_works에서 조인
+  total_deducted: number;   // SUM(rs_mg_deductions.amount)
+  remaining: number;        // amount - total_deducted
+}
+
 export interface MgPoolEntry {
   pool_id: string;
   pool_name: string;
@@ -150,6 +163,8 @@ export interface PartnerComputeInput {
   laborCostWorkLinks: LaborCostWorkLink[];
   laborCostWpData: LaborCostWpData[];
   mgHistory?: MgHistoryEntry[];
+  // 신규 MG entry 기반 (있으면 pool 대신 사용)
+  mgEntries?: MgEntryData[];
 }
 
 // ─── 출력 타입 ──────────────────────────────────────────────
@@ -287,8 +302,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const revenueShareByWork = new Map<string, number>();
   for (const wp of workPartners) {
     const rev = revenues.find(r => r.work_id === wp.work_id);
-    const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
-      ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+    const effectiveRate = Number(wp.rs_rate);
     const revenueRate = Number(wp.revenue_rate) || 1;
     const includedTypes = wp.included_revenue_types || [...REVENUE_COLUMNS];
     const unc: string[] = rev?.unconfirmed_types || [];
@@ -325,8 +339,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const work = wp.work;
     const rev = revenues.find(r => r.work_id === wp.work_id);
 
-    const effectiveRate = wp.is_mg_applied && wp.mg_rs_rate != null
-      ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+    const effectiveRate = Number(wp.rs_rate);
     const revenueRate = Number(wp.revenue_rate) || 1;
     const includedTypes = wp.included_revenue_types || [...REVENUE_COLUMNS];
     const unconfirmed: string[] = rev?.unconfirmed_types || [];
@@ -408,7 +421,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       work_name: work?.name || '',
       work_id: wp.work_id,
       rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
+      mg_rs_rate: null, // deprecated — rs_rate로 통일
       effective_rate: effectiveRate,
       revenue_rate: revenueRate,
       is_mg_applied: wp.is_mg_applied,
@@ -436,68 +449,120 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     };
   }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
 
-  // ─── MG 풀 단위 차감 ──────────────────────────────
-  const processedPools = new Set<string>();
-  for (const pool of (input.mgPools || [])) {
-    if (processedPools.has(pool.pool_id)) continue;
-    processedPools.add(pool.pool_id);
+  // ─── MG 차감 ──────────────────────────────
+  if (input.mgEntries && input.mgEntries.length > 0) {
+    // === 신규: entry 기반 MG 차감 ===
+    // contracted_at 오래된 순으로 정렬
+    const entries = [...input.mgEntries].sort((a, b) =>
+      a.contracted_at.localeCompare(b.contracted_at)
+    );
 
-    const poolBalance = pool.balance;
-    if (poolBalance <= 0) {
-      // 잔액이 0이어도 mg_balance는 표시
-      const firstWork = works.find(w => pool.work_ids.includes(w.work_id));
-      if (firstWork) {
-        firstWork.mg_balance = poolBalance;
-        firstWork.mg_remaining = poolBalance;
-      }
-      continue;
-    }
+    // 파트너 전체 MG 잔액 합계
+    const totalMgRemaining = entries.reduce((s, e) => s + e.remaining, 0);
 
-    // 풀에 속한 작품들의 net_share 합산
-    const poolWorks = works.filter(w => pool.work_ids.includes(w.work_id));
-    if (poolWorks.length === 0) {
-      // 매출이 없는 작품만 있는 풀 — 잔액만 표시
-      continue;
-    }
-
-    // 풀 단위 MG cap 계산
-    let poolCap = 0;
+    // 파트너의 전체 작품 net_share cap 계산
+    let totalCap = 0;
     if (isCorp) {
-      // 사업자: 풀 내 전체 작품의 세금계산서 합계(VAT 포함)를 cap으로
-      for (const w of poolWorks) {
+      for (const w of works) {
         if (w.work_total_net_share > 0) {
-          poolCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
+          totalCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
         }
       }
     } else {
-      // 개인: 풀 내 전체 작품의 net_share 합산
-      poolCap = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+      totalCap = works.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
     }
 
-    const poolDeduction = Math.min(poolBalance, Math.max(0, poolCap));
+    // 총 차감 가능액
+    const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
 
-    // 풀 차감을 작품별로 비율 배분 (net_share 비율)
-    const totalNetShare = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
-    let distributed = 0;
-    for (let i = 0; i < poolWorks.length; i++) {
-      const w = poolWorks[i];
-      const workShare = Math.max(0, w.work_total_net_share);
-      let workDeduction: number;
-      if (i === poolWorks.length - 1) {
-        workDeduction = poolDeduction - distributed;
+    // entry별 차감 배분 (오래된 것부터 채워서 차감)
+    let remainingDeduction = totalDeduction;
+    const entryDeductions: { entry: MgEntryData; deduction: number }[] = [];
+    for (const entry of entries) {
+      if (remainingDeduction <= 0) break;
+      const deduct = Math.min(entry.remaining, remainingDeduction);
+      entryDeductions.push({ entry, deduction: deduct });
+      remainingDeduction -= deduct;
+    }
+
+    // 작품별 차감 배분 (net_share 비율)
+    const totalNetShareForMg = works.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+    let workDistributed = 0;
+    const mgWorks = works.filter(w => {
+      // entry에 연결된 작품인지 확인
+      return entries.some(e => e.work_ids.includes(w.work_id));
+    });
+    for (let i = 0; i < mgWorks.length; i++) {
+      const w = mgWorks[i];
+      if (i === mgWorks.length - 1) {
+        w.mg_deduction = Math.max(0, totalDeduction - workDistributed);
       } else {
-        workDeduction = totalNetShare > 0
-          ? Math.round(poolDeduction * (workShare / totalNetShare))
-          : Math.round(poolDeduction / poolWorks.length);
+        const share = Math.max(0, w.work_total_net_share);
+        w.mg_deduction = totalNetShareForMg > 0
+          ? Math.round(totalDeduction * (share / totalNetShareForMg))
+          : Math.round(totalDeduction / mgWorks.length);
       }
-      w.mg_deduction = Math.max(0, workDeduction);
-      distributed += w.mg_deduction;
+      workDistributed += w.mg_deduction;
     }
 
-    // 첫 번째 작품에 풀 잔액 표시 (정산서 표시용)
-    if (poolWorks.length > 0) {
-      poolWorks[0].mg_balance = poolBalance;
-      poolWorks[0].mg_remaining = poolBalance - poolDeduction;
+    // 첫 번째 작품에 잔액 표시
+    if (mgWorks.length > 0) {
+      mgWorks[0].mg_balance = totalMgRemaining;
+      mgWorks[0].mg_remaining = totalMgRemaining - totalDeduction;
+    }
+  } else {
+    // === 폴백: 기존 pool 기반 MG 차감 ===
+    const processedPools = new Set<string>();
+    for (const pool of (input.mgPools || [])) {
+      if (processedPools.has(pool.pool_id)) continue;
+      processedPools.add(pool.pool_id);
+
+      const poolBalance = pool.balance;
+      if (poolBalance <= 0) {
+        const firstWork = works.find(w => pool.work_ids.includes(w.work_id));
+        if (firstWork) {
+          firstWork.mg_balance = poolBalance;
+          firstWork.mg_remaining = poolBalance;
+        }
+        continue;
+      }
+
+      const poolWorks = works.filter(w => pool.work_ids.includes(w.work_id));
+      if (poolWorks.length === 0) continue;
+
+      let poolCap = 0;
+      if (isCorp) {
+        for (const w of poolWorks) {
+          if (w.work_total_net_share > 0) {
+            poolCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
+          }
+        }
+      } else {
+        poolCap = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+      }
+
+      const poolDeduction = Math.min(poolBalance, Math.max(0, poolCap));
+      const totalNetShare = poolWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+      let distributed = 0;
+      for (let i = 0; i < poolWorks.length; i++) {
+        const w = poolWorks[i];
+        const workShare = Math.max(0, w.work_total_net_share);
+        let workDeduction: number;
+        if (i === poolWorks.length - 1) {
+          workDeduction = poolDeduction - distributed;
+        } else {
+          workDeduction = totalNetShare > 0
+            ? Math.round(poolDeduction * (workShare / totalNetShare))
+            : Math.round(poolDeduction / poolWorks.length);
+        }
+        w.mg_deduction = Math.max(0, workDeduction);
+        distributed += w.mg_deduction;
+      }
+
+      if (poolWorks.length > 0) {
+        poolWorks[0].mg_balance = poolBalance;
+        poolWorks[0].mg_remaining = poolBalance - poolDeduction;
+      }
     }
   }
 
@@ -773,7 +838,7 @@ function computeLaborCosts(
         let rsSum = 0;
         for (const wid of wIds) {
           const wp = wpData.find(w => w.partner_id === pid && w.work_id === wid);
-          if (wp) rsSum += wp.is_mg_applied && wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : Number(wp.rs_rate);
+          if (wp) rsSum += Number(wp.rs_rate);
         }
         if (pid === partnerId) myRs = rsSum;
         totalRs += rsSum;

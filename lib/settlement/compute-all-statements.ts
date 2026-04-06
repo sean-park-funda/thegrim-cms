@@ -129,7 +129,7 @@ export async function computeAllStatements(
         .in('partner_id', linkedPartnerIds).in('work_id', linkedWorkIds);
       allLaborWpData = (wpRows || []).map((w: any) => ({
         partner_id: w.partner_id, work_id: w.work_id,
-        rs_rate: Number(w.rs_rate), mg_rs_rate: w.mg_rs_rate != null ? Number(w.mg_rs_rate) : null,
+        rs_rate: Number(w.rs_rate), mg_rs_rate: null,
         is_mg_applied: w.is_mg_applied,
       }));
     }
@@ -223,7 +223,7 @@ export async function computeAllStatements(
     const partnerWorkIds = wps.map((wp: any) => wp.work_id);
     const workPartnerData: WorkPartnerData[] = wps.map((wp: any) => ({
       work_id: wp.work_id, rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
+      mg_rs_rate: null, // deprecated
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
@@ -254,7 +254,7 @@ export async function computeAllStatements(
 
       const mgRsRates: Record<string, number | null> = {};
       for (const pw of pWorks) {
-        mgRsRates[pw.work_id] = pw.mg_rs_rate != null ? Number(pw.mg_rs_rate) : null;
+        mgRsRates[pw.work_id] = null; // deprecated
       }
 
       mgPools.push({
@@ -263,7 +263,7 @@ export async function computeAllStatements(
         balance,
         work_ids: pWorkIds,
         mg_rs_rates: mgRsRates,
-        pool_mg_rs_rate: pool.mg_rs_rate != null ? Number(pool.mg_rs_rate) : null,
+        pool_mg_rs_rate: null, // deprecated
       });
     }
 

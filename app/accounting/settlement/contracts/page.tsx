@@ -93,7 +93,7 @@ export default function ContractsPage() {
       case 'work': return wp.work?.name || '';
       case 'revenue_rate': return wp.revenue_rate ?? 1;
       case 'mg': return wp.is_mg_applied ? 1 : 0;
-      case 'mg_rate': return wp.mg_rs_rate ?? 0;
+      case 'mg_rate': return 0; // deprecated
       case 'rs_rate': return wp.rs_rate ?? 0;
     }
   };
@@ -186,7 +186,7 @@ export default function ContractsPage() {
                         <td className="py-1.5 px-2 whitespace-nowrap">{wp.work?.name || '-'}</td>
                         <td className={`py-1.5 px-2 text-center tabular-nums ${revRate !== 1 ? 'font-semibold text-orange-600' : ''}`}>{rateDisplay}</td>
                         <td className="py-1.5 px-2 text-center">{wp.is_mg_applied ? 'O' : 'X'}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums">{wp.mg_rs_rate != null ? `${(wp.mg_rs_rate * 100).toFixed(1)}%` : ''}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums"></td>
                         <td className="py-1.5 px-2 text-right tabular-nums">{`${(wp.rs_rate * 100).toFixed(1)}%`}</td>
                         <td className="py-1.5 px-2 max-w-[200px] truncate text-muted-foreground">{wp.note || ''}</td>
                         {canManage && (

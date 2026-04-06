@@ -114,7 +114,6 @@ export async function GET(request: NextRequest) {
         '작품명': wp.work?.name || '',
         '매출액적용율': wp.revenue_rate ?? 1,
         'MG적용': wp.is_mg_applied ? 'O' : 'X',
-        'MG요율': wp.mg_rs_rate != null ? wp.mg_rs_rate : '',
         'RS요율': wp.rs_rate,
         '특이사항': wp.note || '',
       }));
