@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Pencil, Users, BookOpen } from 'lucide-react';
+import { Search, Pencil, Users, BookOpen, History } from 'lucide-react';
 import { RsMgBalance, RsWorkPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -241,11 +241,18 @@ export default function MgPage() {
                           </>
                         )}
                       </div>
-                      {canManage && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(mg)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        <Link href={`/accounting/settlement/mg/history?partnerId=${mg.partner_id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <History className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
+                        {canManage && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(mg)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {viewMode === 'work' ? (mg.partner?.name || '-') : (mg.work?.name || '-')}
@@ -302,7 +309,7 @@ export default function MgPage() {
                     <th className="py-2 px-3 font-medium text-right">MG잔액</th>
                     <th className="py-2 px-3 font-medium">MG 조건</th>
                     <th className="py-2 px-3 font-medium">월별 메모</th>
-                    {canManage && <th className="py-2 px-3 font-medium w-8"></th>}
+                    <th className="py-2 px-3 font-medium w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -371,13 +378,20 @@ export default function MgPage() {
                         <td className="py-2 px-3 text-xs text-muted-foreground max-w-[160px] truncate" title={mg.note || ''}>
                           {mg.note || ''}
                         </td>
-                        {canManage && (
-                          <td className="py-2 px-3">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(mg)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          </td>
-                        )}
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-0.5">
+                            <Link href={`/accounting/settlement/mg/history?partnerId=${mg.partner_id}`}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="MG 히스토리">
+                                <History className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+                            {canManage && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(mg)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -398,7 +412,7 @@ export default function MgPage() {
                     <td className="py-2 px-3 text-right tabular-nums text-orange-600">{totals.current_balance.toLocaleString()}</td>
                     <td className="py-2 px-3"></td>
                     <td className="py-2 px-3"></td>
-                    {canManage && <td className="py-2 px-3"></td>}
+                    <td className="py-2 px-3"></td>
                   </tr>
                 </tfoot>
               </table>
