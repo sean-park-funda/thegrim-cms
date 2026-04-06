@@ -83,28 +83,43 @@ export default function JungkiStylePage() {
     setError(null);
   };
 
+  // 이미지를 최대 1500px로 리사이즈하여 base64 반환
+  const resizeImageToBase64 = (file: File, maxPx = 1500): Promise<{ base64: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
+
   const generate = async (mode: 'line' | 'manga') => {
     if (!sketchFile || loadingMode) return;
     setLoadingMode(mode);
     setError(null);
 
     try {
-      const reader = new FileReader();
-      const base64: string = await new Promise((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(sketchFile);
-      });
+      const { base64, mimeType: resizedMime } = await resizeImageToBase64(sketchFile);
 
       const res = await fetch('/api/jungki-style', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sketchBase64: base64,
-          sketchMimeType: sketchFile.type,
+          sketchMimeType: resizedMime,
           mode,
           prompt: mode === 'line' ? linePrompt : mangaPrompt,
         }),
