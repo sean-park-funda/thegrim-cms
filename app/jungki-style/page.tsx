@@ -67,6 +67,7 @@ export default function JungkiStylePage() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
 
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 히스토리 로드
@@ -109,11 +110,23 @@ export default function JungkiStylePage() {
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
+      setDragOver(false);
       const file = e.dataTransfer.files[0];
       if (file && file.type.startsWith('image/')) handleFileChange(file);
     },
     [handleFileChange]
   );
+
+  const deleteHistoryItem = async (id: string, imageUrl: string) => {
+    try {
+      await fetch(`/api/jungki-style?id=${id}`, { method: 'DELETE' });
+      setLineHistory((prev) => prev.filter((item) => item.id !== id));
+      setMangaHistory((prev) => prev.filter((item) => item.id !== id));
+      if (selectedUrl === imageUrl) setSelectedUrl(null);
+    } catch (e) {
+      console.error('삭제 실패:', e);
+    }
+  };
 
   const clearSketch = () => {
     setSketchFile(null);
@@ -214,40 +227,70 @@ export default function JungkiStylePage() {
           {/* 1. 스케치 업로드 */}
           <Card>
             <CardContent className="pt-3 pb-3">
-              {!sketchPreview ? (
-                <div
-                  className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-8 text-center cursor-pointer hover:border-muted-foreground/60 transition-colors"
-                  onDrop={handleDrop}
-                  onDragOver={(e) => e.preventDefault()}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-7 w-7 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">클릭하거나 드래그하여 스케치 업로드</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG, WEBP 지원</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileChange(file);
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="relative">
-                  <img src={sketchPreview} alt="스케치" className="w-full rounded border" />
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="absolute top-2 right-2 h-7 w-7 p-0"
-                    onClick={clearSketch}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
+              <div
+                className={`relative rounded-lg transition-colors ${
+                  !sketchPreview
+                    ? `border-2 border-dashed p-8 text-center cursor-pointer ${
+                        dragOver
+                          ? 'border-primary bg-primary/5'
+                          : 'border-muted-foreground/30 hover:border-muted-foreground/60'
+                      }`
+                    : dragOver
+                    ? 'ring-2 ring-primary'
+                    : ''
+                }`}
+                onDrop={handleDrop}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onClick={!sketchPreview ? () => fileInputRef.current?.click() : undefined}
+              >
+                {!sketchPreview ? (
+                  <>
+                    <Upload className="h-7 w-7 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">클릭하거나 드래그하여 스케치 업로드</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG, WEBP 지원</p>
+                  </>
+                ) : (
+                  <>
+                    <img src={sketchPreview} alt="스케치" className="w-full rounded border" />
+                    {dragOver && (
+                      <div className="absolute inset-0 rounded-lg bg-primary/20 flex items-center justify-center">
+                        <p className="text-sm font-medium text-primary bg-background/90 px-3 py-1.5 rounded">새 이미지로 교체</p>
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 w-7 p-0 opacity-80 hover:opacity-100"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="다른 이미지 선택"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={clearSketch}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileChange(file);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
 
@@ -318,7 +361,7 @@ export default function JungkiStylePage() {
                 {currentHistory.map((item) => (
                   <div
                     key={item.id}
-                    className={`flex-shrink-0 cursor-pointer rounded border-2 overflow-hidden transition-all w-16 h-16 ${
+                    className={`group flex-shrink-0 relative cursor-pointer rounded border-2 overflow-hidden transition-all w-16 h-16 ${
                       selectedUrl === item.image_url
                         ? 'border-primary'
                         : 'border-transparent hover:border-muted-foreground/40'
@@ -326,6 +369,12 @@ export default function JungkiStylePage() {
                     onClick={() => { setSelectedUrl(item.image_url); setSelectedMode(item.mode); }}
                   >
                     <img src={item.image_url} alt="결과" className="w-full h-full object-cover" />
+                    <button
+                      className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id, item.image_url); }}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
                   </div>
                 ))}
               </div>

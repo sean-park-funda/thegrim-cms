@@ -22,6 +22,34 @@ function loadReferenceImage(): { data: string; mimeType: string } {
   return { data: buffer.toString('base64'), mimeType: 'image/png' };
 }
 
+// DELETE: 결과 삭제
+export async function DELETE(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+
+    const supabase = getSupabase();
+
+    // storage_path 조회 후 Storage 파일 삭제
+    const { data: record } = await supabase
+      .from('jungki_style_results')
+      .select('storage_path')
+      .eq('id', id)
+      .single();
+
+    if (record?.storage_path) {
+      await supabase.storage.from(BUCKET).remove([record.storage_path]);
+    }
+
+    await supabase.from('jungki_style_results').delete().eq('id', id);
+
+    return NextResponse.json({ ok: true });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '삭제 실패';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 // GET: 히스토리 조회
 export async function GET(request: NextRequest) {
   try {
