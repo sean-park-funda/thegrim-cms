@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,6 +47,13 @@ const DEFAULT_MANGA_PROMPT = `[지시사항]
 
 type Mode = 'line' | 'manga';
 
+interface HistoryItem {
+  id: string;
+  mode: Mode;
+  image_url: string;
+  created_at: string;
+}
+
 export default function JungkiStylePage() {
   const [sketchFile, setSketchFile] = useState<File | null>(null);
   const [sketchPreview, setSketchPreview] = useState<string | null>(null);
@@ -54,15 +61,48 @@ export default function JungkiStylePage() {
   const [linePrompt, setLinePrompt] = useState(DEFAULT_LINE_PROMPT);
   const [mangaPrompt, setMangaPrompt] = useState(DEFAULT_MANGA_PROMPT);
   const [loading, setLoading] = useState(false);
-  const [lineResult, setLineResult] = useState<string | null>(null);
-  const [mangaResult, setMangaResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 탭별 히스토리
+  const [lineHistory, setLineHistory] = useState<HistoryItem[]>([]);
+  const [mangaHistory, setMangaHistory] = useState<HistoryItem[]>([]);
+  // 우측 패널에서 현재 크게 보이는 이미지
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 히스토리 로드
+  const loadHistory = useCallback(async () => {
+    try {
+      const [lineRes, mangaRes] = await Promise.all([
+        fetch('/api/jungki-style?mode=line'),
+        fetch('/api/jungki-style?mode=manga'),
+      ]);
+      const [lineData, mangaData] = await Promise.all([lineRes.json(), mangaRes.json()]);
+      if (Array.isArray(lineData)) setLineHistory(lineData);
+      if (Array.isArray(mangaData)) setMangaHistory(mangaData);
+    } catch (e) {
+      console.error('히스토리 로드 실패:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  // 탭 전환 시 해당 탭의 최신 이미지를 우측에 표시
+  useEffect(() => {
+    const history = activeTab === 'line' ? lineHistory : mangaHistory;
+    if (history.length > 0 && selectedMode !== activeTab) {
+      setSelectedUrl(history[0].image_url);
+      setSelectedMode(activeTab);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, lineHistory, mangaHistory]);
 
   const handleFileChange = useCallback((file: File) => {
     setSketchFile(file);
-    setLineResult(null);
-    setMangaResult(null);
     setError(null);
     const reader = new FileReader();
     reader.onload = (e) => setSketchPreview(e.target?.result as string);
@@ -81,8 +121,6 @@ export default function JungkiStylePage() {
   const clearSketch = () => {
     setSketchFile(null);
     setSketchPreview(null);
-    setLineResult(null);
-    setMangaResult(null);
     setError(null);
   };
 
@@ -129,9 +167,23 @@ export default function JungkiStylePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '생성 실패');
 
-      const dataUrl = `data:${data.mimeType};base64,${data.imageData}`;
-      if (activeTab === 'line') setLineResult(dataUrl);
-      else setMangaResult(dataUrl);
+      const newItem: HistoryItem = {
+        id: data.id,
+        mode: data.mode,
+        image_url: data.imageUrl,
+        created_at: data.createdAt,
+      };
+
+      // 히스토리 맨 앞에 추가
+      if (activeTab === 'line') {
+        setLineHistory((prev) => [newItem, ...prev]);
+      } else {
+        setMangaHistory((prev) => [newItem, ...prev]);
+      }
+
+      // 우측 패널에 바로 표시
+      setSelectedUrl(data.imageUrl);
+      setSelectedMode(activeTab);
     } catch (e) {
       setError(e instanceof Error ? e.message : '오류가 발생했습니다.');
     } finally {
@@ -139,14 +191,16 @@ export default function JungkiStylePage() {
     }
   };
 
-  const downloadImage = (dataUrl: string, filename: string) => {
+  const downloadImage = async (imageUrl: string, filename: string) => {
+    const res = await fetch(imageUrl);
+    const blob = await res.blob();
     const a = document.createElement('a');
-    a.href = dataUrl;
+    a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
   };
 
-  const currentResult = activeTab === 'line' ? lineResult : mangaResult;
+  const currentHistory = activeTab === 'line' ? lineHistory : mangaHistory;
   const currentPrompt = activeTab === 'line' ? linePrompt : mangaPrompt;
   const setCurrentPrompt = activeTab === 'line' ? setLinePrompt : setMangaPrompt;
 
@@ -157,7 +211,7 @@ export default function JungkiStylePage() {
         <p className="text-xs text-muted-foreground mt-0.5">스케치 이미지를 중기 작가 스타일로 변환합니다</p>
       </div>
 
-      <div className="flex-1 min-h-0 flex gap-0">
+      <div className="flex-1 min-h-0 flex">
         {/* 왼쪽 컨트롤 패널 */}
         <div className="w-[420px] flex-shrink-0 border-r overflow-y-auto px-4 py-4 space-y-3">
           {/* 1. 스케치 업로드 */}
@@ -214,6 +268,11 @@ export default function JungkiStylePage() {
               >
                 {tab === 'line' ? <Pencil className="h-3.5 w-3.5" /> : <BookImage className="h-3.5 w-3.5" />}
                 {tab === 'line' ? '라인드로잉' : '완성된 만화'}
+                {(tab === 'line' ? lineHistory : mangaHistory).length > 0 && (
+                  <span className="text-xs bg-muted px-1.5 py-0.5 rounded-full">
+                    {(tab === 'line' ? lineHistory : mangaHistory).length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -255,6 +314,32 @@ export default function JungkiStylePage() {
               {error}
             </div>
           )}
+
+          {/* 5. 히스토리 썸네일 */}
+          {currentHistory.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">생성 이력 ({currentHistory.length})</p>
+              <div className="grid grid-cols-3 gap-2">
+                {currentHistory.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`relative cursor-pointer rounded border-2 overflow-hidden transition-all ${
+                      selectedUrl === item.image_url
+                        ? 'border-primary'
+                        : 'border-transparent hover:border-muted-foreground/40'
+                    }`}
+                    onClick={() => { setSelectedUrl(item.image_url); setSelectedMode(item.mode); }}
+                  >
+                    <img
+                      src={item.image_url}
+                      alt="결과"
+                      className="w-full aspect-square object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 오른쪽 결과 패널 */}
@@ -265,23 +350,23 @@ export default function JungkiStylePage() {
               <p className="text-sm">{activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 생성 중...</p>
               <p className="text-xs opacity-60">약 1~3분 소요될 수 있습니다</p>
             </div>
-          ) : currentResult ? (
+          ) : selectedUrl ? (
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">
-                  {activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 결과
+                  {selectedMode === 'line' ? '라인드로잉' : '완성된 만화'} 결과
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 gap-1 text-xs"
-                  onClick={() => downloadImage(currentResult, activeTab === 'line' ? 'jungki_line.png' : 'jungki_manga.png')}
+                  onClick={() => downloadImage(selectedUrl, selectedMode === 'line' ? 'jungki_line.png' : 'jungki_manga.png')}
                 >
                   <Download className="h-3.5 w-3.5" />
                   저장
                 </Button>
               </div>
-              <img src={currentResult} alt="결과" className="w-full rounded border" />
+              <img src={selectedUrl} alt="결과" className="w-full rounded border" />
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground/40">
