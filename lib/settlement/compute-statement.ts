@@ -502,7 +502,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   }
 
   // 풀이 없는 작품 필터링 (매출도 없고 MG도 없으면 제외)
-  const filteredWorks = works.filter(w => w.work_total_revenue > 0 || w.mg_balance > 0 || w.mg_deduction > 0);
+  const filteredWorks = works.filter(w => w.work_total_revenue > 0 || w.mg_balance > 0 || w.mg_deduction > 0 || w.mg_dependency_blocked);
   const works_final = filteredWorks;
 
   // ─── 파트너 합산 ──────────────────────────────
