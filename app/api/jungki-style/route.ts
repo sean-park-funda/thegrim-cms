@@ -3,6 +3,9 @@ import { generateGeminiImage } from '@/lib/image-generation';
 import fs from 'fs';
 import path from 'path';
 
+export const maxDuration = 300; // 5분
+export const dynamic = 'force-dynamic';
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // 레퍼런스 이미지를 base64로 로드
