@@ -274,7 +274,7 @@ export async function computeAllStatements(
       const dep = wp.mg_depends_on;
       const depName = depPartnerNames.find(p => p.id === dep.partner_id)?.name || '';
       const depBalance = depPartnerTotalBalance.get(dep.partner_id) || 0;
-      mgDepBlocked.set(wp.work_id, { partner_name: depName, balance: depBalance });
+      mgDepBlocked.set(wp.work_id, { partner_name: depName, balance: depBalance, history: [] });
     }
 
     const myItemIds = new Set(

@@ -104,6 +104,7 @@ export interface LaborCostWpData {
 export interface MgDepInfoEntry {
   partner_name: string;
   balance: number;
+  history: { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number }[];
 }
 
 export interface MgBalanceEntry {
@@ -225,6 +226,7 @@ export interface StatementResult {
   mg_history: { work_name: string; history: Omit<MgHistoryEntry, 'work_id' | 'work_name'>[] }[];
   tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null;
   tax_invoice_total: number;
+  mg_dep_references: { work_name: string; partner_name: string; history: { month: string; previous_balance: number; mg_added: number; mg_deducted: number; current_balance: number }[] }[];
 }
 
 // ─── 순수 계산 함수 ─────────────────────────────────────────
@@ -597,6 +599,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     mg_history,
     tax_invoice,
     tax_invoice_total,
+    mg_dep_references: buildMgDepReferences(works_final, input.mgDepBlocked),
   };
 }
 
@@ -613,7 +616,26 @@ function emptyResult(partner: PartnerData, month: string, _mgPools?: MgPoolEntry
     tax_amount: 0, insurance: 0, total_mg_deduction: 0,
     adjustments: [], total_adjustment: 0, final_payment: 0,
     mg_history: [], tax_invoice: null, tax_invoice_total: 0,
+    mg_dep_references: [],
   };
+}
+
+function buildMgDepReferences(
+  works: WorkStatement[],
+  mgDepBlocked: Map<string, MgDepInfoEntry>,
+): StatementResult['mg_dep_references'] {
+  const refs: StatementResult['mg_dep_references'] = [];
+  for (const w of works) {
+    if (!w.mg_dependency_blocked || !w.mg_dep_info) continue;
+    const info = mgDepBlocked.get(w.work_id);
+    if (!info || info.history.length === 0) continue;
+    refs.push({
+      work_name: w.work_name,
+      partner_name: info.partner_name,
+      history: info.history,
+    });
+  }
+  return refs;
 }
 
 function applyExclusionMode(details: WorkDetail[], workFullLaborCost: number, effectiveRate: number) {

@@ -168,7 +168,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     for (const wp of wpData) {
       if (!wp.mg_depends_on) continue;
       const dep = wp.mg_depends_on;
-      const [{ data: depMg }, { data: depPartner }] = await Promise.all([
+      const [{ data: depMg }, { data: depPartner }, { data: depWp }] = await Promise.all([
         supabase
           .from('rs_mg_balances')
           .select('current_balance')
@@ -182,10 +182,51 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .select('name')
           .eq('id', dep.partner_id)
           .single(),
+        supabase
+          .from('rs_work_partners')
+          .select('mg_pool_id')
+          .eq('partner_id', dep.partner_id)
+          .eq('work_id', dep.work_id)
+          .single(),
       ]);
+
+      // 의존 파트너의 MG pool 이력 조회
+      let depHistory: MgDepInfoEntry['history'] = [];
+      const depPoolId = depWp?.mg_pool_id;
+      if (depPoolId) {
+        const { data: poolHistory } = await supabase
+          .from('rs_mg_pool_balances')
+          .select('month, previous_balance, mg_added, mg_deducted, current_balance')
+          .eq('mg_pool_id', depPoolId)
+          .order('month', { ascending: true });
+        depHistory = (poolHistory || []).map((h: any) => ({
+          month: h.month,
+          previous_balance: Number(h.previous_balance),
+          mg_added: Number(h.mg_added),
+          mg_deducted: Number(h.mg_deducted),
+          current_balance: Number(h.current_balance),
+        }));
+      } else if (depMg) {
+        // pool이 없으면 rs_mg_balances에서 이력 조회
+        const { data: balHistory } = await supabase
+          .from('rs_mg_balances')
+          .select('month, previous_balance, mg_added, mg_deducted, current_balance')
+          .eq('partner_id', dep.partner_id)
+          .eq('work_id', dep.work_id)
+          .order('month', { ascending: true });
+        depHistory = (balHistory || []).map((h: any) => ({
+          month: h.month,
+          previous_balance: Number(h.previous_balance),
+          mg_added: Number(h.mg_added),
+          mg_deducted: Number(h.mg_deducted),
+          current_balance: Number(h.current_balance),
+        }));
+      }
+
       mgDepBlocked.set(wp.work_id, {
         partner_name: depPartner?.name || '',
         balance: depMg ? Number(depMg.current_balance) : 0,
+        history: depHistory,
       });
     }
 
