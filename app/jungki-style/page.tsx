@@ -269,11 +269,6 @@ export default function JungkiStylePage() {
               >
                 {tab === 'line' ? <Pencil className="h-3.5 w-3.5" /> : <BookImage className="h-3.5 w-3.5" />}
                 {tab === 'line' ? '라인드로잉' : '완성된 만화'}
-                {(tab === 'line' ? lineHistory : mangaHistory).length > 0 && (
-                  <span className="text-xs bg-muted px-1.5 py-0.5 rounded-full">
-                    {(tab === 'line' ? lineHistory : mangaHistory).length}
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -316,65 +311,64 @@ export default function JungkiStylePage() {
             </div>
           )}
 
-          {/* 5. 히스토리 썸네일 */}
+        </div>
+
+        {/* 오른쪽 결과 패널 */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {/* 썸네일 가로 스크롤 (히스토리 있을 때만) */}
           {currentHistory.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">생성 이력 ({currentHistory.length})</p>
-              <div className="grid grid-cols-3 gap-2">
+            <div className="flex-shrink-0 border-b px-4 py-2">
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
                 {currentHistory.map((item) => (
                   <div
                     key={item.id}
-                    className={`relative cursor-pointer rounded border-2 overflow-hidden transition-all ${
+                    className={`flex-shrink-0 cursor-pointer rounded border-2 overflow-hidden transition-all w-16 h-16 ${
                       selectedUrl === item.image_url
                         ? 'border-primary'
                         : 'border-transparent hover:border-muted-foreground/40'
                     }`}
                     onClick={() => { setSelectedUrl(item.image_url); setSelectedMode(item.mode); }}
                   >
-                    <img
-                      src={item.image_url}
-                      alt="결과"
-                      className="w-full aspect-square object-cover"
-                    />
+                    <img src={item.image_url} alt="결과" className="w-full h-full object-cover" />
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
 
-        {/* 오른쪽 결과 패널 */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {loading ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-              <Loader2 className="h-10 w-10 animate-spin" />
-              <p className="text-sm">{activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 생성 중...</p>
-              <p className="text-xs opacity-60">약 1~3분 소요될 수 있습니다</p>
-            </div>
-          ) : selectedUrl ? (
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">
-                  {selectedMode === 'line' ? '라인드로잉' : '완성된 만화'} 결과
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 gap-1 text-xs"
-                  onClick={() => downloadImage(selectedUrl, selectedMode === 'line' ? 'jungki_line.png' : 'jungki_manga.png')}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  저장
-                </Button>
+          {/* 선택된 이미지 */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Loader2 className="h-10 w-10 animate-spin" />
+                <p className="text-sm">{activeTab === 'line' ? '라인드로잉' : '완성된 만화'} 생성 중...</p>
+                <p className="text-xs opacity-60">약 1~3분 소요될 수 있습니다</p>
               </div>
-              <img src={selectedUrl} alt="결과" className="w-full rounded border" />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground/40">
-              <BookImage className="h-16 w-16" />
-              <p className="text-sm">생성된 이미지가 여기에 표시됩니다</p>
-            </div>
-          )}
+            ) : selectedUrl ? (
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {selectedMode === 'line' ? '라인드로잉' : '완성된 만화'} 결과
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 gap-1 text-xs"
+                    onClick={() => downloadImage(selectedUrl, selectedMode === 'line' ? 'jungki_line.png' : 'jungki_manga.png')}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    저장
+                  </Button>
+                </div>
+                <img src={selectedUrl} alt="결과" className="w-full rounded border" />
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground/40">
+                <BookImage className="h-16 w-16" />
+                <p className="text-sm">생성된 이미지가 여기에 표시됩니다</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
