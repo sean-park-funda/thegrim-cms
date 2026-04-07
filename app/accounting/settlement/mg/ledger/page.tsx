@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, BarChart3, BookOpenText } from 'lucide-react';
@@ -47,6 +45,16 @@ interface MgSummary {
   total_deducted: number;
   remaining: number;
   entry_count: number;
+}
+
+// 통장 한 줄
+interface LedgerRow {
+  date: string;       // YYYY-MM or YYYY-MM-DD
+  sortKey: string;    // for ordering
+  deposit: number;    // MG 지급 (입금)
+  withdrawal: number; // MG 차감 (출금)
+  balance: number;
+  note: string;
 }
 
 const fmt = (n: number) => n.toLocaleString();
@@ -92,6 +100,46 @@ export default function MgLedgerPage() {
       .catch(err => console.error('MG entries error:', err))
       .finally(() => setLoadingEntries(false));
   }, [selectedPartnerId]);
+
+  // Build bankbook-style rows
+  const ledgerRows = useMemo(() => {
+    const rows: Omit<LedgerRow, 'balance'>[] = [];
+
+    for (const entry of entries) {
+      // MG 지급 행
+      const workNames = entry.works.map(w => w.work_name).join(', ');
+      const taxLabel = entry.withheld_tax ? '원천징수' : '';
+      const parts = [workNames, taxLabel, entry.note].filter(Boolean);
+      rows.push({
+        date: entry.contracted_at,
+        sortKey: entry.contracted_at + '-0', // deposits sort before same-month deductions
+        deposit: entry.amount,
+        withdrawal: 0,
+        note: parts.join(' / '),
+      });
+
+      // 차감 행들
+      for (const d of entry.deductions) {
+        rows.push({
+          date: d.month,
+          sortKey: d.month + '-1',
+          deposit: 0,
+          withdrawal: d.amount,
+          note: d.note || '',
+        });
+      }
+    }
+
+    // Sort chronologically
+    rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    // Calculate running balance
+    let balance = 0;
+    return rows.map(r => {
+      balance += r.deposit - r.withdrawal;
+      return { ...r, balance };
+    });
+  }, [entries]);
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
@@ -160,7 +208,7 @@ export default function MgLedgerPage() {
           </div>
         </div>
 
-        {/* Right: Ledger - always expanded */}
+        {/* Right: Bankbook-style ledger */}
         <div className="flex-1 overflow-y-auto">
           {!selectedPartnerId ? (
             <div className="text-sm text-muted-foreground py-8 text-center">좌측에서 작가를 선택하세요.</div>
@@ -169,111 +217,73 @@ export default function MgLedgerPage() {
           ) : entries.length === 0 ? (
             <div className="text-sm text-muted-foreground py-8 text-center">MG 데이터가 없습니다.</div>
           ) : (
-            <div className="space-y-6">
-              {/* Summary bar */}
-              {summary && (
-                <div className="flex items-center justify-between px-1">
-                  <h2 className="text-lg font-semibold">
-                    {selectedPartner?.name}
-                    {selectedPartner?.company_name && (
-                      <span className="text-sm font-normal text-muted-foreground ml-2">
-                        {selectedPartner.company_name}
-                      </span>
-                    )}
-                  </h2>
-                  <div className="flex items-center gap-6 text-sm">
-                    <div className="text-right">
-                      <span className="text-muted-foreground mr-2">총 MG</span>
-                      <span className="font-semibold tabular-nums">{fmt(summary.total_mg)}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-muted-foreground mr-2">총 차감</span>
-                      <span className="font-semibold tabular-nums text-red-600">-{fmt(summary.total_deducted)}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-muted-foreground mr-2">잔액</span>
-                      <span className={`font-semibold tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                        {fmt(summary.remaining)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <div>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h2 className="text-lg font-semibold">
+                  {selectedPartner?.name} 원장
+                  {selectedPartner?.company_name && (
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      {selectedPartner.company_name}
+                    </span>
+                  )}
+                </h2>
+                {summary && (
+                  <span className={`text-lg font-bold tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                    잔액 {fmt(summary.remaining)}원
+                  </span>
+                )}
+              </div>
 
-              {/* Entries - always expanded */}
-              {entries.map((entry, idx) => {
-                const exhausted = entry.remaining <= 0;
-
-                return (
-                  <div key={entry.id} className={exhausted ? 'opacity-50' : ''}>
-                    {/* Entry header */}
-                    <div className="flex items-center justify-between mb-2 px-1">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-muted-foreground">#{idx + 1}</span>
-                        <span className="text-lg font-bold tabular-nums">{fmt(entry.amount)}원</span>
-                        <Badge variant={entry.withheld_tax ? 'default' : 'outline'} className="text-xs">
-                          {entry.withheld_tax ? '원천징수O' : '원천징수X'}
-                        </Badge>
-                        {exhausted && <Badge variant="secondary" className="text-xs">소진완료</Badge>}
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>{entry.contracted_at}</span>
-                        {entry.works.length > 0 && (
-                          <span>{entry.works.map(w => w.work_name).join(', ')}</span>
-                        )}
-                        {entry.note && <span className="text-xs">{entry.note}</span>}
-                        <span className={`font-semibold tabular-nums ${entry.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                          잔액 {fmt(entry.remaining)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Deduction table - always visible */}
-                    {entry.deductions.length > 0 ? (
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="bg-muted/50 text-sm">
-                              <th className="py-2 px-4 text-left font-medium">월</th>
-                              <th className="py-2 px-4 text-right font-medium">차감액</th>
-                              <th className="py-2 px-4 text-right font-medium">잔액</th>
-                              {entry.deductions.some(d => d.note) && (
-                                <th className="py-2 px-4 text-left font-medium">비고</th>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody className="text-sm">
-                            {(() => {
-                              let running = entry.amount;
-                              return entry.deductions.map(d => {
-                                running -= d.amount;
-                                return (
-                                  <tr key={d.id} className="border-t hover:bg-muted/30">
-                                    <td className="py-2 px-4 tabular-nums">{d.month}</td>
-                                    <td className="py-2 px-4 text-right tabular-nums text-red-600">
-                                      -{fmt(d.amount)}
-                                    </td>
-                                    <td className={`py-2 px-4 text-right tabular-nums font-medium ${running > 0 ? '' : 'text-green-600'}`}>
-                                      {fmt(running)}
-                                    </td>
-                                    {entry.deductions.some(dd => dd.note) && (
-                                      <td className="py-2 px-4 text-muted-foreground">{d.note || ''}</td>
-                                    )}
-                                  </tr>
-                                );
-                              });
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="border rounded-lg p-4 text-sm text-muted-foreground">
-                        차감 내역 없음
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {/* Ledger table */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-muted/60 text-sm border-b">
+                      <th className="py-2.5 px-4 text-left font-semibold w-28">월</th>
+                      <th className="py-2.5 px-4 text-right font-semibold w-36">MG 지급</th>
+                      <th className="py-2.5 px-4 text-right font-semibold w-36">차감</th>
+                      <th className="py-2.5 px-4 text-right font-semibold w-36">잔액</th>
+                      <th className="py-2.5 px-4 text-left font-semibold">비고</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-sm">
+                    {ledgerRows.map((row, i) => (
+                      <tr
+                        key={i}
+                        className={`border-t hover:bg-muted/30 ${row.deposit > 0 ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
+                      >
+                        <td className="py-2 px-4 tabular-nums">{row.date}</td>
+                        <td className="py-2 px-4 text-right tabular-nums text-blue-600 font-medium">
+                          {row.deposit > 0 ? fmt(row.deposit) : ''}
+                        </td>
+                        <td className="py-2 px-4 text-right tabular-nums text-red-600">
+                          {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
+                        </td>
+                        <td className={`py-2 px-4 text-right tabular-nums font-medium ${row.balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          {fmt(row.balance)}
+                        </td>
+                        <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
+                          {row.note}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {summary && (
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/40 font-semibold text-sm">
+                        <td className="py-2.5 px-4">합계</td>
+                        <td className="py-2.5 px-4 text-right tabular-nums text-blue-600">{fmt(summary.total_mg)}</td>
+                        <td className="py-2.5 px-4 text-right tabular-nums text-red-600">{fmt(summary.total_deducted)}</td>
+                        <td className={`py-2.5 px-4 text-right tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          {fmt(summary.remaining)}
+                        </td>
+                        <td className="py-2.5 px-4"></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
             </div>
           )}
         </div>
