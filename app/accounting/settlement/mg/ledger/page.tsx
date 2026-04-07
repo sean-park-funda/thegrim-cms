@@ -229,7 +229,7 @@ export default function MgLedgerPage() {
                   )}
                 </h2>
                 {summary && (
-                  <span className={`text-lg font-bold tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  <span className="text-lg font-bold tabular-nums">
                     잔액 {fmt(summary.remaining)}원
                   </span>
                 )}
@@ -260,7 +260,7 @@ export default function MgLedgerPage() {
                         <td className="py-2 px-4 text-right tabular-nums text-red-600">
                           {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
                         </td>
-                        <td className={`py-2 px-4 text-right tabular-nums font-medium ${row.balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        <td className="py-2 px-4 text-right tabular-nums font-medium">
                           {fmt(row.balance)}
                         </td>
                         <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
@@ -275,7 +275,7 @@ export default function MgLedgerPage() {
                         <td className="py-2.5 px-4">합계</td>
                         <td className="py-2.5 px-4 text-right tabular-nums text-blue-600">{fmt(summary.total_mg)}</td>
                         <td className="py-2.5 px-4 text-right tabular-nums text-red-600">{fmt(summary.total_deducted)}</td>
-                        <td className={`py-2.5 px-4 text-right tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        <td className="py-2.5 px-4 text-right tabular-nums font-semibold">
                           {fmt(summary.remaining)}
                         </td>
                         <td className="py-2.5 px-4"></td>
