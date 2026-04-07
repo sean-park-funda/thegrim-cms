@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Pencil, Users, BookOpen, History } from 'lucide-react';
+import { Search, Pencil, Users, BookOpen, History, BarChart3, BookOpenText } from 'lucide-react';
 import { RsMgBalance, RsWorkPartner } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -168,6 +168,20 @@ export default function MgPage() {
 
   return (
     <div className="space-y-6">
+      {/* Tab navigation */}
+      <div className="flex items-center gap-2">
+        <Button variant="default" size="sm" className="gap-1.5">
+          <BarChart3 className="h-4 w-4" />
+          집계
+        </Button>
+        <Link href="/accounting/settlement/mg/ledger">
+          <Button variant="ghost" size="sm" className="gap-1.5">
+            <BookOpenText className="h-4 w-4" />
+            원장
+          </Button>
+        </Link>
+      </div>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>MG현황 집계 ({selectedMonth})</CardTitle>

@@ -19,8 +19,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const partnerId = searchParams.get('partnerId');
 
+    // partnerId 없으면 MG 엔트리가 있는 파트너 목록 반환
     if (!partnerId) {
-      return NextResponse.json({ error: 'partnerId is required' }, { status: 400 });
+      const { data: entries } = await supabase
+        .from('rs_mg_entries')
+        .select('partner_id, rs_partners(id, name, company_name, partner_type)')
+        .order('partner_id');
+
+      const partnerMap = new Map<string, any>();
+      for (const e of (entries || [])) {
+        const p = (e as any).rs_partners;
+        if (p && !partnerMap.has(p.id)) {
+          partnerMap.set(p.id, p);
+        }
+      }
+      const partners = [...partnerMap.values()].sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '', 'ko')
+      );
+      return NextResponse.json({ partners });
     }
 
     // 1) Partner info
