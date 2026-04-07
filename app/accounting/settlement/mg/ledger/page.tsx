@@ -251,13 +251,13 @@ export default function MgLedgerPage() {
                     {ledgerRows.map((row, i) => (
                       <tr
                         key={i}
-                        className={`border-t hover:bg-muted/30 ${row.deposit > 0 ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
+                        className="border-t hover:bg-muted/30"
                       >
                         <td className="py-2 px-4 tabular-nums">{row.date}</td>
-                        <td className="py-2 px-4 text-right tabular-nums text-blue-600 font-medium">
+                        <td className="py-2 px-4 text-right tabular-nums font-medium">
                           {row.deposit > 0 ? fmt(row.deposit) : ''}
                         </td>
-                        <td className="py-2 px-4 text-right tabular-nums text-red-600">
+                        <td className="py-2 px-4 text-right tabular-nums">
                           {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
                         </td>
                         <td className="py-2 px-4 text-right tabular-nums font-medium">
@@ -273,8 +273,8 @@ export default function MgLedgerPage() {
                     <tfoot>
                       <tr className="border-t-2 bg-muted/40 font-semibold text-sm">
                         <td className="py-2.5 px-4">합계</td>
-                        <td className="py-2.5 px-4 text-right tabular-nums text-blue-600">{fmt(summary.total_mg)}</td>
-                        <td className="py-2.5 px-4 text-right tabular-nums text-red-600">{fmt(summary.total_deducted)}</td>
+                        <td className="py-2.5 px-4 text-right tabular-nums">{fmt(summary.total_mg)}</td>
+                        <td className="py-2.5 px-4 text-right tabular-nums">{fmt(summary.total_deducted)}</td>
                         <td className="py-2.5 px-4 text-right tabular-nums font-semibold">
                           {fmt(summary.remaining)}
                         </td>
