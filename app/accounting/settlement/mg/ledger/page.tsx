@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, ChevronDown, ChevronRight, BarChart3, BookOpenText } from 'lucide-react';
+import { Search, BarChart3, BookOpenText } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface MgWork {
@@ -62,7 +62,6 @@ export default function MgLedgerPage() {
   const [summary, setSummary] = useState<MgSummary | null>(null);
   const [loadingPartners, setLoadingPartners] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
-  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
 
   // Load partner list
   useEffect(() => {
@@ -72,7 +71,6 @@ export default function MgLedgerPage() {
       .then(res => res.json())
       .then(data => {
         setPartners(data.partners || []);
-        // Auto-select first partner
         if (data.partners?.length > 0 && !selectedPartnerId) {
           setSelectedPartnerId(data.partners[0].id);
         }
@@ -90,25 +88,10 @@ export default function MgLedgerPage() {
       .then(data => {
         setEntries(data.entries || []);
         setSummary(data.summary);
-        // Auto-expand entries with remaining balance
-        const active = new Set<string>();
-        for (const e of (data.entries || [])) {
-          if (e.remaining > 0) active.add(e.id);
-        }
-        setExpandedEntries(active);
       })
       .catch(err => console.error('MG entries error:', err))
       .finally(() => setLoadingEntries(false));
   }, [selectedPartnerId]);
-
-  const toggleEntry = (id: string) => {
-    setExpandedEntries(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
@@ -140,12 +123,12 @@ export default function MgLedgerPage() {
 
       <div className="flex gap-4 h-[calc(100vh-220px)]">
         {/* Left: Partner list */}
-        <div className="w-56 shrink-0 flex flex-col border rounded-lg">
+        <div className="w-48 shrink-0 flex flex-col border rounded-lg">
           <div className="p-2 border-b">
             <div className="relative">
               <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="작가 검색..."
+                placeholder="검색..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-7 h-8 text-sm"
@@ -177,8 +160,8 @@ export default function MgLedgerPage() {
           </div>
         </div>
 
-        {/* Right: Ledger */}
-        <div className="flex-1 overflow-y-auto space-y-4">
+        {/* Right: Ledger - always expanded */}
+        <div className="flex-1 overflow-y-auto">
           {!selectedPartnerId ? (
             <div className="text-sm text-muted-foreground py-8 text-center">좌측에서 작가를 선택하세요.</div>
           ) : loadingEntries ? (
@@ -186,153 +169,112 @@ export default function MgLedgerPage() {
           ) : entries.length === 0 ? (
             <div className="text-sm text-muted-foreground py-8 text-center">MG 데이터가 없습니다.</div>
           ) : (
-            <>
-              {/* Summary */}
+            <div className="space-y-6">
+              {/* Summary bar */}
               {summary && (
-                <Card>
-                  <CardHeader className="py-4">
-                    <CardTitle className="text-base">
-                      {selectedPartner?.name} 원장
-                      {selectedPartner?.company_name && (
-                        <span className="text-sm font-normal text-muted-foreground ml-2">
-                          {selectedPartner.company_name}
-                        </span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-4 gap-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">총 MG</p>
-                        <p className="text-lg font-semibold tabular-nums">{fmt(summary.total_mg)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">총 차감</p>
-                        <p className="text-lg font-semibold tabular-nums text-red-600">-{fmt(summary.total_deducted)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">잔액</p>
-                        <p className={`text-lg font-semibold tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                          {fmt(summary.remaining)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">MG 건수</p>
-                        <p className="text-lg font-semibold">{summary.entry_count}건</p>
-                      </div>
+                <div className="flex items-center justify-between px-1">
+                  <h2 className="text-lg font-semibold">
+                    {selectedPartner?.name}
+                    {selectedPartner?.company_name && (
+                      <span className="text-sm font-normal text-muted-foreground ml-2">
+                        {selectedPartner.company_name}
+                      </span>
+                    )}
+                  </h2>
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="text-right">
+                      <span className="text-muted-foreground mr-2">총 MG</span>
+                      <span className="font-semibold tabular-nums">{fmt(summary.total_mg)}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                    <div className="text-right">
+                      <span className="text-muted-foreground mr-2">총 차감</span>
+                      <span className="font-semibold tabular-nums text-red-600">-{fmt(summary.total_deducted)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-muted-foreground mr-2">잔액</span>
+                      <span className={`font-semibold tabular-nums ${summary.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {fmt(summary.remaining)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
 
-              {/* Entries */}
-              <div className="space-y-3">
-                {entries.map(entry => {
-                  const isExpanded = expandedEntries.has(entry.id);
-                  const exhausted = entry.remaining <= 0;
+              {/* Entries - always expanded */}
+              {entries.map((entry, idx) => {
+                const exhausted = entry.remaining <= 0;
 
-                  return (
-                    <Card key={entry.id} className={exhausted ? 'opacity-60' : ''}>
-                      <CardHeader
-                        className="cursor-pointer py-3"
-                        onClick={() => toggleEntry(entry.id)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                            )}
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold tabular-nums">{fmt(entry.amount)}원</span>
-                                <Badge variant={entry.withheld_tax ? 'default' : 'outline'} className="text-xs">
-                                  {entry.withheld_tax ? '원천징수O' : '원천징수X'}
-                                </Badge>
-                                {exhausted && (
-                                  <Badge variant="secondary" className="text-xs">소진완료</Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                <span>{entry.contracted_at}</span>
-                                {entry.works.length > 0 && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{entry.works.map(w => w.work_name).join(', ')}</span>
-                                  </>
-                                )}
-                                {entry.note && (
-                                  <>
-                                    <span>·</span>
-                                    <span className="text-xs">{entry.note}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className={`font-semibold tabular-nums ${entry.remaining > 0 ? 'text-orange-600' : ''}`}>
-                              {fmt(entry.remaining)}원
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              차감 {fmt(entry.total_deducted)}
-                            </p>
-                          </div>
-                        </div>
-                      </CardHeader>
+                return (
+                  <div key={entry.id} className={exhausted ? 'opacity-50' : ''}>
+                    {/* Entry header */}
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-muted-foreground">#{idx + 1}</span>
+                        <span className="text-lg font-bold tabular-nums">{fmt(entry.amount)}원</span>
+                        <Badge variant={entry.withheld_tax ? 'default' : 'outline'} className="text-xs">
+                          {entry.withheld_tax ? '원천징수O' : '원천징수X'}
+                        </Badge>
+                        {exhausted && <Badge variant="secondary" className="text-xs">소진완료</Badge>}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>{entry.contracted_at}</span>
+                        {entry.works.length > 0 && (
+                          <span>{entry.works.map(w => w.work_name).join(', ')}</span>
+                        )}
+                        {entry.note && <span className="text-xs">{entry.note}</span>}
+                        <span className={`font-semibold tabular-nums ${entry.remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          잔액 {fmt(entry.remaining)}
+                        </span>
+                      </div>
+                    </div>
 
-                      {isExpanded && entry.deductions.length > 0 && (
-                        <CardContent className="pt-0">
-                          <div className="border rounded-md overflow-hidden">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="bg-muted/50">
-                                  <th className="py-1.5 px-3 text-left font-medium text-xs">월</th>
-                                  <th className="py-1.5 px-3 text-right font-medium text-xs">차감액</th>
-                                  <th className="py-1.5 px-3 text-right font-medium text-xs">남은 잔액</th>
-                                  {entry.deductions.some(d => d.note) && (
-                                    <th className="py-1.5 px-3 text-left font-medium text-xs">비고</th>
-                                  )}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  let running = entry.amount;
-                                  return entry.deductions.map(d => {
-                                    running -= d.amount;
-                                    return (
-                                      <tr key={d.id} className="border-t">
-                                        <td className="py-1.5 px-3 tabular-nums">{d.month}</td>
-                                        <td className="py-1.5 px-3 text-right tabular-nums text-red-600">
-                                          -{fmt(d.amount)}
-                                        </td>
-                                        <td className={`py-1.5 px-3 text-right tabular-nums ${running > 0 ? '' : 'text-green-600'}`}>
-                                          {fmt(running)}
-                                        </td>
-                                        {entry.deductions.some(dd => dd.note) && (
-                                          <td className="py-1.5 px-3 text-xs text-muted-foreground">{d.note || ''}</td>
-                                        )}
-                                      </tr>
-                                    );
-                                  });
-                                })()}
-                              </tbody>
-                            </table>
-                          </div>
-                        </CardContent>
-                      )}
-
-                      {isExpanded && entry.deductions.length === 0 && (
-                        <CardContent className="pt-0">
-                          <p className="text-sm text-muted-foreground">차감 내역 없음</p>
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                })}
-              </div>
-            </>
+                    {/* Deduction table - always visible */}
+                    {entry.deductions.length > 0 ? (
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-muted/50 text-sm">
+                              <th className="py-2 px-4 text-left font-medium">월</th>
+                              <th className="py-2 px-4 text-right font-medium">차감액</th>
+                              <th className="py-2 px-4 text-right font-medium">잔액</th>
+                              {entry.deductions.some(d => d.note) && (
+                                <th className="py-2 px-4 text-left font-medium">비고</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody className="text-sm">
+                            {(() => {
+                              let running = entry.amount;
+                              return entry.deductions.map(d => {
+                                running -= d.amount;
+                                return (
+                                  <tr key={d.id} className="border-t hover:bg-muted/30">
+                                    <td className="py-2 px-4 tabular-nums">{d.month}</td>
+                                    <td className="py-2 px-4 text-right tabular-nums text-red-600">
+                                      -{fmt(d.amount)}
+                                    </td>
+                                    <td className={`py-2 px-4 text-right tabular-nums font-medium ${running > 0 ? '' : 'text-green-600'}`}>
+                                      {fmt(running)}
+                                    </td>
+                                    {entry.deductions.some(dd => dd.note) && (
+                                      <td className="py-2 px-4 text-muted-foreground">{d.note || ''}</td>
+                                    )}
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="border rounded-lg p-4 text-sm text-muted-foreground">
+                        차감 내역 없음
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
