@@ -133,31 +133,44 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          // Match entries to works via entryWorks, distribute per-work deductions
+          // Group entries by work, then distribute each work's deduction
+          // across its entries (oldest first) to avoid duplicates
+          const workToEntries = new Map<string, typeof entries>();
           for (const entry of (entries || [])) {
             const ew = entryWorks[entry.id] || [];
-            const confirmedDeds = (deductions[entry.id] || []);
-            const alreadyDeducted = confirmedDeds.reduce((s, d) => s + d.amount, 0);
-            const entryRemaining = entry.amount - alreadyDeducted;
-            if (entryRemaining <= 0) continue;
-
-            // Sum deductions for works linked to this entry
-            let entryDeduction = 0;
             for (const w of ew) {
-              entryDeduction += workDeductions.get(w.work_id) || 0;
+              if (!workToEntries.has(w.work_id)) workToEntries.set(w.work_id, []);
+              workToEntries.get(w.work_id)!.push(entry);
             }
-            if (entryDeduction <= 0) continue;
+          }
 
-            // Cap at entry remaining
-            const deduct = Math.min(entryRemaining, entryDeduction);
-            if (!deductions[entry.id]) deductions[entry.id] = [];
-            deductions[entry.id].push({
-              id: `pending-${entry.id}`,
-              month,
-              amount: deduct,
-              note: '실시간 계산 (미확정)',
-              pending: true,
-            });
+          for (const [workId, workEntries] of workToEntries) {
+            let workDeduction = workDeductions.get(workId) || 0;
+            if (workDeduction <= 0) continue;
+
+            // Sort entries oldest first
+            const sorted = [...workEntries].sort((a, b) =>
+              a.contracted_at.localeCompare(b.contracted_at)
+            );
+
+            for (const entry of sorted) {
+              if (workDeduction <= 0) break;
+              const confirmedDeds = (deductions[entry.id] || []);
+              const alreadyDeducted = confirmedDeds.reduce((s, d) => s + d.amount, 0);
+              const entryRemaining = entry.amount - alreadyDeducted;
+              if (entryRemaining <= 0) continue;
+
+              const deduct = Math.min(entryRemaining, workDeduction);
+              if (!deductions[entry.id]) deductions[entry.id] = [];
+              deductions[entry.id].push({
+                id: `pending-${entry.id}-${workId}`,
+                month,
+                amount: deduct,
+                note: '실시간 계산 (미확정)',
+                pending: true,
+              });
+              workDeduction -= deduct;
+            }
           }
         }
       }
