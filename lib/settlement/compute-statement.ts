@@ -404,6 +404,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   // ─── MG 차감 (entry 기반) ──────────────────────────────
   const mgEntries = input.mgEntries || [];
+  let mg_taxed_deduction = 0;   // 이미 원천징수된 MG에서 소진된 금액
+  let mg_untaxed_deduction = 0; // 비과세 MG에서 소진된 금액
   if (mgEntries.length > 0) {
     const entries = [...mgEntries].sort((a, b) =>
       a.contracted_at.localeCompare(b.contracted_at)
@@ -423,6 +425,25 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     }
 
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
+
+    // FIFO 소진: 누적 차감으로 어떤 엔트리부터 이번달 차감이 시작되는지 결정
+    // 각 엔트리의 withheld_tax에 따라 taxed/untaxed 분리
+    if (!isCorp && totalDeduction > 0) {
+      // 누적 이전 차감 = 각 엔트리의 (amount - remaining)
+      // entries는 contracted_at ASC 정렬 → FIFO
+      let deductionLeft = totalDeduction;
+      for (const entry of entries) {
+        if (deductionLeft <= 0) break;
+        if (entry.remaining <= 0) continue; // 이미 완전 소진된 엔트리
+        const consume = Math.min(entry.remaining, deductionLeft);
+        if (entry.withheld_tax) {
+          mg_taxed_deduction += consume;
+        } else {
+          mg_untaxed_deduction += consume;
+        }
+        deductionLeft -= consume;
+      }
+    }
 
     // 작품별 차감 배분: 법인은 cap 비율, 개인은 net_share 비율
     const mgWorks = works.filter(w =>
@@ -506,10 +527,10 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감 (법인/개인 모두 net_share 기준)
   const total_mg_deduction = total_mg_raw;
 
-  // 개인: 세금/보험은 MG 차감 후 남은 금액에 대해 계산
-  // (MG는 선지급금 회수이므로, 실제 지급되는 금액에 대해서만 원천징수)
-  // 조정 항목은 세금 기준에 포함하지 않음 (최종 지급액에만 반영)
-  const taxable_base = isCorp ? subtotal : Math.max(0, subtotal - total_mg_deduction);
+  // 개인: 과세기준은 이미 원천징수된(withheld_tax=true) MG 차감분만 제외
+  // 비과세(withheld_tax=false) MG 차감분은 이번에 과세해야 하므로 과세기준에 남김
+  // 법인: 원천징수 없으므로 subtotal 그대로
+  const taxable_base = isCorp ? subtotal : Math.max(0, subtotal - mg_taxed_deduction);
   const taxType = workPartners[0]?.tax_type || 'standard';
   const tax_breakdown = calculateTax(taxable_base, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
@@ -528,7 +549,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   const final_payment = isCorp
     ? tax_invoice_total - total_mg_deduction
-    : taxable_base - tax_amount - insurance + total_adjustment;
+    : taxable_base - tax_amount - insurance - mg_untaxed_deduction + total_adjustment;
 
   return {
     partner,
