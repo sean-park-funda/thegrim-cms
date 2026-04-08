@@ -67,7 +67,77 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 파트너별로 집계
+    // partnerId가 있으면 엔트리별 상세 (파트너 상세 페이지용)
+    if (partnerId) {
+      // 실시간 차감: 작품별 deduction 가져오기
+      let pendingWorkDeductions = new Map<string, number>(); // work_id → deduction
+      if (month && pendingDeductions.has(partnerId)) {
+        const bulkResult = await computeAllStatements(supabase, month);
+        const partnerResult = bulkResult.partners.find(p => p.partnerId === partnerId);
+        if (partnerResult) {
+          for (const w of partnerResult.result.works) {
+            if (w.mg_deduction > 0) {
+              pendingWorkDeductions.set(w.work_id, w.mg_deduction);
+            }
+          }
+        }
+      }
+
+      const mg_balances = (entries || []).map((entry: any) => {
+        const eWorks = allEntryWorks.filter((ew: any) => ew.mg_entry_id === entry.id);
+        const eDeds = allDeductions.filter((d: any) => d.mg_entry_id === entry.id);
+        const totalDeducted = eDeds.reduce((s: number, d: any) => s + Number(d.amount), 0);
+        const workNames = eWorks.map((w: any) => w.rs_works?.name || '').filter(Boolean);
+
+        // 월별 차감 내역
+        const monthlyDeds = new Map<string, number>();
+        for (const d of eDeds) {
+          monthlyDeds.set(d.month, (monthlyDeds.get(d.month) || 0) + Number(d.amount));
+        }
+
+        // 이 엔트리의 작품들에 대한 미확정 차감
+        const entryWorkIds = eWorks.map((ew: any) => ew.work_id);
+        let entryPendingDeduction = 0;
+        for (const wid of entryWorkIds) {
+          entryPendingDeduction += pendingWorkDeductions.get(wid) || 0;
+        }
+
+        const entryAmount = Number(entry.amount);
+        // 선택월 기준: 해당 월 이전까지의 차감 합계 = 이전잔액
+        let previousDeducted = 0;
+        let currentMonthDeducted = 0;
+        for (const [m, amt] of monthlyDeds) {
+          if (month && m < month) {
+            previousDeducted += amt;
+          } else if (month && m === month) {
+            currentMonthDeducted += amt;
+          } else {
+            previousDeducted += amt; // month 없으면 전부 이전으로
+          }
+        }
+
+        const previousBalance = entryAmount - previousDeducted;
+        const currentBalance = previousBalance - currentMonthDeducted - entryPendingDeduction;
+
+        return {
+          id: entry.id,
+          partner_id: entry.partner_id,
+          works: workNames.join(', '),
+          total_mg: entryAmount,
+          previous_balance: previousBalance,
+          month_deducted: currentMonthDeducted,
+          pending_deduction: entryPendingDeduction,
+          current_balance: currentBalance,
+          contracted_at: entry.contracted_at,
+          note: entry.note,
+          deductions: [...monthlyDeds.entries()].map(([m, a]) => ({ month: m, amount: a })).sort((a, b) => a.month.localeCompare(b.month)),
+        };
+      });
+
+      return NextResponse.json({ mg_balances });
+    }
+
+    // 파트너별로 집계 (MG 집계 페이지용)
     const partnerMap = new Map<string, any>();
     for (const entry of (entries || [])) {
       const p = entry.rs_partners as any;

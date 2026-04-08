@@ -204,7 +204,7 @@ export default function PartnerDetailPage() {
         settlementFetch(`/api/accounting/settlement/partners/${partnerId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/settlements?partnerId=${partnerId}`),
-        settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}`),
+        settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}&month=${selectedMonth}`),
         settlementFetch('/api/accounting/settlement/works'),
         settlementFetch(`/api/accounting/settlement/labor-cost-items?partnerId=${partnerId}`),
       ]);
@@ -221,7 +221,7 @@ export default function PartnerDetailPage() {
         (settData.settlements || []).sort((a: RsSettlement, b: RsSettlement) => b.month.localeCompare(a.month))
       );
       setMgBalances(
-        (mgData.mg_balances || []).sort((a: any, b: any) => b.month.localeCompare(a.month))
+        (mgData.mg_balances || []).sort((a: any, b: any) => (b.contracted_at || '').localeCompare(a.contracted_at || ''))
       );
       setWorks(worksData.works || []);
 
@@ -916,53 +916,33 @@ export default function PartnerDetailPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left">
-                        <th className="py-2 px-3 font-medium">월</th>
                         <th className="py-2 px-3 font-medium">작품</th>
+                        <th className="py-2 px-3 font-medium text-right">MG 총액</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">이전잔액</th>
-                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">추가</th>
-                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">차감</th>
-                        <th className="py-2 px-3 font-medium text-right">현재잔액</th>
-                        <th className="py-2 px-3 font-medium hidden md:table-cell">특이사항</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">당월 차감</th>
+                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">미확정 차감</th>
+                        <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
+                        <th className="py-2 px-3 font-medium hidden md:table-cell">메모</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {mgBalances.map((mg) => {
-                        // 선택월의 statement가 있으면 MG 차감액을 statement 기준으로 오버라이드
-                        let mgDeducted = mg.mg_deducted;
-                        let currentBalance = mg.current_balance;
-                        if (statement && mg.month === statement.month) {
-                          // 풀 기반: mg_pool_id로 매칭하여 풀 내 전체 작품 차감 합산
-                          const poolId = mg.mg_pool_id;
-                          if (poolId) {
-                            const poolDeduction = statement.works
-                              .filter((w: any) => w.mg_pool_id === poolId)
-                              .reduce((s: number, w: any) => s + (w.mg_deduction || 0), 0);
-                            if (poolDeduction > 0) {
-                              mgDeducted = poolDeduction;
-                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
-                            }
-                          } else {
-                            // 하위호환: 작품별 매칭
-                            const stWork = statement.works.find((w: any) => w.work_id === mg.work_id);
-                            if (stWork && stWork.is_mg_applied) {
-                              mgDeducted = stWork.mg_deduction;
-                              currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
-                            }
-                          }
-                        }
+                      {mgBalances.map((mg: any) => {
+                        const monthDeducted = mg.month_deducted || 0;
+                        const pendingDed = mg.pending_deduction || 0;
+                        const totalMonthDed = monthDeducted + pendingDed;
                         return (
                         <tr key={mg.id} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-3 font-medium">{mg.month}</td>
-                          <td className="py-2 px-3">{mg.work?.name || '-'}</td>
+                          <td className="py-2 px-3 font-medium">{mg.works || '-'}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.total_mg)}</td>
                           <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(mg.previous_balance)}</td>
-                          <td className={`py-2 px-3 text-right tabular-nums hidden md:table-cell ${mg.mg_added > 0 ? 'text-blue-600' : mg.mg_added < 0 ? 'text-red-600' : ''}`}>
-                            {mg.mg_added > 0 ? `+${mg.mg_added.toLocaleString()}` : mg.mg_added < 0 ? mg.mg_added.toLocaleString() : '-'}
-                          </td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                            {mgDeducted > 0 ? `-${mgDeducted.toLocaleString()}` : '-'}
+                            {monthDeducted > 0 ? `-${monthDeducted.toLocaleString()}` : '-'}
                           </td>
-                          <td className={`py-2 px-3 text-right tabular-nums font-semibold ${currentBalance > 0 ? 'text-orange-600' : ''}`}>
-                            {fmt(currentBalance)}
+                          <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
+                            {pendingDed > 0 ? `-${pendingDed.toLocaleString()}` : '-'}
+                          </td>
+                          <td className={`py-2 px-3 text-right tabular-nums font-semibold ${mg.current_balance > 0 ? 'text-orange-600' : ''}`}>
+                            {fmt(mg.current_balance)}
                           </td>
                           <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate hidden md:table-cell" title={mg.note || ''}>
                             {mg.note || ''}
@@ -970,49 +950,24 @@ export default function PartnerDetailPage() {
                         </tr>
                         );
                       })}
-                      {/* 합계행 - 최신 월 기준 */}
-                      {(() => {
-                        const latestMonth = mgBalances[0]?.month;
-                        if (!latestMonth) return null;
-                        const latestItems = mgBalances.filter(mg => mg.month === latestMonth);
-                        const totals = latestItems.reduce((acc, mg) => {
-                          let mgDeducted = mg.mg_deducted;
-                          let currentBalance = mg.current_balance;
-                          if (statement && mg.month === statement.month) {
-                            const poolId = mg.mg_pool_id;
-                            if (poolId) {
-                              const poolDeduction = statement.works
-                                .filter((w: any) => w.mg_pool_id === poolId)
-                                .reduce((s: number, w: any) => s + (w.mg_deduction || 0), 0);
-                              if (poolDeduction > 0) {
-                                mgDeducted = poolDeduction;
-                                currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
-                              }
-                            } else {
-                              const stWork = statement.works.find((w: any) => w.work_id === mg.work_id);
-                              if (stWork && stWork.is_mg_applied) {
-                                mgDeducted = stWork.mg_deduction;
-                                currentBalance = mg.previous_balance + mg.mg_added - mgDeducted;
-                              }
-                            }
-                          }
-                          return {
-                            previous_balance: acc.previous_balance + mg.previous_balance,
-                            mg_added: acc.mg_added + mg.mg_added,
-                            mg_deducted: acc.mg_deducted + mgDeducted,
-                            current_balance: acc.current_balance + currentBalance,
-                          };
-                        }, { previous_balance: 0, mg_added: 0, mg_deducted: 0, current_balance: 0 });
+                      {mgBalances.length > 1 && (() => {
+                        const totals = mgBalances.reduce((acc: any, mg: any) => ({
+                          total_mg: acc.total_mg + (mg.total_mg || 0),
+                          previous_balance: acc.previous_balance + (mg.previous_balance || 0),
+                          month_deducted: acc.month_deducted + (mg.month_deducted || 0),
+                          pending_deduction: acc.pending_deduction + (mg.pending_deduction || 0),
+                          current_balance: acc.current_balance + (mg.current_balance || 0),
+                        }), { total_mg: 0, previous_balance: 0, month_deducted: 0, pending_deduction: 0, current_balance: 0 });
                         return (
                           <tr className="border-t-2 bg-muted/30 font-semibold">
-                            <td className="py-2 px-3">{latestMonth}</td>
                             <td className="py-2 px-3">합계</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.total_mg)}</td>
                             <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.previous_balance)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
-                              {totals.mg_added > 0 ? `+${totals.mg_added.toLocaleString()}` : '-'}
-                            </td>
                             <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
-                              {totals.mg_deducted > 0 ? `-${totals.mg_deducted.toLocaleString()}` : '-'}
+                              {totals.month_deducted > 0 ? `-${totals.month_deducted.toLocaleString()}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums text-blue-600 hidden md:table-cell">
+                              {totals.pending_deduction > 0 ? `-${totals.pending_deduction.toLocaleString()}` : '-'}
                             </td>
                             <td className={`py-2 px-3 text-right tabular-nums ${totals.current_balance > 0 ? 'text-orange-600' : ''}`}>
                               {fmt(totals.current_balance)}
