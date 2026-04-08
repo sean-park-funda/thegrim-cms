@@ -125,22 +125,31 @@ export async function GET(request: NextRequest) {
         const partnerResult = bulkResult.partners.find(p => p.partnerId === partnerId);
 
         if (partnerResult && partnerResult.result.total_mg_deduction > 0) {
-          const totalDeduction = partnerResult.result.total_mg_deduction;
+          // Build work_id → deduction amount from statement result
+          const workDeductions = new Map<string, number>();
+          for (const w of partnerResult.result.works) {
+            if (w.mg_deduction > 0) {
+              workDeductions.set(w.work_id, w.mg_deduction);
+            }
+          }
 
-          // Distribute to entries (oldest remaining first, same as compute-statement.ts)
-          const sortedEntries = [...(entries || [])].sort((a, b) =>
-            a.contracted_at.localeCompare(b.contracted_at)
-          );
-
-          let remaining = totalDeduction;
-          for (const entry of sortedEntries) {
-            if (remaining <= 0) break;
+          // Match entries to works via entryWorks, distribute per-work deductions
+          for (const entry of (entries || [])) {
+            const ew = entryWorks[entry.id] || [];
             const confirmedDeds = (deductions[entry.id] || []);
             const alreadyDeducted = confirmedDeds.reduce((s, d) => s + d.amount, 0);
             const entryRemaining = entry.amount - alreadyDeducted;
             if (entryRemaining <= 0) continue;
 
-            const deduct = Math.min(entryRemaining, remaining);
+            // Sum deductions for works linked to this entry
+            let entryDeduction = 0;
+            for (const w of ew) {
+              entryDeduction += workDeductions.get(w.work_id) || 0;
+            }
+            if (entryDeduction <= 0) continue;
+
+            // Cap at entry remaining
+            const deduct = Math.min(entryRemaining, entryDeduction);
             if (!deductions[entry.id]) deductions[entry.id] = [];
             deductions[entry.id].push({
               id: `pending-${entry.id}`,
@@ -149,7 +158,6 @@ export async function GET(request: NextRequest) {
               note: '실시간 계산 (미확정)',
               pending: true,
             });
-            remaining -= deduct;
           }
         }
       }
