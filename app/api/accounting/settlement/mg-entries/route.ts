@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
 
           // Group entries by work, then distribute each work's deduction
           // across its entries (oldest first) to avoid duplicates
-          const workToEntries = new Map<string, typeof entries>();
+          const workToEntries = new Map<string, Array<{ id: string; amount: number; contracted_at: string }>>();
           for (const entry of (entries || [])) {
             const ew = entryWorks[entry.id] || [];
             for (const w of ew) {
