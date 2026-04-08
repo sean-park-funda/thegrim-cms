@@ -273,7 +273,9 @@ export default function MgLedgerPage() {
               {/* Header */}
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-lg font-semibold">
-                  {selectedPartner?.name} 원장
+                  <Link href={`/accounting/settlement/partners/${selectedPartnerId}`} className="hover:underline">
+                    {selectedPartner?.name}
+                  </Link> 원장
                   {selectedPartner?.company_name && (
                     <span className="text-sm font-normal text-muted-foreground ml-2">
                       {selectedPartner.company_name}
