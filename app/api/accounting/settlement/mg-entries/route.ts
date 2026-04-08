@@ -144,6 +144,9 @@ export async function GET(request: NextRequest) {
             }
           }
 
+          // 엔트리별 pending 합산용
+          const entryPendingTotals = new Map<string, number>();
+
           for (const [workId, workEntries] of workToEntries) {
             let workDeduction = workDeductions.get(workId) || 0;
             if (workDeduction <= 0) continue;
@@ -157,20 +160,27 @@ export async function GET(request: NextRequest) {
               if (workDeduction <= 0) break;
               const confirmedDeds = (deductions[entry.id] || []);
               const alreadyDeducted = confirmedDeds.reduce((s, d) => s + d.amount, 0);
-              const entryRemaining = entry.amount - alreadyDeducted;
+              const prevPending = entryPendingTotals.get(entry.id) || 0;
+              const entryRemaining = entry.amount - alreadyDeducted - prevPending;
               if (entryRemaining <= 0) continue;
 
               const deduct = Math.min(entryRemaining, workDeduction);
-              if (!deductions[entry.id]) deductions[entry.id] = [];
-              deductions[entry.id].push({
-                id: `pending-${entry.id}-${workId}`,
-                month,
-                amount: deduct,
-                note: '실시간 계산 (미확정)',
-                pending: true,
-              });
+              entryPendingTotals.set(entry.id, prevPending + deduct);
               workDeduction -= deduct;
             }
+          }
+
+          // 엔트리별로 pending deduction 1행씩 추가
+          for (const [entryId, total] of entryPendingTotals) {
+            if (total <= 0) continue;
+            if (!deductions[entryId]) deductions[entryId] = [];
+            deductions[entryId].push({
+              id: `pending-${entryId}`,
+              month,
+              amount: total,
+              note: '실시간 계산 (미확정)',
+              pending: true,
+            });
           }
         }
       }
