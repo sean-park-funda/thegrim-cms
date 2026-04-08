@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, BarChart3, BookOpenText } from 'lucide-react';
 import { settlementFetch } from '@/lib/settlement/api';
+import { useSettlementStore } from '@/lib/store/useSettlementStore';
 
 interface MgWork {
   work_id: string;
@@ -89,14 +90,13 @@ export default function MgLedgerPage() {
       .finally(() => setLoadingPartners(false));
   }, [profile]);
 
-  // Current month for real-time deduction calculation
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const { selectedMonth } = useSettlementStore();
 
   // Load entries for selected partner
   useEffect(() => {
     if (!selectedPartnerId) return;
     setLoadingEntries(true);
-    settlementFetch(`/api/accounting/settlement/mg-entries?partnerId=${selectedPartnerId}&month=${currentMonth}`)
+    settlementFetch(`/api/accounting/settlement/mg-entries?partnerId=${selectedPartnerId}&month=${selectedMonth}`)
       .then(res => res.json())
       .then(data => {
         setEntries(data.entries || []);
@@ -104,7 +104,7 @@ export default function MgLedgerPage() {
       })
       .catch(err => console.error('MG entries error:', err))
       .finally(() => setLoadingEntries(false));
-  }, [selectedPartnerId, currentMonth]);
+  }, [selectedPartnerId, selectedMonth]);
 
   // Group entries by work, then build ledger rows per work
   interface WorkLedger {
