@@ -619,16 +619,16 @@ function distributeByRevenueShare(details: WorkDetail[], cost: number, field: 't
   }
 }
 
-function computeCorpMgCap(details: WorkDetail[], workTotalNetShare: number, vatType: string): number {
-  const domesticPaidNet = details.find(d => d.revenue_type === 'domestic_paid')?.net_share || 0;
-  const otherNet = workTotalNetShare - domesticPaidNet;
+function computeCorpMgCap(details: WorkDetail[], workTotalNetShare: number, _vatType: string): number {
+  // 국내수익 = domestic_paid + domestic_ad (그대로)
+  // 그외수익 = global_paid + global_ad + secondary (× 1.1)
+  const domesticNet = details
+    .filter(d => d.revenue_type === 'domestic_paid' || d.revenue_type === 'domestic_ad')
+    .reduce((s, d) => s + (d.net_share || 0), 0);
+  const otherNet = workTotalNetShare - domesticNet;
   let total = 0;
-  if (domesticPaidNet > 0) {
-    if (vatType === 'vat_separate') {
-      total += domesticPaidNet + Math.round(domesticPaidNet * 0.1);
-    } else {
-      total += domesticPaidNet; // standard(내세) or tax_exempt(면세)
-    }
+  if (domesticNet > 0) {
+    total += domesticNet;
   }
   if (otherNet > 0) {
     total += otherNet + Math.round(otherNet * 0.1);
