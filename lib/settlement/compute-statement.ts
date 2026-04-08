@@ -424,20 +424,28 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
 
-    // 작품별 차감 배분 (net_share 비율)
+    // 작품별 차감 배분: 법인은 cap 비율, 개인은 net_share 비율
     const mgWorks = works.filter(w =>
       entries.some(e => e.work_ids.includes(w.work_id))
     );
-    const totalNetShareForMg = mgWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+
+    // 작품별 배분 기준 계산
+    const workBasis = mgWorks.map(w => {
+      if (isCorp && w.work_total_net_share > 0) {
+        return computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
+      }
+      return Math.max(0, w.work_total_net_share);
+    });
+    const totalBasis = workBasis.reduce((s, b) => s + b, 0);
+
     let workDistributed = 0;
     for (let i = 0; i < mgWorks.length; i++) {
       const w = mgWorks[i];
       if (i === mgWorks.length - 1) {
         w.mg_deduction = Math.max(0, totalDeduction - workDistributed);
       } else {
-        const share = Math.max(0, w.work_total_net_share);
-        w.mg_deduction = totalNetShareForMg > 0
-          ? Math.round(totalDeduction * (share / totalNetShareForMg))
+        w.mg_deduction = totalBasis > 0
+          ? Math.round(totalDeduction * (workBasis[i] / totalBasis))
           : Math.round(totalDeduction / mgWorks.length);
       }
       workDistributed += w.mg_deduction;
