@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 작품 연결
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+      .select('work_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -79,7 +79,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
       work_id: wp.work_id,
       rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: null, // deprecated
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
@@ -202,7 +201,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (allLinkedPartnerIds.length > 0 && allLinkedWorkIds.length > 0) {
         const { data: wpRows } = await supabase
           .from('rs_work_partners')
-          .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
+          .select('partner_id, work_id, rs_rate, is_mg_applied')
           .in('partner_id', allLinkedPartnerIds)
           .in('work_id', allLinkedWorkIds);
 
@@ -210,7 +209,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           partner_id: w.partner_id,
           work_id: w.work_id,
           rs_rate: Number(w.rs_rate),
-          mg_rs_rate: null, // deprecated
           is_mg_applied: w.is_mg_applied,
         }));
       }

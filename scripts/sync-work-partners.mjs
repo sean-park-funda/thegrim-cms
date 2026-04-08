@@ -168,7 +168,6 @@ for (const e of entries) {
       partner_id: partnerId,
       rs_rate: e.rsRate,
       is_mg_applied: e.isMg,
-      ...(e.mgRate > 0 ? { mg_rs_rate: e.mgRate } : {}),
       role: 'author',
     });
     wpSet.add(`${workId}:${partnerId}`);

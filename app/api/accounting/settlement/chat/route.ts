@@ -143,7 +143,7 @@ async function executeGetPartnerInfo(args: Record<string, string>) {
   const partnerIds = partners.map(p => p.id);
   const { data: wps } = await supabase
     .from('rs_work_partners')
-    .select('rs_rate, mg_rs_rate, role, is_mg_applied, pen_name, included_revenue_types, contract_category, contract_end_date, work:rs_works(name)')
+    .select('rs_rate, role, is_mg_applied, pen_name, included_revenue_types, contract_category, contract_end_date, work:rs_works(name)')
     .in('partner_id', partnerIds);
 
   return partners.map(p => ({
@@ -164,7 +164,7 @@ async function executeGetWorkInfo(args: Record<string, string>) {
   const workIds = works.map(w => w.id);
   const { data: wps } = await supabase
     .from('rs_work_partners')
-    .select('rs_rate, mg_rs_rate, role, is_mg_applied, pen_name, partner:rs_partners(name, partner_type)')
+    .select('rs_rate, role, is_mg_applied, pen_name, partner:rs_partners(name, partner_type)')
     .in('work_id', workIds);
 
   return works.map(w => ({

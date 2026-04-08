@@ -57,11 +57,11 @@ export async function computeLaborCostDeductions(
   const allPartnerIds = [...new Set((partnerLinks || []).map(l => l.partner_id))];
   const allWorkIds = [...new Set((workLinks || []).map(l => l.work_id))];
 
-  let wpData: { partner_id: string; work_id: string; rs_rate: number; mg_rs_rate: number | null; is_mg_applied: boolean }[] = [];
+  let wpData: { partner_id: string; work_id: string; rs_rate: number; is_mg_applied: boolean }[] = [];
   if (allPartnerIds.length > 0 && allWorkIds.length > 0) {
     const { data } = await supabase
       .from('rs_work_partners')
-      .select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
+      .select('partner_id, work_id, rs_rate, is_mg_applied')
       .in('partner_id', allPartnerIds)
       .in('work_id', allWorkIds);
     wpData = data || [];
@@ -93,9 +93,7 @@ export async function computeLaborCostDeductions(
         for (const wid of workIds) {
           const wp = wpData.find(w => w.partner_id === pid && w.work_id === wid);
           if (wp) {
-            rsSum += wp.is_mg_applied && wp.mg_rs_rate != null
-              ? Number(wp.mg_rs_rate)
-              : Number(wp.rs_rate);
+            rsSum += Number(wp.rs_rate);
           }
         }
         partnerRsSum.set(pid, rsSum);
@@ -134,9 +132,7 @@ export async function computeLaborCostDeductions(
           const wp = wpData.find(w => w.partner_id === partnerId && w.work_id === wid);
           let share = 0;
           if (wp) {
-            const rate = wp.is_mg_applied && wp.mg_rs_rate != null
-              ? Number(wp.mg_rs_rate)
-              : Number(wp.rs_rate);
+            const rate = Number(wp.rs_rate);
             share = Math.round(grossRevenue * rate);
           }
           workShares.push({ workId: wid, share });

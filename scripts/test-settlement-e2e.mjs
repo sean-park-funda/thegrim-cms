@@ -403,7 +403,7 @@ function calculateInsurance(amount, partnerType, ctx) {
 }
 
 function calculateSettlement(input) {
-  const effectiveRate = input.is_mg_applied && input.mg_rs_rate != null ? input.mg_rs_rate : input.rs_rate;
+  const effectiveRate = input.rs_rate;
   const revenue_share = Math.round(input.gross_revenue * effectiveRate);
   const subtotal = revenue_share - input.production_cost + input.adjustment - input.salary_deduction;
   const insurance = calculateInsurance(subtotal, input.partner_type, {
@@ -739,7 +739,6 @@ for (const rev of allRevenues) {
     const calc = calculateSettlement({
       gross_revenue: Number(rev.total),
       rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: wp.mg_rs_rate != null ? Number(wp.mg_rs_rate) : null,
       production_cost: details.production_cost,
       adjustment: details.adjustment,
       salary_deduction: salaryDeduction,

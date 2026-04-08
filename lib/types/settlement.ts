@@ -90,7 +90,6 @@ export interface RsWorkPartner {
   note: string | null;
   pen_name: string | null;
   vat_type: string | null;
-  mg_rs_rate: number | null;
   contract_category: string | null;
   contract_doc_name: string | null;
   contract_signed_date: string | null;

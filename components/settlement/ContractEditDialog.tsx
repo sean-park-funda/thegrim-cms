@@ -30,7 +30,6 @@ interface Props {
 export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
   const [rsRate, setRsRate] = useState('');
   const [vatType, setVatType] = useState('');
-  const [mgRsRate, setMgRsRate] = useState('');
   const [contractCategory, setContractCategory] = useState('');
   const [includedRevenueTypes, setIncludedRevenueTypes] = useState<RevenueType[]>(ALL_REVENUE_TYPES);
   const [revenueRate, setRevenueRate] = useState('1');
@@ -43,7 +42,6 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
     if (wp && open) {
       setRsRate(wp.rs_rate != null ? String(wp.rs_rate * 100) : '');
       setVatType(wp.vat_type || '');
-      setMgRsRate(wp.mg_rs_rate != null ? String(wp.mg_rs_rate * 100) : '');
       setContractCategory(wp.contract_category || '');
       setIncludedRevenueTypes(wp.included_revenue_types || ALL_REVENUE_TYPES);
       setRevenueRate(wp.revenue_rate != null ? String(wp.revenue_rate) : '1');
@@ -67,7 +65,6 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
           is_mg_applied: wp.is_mg_applied,
           note: wp.note,
           vat_type: vatType || null,
-          mg_rs_rate: mgRsRate ? Number(mgRsRate) / 100 : null,
           contract_category: contractCategory || null,
           included_revenue_types: includedRevenueTypes,
           labor_cost_excluded: laborCostExcluded,
@@ -104,21 +101,11 @@ export function ContractEditDialog({ wp, open, onOpenChange, onSaved }: Props) {
               수익 배분율
             </div>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="ce-rs" className="text-xs text-muted-foreground">RS 요율 (%)</Label>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Input id="ce-rs" type="number" step="1" min="0" max="100" value={rsRate} onChange={e => setRsRate(e.target.value)} />
-                    <span className="text-sm text-muted-foreground shrink-0">%</span>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="ce-mgrs" className="text-xs text-muted-foreground">MG RS 요율 (%)</Label>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Input id="ce-mgrs" type="number" step="1" min="0" max="100" value={mgRsRate} onChange={e => setMgRsRate(e.target.value)} placeholder="미설정" />
-                    <span className="text-sm text-muted-foreground shrink-0">%</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-1">MG 적용 시 사용되는 별도 요율</p>
+              <div>
+                <Label htmlFor="ce-rs" className="text-xs text-muted-foreground">RS 요율 (%)</Label>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Input id="ce-rs" type="number" step="1" min="0" max="100" value={rsRate} onChange={e => setRsRate(e.target.value)} />
+                  <span className="text-sm text-muted-foreground shrink-0">%</span>
                 </div>
               </div>
               <div>

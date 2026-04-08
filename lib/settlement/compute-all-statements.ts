@@ -52,7 +52,7 @@ export async function computeAllStatements(
   // 2) 작품-파트너 연결 + 파트너 정보
   const { data: allWorkPartners } = await supabase
     .from('rs_work_partners')
-    .select('work_id, partner_id, rs_rate, mg_rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+    .select('work_id, partner_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
     .in('work_id', workIds);
 
   if (!allWorkPartners || allWorkPartners.length === 0) {
@@ -113,11 +113,11 @@ export async function computeAllStatements(
     const linkedWorkIds = [...new Set(allLaborWorkLinks.map(l => l.work_id))];
     if (linkedPartnerIds.length > 0 && linkedWorkIds.length > 0) {
       const { data: wpRows } = await supabase
-        .from('rs_work_partners').select('partner_id, work_id, rs_rate, mg_rs_rate, is_mg_applied')
+        .from('rs_work_partners').select('partner_id, work_id, rs_rate, is_mg_applied')
         .in('partner_id', linkedPartnerIds).in('work_id', linkedWorkIds);
       allLaborWpData = (wpRows || []).map((w: any) => ({
         partner_id: w.partner_id, work_id: w.work_id,
-        rs_rate: Number(w.rs_rate), mg_rs_rate: null,
+        rs_rate: Number(w.rs_rate),
         is_mg_applied: w.is_mg_applied,
       }));
     }
@@ -203,7 +203,6 @@ export async function computeAllStatements(
     const partnerWorkIds = wps.map((wp: any) => wp.work_id);
     const workPartnerData: WorkPartnerData[] = wps.map((wp: any) => ({
       work_id: wp.work_id, rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: null,
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,

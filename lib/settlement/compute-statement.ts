@@ -36,7 +36,6 @@ export interface PartnerData {
 export interface WorkPartnerData {
   work_id: string;
   rs_rate: number;
-  mg_rs_rate: number | null;
   is_mg_applied: boolean;
   included_revenue_types: string[] | null;
   labor_cost_excluded: boolean;
@@ -97,7 +96,6 @@ export interface LaborCostWpData {
   partner_id: string;
   work_id: string;
   rs_rate: number;
-  mg_rs_rate: number | null;
   is_mg_applied: boolean;
 }
 
@@ -169,7 +167,6 @@ export interface WorkStatement {
   work_name: string;
   work_id: string;
   rs_rate: number;
-  mg_rs_rate: number | null;
   effective_rate: number;
   revenue_rate: number;
   is_mg_applied: boolean;
@@ -374,7 +371,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       work_name: work?.name || '',
       work_id: wp.work_id,
       rs_rate: Number(wp.rs_rate),
-      mg_rs_rate: null,
       effective_rate: effectiveRate,
       revenue_rate: revenueRate,
       is_mg_applied: wp.is_mg_applied,

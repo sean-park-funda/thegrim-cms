@@ -264,7 +264,6 @@ for (const rel of relationships) {
       rs_rate: rel.rsRate,
       role: rel.contractType === 'MG' ? 'MG' : 'RS',
     };
-    if (rel.mgRsRate != null) wpData.mg_rs_rate = rel.mgRsRate;
     await supabasePost('rs_work_partners', wpData);
     wpCount++;
     wpExistSet.add(`${workId}:${partnerId}`);

@@ -104,7 +104,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json();
     const { id, rs_rate, role, is_mg_applied, note,
-      pen_name, vat_type, mg_rs_rate, contract_category,
+      pen_name, vat_type, contract_category,
       contract_doc_name, contract_signed_date, contract_period, contract_end_date,
       included_revenue_types, labor_cost_excluded, revenue_rate, settlement_cycle, tax_type } = body;
 
@@ -115,7 +115,6 @@ export async function PUT(request: NextRequest) {
     const updateData: Record<string, unknown> = { rs_rate, role, is_mg_applied, note };
     if (pen_name !== undefined) updateData.pen_name = pen_name;
     if (vat_type !== undefined) updateData.vat_type = vat_type;
-    if (mg_rs_rate !== undefined) updateData.mg_rs_rate = mg_rs_rate;
     if (contract_category !== undefined) updateData.contract_category = contract_category;
     if (contract_doc_name !== undefined) updateData.contract_doc_name = contract_doc_name;
     if (contract_signed_date !== undefined) updateData.contract_signed_date = contract_signed_date;
