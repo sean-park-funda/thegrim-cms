@@ -23,19 +23,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '월은 필수입니다.' }, { status: 400 });
     }
 
-    const { partners, _raw } = await computeAllStatements(supabase, month);
+    const { partners } = await computeAllStatements(supabase, month);
 
     if (partners.length === 0) {
       return NextResponse.json({ error: '해당 월의 정산 데이터가 없습니다.' }, { status: 404 });
     }
 
-    // 작품별 rs_settlements UPSERT + MG 풀 잔액 갱신
+    // rs_settlements UPSERT + MG deduction 저장
     const upsertRows: Record<string, unknown>[] = [];
-    const mgPoolUpsertRows: Record<string, unknown>[] = [];
-    const processedPools = new Set<string>();
-    const allMgPools = _raw?.allMgPools || [];
-    const allPoolWorks = _raw?.allPoolWorks || [];
-    const allPoolBalCurrent = _raw?.allPoolBalCurrent || [];
+
+    // MG deduction: entry별 차감액 계산을 위해 모든 MG entry 조회
+    const allPartnerIds = partners.map(p => p.partnerId);
+    const { data: allEntries } = await supabase
+      .from('rs_mg_entries').select('id, partner_id, amount').in('partner_id', allPartnerIds);
+    const entryIds = (allEntries || []).map((e: any) => e.id);
+
+    let allEntryWorks: any[] = [];
+    let existingDeductions: any[] = [];
+    if (entryIds.length > 0) {
+      const [{ data: ew }, { data: deds }] = await Promise.all([
+        supabase.from('rs_mg_entry_works').select('mg_entry_id, work_id').in('mg_entry_id', entryIds),
+        supabase.from('rs_mg_deductions').select('mg_entry_id, month, amount').in('mg_entry_id', entryIds),
+      ]);
+      allEntryWorks = ew || [];
+      existingDeductions = deds || [];
+    }
+
+    const mgDeductionInserts: Record<string, unknown>[] = [];
 
     for (const { partnerId, result } of partners) {
       for (const w of result.works) {
@@ -56,31 +70,51 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // MG 풀별 잔액 갱신
-      const partnerPools = allMgPools.filter((p: any) => p.partner_id === partnerId);
-      for (const pool of partnerPools) {
-        if (processedPools.has(pool.id)) continue;
-        processedPools.add(pool.id);
+      // MG deduction을 rs_mg_deductions에 저장 (entry별 배분, 오래된 것부터)
+      if (result.total_mg_deduction > 0) {
+        const partnerEntries = (allEntries || [])
+          .filter((e: any) => e.partner_id === partnerId)
+          .sort((a: any, b: any) => (a.contracted_at || '').localeCompare(b.contracted_at || ''));
 
-        const poolWorkIds = allPoolWorks.filter((pw: any) => pw.mg_pool_id === pool.id).map((pw: any) => pw.work_id);
-        const totalDeduction = result.works
-          .filter(w => poolWorkIds.includes(w.work_id))
-          .reduce((s, w) => s + w.mg_deduction, 0);
+        // 이미 이 월의 deduction이 있으면 스킵
+        const hasMonthDed = existingDeductions.some((d: any) =>
+          partnerEntries.some((e: any) => e.id === d.mg_entry_id) && d.month === month
+        );
+        if (!hasMonthDed) {
+          // 작품별 차감액을 entry에 매핑
+          const workToEntries = new Map<string, any[]>();
+          for (const entry of partnerEntries) {
+            const ew = allEntryWorks.filter((w: any) => w.mg_entry_id === entry.id);
+            for (const w of ew) {
+              if (!workToEntries.has(w.work_id)) workToEntries.set(w.work_id, []);
+              workToEntries.get(w.work_id)!.push(entry);
+            }
+          }
 
-        if (totalDeduction <= 0) continue;
+          for (const w of result.works) {
+            if (w.mg_deduction <= 0) continue;
+            const entries = workToEntries.get(w.work_id) || [];
+            let remaining = w.mg_deduction;
 
-        // 이번달 풀 잔액
-        const curBal = allPoolBalCurrent.find((b: any) => b.mg_pool_id === pool.id);
-        const prevBalance = curBal ? Number(curBal.previous_balance) : 0;
+            for (const entry of entries) {
+              if (remaining <= 0) break;
+              const totalDed = existingDeductions
+                .filter((d: any) => d.mg_entry_id === entry.id)
+                .reduce((s: number, d: any) => s + Number(d.amount), 0);
+              const entryRemaining = Number(entry.amount) - totalDed;
+              if (entryRemaining <= 0) continue;
 
-        mgPoolUpsertRows.push({
-          mg_pool_id: pool.id,
-          month,
-          previous_balance: prevBalance,
-          mg_added: 0,
-          mg_deducted: totalDeduction,
-          current_balance: prevBalance - totalDeduction,
-        });
+              const deduct = Math.min(entryRemaining, remaining);
+              mgDeductionInserts.push({
+                mg_entry_id: entry.id,
+                month,
+                amount: deduct,
+                note: `${month} 정산 확정`,
+              });
+              remaining -= deduct;
+            }
+          }
+        }
       }
     }
 
@@ -96,14 +130,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (mgPoolUpsertRows.length > 0) {
+    if (mgDeductionInserts.length > 0) {
       const { error: mgErr } = await supabase
-        .from('rs_mg_pool_balances')
-        .upsert(mgPoolUpsertRows, { onConflict: 'mg_pool_id,month' });
+        .from('rs_mg_deductions')
+        .insert(mgDeductionInserts);
 
       if (mgErr) {
-        console.error('MG 풀 잔액 갱신 오류:', mgErr);
-        return NextResponse.json({ error: 'MG 풀 잔액 갱신 실패: ' + mgErr.message }, { status: 500 });
+        console.error('MG 차감 저장 오류:', mgErr);
+        return NextResponse.json({ error: 'MG 차감 저장 실패: ' + mgErr.message }, { status: 500 });
       }
     }
 
@@ -111,7 +145,7 @@ export async function POST(request: NextRequest) {
       message: `${month} 정산 확정 완료`,
       confirmed_partners: partners.length,
       settlement_rows: upsertRows.length,
-      mg_pool_updated: mgPoolUpsertRows.length,
+      mg_deductions_created: mgDeductionInserts.length,
     });
   } catch (error) {
     console.error('정산 확정 오류:', error);

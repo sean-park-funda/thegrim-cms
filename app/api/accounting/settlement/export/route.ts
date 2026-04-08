@@ -122,24 +122,44 @@ export async function GET(request: NextRequest) {
       XLSX.utils.book_append_sheet(workbook, ws, '계약 테이블');
 
     } else if (type === 'mg-summary') {
-      const { data: poolBalances } = await supabase
-        .from('rs_mg_pool_balances')
-        .select('*, pool:rs_mg_pools(name, partner_id, partner:rs_partners(name, company_name, partner_type))')
-        .eq('month', month)
-        .order('mg_pool_id');
+      // MG entries + deductions 기반 현황
+      const { data: entries } = await supabase
+        .from('rs_mg_entries')
+        .select('id, partner_id, amount, contracted_at, note, rs_partners(name, company_name, partner_type)')
+        .order('partner_id');
 
-      const rows = (poolBalances || []).map((mg: any, i: number) => ({
-        'NO': i + 1,
-        '파트너명': mg.pool?.partner?.name || '',
-        '거래처명': mg.pool?.partner?.company_name || '',
-        '소득구분': incomeTypeMap[mg.pool?.partner?.partner_type] || '',
-        'MG 풀': mg.pool?.name || '',
-        '전월이월': Number(mg.previous_balance),
-        '당월 MG 추가': Number(mg.mg_added),
-        '당월 MG 차감': Number(mg.mg_deducted),
-        'MG잔액': Number(mg.current_balance),
-        '특이사항': mg.note || '',
-      }));
+      const entryIds = (entries || []).map((e: any) => e.id);
+      let entryWorks: any[] = [];
+      let deductions: any[] = [];
+      if (entryIds.length > 0) {
+        const [{ data: ew }, { data: deds }] = await Promise.all([
+          supabase.from('rs_mg_entry_works').select('mg_entry_id, work_id, rs_works(name)').in('mg_entry_id', entryIds),
+          supabase.from('rs_mg_deductions').select('mg_entry_id, month, amount').in('mg_entry_id', entryIds),
+        ]);
+        entryWorks = ew || [];
+        deductions = deds || [];
+      }
+
+      const rows = (entries || []).map((e: any, i: number) => {
+        const p = e.rs_partners || {};
+        const works = entryWorks.filter((ew: any) => ew.mg_entry_id === e.id);
+        const workNames = works.map((w: any) => w.rs_works?.name || '').filter(Boolean).join(', ');
+        const monthDeds = deductions.filter((d: any) => d.mg_entry_id === e.id && d.month === month);
+        const totalDeducted = deductions.filter((d: any) => d.mg_entry_id === e.id).reduce((s: number, d: any) => s + Number(d.amount), 0);
+        const monthDeducted = monthDeds.reduce((s: number, d: any) => s + Number(d.amount), 0);
+        return {
+          'NO': i + 1,
+          '파트너명': p.name || '',
+          '거래처명': p.company_name || '',
+          '소득구분': incomeTypeMap[p.partner_type] || '',
+          '작품': workNames,
+          'MG 총액': Number(e.amount),
+          '총 차감': totalDeducted,
+          '당월 차감': monthDeducted,
+          'MG 잔액': Number(e.amount) - totalDeducted,
+          '비고': e.note || '',
+        };
+      });
 
       const ws = XLSX.utils.json_to_sheet(rows);
       XLSX.utils.book_append_sheet(workbook, ws, 'MG 현황');

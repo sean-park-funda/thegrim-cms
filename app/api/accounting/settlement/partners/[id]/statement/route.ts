@@ -8,8 +8,7 @@ import {
   type PartnerData,
   type WorkPartnerData,
   type RevenueData,
-  type MgBalanceEntry,
-  type MgPoolEntry,
+  type MgEntryData,
   type MgDepInfoEntry,
   type MgHistoryEntry,
   type LaborCostItem,
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgBalances: [], mgPools: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -113,143 +112,59 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       unconfirmed_types: r.unconfirmed_types || [],
     }));
 
-    // 4) MG 풀 잔액
-    const mgPools: MgPoolEntry[] = [];
-    const mgBalances: MgBalanceEntry[] = []; // 하위호환
-
-    // 이 파트너의 MG 풀 조회
-    const { data: partnerPools } = await supabase
-      .from('rs_mg_pools')
-      .select('id, name, mg_rs_rate')
+    // 4) MG entries
+    const { data: rawMgEntries } = await supabase
+      .from('rs_mg_entries')
+      .select('id, partner_id, amount, withheld_tax, contracted_at, note')
       .eq('partner_id', id);
 
-    if (partnerPools && partnerPools.length > 0) {
-      const poolIds = partnerPools.map((p: any) => p.id);
-
-      // 풀-작품 연결 + 풀 잔액 병렬 조회
-      const [{ data: poolWorks }, { data: poolBalCurrent }, { data: poolBalPrev }] = await Promise.all([
-        supabase.from('rs_mg_pool_works').select('mg_pool_id, work_id, mg_rs_rate').in('mg_pool_id', poolIds),
-        supabase.from('rs_mg_pool_balances').select('mg_pool_id, previous_balance').eq('month', month).in('mg_pool_id', poolIds),
-        supabase.from('rs_mg_pool_balances').select('mg_pool_id, current_balance, month').lt('month', month).in('mg_pool_id', poolIds).order('month', { ascending: false }),
+    let mgEntries: MgEntryData[] = [];
+    if (rawMgEntries && rawMgEntries.length > 0) {
+      const entryIds = rawMgEntries.map((e: any) => e.id);
+      const [{ data: entryWorks }, { data: entryDeds }] = await Promise.all([
+        supabase.from('rs_mg_entry_works').select('mg_entry_id, work_id').in('mg_entry_id', entryIds),
+        supabase.from('rs_mg_deductions').select('mg_entry_id, amount').in('mg_entry_id', entryIds),
       ]);
 
-      for (const pool of partnerPools) {
-        const pWorks = (poolWorks || []).filter((pw: any) => pw.mg_pool_id === pool.id);
-        const pWorkIds = pWorks.map((pw: any) => pw.work_id);
-
-        // 잔액: 이번 달 있으면 사용, 없으면 직전 달 current_balance
-        const curBal = (poolBalCurrent || []).find((b: any) => b.mg_pool_id === pool.id);
-        let balance = 0;
-        if (curBal) {
-          balance = Number(curBal.previous_balance);
-        } else {
-          const prevBal = (poolBalPrev || []).find((b: any) => b.mg_pool_id === pool.id);
-          if (prevBal) balance = Number(prevBal.current_balance);
-        }
-
-        const mgRsRates: Record<string, number | null> = {};
-        for (const pw of pWorks) {
-          mgRsRates[pw.work_id] = null; // deprecated
-        }
-
-        mgPools.push({
-          pool_id: pool.id,
-          pool_name: pool.name,
-          balance,
-          work_ids: pWorkIds,
-          mg_rs_rates: mgRsRates,
-          pool_mg_rs_rate: null, // deprecated
-        });
-      }
+      mgEntries = rawMgEntries.map((e: any) => {
+        const eWorkIds = (entryWorks || []).filter((ew: any) => ew.mg_entry_id === e.id).map((ew: any) => ew.work_id);
+        const totalDeducted = (entryDeds || []).filter((d: any) => d.mg_entry_id === e.id).reduce((s: number, d: any) => s + Number(d.amount), 0);
+        return {
+          id: e.id, partner_id: e.partner_id, amount: Number(e.amount),
+          withheld_tax: e.withheld_tax, contracted_at: e.contracted_at, note: e.note,
+          work_ids: eWorkIds, total_deducted: totalDeducted, remaining: Number(e.amount) - totalDeducted,
+        };
+      });
     }
 
-    // 5) MG 의존 차단 조회
+    // 5) MG 의존 차단 조회 (entry 기반 잔액)
     const mgDepBlocked = new Map<string, MgDepInfoEntry>();
     for (const wp of wpData) {
       if (!wp.mg_depends_on) continue;
       const dep = wp.mg_depends_on;
-      const [{ data: depMg }, { data: depPartner }, { data: depWp }] = await Promise.all([
-        supabase
-          .from('rs_mg_balances')
-          .select('current_balance')
-          .eq('partner_id', dep.partner_id)
-          .eq('work_id', dep.work_id)
-          .order('month', { ascending: false })
-          .limit(1)
-          .single(),
-        supabase
-          .from('rs_partners')
-          .select('name')
-          .eq('id', dep.partner_id)
-          .single(),
-        supabase
-          .from('rs_work_partners')
-          .select('mg_pool_id')
-          .eq('partner_id', dep.partner_id)
-          .eq('work_id', dep.work_id)
-          .single(),
-      ]);
+      const { data: depPartner } = await supabase
+        .from('rs_partners').select('name').eq('id', dep.partner_id).single();
 
-      // 의존 파트너의 MG pool 이력 조회
-      let depHistory: MgDepInfoEntry['history'] = [];
-      const depPoolId = depWp?.mg_pool_id;
-      if (depPoolId) {
-        const { data: poolHistory } = await supabase
-          .from('rs_mg_pool_balances')
-          .select('month, previous_balance, mg_added, mg_deducted, current_balance')
-          .eq('mg_pool_id', depPoolId)
-          .order('month', { ascending: true });
-        depHistory = (poolHistory || []).map((h: any) => ({
-          month: h.month,
-          previous_balance: Number(h.previous_balance),
-          mg_added: Number(h.mg_added),
-          mg_deducted: Number(h.mg_deducted),
-          current_balance: Number(h.current_balance),
-        }));
-      } else if (depMg) {
-        // pool이 없으면 rs_mg_balances에서 이력 조회
-        const { data: balHistory } = await supabase
-          .from('rs_mg_balances')
-          .select('month, previous_balance, mg_added, mg_deducted, current_balance')
-          .eq('partner_id', dep.partner_id)
-          .eq('work_id', dep.work_id)
-          .order('month', { ascending: true });
-        depHistory = (balHistory || []).map((h: any) => ({
-          month: h.month,
-          previous_balance: Number(h.previous_balance),
-          mg_added: Number(h.mg_added),
-          mg_deducted: Number(h.mg_deducted),
-          current_balance: Number(h.current_balance),
-        }));
+      // 의존 파트너의 MG entry 잔액 합계
+      const { data: depEntries } = await supabase
+        .from('rs_mg_entries').select('id, amount').eq('partner_id', dep.partner_id);
+      let depBalance = 0;
+      if (depEntries && depEntries.length > 0) {
+        const depEntryIds = depEntries.map((e: any) => e.id);
+        const { data: depDeds } = await supabase
+          .from('rs_mg_deductions').select('mg_entry_id, amount').in('mg_entry_id', depEntryIds);
+        const dedByEntry = new Map<string, number>();
+        for (const d of (depDeds || [])) {
+          dedByEntry.set(d.mg_entry_id, (dedByEntry.get(d.mg_entry_id) || 0) + Number(d.amount));
+        }
+        depBalance = depEntries.reduce((s: number, e: any) => s + Number(e.amount) - (dedByEntry.get(e.id) || 0), 0);
       }
 
       mgDepBlocked.set(wp.work_id, {
         partner_name: depPartner?.name || '',
-        balance: depMg ? Number(depMg.current_balance) : 0,
-        history: depHistory,
+        balance: depBalance,
+        history: [],
       });
-    }
-
-    // 6) MG 이력 (풀 단위)
-    const poolIds = mgPools.map(p => p.pool_id);
-    let mgHistoryData: MgHistoryEntry[] = [];
-    if (poolIds.length > 0) {
-      const { data: poolHistory } = await supabase
-        .from('rs_mg_pool_balances')
-        .select('*, pool:rs_mg_pools(name)')
-        .in('mg_pool_id', poolIds)
-        .order('month', { ascending: true });
-
-      mgHistoryData = (poolHistory || []).map((mg: any) => ({
-        work_id: mg.mg_pool_id, // pool_id를 work_id 자리에 사용
-        work_name: (mg.pool as { name: string } | null)?.name || '',
-        month: mg.month,
-        previous_balance: Number(mg.previous_balance),
-        mg_added: Number(mg.mg_added),
-        mg_deducted: Number(mg.mg_deducted),
-        current_balance: Number(mg.current_balance),
-        note: mg.note || '',
-      }));
     }
 
     // 7) 인건비 데이터 조회
@@ -308,8 +223,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       month,
       workPartners: wpData,
       revenues: revenueData,
-      mgBalances,
-      mgPools,
+      mgEntries,
       mgDepBlocked,
       revenueAdjustments: (revAdjustments || []).map(ra => ({
         id: ra.id, work_id: ra.work_id, label: ra.label, amount: Number(ra.amount),
@@ -317,12 +231,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       settlementAdjustments: (adjustmentItems || []).map(a => ({
         id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount),
       })),
-      productionCosts: [],
       laborCostItems,
       laborCostPartnerLinks,
       laborCostWorkLinks,
       laborCostWpData,
-      mgHistory: mgHistoryData,
     };
 
     const result = computeStatement(input);

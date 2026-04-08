@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Pencil, Trash2, Plus, X } from 'lucide-react';
-import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RsMgBalance, RevenueType } from '@/lib/types/settlement';
+import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface RevAdjustment {
@@ -45,7 +45,7 @@ export default function WorkDetailPage() {
   const [revenues, setRevenues] = useState<RsRevenue[]>([]);
   const [revAdjustments, setRevAdjustments] = useState<RevAdjustment[]>([]);
   const [partners, setPartners] = useState<RsPartner[]>([]);
-  const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
+  const [mgBalances, setMgBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -86,7 +86,7 @@ export default function WorkDetailPage() {
       setRevenues((revData.revenues || []).sort((a: RsRevenue, b: RsRevenue) => b.month.localeCompare(a.month)));
       setRevAdjustments(adjData.adjustments || []);
       setPartners(partnersData.partners || []);
-      setMgBalances((mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month)));
+      setMgBalances((mgData.mg_balances || []).sort((a: any, b: any) => b.month.localeCompare(a.month)));
     } catch (e) {
       console.error('작품 상세 로드 오류:', e);
     } finally {

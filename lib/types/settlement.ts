@@ -151,25 +151,6 @@ export interface RsSettlement {
   work?: RsWork;
 }
 
-export interface RsMgBalance {
-  id: string;
-  month: string;
-  partner_id: string;
-  work_id: string;
-  mg_pool_id?: string;
-  previous_balance: number;
-  mg_added: number;
-  mg_deducted: number;
-  current_balance: number;
-  note: string | null;
-  created_at: string;
-  updated_at: string;
-  // joined
-  partner?: RsPartner;
-  work?: RsWork;
-  pool_name?: string;
-  pool_works?: { work_id: string; mg_rs_rate: number | null; work?: RsWork }[];
-}
 
 export interface RsUploadHistory {
   id: string;

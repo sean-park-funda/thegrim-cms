@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Pencil, FileText, Plus, Users, Trash2 } from 'lucide-react';
-import { RsPartner, RsWorkPartner, RsSettlement, RsMgBalance, RsWork } from '@/lib/types/settlement';
+import { RsPartner, RsWorkPartner, RsSettlement, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
 interface TaxBreakdown {
@@ -131,7 +131,7 @@ export default function PartnerDetailPage() {
   const [partner, setPartner] = useState<RsPartner | null>(null);
   const [workPartners, setWorkPartners] = useState<RsWorkPartner[]>([]);
   const [settlements, setSettlements] = useState<RsSettlement[]>([]);
-  const [mgBalances, setMgBalances] = useState<RsMgBalance[]>([]);
+  const [mgBalances, setMgBalances] = useState<any[]>([]);
   const [works, setWorks] = useState<RsWork[]>([]);
   const [loading, setLoading] = useState(true);
   const [statement, setStatement] = useState<StatementData | null>(null);
@@ -221,7 +221,7 @@ export default function PartnerDetailPage() {
         (settData.settlements || []).sort((a: RsSettlement, b: RsSettlement) => b.month.localeCompare(a.month))
       );
       setMgBalances(
-        (mgData.mg_balances || []).sort((a: RsMgBalance, b: RsMgBalance) => b.month.localeCompare(a.month))
+        (mgData.mg_balances || []).sort((a: any, b: any) => b.month.localeCompare(a.month))
       );
       setWorks(worksData.works || []);
 
