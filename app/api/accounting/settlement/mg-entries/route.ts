@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { computeAllStatements } from '@/lib/settlement/compute-all-statements';
 
-// GET /api/accounting/settlement/mg-entries?partnerId=xxx
+// GET /api/accounting/settlement/mg-entries?partnerId=xxx&month=YYYY-MM
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthenticatedClient(request);
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const partnerId = searchParams.get('partnerId');
+    const month = searchParams.get('month');
 
     // partnerId 없으면 MG 엔트리가 있는 파트너 목록 반환
     if (!partnerId) {
@@ -78,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4) Deductions for all entries
-    let deductions: Record<string, Array<{ id: string; month: string; amount: number; note: string | null }>> = {};
+    let deductions: Record<string, Array<{ id: string; month: string; amount: number; note: string | null; pending?: boolean }>> = {};
 
     if (entryIds.length > 0) {
       const { data: deds } = await supabase
@@ -99,7 +101,61 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5) Build response
+    // 5) Real-time pending deduction for current unconfirmed month
+    if (month && entryIds.length > 0) {
+      // Check if this partner's settlement is confirmed for this month
+      const { data: confirmed } = await supabase
+        .from('rs_settlements')
+        .select('id')
+        .eq('partner_id', partnerId)
+        .eq('month', month)
+        .eq('status', 'confirmed')
+        .limit(1);
+
+      const isConfirmed = confirmed && confirmed.length > 0;
+
+      // Check if deductions already exist for this month
+      const hasDeductionForMonth = Object.values(deductions).some(deds =>
+        deds.some(d => d.month === month)
+      );
+
+      if (!isConfirmed && !hasDeductionForMonth) {
+        // Compute real-time deduction via computeAllStatements
+        const bulkResult = await computeAllStatements(supabase, month);
+        const partnerResult = bulkResult.partners.find(p => p.partnerId === partnerId);
+
+        if (partnerResult && partnerResult.result.total_mg_deduction > 0) {
+          const totalDeduction = partnerResult.result.total_mg_deduction;
+
+          // Distribute to entries (oldest remaining first, same as compute-statement.ts)
+          const sortedEntries = [...(entries || [])].sort((a, b) =>
+            a.contracted_at.localeCompare(b.contracted_at)
+          );
+
+          let remaining = totalDeduction;
+          for (const entry of sortedEntries) {
+            if (remaining <= 0) break;
+            const confirmedDeds = (deductions[entry.id] || []);
+            const alreadyDeducted = confirmedDeds.reduce((s, d) => s + d.amount, 0);
+            const entryRemaining = entry.amount - alreadyDeducted;
+            if (entryRemaining <= 0) continue;
+
+            const deduct = Math.min(entryRemaining, remaining);
+            if (!deductions[entry.id]) deductions[entry.id] = [];
+            deductions[entry.id].push({
+              id: `pending-${entry.id}`,
+              month,
+              amount: deduct,
+              note: '실시간 계산 (미확정)',
+              pending: true,
+            });
+            remaining -= deduct;
+          }
+        }
+      }
+    }
+
+    // 6) Build response
     const result = (entries || []).map(e => {
       const deds = deductions[e.id] || [];
       const totalDeducted = deds.reduce((s, d) => s + d.amount, 0);

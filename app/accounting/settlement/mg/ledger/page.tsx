@@ -19,6 +19,7 @@ interface MgDeduction {
   month: string;
   amount: number;
   note: string | null;
+  pending?: boolean;
 }
 
 interface MgEntry {
@@ -55,6 +56,7 @@ interface LedgerRow {
   withdrawal: number; // MG 차감 (출금)
   balance: number;
   note: string;
+  pending?: boolean;  // 미확정 실시간 계산
 }
 
 const fmt = (n: number) => n.toLocaleString();
@@ -87,11 +89,14 @@ export default function MgLedgerPage() {
       .finally(() => setLoadingPartners(false));
   }, [profile]);
 
+  // Current month for real-time deduction calculation
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
   // Load entries for selected partner
   useEffect(() => {
     if (!selectedPartnerId) return;
     setLoadingEntries(true);
-    settlementFetch(`/api/accounting/settlement/mg-entries?partnerId=${selectedPartnerId}`)
+    settlementFetch(`/api/accounting/settlement/mg-entries?partnerId=${selectedPartnerId}&month=${currentMonth}`)
       .then(res => res.json())
       .then(data => {
         setEntries(data.entries || []);
@@ -99,7 +104,7 @@ export default function MgLedgerPage() {
       })
       .catch(err => console.error('MG entries error:', err))
       .finally(() => setLoadingEntries(false));
-  }, [selectedPartnerId]);
+  }, [selectedPartnerId, currentMonth]);
 
   // Group entries by work, then build ledger rows per work
   interface WorkLedger {
@@ -153,6 +158,7 @@ export default function MgLedgerPage() {
             deposit: 0,
             withdrawal: d.amount,
             note: d.note || '',
+            pending: d.pending,
           });
         }
       }
@@ -303,18 +309,19 @@ export default function MgLedgerPage() {
                       </thead>
                       <tbody className="text-sm">
                         {wl.rows.map((row, i) => (
-                          <tr key={i} className="border-t hover:bg-muted/30">
+                          <tr key={i} className={`border-t hover:bg-muted/30 ${row.pending ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}>
                             <td className="py-2 px-4 tabular-nums">{row.date}</td>
                             <td className="py-2 px-4 text-right tabular-nums font-medium">
                               {row.deposit > 0 ? fmt(row.deposit) : ''}
                             </td>
-                            <td className="py-2 px-4 text-right tabular-nums">
+                            <td className={`py-2 px-4 text-right tabular-nums ${row.pending ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                               {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
                             </td>
-                            <td className="py-2 px-4 text-right tabular-nums font-medium">
+                            <td className={`py-2 px-4 text-right tabular-nums font-medium ${row.pending ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                               {fmt(row.balance)}
                             </td>
                             <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
+                              {row.pending && <span className="text-blue-600 dark:text-blue-400 mr-1">●</span>}
                               {row.note}
                             </td>
                           </tr>
