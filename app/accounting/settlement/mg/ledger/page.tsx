@@ -101,44 +101,90 @@ export default function MgLedgerPage() {
       .finally(() => setLoadingEntries(false));
   }, [selectedPartnerId]);
 
-  // Build bankbook-style rows
-  const ledgerRows = useMemo(() => {
-    const rows: Omit<LedgerRow, 'balance'>[] = [];
+  // Group entries by work, then build ledger rows per work
+  interface WorkLedger {
+    workName: string;
+    rows: LedgerRow[];
+    totalMg: number;
+    totalDeducted: number;
+    remaining: number;
+  }
+
+  const workLedgers = useMemo(() => {
+    // Group entries by work key (work_id or 'unknown')
+    const groupMap = new Map<string, { workName: string; entries: MgEntry[] }>();
 
     for (const entry of entries) {
-      // MG 지급 행
-      const workNames = entry.works.map(w => w.work_name).join(', ');
-      const taxLabel = entry.withheld_tax ? '원천징수' : '';
-      const parts = [workNames, taxLabel, entry.note].filter(Boolean);
-      rows.push({
-        date: entry.contracted_at,
-        sortKey: entry.contracted_at + '-0', // deposits sort before same-month deductions
-        deposit: entry.amount,
-        withdrawal: 0,
-        note: parts.join(' / '),
-      });
+      // An entry may link to multiple works; group by first work (typical case: 1 work per entry)
+      const workKey = entry.works.length > 0
+        ? entry.works.map(w => w.work_id).sort().join('+')
+        : '_no_work';
+      const workName = entry.works.length > 0
+        ? entry.works.map(w => w.work_name).join(', ')
+        : '작품 미지정';
 
-      // 차감 행들
-      for (const d of entry.deductions) {
-        rows.push({
-          date: d.month,
-          sortKey: d.month + '-1',
-          deposit: 0,
-          withdrawal: d.amount,
-          note: d.note || '',
-        });
+      if (!groupMap.has(workKey)) {
+        groupMap.set(workKey, { workName, entries: [] });
       }
+      groupMap.get(workKey)!.entries.push(entry);
     }
 
-    // Sort chronologically
-    rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    // Build ledger per work group
+    const ledgers: WorkLedger[] = [];
 
-    // Calculate running balance
-    let balance = 0;
-    return rows.map(r => {
-      balance += r.deposit - r.withdrawal;
-      return { ...r, balance };
+    for (const [, group] of groupMap) {
+      const rows: Omit<LedgerRow, 'balance'>[] = [];
+
+      for (const entry of group.entries) {
+        const taxLabel = entry.withheld_tax ? '원천징수' : '';
+        const parts = [taxLabel, entry.note].filter(Boolean);
+        rows.push({
+          date: entry.contracted_at,
+          sortKey: entry.contracted_at + '-0',
+          deposit: entry.amount,
+          withdrawal: 0,
+          note: parts.join(' / '),
+        });
+
+        for (const d of entry.deductions) {
+          rows.push({
+            date: d.month,
+            sortKey: d.month + '-1',
+            deposit: 0,
+            withdrawal: d.amount,
+            note: d.note || '',
+          });
+        }
+      }
+
+      rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+      let balance = 0;
+      const finalRows = rows.map(r => {
+        balance += r.deposit - r.withdrawal;
+        return { ...r, balance };
+      });
+
+      const totalMg = group.entries.reduce((s, e) => s + e.amount, 0);
+      const totalDeducted = group.entries.reduce((s, e) => s + e.total_deducted, 0);
+
+      ledgers.push({
+        workName: group.workName,
+        rows: finalRows,
+        totalMg,
+        totalDeducted,
+        remaining: totalMg - totalDeducted,
+      });
+    }
+
+    // Sort ledgers by first entry date
+    ledgers.sort((a, b) => {
+      const aDate = a.rows[0]?.date || '';
+      const bDate = b.rows[0]?.date || '';
+      return aDate.localeCompare(bDate);
     });
+
+    return ledgers;
   }, [entries]);
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
@@ -217,9 +263,9 @@ export default function MgLedgerPage() {
           ) : entries.length === 0 ? (
             <div className="text-sm text-muted-foreground py-8 text-center">MG 데이터가 없습니다.</div>
           ) : (
-            <div>
+            <div className="space-y-6">
               {/* Header */}
-              <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center justify-between px-1">
                 <h2 className="text-lg font-semibold">
                   {selectedPartner?.name} 원장
                   {selectedPartner?.company_name && (
@@ -230,60 +276,63 @@ export default function MgLedgerPage() {
                 </h2>
                 {summary && (
                   <span className="text-lg font-bold tabular-nums">
-                    잔액 {fmt(summary.remaining)}원
+                    총 잔액 {fmt(summary.remaining)}원
                   </span>
                 )}
               </div>
 
-              {/* Ledger table */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-muted/60 text-sm border-b">
-                      <th className="py-2.5 px-4 text-left font-semibold w-28">월</th>
-                      <th className="py-2.5 px-4 text-right font-semibold w-36">MG 지급</th>
-                      <th className="py-2.5 px-4 text-right font-semibold w-36">차감</th>
-                      <th className="py-2.5 px-4 text-right font-semibold w-36">잔액</th>
-                      <th className="py-2.5 px-4 text-left font-semibold">비고</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {ledgerRows.map((row, i) => (
-                      <tr
-                        key={i}
-                        className="border-t hover:bg-muted/30"
-                      >
-                        <td className="py-2 px-4 tabular-nums">{row.date}</td>
-                        <td className="py-2 px-4 text-right tabular-nums font-medium">
-                          {row.deposit > 0 ? fmt(row.deposit) : ''}
-                        </td>
-                        <td className="py-2 px-4 text-right tabular-nums">
-                          {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
-                        </td>
-                        <td className="py-2 px-4 text-right tabular-nums font-medium">
-                          {fmt(row.balance)}
-                        </td>
-                        <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
-                          {row.note}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {summary && (
-                    <tfoot>
-                      <tr className="border-t-2 bg-muted/40 font-semibold text-sm">
-                        <td className="py-2.5 px-4">합계</td>
-                        <td className="py-2.5 px-4 text-right tabular-nums">{fmt(summary.total_mg)}</td>
-                        <td className="py-2.5 px-4 text-right tabular-nums">{fmt(summary.total_deducted)}</td>
-                        <td className="py-2.5 px-4 text-right tabular-nums font-semibold">
-                          {fmt(summary.remaining)}
-                        </td>
-                        <td className="py-2.5 px-4"></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
+              {/* Per-work ledger tables */}
+              {workLedgers.map((wl, wi) => (
+                <div key={wi}>
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <h3 className="text-sm font-semibold text-muted-foreground">{wl.workName}</h3>
+                    <span className="text-sm font-medium tabular-nums">
+                      잔액 {fmt(wl.remaining)}원
+                    </span>
+                  </div>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-muted/60 text-sm border-b">
+                          <th className="py-2.5 px-4 text-left font-semibold w-28">월</th>
+                          <th className="py-2.5 px-4 text-right font-semibold w-36">MG 지급</th>
+                          <th className="py-2.5 px-4 text-right font-semibold w-36">차감</th>
+                          <th className="py-2.5 px-4 text-right font-semibold w-36">잔액</th>
+                          <th className="py-2.5 px-4 text-left font-semibold">비고</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm">
+                        {wl.rows.map((row, i) => (
+                          <tr key={i} className="border-t hover:bg-muted/30">
+                            <td className="py-2 px-4 tabular-nums">{row.date}</td>
+                            <td className="py-2 px-4 text-right tabular-nums font-medium">
+                              {row.deposit > 0 ? fmt(row.deposit) : ''}
+                            </td>
+                            <td className="py-2 px-4 text-right tabular-nums">
+                              {row.withdrawal > 0 ? fmt(row.withdrawal) : ''}
+                            </td>
+                            <td className="py-2 px-4 text-right tabular-nums font-medium">
+                              {fmt(row.balance)}
+                            </td>
+                            <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
+                              {row.note}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 bg-muted/40 font-semibold text-sm">
+                          <td className="py-2.5 px-4">소계</td>
+                          <td className="py-2.5 px-4 text-right tabular-nums">{fmt(wl.totalMg)}</td>
+                          <td className="py-2.5 px-4 text-right tabular-nums">{fmt(wl.totalDeducted)}</td>
+                          <td className="py-2.5 px-4 text-right tabular-nums font-semibold">{fmt(wl.remaining)}</td>
+                          <td className="py-2.5 px-4"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
