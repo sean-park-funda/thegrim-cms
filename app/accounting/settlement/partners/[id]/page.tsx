@@ -917,8 +917,7 @@ export default function PartnerDetailPage() {
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 px-3 font-medium">작품</th>
-                        <th className="py-2 px-3 font-medium text-right">MG 총액</th>
-                        <th className="py-2 px-3 font-medium text-right hidden md:table-cell">이전잔액</th>
+                        <th className="py-2 px-3 font-medium text-right">이전잔액</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">당월 차감</th>
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">미확정 차감</th>
                         <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
@@ -929,12 +928,10 @@ export default function PartnerDetailPage() {
                       {mgBalances.map((mg: any) => {
                         const monthDeducted = mg.month_deducted || 0;
                         const pendingDed = mg.pending_deduction || 0;
-                        const totalMonthDed = monthDeducted + pendingDed;
                         return (
                         <tr key={mg.id} className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3 font-medium">{mg.works || '-'}</td>
-                          <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.total_mg)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(mg.previous_balance)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.previous_balance)}</td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                             {monthDeducted > 0 ? `-${monthDeducted.toLocaleString()}` : '-'}
                           </td>
@@ -952,17 +949,15 @@ export default function PartnerDetailPage() {
                       })}
                       {mgBalances.length > 1 && (() => {
                         const totals = mgBalances.reduce((acc: any, mg: any) => ({
-                          total_mg: acc.total_mg + (mg.total_mg || 0),
                           previous_balance: acc.previous_balance + (mg.previous_balance || 0),
                           month_deducted: acc.month_deducted + (mg.month_deducted || 0),
                           pending_deduction: acc.pending_deduction + (mg.pending_deduction || 0),
                           current_balance: acc.current_balance + (mg.current_balance || 0),
-                        }), { total_mg: 0, previous_balance: 0, month_deducted: 0, pending_deduction: 0, current_balance: 0 });
+                        }), { previous_balance: 0, month_deducted: 0, pending_deduction: 0, current_balance: 0 });
                         return (
                           <tr className="border-t-2 bg-muted/30 font-semibold">
                             <td className="py-2 px-3">합계</td>
-                            <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.total_mg)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums hidden md:table-cell">{fmt(totals.previous_balance)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums">{fmt(totals.previous_balance)}</td>
                             <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                               {totals.month_deducted > 0 ? `-${totals.month_deducted.toLocaleString()}` : '-'}
                             </td>
