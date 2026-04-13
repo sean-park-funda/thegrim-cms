@@ -53,7 +53,7 @@ export async function computeAllStatements(
   // 2) 작품-파트너 연결 + 파트너 정보
   const { data: allWorkPartners } = await supabase
     .from('rs_work_partners')
-    .select('work_id, partner_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+    .select('work_id, partner_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
     .in('work_id', workIds);
 
   if (!allWorkPartners || allWorkPartners.length === 0) {
@@ -105,11 +105,11 @@ export async function computeAllStatements(
   if (allItemIds.length > 0) {
     const [{ data: items }, { data: pLinks }, { data: wLinks }] = await Promise.all([
       supabase.from('rs_labor_cost_items').select('id, amount, deduction_type').eq('month', month).in('id', allItemIds),
-      supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('item_id', allItemIds),
+      supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id, burden_ratio').in('item_id', allItemIds),
       supabase.from('rs_labor_cost_item_works').select('item_id, work_id').in('item_id', allItemIds),
     ]);
     allLaborItems = (items || []).map((i: any) => ({ id: i.id, amount: Number(i.amount), deduction_type: i.deduction_type }));
-    allLaborPartnerLinks = (pLinks || []).map((l: any) => ({ item_id: l.item_id, partner_id: l.partner_id }));
+    allLaborPartnerLinks = (pLinks || []).map((l: any) => ({ item_id: l.item_id, partner_id: l.partner_id, burden_ratio: l.burden_ratio != null ? Number(l.burden_ratio) : null }));
     allLaborWorkLinks = (wLinks || []).map((l: any) => ({ item_id: l.item_id, work_id: l.work_id }));
 
     const linkedPartnerIds = [...new Set(allLaborPartnerLinks.map(l => l.partner_id))];
@@ -209,6 +209,7 @@ export async function computeAllStatements(
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
+      labor_cost_as_mg: wp.labor_cost_as_mg ?? false,
       revenue_rate: wp.revenue_rate != null ? Number(wp.revenue_rate) : null,
       tax_type: wp.tax_type as string | null,
       mg_depends_on: wp.mg_depends_on as { partner_id: string; work_id: string } | null,

@@ -118,6 +118,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // labor_cost_as_mg: 인건비를 MG 엔트리로 자동 생성
+    const mgFromLaborInserts: Record<string, unknown>[] = [];
+    const mgFromLaborEntryWorks: { entry_index: number; work_id: string }[] = [];
+
+    for (const { partnerId, result } of partners) {
+      for (const w of result.works) {
+        if (w.mg_from_labor_cost > 0) {
+          const entryIdx = mgFromLaborInserts.length;
+          mgFromLaborInserts.push({
+            partner_id: partnerId,
+            amount: w.mg_from_labor_cost,
+            contracted_at: `${month}-01`,
+            withheld_tax: false,
+            note: `${month} 인건비→MG 전환 (${w.work_name})`,
+          });
+          mgFromLaborEntryWorks.push({ entry_index: entryIdx, work_id: w.work_id });
+        }
+      }
+    }
+
     // 일괄 DB 저장
     if (upsertRows.length > 0) {
       const { error: uErr } = await supabase
@@ -141,11 +161,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // labor_cost_as_mg MG 엔트리 생성
+    let mgFromLaborCreated = 0;
+    if (mgFromLaborInserts.length > 0) {
+      const { data: insertedEntries, error: mlErr } = await supabase
+        .from('rs_mg_entries')
+        .insert(mgFromLaborInserts)
+        .select('id');
+
+      if (mlErr) {
+        console.error('인건비→MG 엔트리 생성 오류:', mlErr);
+      } else if (insertedEntries) {
+        mgFromLaborCreated = insertedEntries.length;
+        // entry-work 연결
+        const ewInserts = mgFromLaborEntryWorks.map(ew => ({
+          mg_entry_id: insertedEntries[ew.entry_index].id,
+          work_id: ew.work_id,
+        }));
+        if (ewInserts.length > 0) {
+          await supabase.from('rs_mg_entry_works').insert(ewInserts);
+        }
+      }
+    }
+
     return NextResponse.json({
       message: `${month} 정산 확정 완료`,
       confirmed_partners: partners.length,
       settlement_rows: upsertRows.length,
       mg_deductions_created: mgDeductionInserts.length,
+      mg_from_labor_created: mgFromLaborCreated,
     });
   } catch (error) {
     console.error('정산 확정 오류:', error);

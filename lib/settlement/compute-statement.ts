@@ -39,6 +39,7 @@ export interface WorkPartnerData {
   is_mg_applied: boolean;
   included_revenue_types: string[] | null;
   labor_cost_excluded: boolean;
+  labor_cost_as_mg: boolean;
   revenue_rate: number | null;
   tax_type: string | null;
   mg_depends_on: { partner_id: string; work_id: string } | null;
@@ -93,6 +94,7 @@ export interface LaborCostItem {
 export interface LaborCostPartnerLink {
   item_id: string;
   partner_id: string;
+  burden_ratio: number | null;
 }
 
 export interface LaborCostWorkLink {
@@ -202,6 +204,7 @@ export interface WorkStatement {
   mg_deduction_adjustments: { id: string; label: string; amount: number }[];
   mg_deduction_adjustment_total: number;
   mg_remaining: number;
+  mg_from_labor_cost: number;
 }
 
 export interface StatementResult {
@@ -223,6 +226,7 @@ export interface StatementResult {
   tax_amount: number;
   insurance: number;
   total_mg_deduction: number;
+  total_mg_from_labor_cost: number;
   adjustments: { id: string; label: string; amount: number }[];
   total_adjustment: number;
   final_payment: number;
@@ -352,15 +356,23 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       for (const d of details) {
         d.revenue_share = Math.round(Math.max(0, d.settlement_target) * effectiveRate);
       }
-      for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
-        const typeCost = laborCostByWorkType.get(`${wp.work_id}:${dtype}`) || 0;
-        if (typeCost > 0) {
-          distributeByRevenueShare(details, typeCost, dtype === '근로소득공제' ? 'self_labor_cost' : 'team_labor_cost');
+      if (wp.labor_cost_as_mg) {
+        // labor_cost_as_mg: 인건비를 수익에서 차감하지 않고 MG로 전환
+        for (const d of details) {
+          d.labor_cost = 0;
+          d.net_share = d.revenue_share;
         }
-      }
-      for (const d of details) {
-        d.labor_cost = d.self_labor_cost + d.team_labor_cost;
-        d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
+      } else {
+        for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
+          const typeCost = laborCostByWorkType.get(`${wp.work_id}:${dtype}`) || 0;
+          if (typeCost > 0) {
+            distributeByRevenueShare(details, typeCost, dtype === '근로소득공제' ? 'self_labor_cost' : 'team_labor_cost');
+          }
+        }
+        for (const d of details) {
+          d.labor_cost = d.self_labor_cost + d.team_labor_cost;
+          d.net_share = Math.max(0, d.revenue_share - d.labor_cost);
+        }
       }
     }
 
@@ -371,6 +383,14 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
         d.self_labor_cost = 0;
         d.labor_cost = 0;
         d.net_share = 0;
+      }
+    }
+
+    // labor_cost_as_mg: 인건비 합계를 MG 전환 금액으로 산출
+    let mg_from_labor_cost = 0;
+    if (wp.labor_cost_as_mg && !blocked) {
+      for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
+        mg_from_labor_cost += laborCostByWorkType.get(`${wp.work_id}:${dtype}`) || 0;
       }
     }
 
@@ -408,6 +428,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       mg_deduction_adjustments: [] as { id: string; label: string; amount: number }[],
       mg_deduction_adjustment_total: 0,
       mg_remaining: 0,
+      mg_from_labor_cost,
     };
   }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
 
@@ -526,6 +547,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const adjustments = input.settlementAdjustments.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
   const total_adjustment = adjustments.reduce((s, a) => s + a.amount, 0);
   const total_mg_raw = works_final.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
+  const total_mg_from_labor_cost = works_final.reduce((s, w) => s + w.mg_from_labor_cost, 0);
 
   // MG 이력
   const mgHistoryByWork = new Map<string, Omit<MgHistoryEntry, 'work_id' | 'work_name'>[]>();
@@ -598,6 +620,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     tax_amount,
     insurance,
     total_mg_deduction,
+    total_mg_from_labor_cost,
     adjustments,
     total_adjustment,
     final_payment,
@@ -618,7 +641,7 @@ function emptyResult(partner: PartnerData, month: string): StatementResult {
     grand_total_team_labor_cost: 0, grand_total_self_labor_cost: 0, grand_total_net_share: 0,
     subtotal: 0, tax_type: 'standard',
     tax_breakdown: { income_tax: 0, local_tax: 0, vat: 0, total: 0 },
-    tax_amount: 0, insurance: 0, total_mg_deduction: 0,
+    tax_amount: 0, insurance: 0, total_mg_deduction: 0, total_mg_from_labor_cost: 0,
     adjustments: [], total_adjustment: 0, final_payment: 0,
     mg_history: [], tax_invoice: null, tax_invoice_total: 0,
     mg_dep_references: [],
@@ -770,7 +793,11 @@ function computeLaborCosts(
     if (pIds.length === 0 || wIds.length === 0) continue;
 
     let myBurden = amount;
-    if (pIds.length > 1) {
+    // burden_ratio가 지정된 경우 직접 사용, 아니면 rs_rate 비율로 계산
+    const myLink = partnerLinks.find(l => l.item_id === item.id && l.partner_id === partnerId);
+    if (myLink?.burden_ratio != null) {
+      myBurden = Math.round(amount * myLink.burden_ratio);
+    } else if (pIds.length > 1) {
       let myRs = 0, totalRs = 0;
       for (const pid of pIds) {
         let rsSum = 0;

@@ -70,6 +70,7 @@ interface WorkStatement {
   mg_deduction_adjustments: { id: string; label: string; amount: number }[];
   mg_deduction_adjustment_total: number;
   mg_remaining: number;
+  mg_from_labor_cost: number;
 }
 
 interface MgHistoryEntry {
@@ -104,6 +105,7 @@ interface StatementData {
   tax_amount: number;
   insurance: number;
   total_mg_deduction: number;
+  total_mg_from_labor_cost: number;
   adjustments: { id: string; label: string; amount: number }[];
   total_adjustment: number;
   final_payment: number;
@@ -908,6 +910,14 @@ export default function PartnerDetailPage() {
                     </div>
                     )}
                   </div>
+
+                  {/* 인건비→MG 전환 안내 */}
+                  {statement.total_mg_from_labor_cost > 0 && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                      인건비 → MG 전환: {statement.total_mg_from_labor_cost.toLocaleString()}원
+                      <span className="ml-2 text-xs text-blue-600">(정산 확정 시 MG 엔트리로 자동 생성됩니다)</span>
+                    </div>
+                  )}
 
                   {/* MG 의존 참고자료 */}
                   {statement.mg_dep_references && statement.mg_dep_references.length > 0 && (

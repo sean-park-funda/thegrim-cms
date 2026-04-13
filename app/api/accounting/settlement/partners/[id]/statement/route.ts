@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 작품 연결
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+      .select('work_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -82,6 +82,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       is_mg_applied: wp.is_mg_applied,
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
+      labor_cost_as_mg: (wp as any).labor_cost_as_mg ?? false,
       revenue_rate: wp.revenue_rate != null ? Number(wp.revenue_rate) : null,
       tax_type: wp.tax_type as string | null,
       mg_depends_on: wp.mg_depends_on as { partner_id: string; work_id: string } | null,
@@ -188,12 +189,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         { data: allWorkLinks },
       ] = await Promise.all([
         supabase.from('rs_labor_cost_items').select('id, amount, deduction_type').eq('month', month).in('id', itemIds),
-        supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('item_id', itemIds),
+        supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id, burden_ratio').in('item_id', itemIds),
         supabase.from('rs_labor_cost_item_works').select('item_id, work_id').in('item_id', itemIds),
       ]);
 
       laborCostItems = (items || []).map(i => ({ id: i.id, amount: Number(i.amount), deduction_type: i.deduction_type }));
-      laborCostPartnerLinks = (allPartnerLinks || []).map(l => ({ item_id: l.item_id, partner_id: l.partner_id }));
+      laborCostPartnerLinks = (allPartnerLinks || []).map((l: any) => ({ item_id: l.item_id, partner_id: l.partner_id, burden_ratio: l.burden_ratio != null ? Number(l.burden_ratio) : null }));
       laborCostWorkLinks = (allWorkLinks || []).map(l => ({ item_id: l.item_id, work_id: l.work_id }));
 
       // 인건비 분담 비율 계산을 위한 WP 데이터

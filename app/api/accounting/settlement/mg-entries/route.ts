@@ -170,14 +170,16 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          // 엔트리별로 pending deduction 1행씩 추가
-          for (const [entryId, total] of entryPendingTotals) {
-            if (total <= 0) continue;
-            if (!deductions[entryId]) deductions[entryId] = [];
-            deductions[entryId].push({
-              id: `pending-${entryId}`,
+          // pending 합계를 1행으로 (FIFO는 내부 세금 계산용, 원장에서는 합계만 표시)
+          const pendingTotal = [...entryPendingTotals.values()].reduce((s, v) => s + v, 0);
+          if (pendingTotal > 0) {
+            // 첫 번째 엔트리에 합산 pending 1행 추가
+            const firstEntryId = entryIds[0];
+            if (!deductions[firstEntryId]) deductions[firstEntryId] = [];
+            deductions[firstEntryId].push({
+              id: `pending-total`,
               month,
-              amount: total,
+              amount: pendingTotal,
               note: '실시간 계산 (미확정)',
               pending: true,
             });
