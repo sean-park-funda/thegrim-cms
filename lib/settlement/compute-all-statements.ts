@@ -17,6 +17,7 @@ import {
   type LaborCostPartnerLink,
   type LaborCostWorkLink,
   type LaborCostWpData,
+  type MgDeductionAdjustmentItem,
   type StatementResult,
 } from './compute-statement';
 
@@ -65,12 +66,14 @@ export async function computeAllStatements(
   const [
     { data: allRevAdj },
     { data: allSettlementAdj },
+    { data: allMgDeductionAdj },
     { data: allMgEntries },
     { data: allPartnerItemLinks },
     { data: confirmedSettlements },
   ] = await Promise.all([
     supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
     supabase.from('rs_settlement_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
+    supabase.from('rs_mg_deduction_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
     supabase.from('rs_mg_entries').select('id, partner_id, amount, withheld_tax, contracted_at, note').in('partner_id', partnerIds),
     supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('partner_id', partnerIds),
     supabase.from('rs_settlements').select('partner_id').eq('month', month).eq('status', 'confirmed'),
@@ -256,6 +259,8 @@ export async function computeAllStatements(
         .map((ra: any) => ({ id: ra.id, work_id: ra.work_id, label: ra.label, amount: Number(ra.amount) })),
       settlementAdjustments: (allSettlementAdj || []).filter((a: any) => a.partner_id === partnerId)
         .map((a: any) => ({ id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount) })),
+      mgDeductionAdjustments: (allMgDeductionAdj || []).filter((a: any) => a.partner_id === partnerId)
+        .map((a: any) => ({ id: a.id, partner_id: a.partner_id, work_id: a.work_id, label: a.label, amount: Number(a.amount) })),
       laborCostItems: allLaborItems.filter(i => myItemIds.has(i.id)),
       laborCostPartnerLinks: allLaborPartnerLinks.filter(l => myItemIds.has(l.item_id)),
       laborCostWorkLinks: allLaborWorkLinks.filter(l => myItemIds.has(l.item_id)),

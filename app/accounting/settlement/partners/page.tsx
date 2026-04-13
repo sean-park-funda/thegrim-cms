@@ -284,12 +284,12 @@ export default function PartnersPage() {
                     <td className="py-3 px-4 text-center">
                       {p.total_revenue_share > 0 && (
                         <Link
-                          href={`/accounting/settlement/partners/${p.id}/statement`}
+                          href={`/accounting/settlement/partners/${p.id}`}
                           onClick={(e) => e.stopPropagation()}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
                         >
                           <FileText className="h-3.5 w-3.5" />
-                          정산서
+                          상세
                         </Link>
                       )}
                     </td>

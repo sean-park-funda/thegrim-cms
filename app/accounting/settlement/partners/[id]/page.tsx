@@ -67,6 +67,8 @@ interface WorkStatement {
   work_total_net_share: number;
   mg_balance: number;
   mg_deduction: number;
+  mg_deduction_adjustments: { id: string; label: string; amount: number }[];
+  mg_deduction_adjustment_total: number;
   mg_remaining: number;
 }
 
@@ -190,6 +192,65 @@ export default function PartnerDetailPage() {
   };
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
+
+  // MG차감 조정
+  const [mgDedAdjDialogOpen, setMgDedAdjDialogOpen] = useState(false);
+  const [mgDedAdjWorkId, setMgDedAdjWorkId] = useState('');
+  const [mgDedAdjWorkName, setMgDedAdjWorkName] = useState('');
+  const [mgDedAdjLabel, setMgDedAdjLabel] = useState('');
+  const [mgDedAdjAmount, setMgDedAdjAmount] = useState('');
+  const [mgDedAdjSaving, setMgDedAdjSaving] = useState(false);
+
+  const handleAddMgDedAdj = async () => {
+    if (!mgDedAdjLabel || !mgDedAdjAmount || !statement) return;
+    setMgDedAdjSaving(true);
+    try {
+      await settlementFetch('/api/accounting/settlement/mg-deduction-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: partnerId,
+          work_id: mgDedAdjWorkId,
+          month: selectedMonth,
+          label: mgDedAdjLabel,
+          amount: Number(mgDedAdjAmount),
+        }),
+      });
+      setMgDedAdjDialogOpen(false);
+      setMgDedAdjLabel('');
+      setMgDedAdjAmount('');
+      // reload statement + mg balances
+      const [stRes, mgRes] = await Promise.all([
+        settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${selectedMonth}`),
+        settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}&month=${selectedMonth}`),
+      ]);
+      if (stRes.ok) setStatement(await stRes.json());
+      if (mgRes.ok) {
+        const mgData = await mgRes.json();
+        setMgBalances((mgData.mg_balances || []).sort((a: any, b: any) => (b.contracted_at || '').localeCompare(a.contracted_at || '')));
+      }
+    } finally {
+      setMgDedAdjSaving(false);
+    }
+  };
+
+  const handleDeleteMgDedAdj = async (adjId: string) => {
+    if (!confirm('이 MG차감 조정을 삭제하시겠습니까?')) return;
+    await settlementFetch('/api/accounting/settlement/mg-deduction-adjustments', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: adjId }),
+    });
+    const [stRes, mgRes] = await Promise.all([
+      settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${selectedMonth}`),
+      settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}&month=${selectedMonth}`),
+    ]);
+    if (stRes.ok) setStatement(await stRes.json());
+    if (mgRes.ok) {
+      const mgData = await mgRes.json();
+      setMgBalances((mgData.mg_balances || []).sort((a: any, b: any) => (b.contracted_at || '').localeCompare(a.contracted_at || '')));
+    }
+  };
 
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
   const [mgWorkId, setMgWorkId] = useState('');
@@ -398,12 +459,6 @@ export default function PartnerDetailPage() {
                 <Badge variant="secondary">{PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type}</Badge>
               </div>
               <div className="flex items-center gap-2">
-                <Link href={`/accounting/settlement/partners/${partnerId}/statement`}>
-                  <Button variant="outline" size="sm">
-                    <FileText className="h-3.5 w-3.5 mr-1" />
-                    정산서
-                  </Button>
-                </Link>
                 {canManage && (
                   <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
                     <Pencil className="h-3.5 w-3.5 mr-1" />
@@ -921,13 +976,20 @@ export default function PartnerDetailPage() {
                         <th className="py-2 px-3 font-medium text-right hidden md:table-cell">MG 차감</th>
                         <th className="py-2 px-3 font-medium text-right">MG 잔액</th>
                         <th className="py-2 px-3 font-medium hidden md:table-cell">메모</th>
+                        {canManage && <th className="py-2 px-3 w-10"></th>}
                       </tr>
                     </thead>
                     <tbody>
                       {mgBalances.map((mg: any) => {
                         const deduction = (mg.month_deducted || 0) + (mg.pending_deduction || 0);
+                        // statement의 works에서 이 작품의 MG차감 조정 내역 찾기
+                        const workIds: string[] = mg.work_ids || [];
+                        const mgDedAdjs = statement?.works
+                          ?.filter((w: any) => workIds.includes(w.work_id))
+                          ?.flatMap((w: any) => (w.mg_deduction_adjustments || []).map((a: any) => ({ ...a, work_name: w.work_name, work_id: w.work_id }))) || [];
                         return (
-                        <tr key={mg.id} className="border-b hover:bg-muted/50">
+                        <React.Fragment key={mg.id}>
+                        <tr className="border-b hover:bg-muted/50">
                           <td className="py-2 px-3 font-medium">{mg.works || '-'}</td>
                           <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.previous_balance)}</td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
@@ -939,7 +1001,45 @@ export default function PartnerDetailPage() {
                           <td className="py-2 px-3 text-xs text-muted-foreground max-w-[200px] truncate hidden md:table-cell" title={mg.note || ''}>
                             {mg.note || ''}
                           </td>
+                          {canManage && (
+                            <td className="py-2 px-3 text-center">
+                              {workIds.length === 1 ? (
+                                <button
+                                  onClick={() => {
+                                    setMgDedAdjWorkId(workIds[0]);
+                                    setMgDedAdjWorkName(mg.works);
+                                    setMgDedAdjDialogOpen(true);
+                                  }}
+                                  className="text-muted-foreground hover:text-primary"
+                                  title="MG차감 조정"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              ) : workIds.length > 1 ? (
+                                <span className="text-xs text-muted-foreground" title="작품이 여러 개인 엔트리는 개별 작품에서 조정하세요">-</span>
+                              ) : null}
+                            </td>
+                          )}
                         </tr>
+                        {mgDedAdjs.length > 0 && mgDedAdjs.map((adj: any) => (
+                          <tr key={adj.id} className="border-b bg-yellow-50">
+                            <td className="py-1 px-3 pl-6 text-xs text-muted-foreground">↳ {adj.label}</td>
+                            <td className="py-1 px-3"></td>
+                            <td className="py-1 px-3 text-right tabular-nums text-xs text-orange-600 hidden md:table-cell">
+                              {adj.amount > 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                            </td>
+                            <td className="py-1 px-3"></td>
+                            <td className="py-1 px-3 hidden md:table-cell"></td>
+                            {canManage && (
+                              <td className="py-1 px-3 text-center">
+                                <button onClick={() => handleDeleteMgDedAdj(adj.id)} className="text-muted-foreground hover:text-red-500">
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                        </React.Fragment>
                         );
                       })}
                       {mgBalances.length > 1 && (() => {
@@ -959,6 +1059,7 @@ export default function PartnerDetailPage() {
                               {fmt(totals.current_balance)}
                             </td>
                             <td className="py-2 px-3 hidden md:table-cell"></td>
+                            {canManage && <td className="py-2 px-3"></td>}
                           </tr>
                         );
                       })()}
@@ -1090,6 +1191,40 @@ export default function PartnerDetailPage() {
           </Dialog>
         </>
       )}
+
+      {/* MG차감 조정 추가 다이얼로그 */}
+      <Dialog open={mgDedAdjDialogOpen} onOpenChange={setMgDedAdjDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>MG차감 조정 — {mgDedAdjWorkName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>사유</Label>
+              <Input
+                value={mgDedAdjLabel}
+                onChange={(e) => setMgDedAdjLabel(e.target.value)}
+                placeholder="예: 단수 조정"
+              />
+            </div>
+            <div>
+              <Label>금액 (음수=덜 차감, 양수=더 차감)</Label>
+              <Input
+                type="number"
+                value={mgDedAdjAmount}
+                onChange={(e) => setMgDedAdjAmount(e.target.value)}
+                placeholder="예: -2"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMgDedAdjDialogOpen(false)}>취소</Button>
+              <Button onClick={handleAddMgDedAdj} disabled={mgDedAdjSaving || !mgDedAdjLabel || !mgDedAdjAmount}>
+                {mgDedAdjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 조정 항목 추가 다이얼로그 */}
       <Dialog open={adjDialogOpen} onOpenChange={setAdjDialogOpen}>

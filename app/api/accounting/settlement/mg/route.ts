@@ -127,6 +127,7 @@ export async function GET(request: NextRequest) {
         return {
           id: g.workKey,
           partner_id: partnerId,
+          work_ids: g.workIds,
           works: g.workNames.join(', ') || '-',
           previous_balance: previousBalance,
           month_deducted: currentMonthDeducted,

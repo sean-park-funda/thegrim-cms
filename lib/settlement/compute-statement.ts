@@ -76,6 +76,14 @@ export interface SettlementAdjustmentItem {
   amount: number;
 }
 
+export interface MgDeductionAdjustmentItem {
+  id: string;
+  partner_id: string;
+  work_id: string;
+  label: string;
+  amount: number;
+}
+
 export interface LaborCostItem {
   id: string;
   amount: number;
@@ -138,6 +146,7 @@ export interface PartnerComputeInput {
   mgDepBlocked: Map<string, MgDepInfoEntry>;  // work_id → {partner_name, balance}
   revenueAdjustments: RevenueAdjustmentItem[];
   settlementAdjustments: SettlementAdjustmentItem[];
+  mgDeductionAdjustments: MgDeductionAdjustmentItem[];
   laborCostItems: LaborCostItem[];
   laborCostPartnerLinks: LaborCostPartnerLink[];
   laborCostWorkLinks: LaborCostWorkLink[];
@@ -190,6 +199,8 @@ export interface WorkStatement {
   mg_pool_name: string | null;
   mg_balance: number;
   mg_deduction: number;
+  mg_deduction_adjustments: { id: string; label: string; amount: number }[];
+  mg_deduction_adjustment_total: number;
   mg_remaining: number;
 }
 
@@ -394,6 +405,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       mg_pool_name: null,
       mg_balance: 0,
       mg_deduction: 0,
+      mg_deduction_adjustments: [] as { id: string; label: string; amount: number }[],
+      mg_deduction_adjustment_total: 0,
       mg_remaining: 0,
     };
   }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
@@ -471,6 +484,25 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     if (mgWorks.length > 0) {
       mgWorks[0].mg_balance = totalMgRemaining;
       mgWorks[0].mg_remaining = totalMgRemaining - totalDeduction;
+    }
+  }
+
+  // ─── MG 차감 조정 적용 ──────────────────────────────
+  const mgDedAdj = input.mgDeductionAdjustments || [];
+  if (mgDedAdj.length > 0) {
+    let totalAdjustment = 0;
+    for (const w of works) {
+      const adjItems = mgDedAdj.filter(a => a.work_id === w.work_id);
+      if (adjItems.length === 0) continue;
+      w.mg_deduction_adjustments = adjItems.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
+      w.mg_deduction_adjustment_total = adjItems.reduce((s, a) => s + a.amount, 0);
+      w.mg_deduction = Math.max(0, w.mg_deduction + w.mg_deduction_adjustment_total);
+      totalAdjustment += w.mg_deduction_adjustment_total;
+    }
+    // mg_remaining 보정 (첫 번째 MG 작품에 설정됨)
+    const mgWork0 = works.find(w => w.mg_balance > 0);
+    if (mgWork0) {
+      mgWork0.mg_remaining = mgWork0.mg_remaining - totalAdjustment;
     }
   }
 

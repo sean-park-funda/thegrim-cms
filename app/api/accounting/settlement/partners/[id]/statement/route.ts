@@ -73,7 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], mgDeductionAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -95,10 +95,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { data: revenues },
       { data: revAdjustments },
       { data: adjustmentItems },
+      { data: mgDeductionAdjItems },
     ] = await Promise.all([
       supabase.from('rs_revenues').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
+      supabase.from('rs_mg_deduction_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
     ]);
 
     const revenueData: RevenueData[] = (revenues || []).map(r => ({
@@ -228,6 +230,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
       settlementAdjustments: (adjustmentItems || []).map(a => ({
         id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount),
+      })),
+      mgDeductionAdjustments: (mgDeductionAdjItems || []).map(a => ({
+        id: a.id, partner_id: a.partner_id, work_id: a.work_id, label: a.label, amount: Number(a.amount),
       })),
       laborCostItems,
       laborCostPartnerLinks,
