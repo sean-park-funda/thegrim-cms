@@ -464,7 +464,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
         const wkData = wk?.work;
         return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
       });
-      const preInsurance = calculateInsurance(preSubtotal, partner.partner_type, {
+      const preInsurance = calculateInsurance(preSubtotal - preTax.total, partner.partner_type, {
         serialEndDate: preHasActiveSerial ? null : '1900-01-01',
         reportType: partner.report_type ?? null,
         month,
@@ -578,7 +578,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감
   const total_mg_deduction = total_mg_raw;
 
-  // 세금/예고료는 net_share(subtotal) 기준으로 계산 (MG 차감 전)
+  // 세금은 net_share 기준, 예고료는 net_share - 세금 기준
   const taxType = workPartners[0]?.tax_type || 'standard';
   const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
@@ -588,7 +588,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const wkData = wk?.work;
     return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
   });
-  const insurance = calculateInsurance(subtotal, partner.partner_type, {
+  const insurance = calculateInsurance(subtotal - tax_amount, partner.partner_type, {
     serialEndDate: hasActiveSerial ? null : '1900-01-01',
     reportType: partner.report_type ?? null,
     month,
