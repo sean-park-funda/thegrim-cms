@@ -53,7 +53,7 @@ export async function computeAllStatements(
   // 2) 작품-파트너 연결 + 파트너 정보
   const { data: allWorkPartners } = await supabase
     .from('rs_work_partners')
-    .select('work_id, partner_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+    .select('work_id, partner_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, mg_hold, revenue_rate, tax_type, mg_depends_on, note, partner:rs_partners(*), work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
     .in('work_id', workIds);
 
   if (!allWorkPartners || allWorkPartners.length === 0) {
@@ -210,6 +210,7 @@ export async function computeAllStatements(
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
       labor_cost_as_mg: wp.labor_cost_as_mg ?? false,
+      mg_hold: wp.mg_hold ?? false,
       revenue_rate: wp.revenue_rate != null ? Number(wp.revenue_rate) : null,
       tax_type: wp.tax_type as string | null,
       mg_depends_on: wp.mg_depends_on as { partner_id: string; work_id: string } | null,

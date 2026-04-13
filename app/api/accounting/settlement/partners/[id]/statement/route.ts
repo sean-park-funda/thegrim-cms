@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 2) 작품 연결
     const { data: workPartners, error: wpErr } = await supabase
       .from('rs_work_partners')
-      .select('work_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
+      .select('work_id, rs_rate, is_mg_applied, included_revenue_types, labor_cost_excluded, labor_cost_as_mg, mg_hold, revenue_rate, tax_type, mg_depends_on, work:rs_works(id, name, serial_start_date, serial_end_date, labor_cost_as_exclusion)')
       .eq('partner_id', id);
 
     if (wpErr) {
@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       included_revenue_types: wp.included_revenue_types as string[] | null,
       labor_cost_excluded: wp.labor_cost_excluded,
       labor_cost_as_mg: (wp as any).labor_cost_as_mg ?? false,
+      mg_hold: (wp as any).mg_hold ?? false,
       revenue_rate: wp.revenue_rate != null ? Number(wp.revenue_rate) : null,
       tax_type: wp.tax_type as string | null,
       mg_depends_on: wp.mg_depends_on as { partner_id: string; work_id: string } | null,

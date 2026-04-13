@@ -40,6 +40,7 @@ export interface WorkPartnerData {
   included_revenue_types: string[] | null;
   labor_cost_excluded: boolean;
   labor_cost_as_mg: boolean;
+  mg_hold: boolean;
   revenue_rate: number | null;
   tax_type: string | null;
   mg_depends_on: { partner_id: string; work_id: string } | null;
@@ -181,6 +182,7 @@ export interface WorkStatement {
   effective_rate: number;
   revenue_rate: number;
   is_mg_applied: boolean;
+  mg_hold: boolean;
   mg_dependency_blocked: boolean;
   mg_depends_on: { partner_id: string; work_id: string } | null;
   mg_dep_info: MgDepInfoEntry | null;
@@ -405,6 +407,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       effective_rate: effectiveRate,
       revenue_rate: revenueRate,
       is_mg_applied: wp.is_mg_applied,
+      mg_hold: wp.mg_hold,
       mg_dependency_blocked: blocked,
       mg_depends_on: wp.mg_depends_on || null,
       mg_dep_info: input.mgDepBlocked.get(wp.work_id) || null,
@@ -443,15 +446,17 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const totalMgRemaining = entries.reduce((s, e) => s + e.remaining, 0);
 
     // 개인: net_share에서 세금/예고료를 먼저 빼고 남은 금액이 MG 차감 대상
+    // mg_hold인 작품은 MG 차감 대상에서 제외
+    const mgEligibleWorks = works.filter(w => !w.mg_hold);
     let totalCap = 0;
     if (isCorp) {
-      for (const w of works) {
+      for (const w of mgEligibleWorks) {
         if (w.work_total_net_share > 0) {
           totalCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
         }
       }
     } else {
-      const preSubtotal = works.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+      const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
       const preTax = calculateTax(preSubtotal, partner.partner_type, preTaxType);
       const preHasActiveSerial = works.some(w => {
@@ -471,8 +476,9 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
 
     // 작품별 차감 배분: 법인은 cap 비율, 개인은 net_share 비율
+    // mg_hold인 작품은 차감 대상에서 제외
     const mgWorks = works.filter(w =>
-      entries.some(e => e.work_ids.includes(w.work_id))
+      !w.mg_hold && entries.some(e => e.work_ids.includes(w.work_id))
     );
 
     // 작품별 배분 기준 계산

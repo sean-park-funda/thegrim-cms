@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil, FileText, Plus, Users, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Plus, Users, Trash2, Pause, Play } from 'lucide-react';
 import { RsPartner, RsWorkPartner, RsSettlement, RsWork } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
 
@@ -48,6 +48,7 @@ interface WorkStatement {
   rs_rate: number;
   revenue_rate: number;
   is_mg_applied: boolean;
+  mg_hold: boolean;
   mg_dependency_blocked: boolean;
   mg_depends_on: { partner_id: string; work_id: string } | null;
   mg_dep_info: { partner_name: string; balance: number } | null;
@@ -254,6 +255,44 @@ export default function PartnerDetailPage() {
     }
   };
 
+  const [mgHoldLogs, setMgHoldLogs] = useState<{ id: string; work_id: string; action: string; reason: string; created_at: string }[]>([]);
+  const [mgHoldReason, setMgHoldReason] = useState('');
+  const [mgHoldDialogOpen, setMgHoldDialogOpen] = useState(false);
+  const [mgHoldTarget, setMgHoldTarget] = useState<{ workId: string; workName: string; currentHold: boolean } | null>(null);
+
+  const handleMgHoldToggle = async () => {
+    if (!mgHoldTarget) return;
+    const action = mgHoldTarget.currentHold ? 'release' : 'hold';
+    await settlementFetch('/api/accounting/settlement/mg-hold', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        partner_id: partnerId,
+        work_id: mgHoldTarget.workId,
+        action,
+        reason: mgHoldReason || undefined,
+      }),
+    });
+    setMgHoldDialogOpen(false);
+    setMgHoldReason('');
+    setMgHoldTarget(null);
+    // reload
+    const [stRes, mgRes, holdRes] = await Promise.all([
+      settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${selectedMonth}`),
+      settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}&month=${selectedMonth}`),
+      settlementFetch(`/api/accounting/settlement/mg-hold?partner_id=${partnerId}`),
+    ]);
+    if (stRes.ok) setStatement(await stRes.json());
+    if (mgRes.ok) {
+      const mgData = await mgRes.json();
+      setMgBalances((mgData.mg_balances || []).sort((a: any, b: any) => (b.contracted_at || '').localeCompare(a.contracted_at || '')));
+    }
+    if (holdRes.ok) {
+      const holdData = await holdRes.json();
+      setMgHoldLogs(holdData.logs || []);
+    }
+  };
+
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
   const [mgWorkId, setMgWorkId] = useState('');
   const [mgAmount, setMgAmount] = useState('');
@@ -263,13 +302,14 @@ export default function PartnerDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [partnerRes, wpRes, settRes, mgRes, worksRes, laborCostRes] = await Promise.all([
+      const [partnerRes, wpRes, settRes, mgRes, worksRes, laborCostRes, holdRes] = await Promise.all([
         settlementFetch(`/api/accounting/settlement/partners/${partnerId}`),
         settlementFetch(`/api/accounting/settlement/work-partners?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/settlements?partnerId=${partnerId}`),
         settlementFetch(`/api/accounting/settlement/mg?partnerId=${partnerId}&month=${selectedMonth}`),
         settlementFetch('/api/accounting/settlement/works'),
         settlementFetch(`/api/accounting/settlement/labor-cost-items?partnerId=${partnerId}`),
+        settlementFetch(`/api/accounting/settlement/mg-hold?partner_id=${partnerId}`),
       ]);
       const partnerData = await partnerRes.json();
       const wpData = await wpRes.json();
@@ -277,6 +317,10 @@ export default function PartnerDetailPage() {
       const mgData = await mgRes.json();
       const worksData = await worksRes.json();
       const laborCostData = await laborCostRes.json();
+      if (holdRes.ok) {
+        const holdData = await holdRes.json();
+        setMgHoldLogs(holdData.logs || []);
+      }
 
       setPartner(partnerData.partner || null);
       setWorkPartners(wpData.work_partners || []);
@@ -1000,7 +1044,33 @@ export default function PartnerDetailPage() {
                         return (
                         <React.Fragment key={mg.id}>
                         <tr className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-3 font-medium">{mg.works || '-'}</td>
+                          <td className="py-2 px-3 font-medium">
+                            <span className="flex items-center gap-1.5">
+                              {mg.works || '-'}
+                              {(() => {
+                                const isHeld = workIds.length === 1 && statement?.works?.find((w: WorkStatement) => w.work_id === workIds[0])?.mg_hold;
+                                return isHeld ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-100 text-yellow-800">홀딩</span>
+                                ) : null;
+                              })()}
+                              {canManage && workIds.length === 1 && (() => {
+                                const work = statement?.works?.find((w: WorkStatement) => w.work_id === workIds[0]);
+                                const isHeld = work?.mg_hold ?? false;
+                                return (
+                                  <button
+                                    onClick={() => {
+                                      setMgHoldTarget({ workId: workIds[0], workName: mg.works, currentHold: isHeld });
+                                      setMgHoldDialogOpen(true);
+                                    }}
+                                    className={`text-muted-foreground hover:text-primary ${isHeld ? 'text-yellow-600' : ''}`}
+                                    title={isHeld ? 'MG 홀딩 해제' : 'MG 차감 홀딩'}
+                                  >
+                                    {isHeld ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                                  </button>
+                                );
+                              })()}
+                            </span>
+                          </td>
                           <td className="py-2 px-3 text-right tabular-nums">{fmt(mg.previous_balance)}</td>
                           <td className="py-2 px-3 text-right tabular-nums text-red-600 hidden md:table-cell">
                             {deduction > 0 ? `-${deduction.toLocaleString()}` : '-'}
@@ -1079,6 +1149,46 @@ export default function PartnerDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* MG 홀딩 이력 */}
+          {mgHoldLogs.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">MG 홀딩 이력</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="py-2 px-3 font-medium">일시</th>
+                        <th className="py-2 px-3 font-medium">작품</th>
+                        <th className="py-2 px-3 font-medium">상태</th>
+                        <th className="py-2 px-3 font-medium">사유</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mgHoldLogs.map((log) => {
+                        const work = statement?.works?.find((w: WorkStatement) => w.work_id === log.work_id);
+                        return (
+                          <tr key={log.id} className="border-b">
+                            <td className="py-2 px-3 text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString('ko-KR')}</td>
+                            <td className="py-2 px-3">{work?.work_name || log.work_id.slice(0, 8)}</td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${log.action === 'hold' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                                {log.action === 'hold' ? '홀딩' : '해제'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-xs text-muted-foreground">{log.reason || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 공제인원 (인건비공제 기반) */}
           <Card>
@@ -1230,6 +1340,41 @@ export default function PartnerDetailPage() {
               <Button variant="outline" onClick={() => setMgDedAdjDialogOpen(false)}>취소</Button>
               <Button onClick={handleAddMgDedAdj} disabled={mgDedAdjSaving || !mgDedAdjLabel || !mgDedAdjAmount}>
                 {mgDedAdjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MG 홀딩 다이얼로그 */}
+      <Dialog open={mgHoldDialogOpen} onOpenChange={setMgHoldDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {mgHoldTarget?.currentHold ? 'MG 홀딩 해제' : 'MG 차감 홀딩'} — {mgHoldTarget?.workName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {mgHoldTarget?.currentHold
+                ? '홀딩을 해제하면 다음 정산부터 MG 차감이 재개됩니다.'
+                : '홀딩하면 이 작품의 MG 차감이 일시 중지됩니다.'}
+            </p>
+            <div>
+              <Label>사유 (선택)</Label>
+              <Input
+                value={mgHoldReason}
+                onChange={(e) => setMgHoldReason(e.target.value)}
+                placeholder="예: 정산 협의 중"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMgHoldDialogOpen(false)}>취소</Button>
+              <Button
+                variant={mgHoldTarget?.currentHold ? 'default' : 'destructive'}
+                onClick={handleMgHoldToggle}
+              >
+                {mgHoldTarget?.currentHold ? '해제' : '홀딩'}
               </Button>
             </div>
           </div>
