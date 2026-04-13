@@ -459,17 +459,19 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
       const preTax = calculateTax(preSubtotal, partner.partner_type, preTaxType);
-      const preHasActiveSerial = works.some(w => {
+      // 예고료: 작품별 net_share가 50만원 초과인 경우만 개별 계산 후 합산
+      let preInsurance = 0;
+      for (const w of mgEligibleWorks) {
         const wk = workPartners.find(wp => wp.work_id === w.work_id);
         const wkData = wk?.work;
-        return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-      });
-      const preInsurance = calculateInsurance(preSubtotal, partner.partner_type, {
-        serialEndDate: preHasActiveSerial ? null : '1900-01-01',
-        reportType: partner.report_type ?? null,
-        month,
-        isForeign: partner.is_foreign ?? false,
-      });
+        const hasSerial = !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
+        preInsurance += calculateInsurance(Math.max(0, w.work_total_net_share), partner.partner_type, {
+          serialEndDate: hasSerial ? null : '1900-01-01',
+          reportType: partner.report_type ?? null,
+          month,
+          isForeign: partner.is_foreign ?? false,
+        });
+      }
       totalCap = Math.max(0, preSubtotal - preTax.total - preInsurance);
     }
 
@@ -578,22 +580,24 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감
   const total_mg_deduction = total_mg_raw;
 
-  // 세금/예고료 모두 net_share(subtotal) 기준 (엑셀 수식 대응)
+  // 세금: net_share(subtotal) 기준
   const taxType = workPartners[0]?.tax_type || 'standard';
   const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
-  const hasActiveSerial = works_final.some(w => {
+  // 예고료: 작품별 net_share가 50만원 초과인 경우만 개별 계산 후 합산
+  let insurance = 0;
+  for (const w of works_final) {
     const wk = workPartners.find(wp => wp.work_id === w.work_id);
     const wkData = wk?.work;
-    return !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-  });
-  const insurance = calculateInsurance(subtotal, partner.partner_type, {
-    serialEndDate: hasActiveSerial ? null : '1900-01-01',
-    reportType: partner.report_type ?? null,
-    month,
-    isForeign: partner.is_foreign ?? false,
-  });
+    const hasSerial = !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
+    insurance += calculateInsurance(Math.max(0, w.work_total_net_share), partner.partner_type, {
+      serialEndDate: hasSerial ? null : '1900-01-01',
+      reportType: partner.report_type ?? null,
+      month,
+      isForeign: partner.is_foreign ?? false,
+    });
+  }
 
   // final = net_share - 세금 - 예고료 - MG차감 + 조정
   const final_payment = isCorp
