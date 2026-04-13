@@ -67,7 +67,8 @@ export interface InsuranceContext {
  * 3. 연재 미종료 (serial_end_date가 없거나 정산월 이후)
  * 4. 신고구분이 "세금계산서"가 아님
  *
- * 계산: 수익정산금 × 0.75 × 0.008 (원 단위 절사)
+ * 계산: MAX(ROUNDDOWN(수익정산금 × 0.75 × 0.008, -1), 6400)
+ *   → 10원 단위 절사, 최소 6,400원
  * 참고: individual_employee(임직원)는 고용보험 대상 아님 (급여에서 처리)
  */
 export function calculateInsurance(amount: number, partnerType: string, ctx?: InsuranceContext): number {
@@ -86,7 +87,8 @@ export function calculateInsurance(amount: number, partnerType: string, ctx?: In
     if (ctx.reportType === '세금계산서') return 0;
   }
 
-  return Math.floor(amount * 0.75 * 0.008);
+  // ROUNDDOWN(..., -1) = 10원 단위 절사, 최소 6,400원
+  return Math.max(Math.floor(amount * 0.75 * 0.008 / 10) * 10, 6400);
 }
 
 /**
