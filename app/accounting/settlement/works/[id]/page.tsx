@@ -207,13 +207,20 @@ export default function WorkDetailPage() {
           {/* 작품 기본 정보 */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CardTitle>{work.name}</CardTitle>
-                {work.naver_name && work.naver_name !== work.name && (
-                  <span className="text-sm text-muted-foreground">({work.naver_name})</span>
+              <div>
+                <div className="flex items-center gap-3">
+                  <CardTitle>{work.name}</CardTitle>
+                  {work.naver_name && work.naver_name !== work.name && (
+                    <span className="text-sm text-muted-foreground">({work.naver_name})</span>
+                  )}
+                  <Badge variant="secondary">{CONTRACT_TYPE_LABELS[work.contract_type] || work.contract_type}</Badge>
+                  {!work.is_active && <Badge variant="outline">비활성</Badge>}
+                </div>
+                {(work.serial_start_date || work.serial_end_date) && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    연재 기간: {work.serial_start_date || '?'} ~ {work.serial_end_date || '연재중'}
+                  </p>
                 )}
-                <Badge variant="secondary">{CONTRACT_TYPE_LABELS[work.contract_type] || work.contract_type}</Badge>
-                {!work.is_active && <Badge variant="outline">비활성</Badge>}
               </div>
               {canManage && (
                 <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
