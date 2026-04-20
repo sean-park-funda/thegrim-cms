@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '조회 실패' }, { status: 500 });
     }
 
-    // 파트너별 정산금 합산 + 작품별 행 생성
-    const partnerTotals = new Map<string, { total: number; hasActiveSerial: boolean }>();
+    // 파트너별 연재중 작품 순수익 합산 + 작품별 행 생성
+    const partnerSerialTotal = new Map<string, number>();
     const rows: {
       partner_id: string;
       partner_name: string;
@@ -59,15 +59,11 @@ export async function GET(request: NextRequest) {
       if (partner.partner_type !== 'individual' && partner.partner_type !== 'individual_simple_tax') continue;
       if (partner.is_foreign) continue;
 
-      const amount = Number(s.revenue_share) || 0;
-      const prev = partnerTotals.get(partner.id) || { total: 0, hasActiveSerial: false };
+      const amount = Math.max(0, Number(s.revenue_share) || 0);
       const isActive = !work?.serial_end_date || new Date(work.serial_end_date) >= new Date(month + '-01');
-      partnerTotals.set(partner.id, {
-        total: prev.total + amount,
-        hasActiveSerial: prev.hasActiveSerial || isActive,
-      });
 
       if (isActive) {
+        partnerSerialTotal.set(partner.id, (partnerSerialTotal.get(partner.id) || 0) + amount);
         rows.push({
           partner_id: partner.id,
           partner_name: partner.name,
@@ -85,13 +81,11 @@ export async function GET(request: NextRequest) {
     }
 
     const review = rows.map(row => {
-      const pt = partnerTotals.get(row.partner_id)!;
-      const insurance = calculateInsurance(pt.total, row.partner_type, {
-        serialEndDate: pt.hasActiveSerial ? null : '1900-01-01',
+      const serialTotal = partnerSerialTotal.get(row.partner_id) || 0;
+      const insurance = calculateInsurance(serialTotal, row.partner_type, {
         reportType: row.report_type,
-        month,
       });
-      return { ...row, total_settlement: pt.total, insurance_amount: insurance };
+      return { ...row, total_settlement: serialTotal, insurance_amount: insurance };
     }).sort((a, b) => a.partner_name.localeCompare(b.partner_name));
 
     return NextResponse.json({ review });

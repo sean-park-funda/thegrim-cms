@@ -459,19 +459,20 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
       const preTax = calculateTax(preSubtotal, partner.partner_type, preTaxType);
-      // 예고료: 작품별 net_share가 50만원 초과인 경우만 개별 계산 후 합산
-      let preInsurance = 0;
+      // 예고료: 연재중 작품의 순수익 합산 → 50만원 이상이면 합산 금액으로 계산
+      let preSerialActiveNetShare = 0;
       for (const w of mgEligibleWorks) {
         const wk = workPartners.find(wp => wp.work_id === w.work_id);
         const wkData = wk?.work;
         const hasSerial = !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-        preInsurance += calculateInsurance(Math.max(0, w.work_total_net_share), partner.partner_type, {
-          serialEndDate: hasSerial ? null : '1900-01-01',
-          reportType: partner.report_type ?? null,
-          month,
-          isForeign: partner.is_foreign ?? false,
-        });
+        if (hasSerial) {
+          preSerialActiveNetShare += Math.max(0, w.work_total_net_share);
+        }
       }
+      const preInsurance = calculateInsurance(preSerialActiveNetShare, partner.partner_type, {
+        reportType: partner.report_type ?? null,
+        isForeign: partner.is_foreign ?? false,
+      });
       totalCap = Math.max(0, preSubtotal - preTax.total - preInsurance);
     }
 
@@ -585,19 +586,20 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
-  // 예고료: 작품별 net_share가 50만원 초과인 경우만 개별 계산 후 합산
-  let insurance = 0;
+  // 예고료: 연재중 작품의 순수익 합산 → 50만원 이상이면 합산 금액으로 계산
+  let serialActiveNetShare = 0;
   for (const w of works_final) {
     const wk = workPartners.find(wp => wp.work_id === w.work_id);
     const wkData = wk?.work;
     const hasSerial = !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-    insurance += calculateInsurance(Math.max(0, w.work_total_net_share), partner.partner_type, {
-      serialEndDate: hasSerial ? null : '1900-01-01',
-      reportType: partner.report_type ?? null,
-      month,
-      isForeign: partner.is_foreign ?? false,
-    });
+    if (hasSerial) {
+      serialActiveNetShare += Math.max(0, w.work_total_net_share);
+    }
   }
+  const insurance = calculateInsurance(serialActiveNetShare, partner.partner_type, {
+    reportType: partner.report_type ?? null,
+    isForeign: partner.is_foreign ?? false,
+  });
 
   // final = net_share - 세금 - 예고료 - MG차감 + 조정
   const final_payment = isCorp

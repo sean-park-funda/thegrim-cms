@@ -48,26 +48,24 @@ export function calculateTax(amount: number, partnerType: string, taxType: strin
  * 예고료 추가 조건 컨텍스트
  */
 export interface InsuranceContext {
-  /** 연재종료일 — null/undefined면 연재 중으로 간주 */
-  serialEndDate?: string | null;
   /** 파트너 신고구분 */
   reportType?: string | null;
-  /** 정산 기준 월 (YYYY-MM) */
-  month?: string;
   /** 외국인 여부 — true이면 예고료 대상 제외 */
   isForeign?: boolean;
 }
 
 /**
- * 예고료(고용보험) 계산 — Excel 수식 대응
+ * 예고료(고용보험) 계산
  *
- * 대상 조건 (4가지 모두 충족):
+ * 호출 측에서 연재중 작품의 순수익을 합산하여 amount로 전달.
+ *
+ * 대상 조건:
  * 1. 개인 사업소득자 (individual 또는 individual_simple_tax)
- * 2. 수익정산금 50만원 초과
- * 3. 연재 미종료 (serial_end_date가 없거나 정산월 이후)
- * 4. 신고구분이 "세금계산서"가 아님
+ * 2. 연재중 작품 순수익 합계 50만원 이상
+ * 3. 신고구분이 "세금계산서"가 아님
+ * 4. 외국인이 아님
  *
- * 계산: MAX(ROUNDDOWN(수익정산금 × 0.75 × 0.008, -1), 6400)
+ * 계산: MAX(ROUNDDOWN(amount × 0.75 × 0.008, -1), 6400)
  *   → 10원 단위 절사, 최소 6,400원
  * 참고: individual_employee(임직원)는 고용보험 대상 아님 (급여에서 처리)
  */
@@ -77,13 +75,9 @@ export function calculateInsurance(amount: number, partnerType: string, ctx?: In
 
   if (ctx) {
     if (ctx.isForeign) return 0;
-    // 조건 2: 50만원 초과
-    if (amount <= 500000) return 0;
-    // 조건 3: 연재 미종료
-    if (ctx.serialEndDate && ctx.month) {
-      if (new Date(ctx.serialEndDate) < new Date(ctx.month + '-01')) return 0;
-    }
-    // 조건 4: 세금계산서 제외
+    // 조건 2: 50만원 이상
+    if (amount < 500000) return 0;
+    // 조건 3: 세금계산서 제외
     if (ctx.reportType === '세금계산서') return 0;
   }
 
