@@ -204,21 +204,29 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, note } = body;
+    const { id, note, withheld_tax } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID는 필수입니다.' }, { status: 400 });
     }
 
+    const updateFields: Record<string, unknown> = {};
+    if (note !== undefined) updateFields.note = note ?? null;
+    if (withheld_tax !== undefined) updateFields.withheld_tax = withheld_tax;
+
+    if (Object.keys(updateFields).length === 0) {
+      return NextResponse.json({ error: '수정할 필드가 없습니다.' }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from('rs_mg_entries')
-      .update({ note: note ?? null })
+      .update(updateFields)
       .eq('id', id)
       .select('*')
       .single();
 
     if (error) {
-      return NextResponse.json({ error: 'MG 메모 수정 실패' }, { status: 500 });
+      return NextResponse.json({ error: 'MG 엔트리 수정 실패' }, { status: 500 });
     }
 
     return NextResponse.json({ mg_entry: data });

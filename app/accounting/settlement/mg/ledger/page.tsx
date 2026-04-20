@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, BarChart3, BookOpenText } from 'lucide-react';
@@ -58,6 +58,8 @@ interface LedgerRow {
   balance: number;
   note: string;
   pending?: boolean;  // 미확정 실시간 계산
+  entryId?: string;   // MG 지급 행인 경우 entry ID
+  withheld_tax?: boolean; // MG 지급 시 원천징수 여부
 }
 
 const fmt = (n: number) => n.toLocaleString();
@@ -106,6 +108,25 @@ export default function MgLedgerPage() {
       .finally(() => setLoadingEntries(false));
   }, [selectedPartnerId, selectedMonth]);
 
+  const canManage = profile ? canManageAccounting(profile.role) : false;
+
+  // withheld_tax 토글
+  const toggleWithheldTax = useCallback(async (entryId: string, currentValue: boolean) => {
+    const newValue = !currentValue;
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/mg', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entryId, withheld_tax: newValue }),
+      });
+      if (res.ok) {
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, withheld_tax: newValue } : e));
+      }
+    } catch (err) {
+      console.error('withheld_tax 변경 실패:', err);
+    }
+  }, []);
+
   // Group entries by work, then build ledger rows per work
   interface WorkLedger {
     workName: string;
@@ -141,14 +162,14 @@ export default function MgLedgerPage() {
       const rows: Omit<LedgerRow, 'balance'>[] = [];
 
       for (const entry of group.entries) {
-        const taxLabel = entry.withheld_tax ? '원천징수' : '';
-        const parts = [taxLabel, entry.note].filter(Boolean);
         rows.push({
           date: entry.contracted_at,
           sortKey: entry.contracted_at + '-0',
           deposit: entry.amount,
           withdrawal: 0,
-          note: parts.join(' / '),
+          note: entry.note || '',
+          entryId: entry.id,
+          withheld_tax: entry.withheld_tax,
         });
 
         for (const d of entry.deductions) {
@@ -306,6 +327,7 @@ export default function MgLedgerPage() {
                           <th className="py-2.5 px-4 text-right font-semibold w-36">MG 지급</th>
                           <th className="py-2.5 px-4 text-right font-semibold w-36">차감</th>
                           <th className="py-2.5 px-4 text-right font-semibold w-36">잔액</th>
+                          <th className="py-2.5 px-4 text-center font-semibold w-24">세금처리</th>
                           <th className="py-2.5 px-4 text-left font-semibold">비고</th>
                         </tr>
                       </thead>
@@ -322,6 +344,22 @@ export default function MgLedgerPage() {
                             <td className={`py-2 px-4 text-right tabular-nums font-medium ${row.pending ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                               {fmt(row.balance)}
                             </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.entryId && (
+                                <button
+                                  onClick={() => canManage && row.entryId && toggleWithheldTax(row.entryId, !!row.withheld_tax)}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                    row.withheld_tax
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                  } ${canManage ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                                  title={canManage ? '클릭하여 변경' : ''}
+                                  disabled={!canManage}
+                                >
+                                  {row.withheld_tax ? '원천징수' : '미징수'}
+                                </button>
+                              )}
+                            </td>
                             <td className="py-2 px-4 text-muted-foreground truncate max-w-[300px]" title={row.note}>
                               {row.pending && <span className="text-blue-600 dark:text-blue-400 mr-1">●</span>}
                               {row.note}
@@ -335,6 +373,7 @@ export default function MgLedgerPage() {
                           <td className="py-2.5 px-4 text-right tabular-nums">{fmt(wl.totalMg)}</td>
                           <td className="py-2.5 px-4 text-right tabular-nums">{fmt(wl.totalDeducted)}</td>
                           <td className="py-2.5 px-4 text-right tabular-nums font-semibold">{fmt(wl.remaining)}</td>
+                          <td className="py-2.5 px-4"></td>
                           <td className="py-2.5 px-4"></td>
                         </tr>
                       </tfoot>
