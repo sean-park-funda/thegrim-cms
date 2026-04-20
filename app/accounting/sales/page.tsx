@@ -63,6 +63,7 @@ export default function SalesDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [selectedWorks, setSelectedWorks] = useState<Set<string>>(new Set());
+  const [userChangedSelection, setUserChangedSelection] = useState(false);
   const [aggMode, setAggMode] = useState<AggMode>('daily');
   const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -88,7 +89,7 @@ export default function SalesDashboardPage() {
       .then(r => r.json())
       .then((d: DailySalesData) => {
         setData(d);
-        if (d.summary?.workTotals) {
+        if (!userChangedSelection && d.summary?.workTotals) {
           setSelectedWorks(new Set(d.summary.workTotals.slice(0, 3).map(w => w.name)));
         }
       })
@@ -145,8 +146,15 @@ export default function SalesDashboardPage() {
   const chartData = useMemo(() => {
     if (!agg.totals.length) return [];
     return agg.totals.map(({ date }) => {
+      const fmtDate = aggMode === 'monthly'
+        ? date
+        : (() => {
+            const [, m, d] = date.split('-');
+            return `${parseInt(m)}/${parseInt(d)}`;
+          })();
       const point: Record<string, string | number> = {
-        date: aggMode === 'monthly' ? date : date.slice(5),
+        date: fmtDate,
+        _rawDate: date,
       };
       for (const [workName, rows] of Object.entries(agg.works)) {
         if (selectedWorks.has(workName)) {
@@ -157,6 +165,15 @@ export default function SalesDashboardPage() {
       return point;
     });
   }, [agg, selectedWorks, aggMode]);
+
+  // X축 tick 간격: 데이터 수에 따라 자동 조정
+  const xAxisInterval = useMemo(() => {
+    const len = chartData.length;
+    if (len <= 14) return 0;
+    if (len <= 30) return 1;
+    if (len <= 60) return 4;
+    return 6;
+  }, [chartData]);
 
   // 필터 적용된 요약
   const filteredSummary = useMemo(() => {
@@ -179,6 +196,7 @@ export default function SalesDashboardPage() {
   }, [data, filteredDailyTotals, filteredWorkNames, workFilter]);
 
   const toggleWork = (name: string) => {
+    setUserChangedSelection(true);
     setSelectedWorks(prev => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
@@ -333,13 +351,13 @@ export default function SalesDashboardPage() {
               </div>
               <div className="flex gap-1.5">
                 <button
-                  onClick={() => setSelectedWorks(new Set(filteredWorkNames))}
+                  onClick={() => { setUserChangedSelection(true); setSelectedWorks(new Set(filteredWorkNames)); }}
                   className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   전체
                 </button>
                 <button
-                  onClick={() => setSelectedWorks(new Set())}
+                  onClick={() => { setUserChangedSelection(true); setSelectedWorks(new Set()); }}
                   className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   해제
@@ -393,6 +411,7 @@ export default function SalesDashboardPage() {
                     tickLine={false}
                     tick={{ fontSize: 12, fill: '#8E8E93' }}
                     dy={8}
+                    interval={xAxisInterval}
                   />
                   <YAxis
                     tickFormatter={fmtShort}

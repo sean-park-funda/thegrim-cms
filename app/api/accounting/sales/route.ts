@@ -25,16 +25,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'from, to 파라미터가 필요합니다.' }, { status: 400 });
     }
 
-    let query = supabase
-      .from('rs_daily_sales')
-      .select('*')
-      .gte('sale_date', from)
-      .lte('sale_date', to)
-      .order('sale_date', { ascending: true });
+    // Supabase 기본 1000행 제한 → 페이지네이션으로 전체 조회
+    let allData: any[] = [];
+    let offset = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = supabase
+        .from('rs_daily_sales')
+        .select('*')
+        .gte('sale_date', from)
+        .lte('sale_date', to)
+        .order('sale_date', { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-    if (workName) query = query.eq('work_name', workName);
+      if (workName) query = query.eq('work_name', workName);
 
-    const { data, error } = await query;
+      const { data: page, error: pageError } = await query;
+      if (pageError) {
+        console.error('일별 매출 조회 오류:', pageError);
+        return NextResponse.json({ error: '일별 매출 조회 실패' }, { status: 500 });
+      }
+      allData = allData.concat(page || []);
+      if (!page || page.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    const data = allData;
+    const error = null;
     if (error) {
       console.error('일별 매출 조회 오류:', error);
       return NextResponse.json({ error: '일별 매출 조회 실패' }, { status: 500 });
