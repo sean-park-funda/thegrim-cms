@@ -436,7 +436,9 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   }).filter(w => w.work_total_revenue > 0 || w.is_mg_applied);
 
   // ─── MG 차감 (entry 기반) ──────────────────────────────
-  // 순서: 세금/예고료를 net_share 기준으로 먼저 계산 → 실지급 가능액에서 MG 차감
+  // withheld_tax=true 엔트리: MG 지급 시 이미 세금 원천징수됨 → 세금 없이 순수익에서 바로 차감
+  // withheld_tax=false 엔트리: 세금 차감 후 남은 금액에서 차감 (기존 방식)
+  let withheldMgDeduction = 0;
   const mgEntries = input.mgEntries || [];
   if (mgEntries.length > 0) {
     const entries = [...mgEntries].sort((a, b) =>
@@ -445,7 +447,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
     const totalMgRemaining = entries.reduce((s, e) => s + e.remaining, 0);
 
-    // 개인: net_share에서 세금/예고료를 먼저 빼고 남은 금액이 MG 차감 대상
     // mg_hold인 작품은 MG 차감 대상에서 제외
     const mgEligibleWorks = works.filter(w => !w.mg_hold);
     let totalCap = 0;
@@ -458,7 +459,6 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     } else {
       const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
-      const preTax = calculateTax(preSubtotal, partner.partner_type, preTaxType);
       // 예고료: 연재중 작품의 순수익 합산 → 50만원 이상이면 합산 금액으로 계산
       let preSerialActiveNetShare = 0;
       for (const w of mgEligibleWorks) {
@@ -473,7 +473,24 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
         reportType: partner.report_type ?? null,
         isForeign: partner.is_foreign ?? false,
       });
-      totalCap = Math.max(0, preSubtotal - preTax.total - preInsurance);
+
+      // withheld_tax 엔트리와 일반 엔트리 분리
+      const withheldRemaining = entries.filter(e => e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
+      const normalRemaining = entries.filter(e => !e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
+
+      // withheld 엔트리: 세금 없이 차감 (cap = subtotal - 예고료)
+      const withheldCap = Math.max(0, preSubtotal - preInsurance);
+      withheldMgDeduction = Math.min(withheldRemaining, withheldCap);
+
+      // 세금: withheld 차감 후 남은 금액 기준
+      const preTaxable = Math.max(0, preSubtotal - withheldMgDeduction);
+      const preTax = calculateTax(preTaxable, partner.partner_type, preTaxType);
+
+      // 일반 엔트리: 세금 차감 후 남은 금액에서 차감
+      const normalCap = Math.max(0, preSubtotal - preInsurance - withheldMgDeduction - preTax.total);
+      const normalDeduction = Math.min(normalRemaining, normalCap);
+
+      totalCap = withheldMgDeduction + normalDeduction;
     }
 
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
@@ -581,9 +598,10 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감
   const total_mg_deduction = total_mg_raw;
 
-  // 세금: net_share(subtotal) 기준
+  // 세금: withheld_tax MG 차감분은 이미 세금 처리됨 → 나머지만 과세
   const taxType = workPartners[0]?.tax_type || 'standard';
-  const tax_breakdown = calculateTax(subtotal, partner.partner_type, taxType);
+  const taxable = Math.max(0, subtotal - withheldMgDeduction);
+  const tax_breakdown = calculateTax(taxable, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
   // 예고료: 연재중 작품의 순수익 합산 → 50만원 이상이면 합산 금액으로 계산
