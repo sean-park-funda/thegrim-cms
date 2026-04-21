@@ -198,6 +198,11 @@ export default function PartnersPage() {
             placeholder="이름, 거래처 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && filtered.length === 1) {
+                router.push(`/accounting/settlement/partners/${filtered[0].id}`);
+              }
+            }}
             className="w-full pl-9 pr-3 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 transition-all"
           />
         </div>
