@@ -12,6 +12,7 @@ export interface RsWork {
   id: string;
   name: string;
   naver_name: string | null;
+  project_code: string | null;
   contract_type: ContractType;
   settlement_level: SettlementLevel;
   is_active: boolean;

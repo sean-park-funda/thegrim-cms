@@ -271,6 +271,9 @@ export default function WorksPage() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{w.name}</span>
+                          {w.project_code && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-500 font-mono">{w.project_code}</span>
+                          )}
                           {w.naver_name && w.naver_name !== w.name && (
                             <span className="text-xs text-zinc-400">({w.naver_name})</span>
                           )}

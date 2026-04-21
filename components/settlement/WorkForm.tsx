@@ -25,6 +25,7 @@ interface WorkFormProps {
 export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
   const [name, setName] = useState('');
   const [naverName, setNaverName] = useState('');
+  const [projectCode, setProjectCode] = useState('');
   const [contractType, setContractType] = useState<ContractType>('exclusive');
   const [settlementLevel, setSettlementLevel] = useState<SettlementLevel>('work');
   const [serialStartDate, setSerialStartDate] = useState('');
@@ -36,6 +37,7 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
     if (open) {
       setName(work?.name || '');
       setNaverName(work?.naver_name || '');
+      setProjectCode(work?.project_code || '');
       setContractType(work?.contract_type || 'exclusive');
       setSettlementLevel(work?.settlement_level || 'work');
       setSerialStartDate(work?.serial_start_date || '');
@@ -51,6 +53,7 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
       await onSave({
         name: name.trim(),
         naver_name: naverName || null,
+        project_code: projectCode || null,
         contract_type: contractType,
         settlement_level: settlementLevel,
         serial_start_date: serialStartDate || null,
@@ -89,6 +92,10 @@ export function WorkForm({ work, open, onOpenChange, onSave }: WorkFormProps) {
               <div>
                 <Label htmlFor="wf-naver" className="text-xs text-muted-foreground">네이버 작품명</Label>
                 <Input id="wf-naver" value={naverName} onChange={e => setNaverName(e.target.value)} placeholder="네이버에서 사용하는 작품명 (매칭용)" className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="wf-project-code" className="text-xs text-muted-foreground">프로젝트코드</Label>
+                <Input id="wf-project-code" value={projectCode} onChange={e => setProjectCode(e.target.value)} placeholder="PN001" className="mt-1" />
               </div>
             </div>
           </section>

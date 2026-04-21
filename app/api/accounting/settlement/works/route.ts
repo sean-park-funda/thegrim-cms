@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, naver_name, contract_type, settlement_level, note } = body;
+    const { name, naver_name, project_code, contract_type, settlement_level, note } = body;
 
     if (!name) {
       return NextResponse.json({ error: '작품명은 필수입니다.' }, { status: 400 });
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('rs_works')
-      .insert({ name, naver_name: naver_name || null, contract_type, settlement_level, note })
+      .insert({ name, naver_name: naver_name || null, project_code: project_code || null, contract_type, settlement_level, note })
       .select()
       .single();
 
