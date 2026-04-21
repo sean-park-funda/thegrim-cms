@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting, canManageAccounting } from '@/lib/utils/permissions';
 import { Button } from '@/components/ui/button';
@@ -66,9 +67,11 @@ const fmt = (n: number) => n.toLocaleString();
 
 export default function MgLedgerPage() {
   const { profile } = useStore();
+  const searchParams = useSearchParams();
+  const initialPartnerId = searchParams.get('partner');
 
   const [partners, setPartners] = useState<MgPartner[]>([]);
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(initialPartnerId);
   const [search, setSearch] = useState('');
 
   const [entries, setEntries] = useState<MgEntry[]>([]);
@@ -84,7 +87,7 @@ export default function MgLedgerPage() {
       .then(res => res.json())
       .then(data => {
         setPartners(data.partners || []);
-        if (data.partners?.length > 0 && !selectedPartnerId) {
+        if (data.partners?.length > 0 && !selectedPartnerId && !initialPartnerId) {
           setSelectedPartnerId(data.partners[0].id);
         }
       })

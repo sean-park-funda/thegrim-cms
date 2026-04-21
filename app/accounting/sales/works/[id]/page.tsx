@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
-import { canViewSales } from '@/lib/utils/permissions';
+import { canViewSales, canManageAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { PRESETS, fmtShort, fmtWon, getDateRange } from '@/lib/sales/types';
-import { ArrowLeft, TrendingUp, TrendingDown, Calendar, BarChart3, Globe, Film, BookOpen } from 'lucide-react';
+import { GlobalLaunchesTab } from '@/components/works/GlobalLaunchesTab';
+import { SecondaryBizTab } from '@/components/works/SecondaryBizTab';
+import { ArrowLeft, TrendingUp, TrendingDown, Calendar, BarChart3, Globe, Film, BookOpen, Pencil, Check, X } from 'lucide-react';
 
 const fmtComma = (n: number) => n.toLocaleString();
 
@@ -32,8 +34,8 @@ interface WorkSalesData {
   dailySales: { date: string; amount: number }[];
   monthlySales: { month: string; total: number }[];
   partners: { id: string; partner: { id: string; name: string; pen_name: string | null } | null; rs_rate: number }[];
-  globalLaunches: { id: string; country_code: string; platform_name: string | null; url: string | null; status: string; launched_at: string | null }[];
-  secondaryBiz: { id: string; biz_type: string; title: string | null; status: string; partner: string | null; contract_date: string | null }[];
+  globalLaunches: { id: string; country_code: string; platform_name: string | null; url: string | null; status: string; launched_at: string | null; note: string | null }[];
+  secondaryBiz: { id: string; biz_type: string; title: string | null; status: string; partner: string | null; contract_date: string | null; note: string | null; work_id: string }[];
   revenues: { month: string; domestic_paid: number; global_paid: number; domestic_ad: number; global_ad: number; secondary: number; total: number }[];
   summary: { totalSales: number; dailyAverage: number; dayCount: number };
 }
@@ -71,10 +73,14 @@ export default function WorkSalesDetailPage() {
   const [data, setData] = useState<WorkSalesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const { from, to } = useMemo(() => getDateRange(days), [days]);
+  const canManage = profile ? canManageAccounting(profile.role) : false;
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (!profile || !canViewSales(profile.role) || !workId) return;
     setLoading(true);
     settlementFetch(`/api/accounting/sales/works/${workId}?from=${from}&to=${to}`)
@@ -83,6 +89,25 @@ export default function WorkSalesDetailPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [profile, workId, from, to]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleSaveNote = async () => {
+    setNoteSaving(true);
+    try {
+      await settlementFetch(`/api/accounting/settlement/works/${workId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: noteText }),
+      });
+      setData(prev => prev ? { ...prev, work: { ...prev.work, note: noteText } } : prev);
+      setEditingNote(false);
+    } catch (e) {
+      console.error('메모 저장 오류:', e);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   if (!profile || !canViewSales(profile.role)) return null;
 
@@ -244,12 +269,48 @@ export default function WorkSalesDetailPage() {
                 <p className="text-sm mt-0.5">{data.work.logline}</p>
               </div>
             )}
-            {data.work.note && (
-              <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
+            {/* 특이사항 (편집 가능) */}
+            <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center justify-between">
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">특이사항</span>
-                <p className="text-sm mt-0.5 whitespace-pre-wrap">{data.work.note}</p>
+                {canManage && !editingNote && (
+                  <button
+                    onClick={() => { setNoteText(data.work.note || ''); setEditingNote(true); }}
+                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-            )}
+              {editingNote ? (
+                <div className="mt-1.5 space-y-2">
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="작품에 대한 메모를 입력하세요..."
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setEditingNote(false)}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSaveNote}
+                      disabled={noteSaving}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
+                    >
+                      {noteSaving ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm mt-0.5 whitespace-pre-wrap">{data.work.note || '-'}</p>
+              )}
+            </div>
             {data.partners.length > 0 && (
               <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800">
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">파트너</span>
@@ -268,93 +329,37 @@ export default function WorkSalesDetailPage() {
             )}
           </div>
 
-          {/* 해외 론칭 정보 */}
-          {data.globalLaunches.length > 0 && (
-            <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
-                <Globe className="h-4 w-4 text-zinc-400" />
-                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">해외 론칭</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">국가</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">플랫폼</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">상태</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">론칭일</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.globalLaunches.map(gl => {
-                      const st = LAUNCH_STATUS_LABELS[gl.status] || { label: gl.status, color: 'bg-zinc-100 text-zinc-500' };
-                      return (
-                        <tr key={gl.id} className="border-t border-zinc-100 dark:border-zinc-800/50">
-                          <td className="py-2.5 px-5 font-medium">{COUNTRY_LABELS[gl.country_code] || gl.country_code}</td>
-                          <td className="py-2.5 px-5">
-                            {gl.url ? (
-                              <a href={gl.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                                {gl.platform_name || '링크'}
-                              </a>
-                            ) : (
-                              gl.platform_name || '-'
-                            )}
-                          </td>
-                          <td className="py-2.5 px-5">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
-                              {st.label}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-5 text-zinc-500">{gl.launched_at || '-'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          {/* 해외 론칭 정보 (CRUD) */}
+          <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+              <Globe className="h-4 w-4 text-zinc-400" />
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">해외 론칭</h2>
             </div>
-          )}
+            <div className="px-5 py-4">
+              <GlobalLaunchesTab
+                workId={workId}
+                launches={data.globalLaunches}
+                canManage={canManage}
+                onReload={loadData}
+              />
+            </div>
+          </div>
 
-          {/* 2차 사업 */}
-          {data.secondaryBiz.length > 0 && (
-            <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
-                <Film className="h-4 w-4 text-zinc-400" />
-                <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">2차 사업</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">유형</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">제목</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">파트너</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">상태</th>
-                      <th className="text-left py-2.5 px-5 font-medium text-zinc-500 dark:text-zinc-400">계약일</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.secondaryBiz.map(sb => {
-                      const st = BIZ_STATUS_LABELS[sb.status] || { label: sb.status, color: 'bg-zinc-100 text-zinc-500' };
-                      return (
-                        <tr key={sb.id} className="border-t border-zinc-100 dark:border-zinc-800/50">
-                          <td className="py-2.5 px-5 font-medium">{sb.biz_type}</td>
-                          <td className="py-2.5 px-5">{sb.title || '-'}</td>
-                          <td className="py-2.5 px-5">{sb.partner || '-'}</td>
-                          <td className="py-2.5 px-5">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
-                              {st.label}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-5 text-zinc-500">{sb.contract_date || '-'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          {/* 2차 사업 (CRUD) */}
+          <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+              <Film className="h-4 w-4 text-zinc-400" />
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">2차 사업</h2>
             </div>
-          )}
+            <div className="px-5 py-4">
+              <SecondaryBizTab
+                workId={workId}
+                items={data.secondaryBiz}
+                canManage={canManage}
+                onReload={loadData}
+              />
+            </div>
+          </div>
 
           {/* 정산 매출 (국내/해외 월별) */}
           {data.revenues.length > 0 && (

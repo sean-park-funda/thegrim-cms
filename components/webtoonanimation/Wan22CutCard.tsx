@@ -197,7 +197,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
   const [useStartFrameBgRef, setUseStartFrameBgRef] = useState(cut.use_start_frame_bg_ref || false);
   const [videoDuration, setVideoDuration] = useState<number>(cut.video_duration || 7);
-  const [videoModel, setVideoModel] = useState<'wan22' | 'ltx23'>('wan22');
+  const [videoModel, setVideoModel] = useState<'wan22' | 'seedance2'>('wan22');
   const [colorizeRefUrl, setColorizeRefUrl] = useState(cut.colorize_reference_url || '');
   const [uploadingRef, setUploadingRef] = useState(false);
 
@@ -447,8 +447,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
         }
       }
 
-      const endpoint = videoModel === 'ltx23'
-        ? '/api/webtoonanimation/generate-ltx23-video'
+      const endpoint = videoModel === 'seedance2'
+        ? '/api/webtoonanimation/generate-seedance2-video'
         : '/api/webtoonanimation/generate-comfyui-video';
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -781,7 +781,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             <div className="flex flex-col gap-2">
               {/* 모델 선택 */}
               <div className="flex gap-1">
-                {([['wan22', 'WAN 2.2'], ['ltx23', 'LTX 2.3']] as const).map(([m, label]) => (
+                {([['wan22', 'WAN 2.2'], ['seedance2', 'Seedance 2.0']] as const).map(([m, label]) => (
                   <button key={m} onClick={() => setVideoModel(m)}
                     className={cn(
                       'text-xs py-1 px-2 rounded border transition-colors flex-1',
@@ -792,24 +792,22 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                   >{label}</button>
                 ))}
               </div>
-              {/* 영상 길이 (WAN 2.2 전용) */}
-              {videoModel === 'wan22' && (
-                <div className="flex gap-1">
-                  {[3, 5, 7, 9, 10].map((sec) => (
-                    <button key={sec}
-                      onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
-                      className={cn(
-                        'text-xs py-1 px-2 rounded border transition-colors flex-1',
-                        videoDuration === sec
-                          ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
-                          : 'border-border hover:border-muted-foreground text-muted-foreground'
-                      )}
-                    >{sec}s</button>
-                  ))}
-                </div>
-              )}
-              {videoModel === 'ltx23' && (
-                <p className="text-[10px] text-muted-foreground text-center">960×544 · 25fps · ~4s · 오디오 포함</p>
+              {/* 영상 길이 */}
+              <div className="flex gap-1">
+                {(videoModel === 'seedance2' ? [4, 5, 7, 10, 15] : [3, 5, 7, 9, 10]).map((sec) => (
+                  <button key={sec}
+                    onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
+                    className={cn(
+                      'text-xs py-1 px-2 rounded border transition-colors flex-1',
+                      videoDuration === sec
+                        ? 'border-violet-500 bg-violet-500/10 text-violet-400 font-medium'
+                        : 'border-border hover:border-muted-foreground text-muted-foreground'
+                    )}
+                  >{sec}s</button>
+                ))}
+              </div>
+              {videoModel === 'seedance2' && (
+                <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · 시작+끝 프레임 보간</p>
               )}
               <Button
                 onClick={handleGenVideo}
@@ -819,9 +817,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               >
                 {genVideo
                   ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />렌더링 중...</>
-                  : videoModel === 'ltx23'
-                    ? <><Film className="h-3 w-3 mr-1" />{videoUrl ? 'LTX 2.3 재생성' : 'LTX 2.3 생성'}</>
-                    : <><Film className="h-3 w-3 mr-1" />{videoUrl ? `재생성 (${videoDuration}s)` : `영상 생성 (${videoDuration}s)`}</>}
+                  : <><Film className="h-3 w-3 mr-1" />{videoUrl ? `재생성 (${videoDuration}s)` : `영상 생성 (${videoDuration}s)`}</>}
               </Button>
             </div>
           }

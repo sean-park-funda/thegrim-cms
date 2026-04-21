@@ -46,7 +46,7 @@ const navGroups = [
     ],
   },
   {
-    label: '분석',
+    label: '매출 분석',
     items: [
       { href: '/accounting/sales/works', label: '작품별 매출', icon: BookOpen },
       { href: '/accounting/sales/compare', label: '작품 비교', icon: GitCompareArrows },
