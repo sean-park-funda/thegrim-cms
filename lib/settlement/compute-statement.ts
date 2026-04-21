@@ -482,8 +482,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       const withheldCap = Math.max(0, preSubtotal - preInsurance);
       withheldMgDeduction = Math.min(withheldRemaining, withheldCap);
 
-      // 세금: withheld 차감분과 예고료는 과세 대상에서 제외
-      const preTaxable = Math.max(0, preSubtotal - withheldMgDeduction - preInsurance);
+      // 세금: withheld 차감분만 과세 대상에서 제외 (예고료는 빼지 않음)
+      const preTaxable = Math.max(0, preSubtotal - withheldMgDeduction);
       const preTax = calculateTax(preTaxable, partner.partner_type, preTaxType);
 
       // 일반 엔트리: 세금 차감 후 남은 금액에서 차감
@@ -613,9 +613,9 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     isForeign: partner.is_foreign ?? false,
   });
 
-  // 세금: withheld MG 차감분과 예고료는 과세 대상에서 제외
+  // 세금: withheld MG 차감분만 과세 대상에서 제외 (예고료는 빼지 않음)
   const taxType = workPartners[0]?.tax_type || 'standard';
-  const taxable = Math.max(0, subtotal - withheldMgDeduction - insurance);
+  const taxable = Math.max(0, subtotal - withheldMgDeduction);
   const tax_breakdown = calculateTax(taxable, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
