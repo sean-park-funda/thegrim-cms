@@ -17,7 +17,7 @@ from google import genai
 from google.genai import types
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
-API_KEY = "AIzaSyCUeW4iBnpinMfy9kubfFOryah02e-2Dus"
+API_KEY = os.environ["GEMINI_API_KEY"]
 MODELS = [
     "gemini-3-pro-image-preview",
     "gemini-3.1-flash-image-preview",
