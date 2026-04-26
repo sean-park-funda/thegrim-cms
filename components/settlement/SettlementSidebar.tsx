@@ -39,6 +39,7 @@ import {
   FileText,
   BarChart3,
   MessageCircle,
+  Database,
 } from 'lucide-react';
 
 const navGroups = [
@@ -46,6 +47,12 @@ const navGroups = [
     label: '개요',
     items: [
       { href: '/accounting/settlement', label: '대시보드', icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    label: '데이터 원본',
+    items: [
+      { href: '/accounting/settlement/revenue-lines', label: '매출 상세', icon: Database },
     ],
   },
   {

@@ -30,18 +30,21 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get('month');
     const revenue_type = searchParams.get('revenue_type');
 
-    if (!work_id || !month) {
-      return NextResponse.json({ error: 'work_id와 month는 필수입니다.' }, { status: 400 });
+    if (!month) {
+      return NextResponse.json({ error: 'month는 필수입니다.' }, { status: 400 });
     }
 
     let query = supabase
       .from('rs_revenue_lines')
       .select('*')
-      .eq('work_id', work_id)
       .eq('month', month)
+      .order('work_id')
       .order('service_platform')
       .order('country');
 
+    if (work_id) {
+      query = query.eq('work_id', work_id);
+    }
     if (revenue_type) {
       query = query.eq('revenue_type', revenue_type);
     }
