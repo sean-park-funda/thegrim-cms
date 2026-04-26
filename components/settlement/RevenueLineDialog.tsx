@@ -22,6 +22,8 @@ interface RevenueLineDialogProps {
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
+type EditField = 'adjustment_supply' | 'adjustment_vat';
+
 export function RevenueLineDialog({
   open,
   onOpenChange,
@@ -35,6 +37,7 @@ export function RevenueLineDialog({
   const [lines, setLines] = useState<RsRevenueLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<EditField | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -66,16 +69,18 @@ export function RevenueLineDialog({
     }
   };
 
-  const handleSaveAdjustment = async (lineId: string) => {
+  const handleSave = async (lineId: string) => {
+    if (!editingField) return;
     setSaving(true);
     try {
       const res = await settlementFetch('/api/accounting/settlement/revenue-lines', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: lineId, adjustment_amount: Number(editValue) || 0 }),
+        body: JSON.stringify({ id: lineId, [editingField]: Number(editValue) || 0 }),
       });
       if (res.ok) {
         setEditingId(null);
+        setEditingField(null);
         await loadLines();
         onUpdated?.();
       }
@@ -84,6 +89,13 @@ export function RevenueLineDialog({
     } finally {
       setSaving(false);
     }
+  };
+
+  const startEdit = (lineId: string, field: EditField, currentValue: number) => {
+    if (!canManage) return;
+    setEditingId(lineId);
+    setEditingField(field);
+    setEditValue(String(currentValue));
   };
 
   // 플랫폼별 그룹핑
@@ -114,9 +126,51 @@ export function RevenueLineDialog({
     return { payment, supply, vat, adjSupply, adjVat, finalSupply: supply + adjSupply, finalVat: vat + adjVat };
   }, [lines]);
 
+  const renderAdjCell = (line: RsRevenueLine, field: EditField, value: number) => {
+    const isEditing = editingId === line.id && editingField === field;
+
+    if (isEditing) {
+      return (
+        <div className="flex items-center gap-1 justify-end">
+          <Input
+            type="number"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="w-20 h-6 text-xs"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave(line.id);
+              if (e.key === 'Escape') { setEditingId(null); setEditingField(null); }
+            }}
+            autoFocus
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => handleSave(line.id)}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <span
+        className={`tabular-nums ${
+          canManage ? 'cursor-pointer hover:text-primary hover:underline' : ''
+        } ${value !== 0 ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}
+        onClick={() => startEdit(line.id, field, value)}
+      >
+        {value !== 0 ? fmt(value) : '-'}
+      </span>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {workName}
@@ -136,20 +190,17 @@ export function RevenueLineDialog({
         ) : (
           <div className="space-y-4">
             {/* 요약 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 { label: 'Payment(VAT포함)', value: totals.payment },
-                { label: '공급가액', value: totals.finalSupply },
-                { label: '부가세', value: totals.finalVat },
-                { label: '조정액', value: totals.adjSupply + totals.adjVat, highlight: true },
+                { label: '공급가액', value: totals.supply },
+                { label: '부가세', value: totals.vat },
+                { label: '확정 공급가', value: totals.finalSupply, highlight: totals.adjSupply !== 0 },
+                { label: '확정 부가세', value: totals.finalVat, highlight: totals.adjVat !== 0 },
               ].map((item) => (
                 <div key={item.label} className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">{item.label}</div>
-                  <div className={`text-lg font-semibold tabular-nums ${
-                    item.highlight && (totals.adjSupply + totals.adjVat) !== 0
-                      ? 'text-amber-600'
-                      : ''
-                  }`}>
+                  <div className={`text-lg font-semibold tabular-nums ${item.highlight ? 'text-amber-600' : ''}`}>
                     {fmt(item.value)}
                   </div>
                 </div>
@@ -158,81 +209,48 @@ export function RevenueLineDialog({
 
             {/* 플랫폼별 테이블 */}
             {grouped.map(([platform, platformLines]) => {
-              const pSupply = platformLines.reduce((s, l) => s + Number(l.supply_amount) + Number(l.adjustment_supply), 0);
-              const pVat = platformLines.reduce((s, l) => s + Number(l.vat_amount) + Number(l.adjustment_vat), 0);
+              const pFinalSupply = platformLines.reduce((s, l) => s + Number(l.supply_amount) + Number(l.adjustment_supply), 0);
+              const pFinalVat = platformLines.reduce((s, l) => s + Number(l.vat_amount) + Number(l.adjustment_vat), 0);
               return (
                 <div key={platform} className="rounded-lg border overflow-hidden">
                   <div className="bg-muted/50 px-4 py-2 flex items-center justify-between">
                     <span className="text-sm font-medium">{platform}</span>
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      공급가 {fmt(pSupply)} / VAT {fmt(pVat)}
+                      공급가 {fmt(pFinalSupply)} / VAT {fmt(pFinalVat)}
                     </span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b text-left bg-muted/20">
-                          <th className="py-1.5 px-3 font-medium">국가</th>
-                          <th className="py-1.5 px-3 font-medium">통화</th>
-                          <th className="py-1.5 px-3 font-medium text-right">Payment</th>
-                          <th className="py-1.5 px-3 font-medium text-right">공급가액</th>
-                          <th className="py-1.5 px-3 font-medium text-right">부가세</th>
-                          <th className="py-1.5 px-3 font-medium text-right">조정</th>
-                          <th className="py-1.5 px-3 font-medium text-right">확정 공급가</th>
+                          <th className="py-1.5 px-2 font-medium">국가</th>
+                          <th className="py-1.5 px-2 font-medium">통화</th>
+                          <th className="py-1.5 px-2 font-medium text-right">Payment</th>
+                          <th className="py-1.5 px-2 font-medium text-right">공급가액</th>
+                          <th className="py-1.5 px-2 font-medium text-right">부가세</th>
+                          <th className="py-1.5 px-2 font-medium text-right text-amber-600">조정(공급가)</th>
+                          <th className="py-1.5 px-2 font-medium text-right text-amber-600">조정(VAT)</th>
+                          <th className="py-1.5 px-2 font-medium text-right">확정 공급가</th>
+                          <th className="py-1.5 px-2 font-medium text-right">확정 VAT</th>
                         </tr>
                       </thead>
                       <tbody>
                         {platformLines.map((line) => {
-                          const isEditing = editingId === line.id;
-                          const adjAmt = Number(line.adjustment_amount);
-                          const finalSup = Number(line.supply_amount) + Number(line.adjustment_supply);
+                          const adjS = Number(line.adjustment_supply);
+                          const adjV = Number(line.adjustment_vat);
+                          const finalS = Number(line.supply_amount) + adjS;
+                          const finalV = Number(line.vat_amount) + adjV;
                           return (
                             <tr key={line.id} className="border-b hover:bg-muted/30">
-                              <td className="py-1.5 px-3">{line.country || '-'}</td>
-                              <td className="py-1.5 px-3">{line.sale_currency || '-'}</td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">{fmt(Number(line.payment_krw))}</td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">{fmt(Number(line.supply_amount))}</td>
-                              <td className="py-1.5 px-3 text-right tabular-nums">{fmt(Number(line.vat_amount))}</td>
-                              <td className="py-1.5 px-3 text-right">
-                                {isEditing ? (
-                                  <div className="flex items-center gap-1 justify-end">
-                                    <Input
-                                      type="number"
-                                      value={editValue}
-                                      onChange={(e) => setEditValue(e.target.value)}
-                                      className="w-24 h-6 text-xs"
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleSaveAdjustment(line.id);
-                                        if (e.key === 'Escape') setEditingId(null);
-                                      }}
-                                      autoFocus
-                                    />
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6"
-                                      onClick={() => handleSaveAdjustment(line.id)}
-                                      disabled={saving}
-                                    >
-                                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <span
-                                    className={`tabular-nums ${
-                                      canManage ? 'cursor-pointer hover:text-primary hover:underline' : ''
-                                    } ${adjAmt !== 0 ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}
-                                    onClick={() => {
-                                      if (!canManage) return;
-                                      setEditingId(line.id);
-                                      setEditValue(String(adjAmt));
-                                    }}
-                                  >
-                                    {adjAmt !== 0 ? fmt(adjAmt) : '-'}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-1.5 px-3 text-right tabular-nums font-medium">{fmt(finalSup)}</td>
+                              <td className="py-1.5 px-2">{line.country || '-'}</td>
+                              <td className="py-1.5 px-2">{line.sale_currency || '-'}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums">{fmt(Number(line.payment_krw))}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums">{fmt(Number(line.supply_amount))}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums">{fmt(Number(line.vat_amount))}</td>
+                              <td className="py-1.5 px-2 text-right">{renderAdjCell(line, 'adjustment_supply', adjS)}</td>
+                              <td className="py-1.5 px-2 text-right">{renderAdjCell(line, 'adjustment_vat', adjV)}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmt(finalS)}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmt(finalV)}</td>
                             </tr>
                           );
                         })}

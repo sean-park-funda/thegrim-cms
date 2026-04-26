@@ -255,7 +255,6 @@ export interface RsRevenueLine {
   payment_krw: number;
   supply_amount: number;
   vat_amount: number;
-  adjustment_amount: number;
   adjustment_supply: number;
   adjustment_vat: number;
   source_file: string | null;

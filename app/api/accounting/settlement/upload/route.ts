@@ -241,7 +241,6 @@ export async function POST(request: NextRequest) {
           payment_krw: line.payment_krw,
           supply_amount: line.supply_amount,
           vat_amount: line.vat_amount,
-          adjustment_amount: 0,
           adjustment_supply: 0,
           adjustment_vat: 0,
           source_file,

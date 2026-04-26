@@ -74,10 +74,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, adjustment_amount } = body;
+    const { id, adjustment_supply, adjustment_vat } = body;
 
-    if (!id || adjustment_amount === undefined) {
-      return NextResponse.json({ error: 'id와 adjustment_amount는 필수입니다.' }, { status: 400 });
+    if (!id || (adjustment_supply === undefined && adjustment_vat === undefined)) {
+      return NextResponse.json({ error: 'id와 adjustment_supply 또는 adjustment_vat가 필수입니다.' }, { status: 400 });
     }
 
     // 1) 해당 라인 조회
@@ -91,19 +91,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '라인을 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 2) 조정 금액 계산
-    const adjAmount = Number(adjustment_amount);
-    const adjSupply = Math.round(adjAmount / 1.1);
-    const adjVat = adjAmount - adjSupply;
+    // 2) 라인 업데이트 (공급가·부가세 각각 독립 조정)
+    const updateData: Record<string, number> = {};
+    if (adjustment_supply !== undefined) updateData.adjustment_supply = Number(adjustment_supply);
+    if (adjustment_vat !== undefined) updateData.adjustment_vat = Number(adjustment_vat);
 
-    // 3) 라인 업데이트
     const { error: updateError } = await supabase
       .from('rs_revenue_lines')
-      .update({
-        adjustment_amount: adjAmount,
-        adjustment_supply: adjSupply,
-        adjustment_vat: adjVat,
-      })
+      .update(updateData)
       .eq('id', id);
 
     if (updateError) {
