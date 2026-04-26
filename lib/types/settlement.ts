@@ -211,10 +211,55 @@ export interface ParsedRevenueRow {
   amount: number;
 }
 
+/** 매출 상세 행 (엑셀 원본 행 보존) */
+export interface ParsedRevenueLine {
+  work_name: string;
+  service_platform: string;
+  country: string;
+  sales_period: string;
+  rs_rate: number;
+  sale_currency: string;
+  sales_amount: number;
+  payment_krw: number;
+  supply_amount: number;
+  vat_amount: number;
+  /** PPA 소급분일 경우 true */
+  is_adjustment?: boolean;
+  source_sheet: string;
+  source_row: number;
+}
+
 export interface ExcelParseResult {
   rows: ParsedRevenueRow[];
   total_amount: number;
   errors: string[];
   /** 글로벌유료 소급분 (Prior Period Adjustment) 작품별 금액 */
   adjustments?: ParsedRevenueRow[];
+  /** 매출 ��세 행 (플랫폼별 공급가/VAT 분리) */
+  lines?: ParsedRevenueLine[];
+}
+
+/** DB rs_revenue_lines 레코드 */
+export interface RsRevenueLine {
+  id: string;
+  revenue_id: string;
+  work_id: string;
+  month: string;
+  revenue_type: RevenueType;
+  service_platform: string | null;
+  country: string | null;
+  sales_period: string | null;
+  rs_rate: number | null;
+  sale_currency: string | null;
+  sales_amount: number | null;
+  payment_krw: number;
+  supply_amount: number;
+  vat_amount: number;
+  adjustment_amount: number;
+  adjustment_supply: number;
+  adjustment_vat: number;
+  source_file: string | null;
+  source_sheet: string | null;
+  source_row: number | null;
+  created_at: string;
 }

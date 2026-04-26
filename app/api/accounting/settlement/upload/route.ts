@@ -3,7 +3,7 @@ import { canManageAccounting, canViewAccounting } from '@/lib/utils/permissions'
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 import { parseRevenueExcel, normalizeWorkName } from '@/lib/settlement/excel-parser';
 import { deduplicateWorks } from '@/lib/settlement/dedup-works';
-import { RevenueType } from '@/lib/types/settlement';
+import { RevenueType, ParsedRevenueLine } from '@/lib/types/settlement';
 
 const REVENUE_TYPE_COLUMNS: Record<RevenueType, string> = {
   domestic_paid: 'domestic_paid',
@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     // 1) 모든 파일 파싱 (DB 작업 전에 먼저 파싱하여 오류 조기 발견)
     const allRows: { work_name: string; amount: number }[] = [];
+    const allLines: { line: ParsedRevenueLine; source_file: string }[] = [];
     for (const file of files) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -115,6 +116,12 @@ export async function POST(request: NextRequest) {
         count: parseResult.rows.length,
         amount: parseResult.total_amount,
       });
+      // 상세 행 수집 (글로벌유료 등)
+      if (parseResult.lines) {
+        for (const line of parseResult.lines) {
+          allLines.push({ line, source_file: file.name });
+        }
+      }
     }
 
     // 2) 중복 작품 자동 병합 후 작품 목록 조회
@@ -189,7 +196,73 @@ export async function POST(request: NextRequest) {
 
     const total_amount = allRows.reduce((sum, r) => sum + r.amount, 0);
 
-    // 5) 업로드 이력 기록
+    // 5) 상세 행 저장 (rs_revenue_lines) - 글로벌유료 등
+    if (allLines.length > 0) {
+      // revenue_id 조회를 위한 맵 구축
+      const revenueIdMap = new Map<string, string>(); // work_id -> revenue_id
+      for (const item of aggregated.values()) {
+        const { data: rev } = await supabase
+          .from('rs_revenues')
+          .select('id')
+          .eq('work_id', item.work_id)
+          .eq('month', month)
+          .single();
+        if (rev) revenueIdMap.set(item.work_id, rev.id);
+      }
+
+      // 기존 상세 행 삭제 (재업로드 시 중복 방지)
+      for (const revenueId of revenueIdMap.values()) {
+        await supabase
+          .from('rs_revenue_lines')
+          .delete()
+          .eq('revenue_id', revenueId)
+          .eq('revenue_type', revenueType);
+      }
+
+      // 상세 행 일괄 삽���
+      const lineInserts = [];
+      for (const { line, source_file } of allLines) {
+        const workId = workMap.get(line.work_name) || workMap.get(normalizeWorkName(line.work_name));
+        if (!workId) continue;
+        const revenueId = revenueIdMap.get(workId);
+        if (!revenueId) continue;
+
+        lineInserts.push({
+          revenue_id: revenueId,
+          work_id: workId,
+          month,
+          revenue_type: revenueType,
+          service_platform: line.service_platform || null,
+          country: line.country || null,
+          sales_period: line.sales_period || null,
+          rs_rate: line.rs_rate || null,
+          sale_currency: line.sale_currency || null,
+          sales_amount: line.sales_amount || null,
+          payment_krw: line.payment_krw,
+          supply_amount: line.supply_amount,
+          vat_amount: line.vat_amount,
+          adjustment_amount: 0,
+          adjustment_supply: 0,
+          adjustment_vat: 0,
+          source_file,
+          source_sheet: line.source_sheet || null,
+          source_row: line.source_row || null,
+        });
+      }
+
+      // batch insert (Supabase는 1000행 제한이므로 청크)
+      for (let i = 0; i < lineInserts.length; i += 500) {
+        const chunk = lineInserts.slice(i, i + 500);
+        const { error: insertError } = await supabase
+          .from('rs_revenue_lines')
+          .insert(chunk);
+        if (insertError) {
+          allErrors.push(`상세 행 저장 오류: ${insertError.message}`);
+        }
+      }
+    }
+
+    // 6) 업로드 이력 기록
     await supabase.from('rs_upload_history').insert({
       month,
       revenue_type: revenueType,

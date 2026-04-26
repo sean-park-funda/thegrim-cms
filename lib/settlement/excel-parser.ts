@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { RevenueType, ExcelParseResult, ParsedRevenueRow } from '@/lib/types/settlement';
+import { RevenueType, ExcelParseResult, ParsedRevenueRow, ParsedRevenueLine } from '@/lib/types/settlement';
 
 /**
  * 작품명 정규화: 부제 제거, 공백 제거, 끝 느낌표/물음표 제거
@@ -35,15 +35,19 @@ export function parseRevenueExcel(
   const errors: string[] = [];
   let rows: ParsedRevenueRow[] = [];
   const adjustments: ParsedRevenueRow[] = [];
+  let lines: ParsedRevenueLine[] | undefined;
 
   try {
     switch (revenueType) {
       case 'domestic_paid':
         rows = parseDomesticPaid(workbook, fileName, errors);
         break;
-      case 'global_paid':
-        rows = parseGlobalPaid(workbook, fileName, errors, adjustments);
+      case 'global_paid': {
+        const detailLines: ParsedRevenueLine[] = [];
+        rows = parseGlobalPaid(workbook, fileName, errors, adjustments, detailLines);
+        if (detailLines.length > 0) lines = detailLines;
         break;
+      }
       case 'domestic_ad':
         rows = parseDomesticAd(workbook, fileName, errors);
         break;
@@ -67,6 +71,7 @@ export function parseRevenueExcel(
     total_amount,
     errors,
     ...(adjustments.length > 0 ? { adjustments } : {}),
+    ...(lines ? { lines } : {}),
   };
 }
 
@@ -257,7 +262,8 @@ function parseGlobalPaid(
   workbook: XLSX.WorkBook,
   fileName: string,
   errors: string[],
-  adjustments?: ParsedRevenueRow[]
+  adjustments?: ParsedRevenueRow[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('invoice')) || workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
@@ -282,8 +288,27 @@ function parseGlobalPaid(
     const payment = parseNumber(row[8]);
     if (payment !== 0) {
       // 부가세 10% 제외 (행별 반올림)
-      const net = Math.round(payment / 1.1);
-      workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
+      const supply = Math.round(payment / 1.1);
+      const vat = payment - supply;
+      workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + supply);
+
+      // 상세 행 수집
+      if (detailLines) {
+        detailLines.push({
+          work_name: itemName,
+          service_platform: row[2] ? String(row[2]).trim() : '',
+          country: row[3] ? String(row[3]).trim() : '',
+          sales_period: row[0] ? String(row[0]).trim() : '',
+          rs_rate: parseNumber(row[4]),
+          sale_currency: row[5] ? String(row[5]).trim() : '',
+          sales_amount: parseNumber(row[6]),
+          payment_krw: payment,
+          supply_amount: supply,
+          vat_amount: vat,
+          source_sheet: sheetName,
+          source_row: i + 1,
+        });
+      }
     }
   }
 
@@ -304,10 +329,30 @@ function parseGlobalPaid(
       // col 10 = 추가지급액 (부가세 포함 → ÷1.1로 공급가액 산출)
       const adjAmount = parseNumber(row[10]);
       if (adjAmount !== 0) {
-        const net = Math.round(adjAmount / 1.1);
-        workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + net);
+        const supply = Math.round(adjAmount / 1.1);
+        const vat = adjAmount - supply;
+        workAmounts.set(itemName, (workAmounts.get(itemName) || 0) + supply);
         if (adjustments) {
-          adjustments.push({ work_name: itemName, amount: net });
+          adjustments.push({ work_name: itemName, amount: supply });
+        }
+
+        // PPA 상세 행 수집
+        if (detailLines) {
+          detailLines.push({
+            work_name: itemName,
+            service_platform: row[2] ? String(row[2]).trim() : 'Prior Period Adjustment',
+            country: row[3] ? String(row[3]).trim() : '',
+            sales_period: row[0] ? String(row[0]).trim() : '',
+            rs_rate: parseNumber(row[4]),
+            sale_currency: row[5] ? String(row[5]).trim() : '',
+            sales_amount: parseNumber(row[6]),
+            payment_krw: adjAmount,
+            supply_amount: supply,
+            vat_amount: vat,
+            is_adjustment: true,
+            source_sheet: adjSheetName,
+            source_row: i + 1,
+          });
         }
       }
     }

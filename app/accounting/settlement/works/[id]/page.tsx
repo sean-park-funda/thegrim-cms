@@ -15,9 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Pencil, Trash2, Plus, X } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Plus, X, Search } from 'lucide-react';
 import { RsWork, RsWorkPartner, RsRevenue, RsPartner, RevenueType } from '@/lib/types/settlement';
 import { settlementFetch } from '@/lib/settlement/api';
+import { RevenueLineDialog } from '@/components/settlement/RevenueLineDialog';
 
 interface RevAdjustment {
   id: string;
@@ -57,6 +58,10 @@ export default function WorkDetailPage() {
   const [adjLabel, setAdjLabel] = useState('');
   const [adjAmount, setAdjAmount] = useState('');
   const [adjSaving, setAdjSaving] = useState(false);
+
+  const [lineDialogOpen, setLineDialogOpen] = useState(false);
+  const [lineDialogMonth, setLineDialogMonth] = useState('');
+  const [lineDialogType, setLineDialogType] = useState('');
 
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkPartnerId, setLinkPartnerId] = useState('');
@@ -291,6 +296,29 @@ export default function WorkDetailPage() {
                         };
                         const cellClass = (type: RevenueType) =>
                           `py-2 px-3 text-right tabular-nums hidden md:table-cell ${canManage ? 'cursor-pointer hover:bg-muted' : ''} ${unc.includes(type) ? 'line-through text-orange-400' : ''}`;
+                        const openLineDialog = (type: RevenueType, e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          setLineDialogMonth(r.month);
+                          setLineDialogType(type);
+                          setLineDialogOpen(true);
+                        };
+                        const hasLineDetail = (type: RevenueType) => type === 'global_paid';
+                        const renderCell = (type: RevenueType, value: number) => (
+                          <td className={cellClass(type)} onClick={() => toggleUnconfirmed(type)}>
+                            <span className="inline-flex items-center gap-1 justify-end">
+                              {fmt(value)}
+                              {hasLineDetail(type) && value > 0 && (
+                                <button
+                                  onClick={(e) => openLineDialog(type, e)}
+                                  className="text-muted-foreground hover:text-primary"
+                                  title="상세 보기"
+                                >
+                                  <Search className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                          </td>
+                        );
                         return (
                           <React.Fragment key={r.month}>
                             <tr className="border-b hover:bg-muted/50">
@@ -298,11 +326,11 @@ export default function WorkDetailPage() {
                                 {r.month}
                                 {unc.length > 0 && <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 text-orange-500 border-orange-300">미확정 {unc.length}</Badge>}
                               </td>
-                              <td className={cellClass('domestic_paid')} onClick={() => toggleUnconfirmed('domestic_paid')}>{fmt(r.domestic_paid)}</td>
-                              <td className={cellClass('global_paid')} onClick={() => toggleUnconfirmed('global_paid')}>{fmt(r.global_paid)}</td>
-                              <td className={cellClass('domestic_ad')} onClick={() => toggleUnconfirmed('domestic_ad')}>{fmt(r.domestic_ad)}</td>
-                              <td className={cellClass('global_ad')} onClick={() => toggleUnconfirmed('global_ad')}>{fmt(r.global_ad)}</td>
-                              <td className={cellClass('secondary')} onClick={() => toggleUnconfirmed('secondary')}>{fmt(r.secondary)}</td>
+                              {renderCell('domestic_paid', r.domestic_paid)}
+                              {renderCell('global_paid', r.global_paid)}
+                              {renderCell('domestic_ad', r.domestic_ad)}
+                              {renderCell('global_ad', r.global_ad)}
+                              {renderCell('secondary', r.secondary)}
                               <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(r.total + adjTotal)}</td>
                             </tr>
                             {monthAdjs.map((adj) => (
@@ -544,6 +572,19 @@ export default function WorkDetailPage() {
               </div>
             </DialogContent>
           </Dialog>
+
+          {work && (
+            <RevenueLineDialog
+              open={lineDialogOpen}
+              onOpenChange={setLineDialogOpen}
+              workId={workId}
+              workName={work.name}
+              month={lineDialogMonth}
+              revenueType={lineDialogType}
+              canManage={canManage}
+              onUpdated={load}
+            />
+          )}
         </>
       )}
     </div>
