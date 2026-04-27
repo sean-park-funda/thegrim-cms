@@ -841,7 +841,12 @@ export default function PartnerDetailPage() {
                   {/* 2. 지급상세내역 */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold">2. 지급상세내역</h4>
-                    {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') && statement.tax_invoice ? (
+                    {(statement.partner.partner_type === 'domestic_corp' || statement.partner.partner_type === 'naver') && statement.tax_invoice ? (() => {
+                        const totalMgAdj = statement.works?.reduce((s: number, w: any) => s + (w.mg_deduction_adjustment_total || 0), 0) || 0;
+                        const preMgDeduction = statement.total_mg_deduction - totalMgAdj;
+                        const preAdjPayment = (statement.tax_invoice_total || 0) - preMgDeduction;
+                        const hasMgAdj = totalMgAdj !== 0;
+                        return (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -875,18 +880,26 @@ export default function PartnerDetailPage() {
                           <table className="w-full text-sm mt-2">
                             <tbody>
                               <tr className="border-b">
-                                <td className="py-1.5 px-3 text-muted-foreground">MG 차감</td>
-                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{statement.total_mg_deduction.toLocaleString()}</td>
+                                <td className="py-1.5 px-3 text-muted-foreground">MG차감대상</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{preMgDeduction.toLocaleString()}</td>
                               </tr>
                             </tbody>
                           </table>
                         )}
                         <div className="flex justify-between items-center mt-3 pt-2 border-t-2">
                           <span className="font-semibold">지급액</span>
-                          <span className="text-lg font-bold tabular-nums">{statement.final_payment.toLocaleString()}</span>
+                          {hasMgAdj ? (
+                            <div className="text-right">
+                              <span className="text-lg font-bold tabular-nums">{preAdjPayment.toLocaleString()}</span>
+                              <div className="text-xs text-muted-foreground">MG조정 반영 후 실지급: {statement.final_payment.toLocaleString()}원</div>
+                            </div>
+                          ) : (
+                            <span className="text-lg font-bold tabular-nums">{statement.final_payment.toLocaleString()}</span>
+                          )}
                         </div>
                       </div>
-                    ) : (
+                        );
+                      })() : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
