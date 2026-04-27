@@ -155,6 +155,7 @@ export interface PartnerComputeInput {
   laborCostWorkLinks: LaborCostWorkLink[];
   laborCostWpData: LaborCostWpData[];
   mgHistory?: MgHistoryEntry[];
+  insuranceExempt?: boolean;
 }
 
 // ─── 출력 타입 ──────────────────────────────────────────────
@@ -470,7 +471,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
           preSerialActiveNetShare += Math.max(0, w.work_total_net_share);
         }
       }
-      const preInsurance = calculateInsurance(preSerialActiveNetShare, partner.partner_type, {
+      const preInsurance = input.insuranceExempt ? 0 : calculateInsurance(preSerialActiveNetShare, partner.partner_type, {
         reportType: partner.report_type ?? null,
         isForeign: partner.is_foreign ?? false,
       });
@@ -602,7 +603,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       serialActiveNetShare += Math.max(0, w.work_total_net_share);
     }
   }
-  const insurance = calculateInsurance(serialActiveNetShare, partner.partner_type, {
+  const insurance = input.insuranceExempt ? 0 : calculateInsurance(serialActiveNetShare, partner.partner_type, {
     reportType: partner.report_type ?? null,
     isForeign: partner.is_foreign ?? false,
   });

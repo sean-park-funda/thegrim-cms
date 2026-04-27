@@ -293,6 +293,56 @@ export default function PartnerDetailPage() {
     }
   };
 
+  // 예고료 면제
+  const [insuranceExemption, setInsuranceExemption] = useState<{ id: string; reason: string | null } | null>(null);
+  const [insExemptDialogOpen, setInsExemptDialogOpen] = useState(false);
+  const [insExemptReason, setInsExemptReason] = useState('');
+  const [insExemptSaving, setInsExemptSaving] = useState(false);
+
+  const loadInsuranceExemption = async (month: string) => {
+    const res = await settlementFetch(`/api/accounting/settlement/insurance-exemptions?partner_id=${partnerId}&month=${month}`);
+    if (res.ok) {
+      const data = await res.json();
+      const exemptions = data.exemptions || [];
+      setInsuranceExemption(exemptions.length > 0 ? { id: exemptions[0].id, reason: exemptions[0].reason } : null);
+    }
+  };
+
+  const handleAddInsuranceExemption = async () => {
+    if (!statement) return;
+    setInsExemptSaving(true);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/insurance-exemptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partner_id: partnerId, month: statement.month, reason: insExemptReason || null }),
+      });
+      if (res.ok) {
+        setInsExemptDialogOpen(false);
+        setInsExemptReason('');
+        await loadInsuranceExemption(statement.month);
+        // reload statement
+        const stRes = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+        if (stRes.ok) setStatement(await stRes.json());
+      }
+    } finally {
+      setInsExemptSaving(false);
+    }
+  };
+
+  const handleRemoveInsuranceExemption = async () => {
+    if (!insuranceExemption || !statement) return;
+    if (!confirm('예고료 면제를 해제하시겠습니까?')) return;
+    await settlementFetch('/api/accounting/settlement/insurance-exemptions', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: insuranceExemption.id }),
+    });
+    setInsuranceExemption(null);
+    const stRes = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+    if (stRes.ok) setStatement(await stRes.json());
+  };
+
   const [mgDialogOpen, setMgDialogOpen] = useState(false);
   const [mgWorkId, setMgWorkId] = useState('');
   const [mgAmount, setMgAmount] = useState('');
@@ -413,6 +463,7 @@ export default function PartnerDetailPage() {
     }
     loadStatement();
     loadPartnerSalary();
+    loadInsuranceExemption(selectedMonth);
   }, [profile, partnerId, selectedMonth]);
 
   const handleUpdate = async (data: Partial<RsPartner>) => {
@@ -918,8 +969,11 @@ export default function PartnerDetailPage() {
                                 <th className="py-2 px-3 font-medium text-right">지방세 (10%)</th>
                               </>
                             )}
-                            {statement.insurance > 0 && (
-                              <th className="py-2 px-3 font-medium text-right">예고료</th>
+                            {(statement.insurance > 0 || insuranceExemption) && (
+                              <th className="py-2 px-3 font-medium text-right">
+                                예고료
+                                {insuranceExemption && <span className="ml-1 text-xs text-orange-500">(면제)</span>}
+                              </th>
                             )}
                             {statement.total_mg_deduction > 0 && (
                               <th className="py-2 px-3 font-medium text-right">MG 차감</th>
@@ -945,9 +999,9 @@ export default function PartnerDetailPage() {
                                 {statement.tax_breakdown.local_tax > 0 ? `-${statement.tax_breakdown.local_tax.toLocaleString()}` : '0'}
                               </td>
                             </>
-                            {statement.insurance > 0 && (
+                            {(statement.insurance > 0 || insuranceExemption) && (
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
-                                -{statement.insurance.toLocaleString()}
+                                {insuranceExemption ? <span className="text-orange-500">면제</span> : `-${statement.insurance.toLocaleString()}`}
                               </td>
                             )}
                             {statement.total_mg_deduction > 0 && (
@@ -967,6 +1021,26 @@ export default function PartnerDetailPage() {
                     </div>
                     )}
                   </div>
+
+                  {/* 예고료 면제 토글 */}
+                  {canManage && statement.partner.partner_type !== 'domestic_corp' && statement.partner.partner_type !== 'naver' && (
+                    <div className="mt-2 flex items-center gap-2 text-sm">
+                      {insuranceExemption ? (
+                        <>
+                          <Badge variant="outline" className="text-orange-600 border-orange-300">
+                            예고료 면제{insuranceExemption.reason ? ` — ${insuranceExemption.reason}` : ''}
+                          </Badge>
+                          <Button variant="ghost" size="sm" className="h-6 text-xs text-red-500" onClick={handleRemoveInsuranceExemption}>
+                            해제
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => setInsExemptDialogOpen(true)}>
+                          + 예고료 면제
+                        </Button>
+                      )}
+                    </div>
+                  )}
 
                   {/* 인건비→MG 전환 안내 */}
                   {statement.total_mg_from_labor_cost > 0 && (
@@ -1430,6 +1504,33 @@ export default function PartnerDetailPage() {
               <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>취소</Button>
               <Button onClick={handleAddAdjustment} disabled={adjSaving || !adjLabel || !adjAmount}>
                 {adjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={insExemptDialogOpen} onOpenChange={setInsExemptDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>예고료 면제 등록</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {selectedMonth}월 예고료를 면제합니다. 해당 월에만 적용됩니다.
+            </p>
+            <div>
+              <Label>사유 (선택)</Label>
+              <Input
+                value={insExemptReason}
+                onChange={(e) => setInsExemptReason(e.target.value)}
+                placeholder="예: 특약에 의한 면제"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setInsExemptDialogOpen(false)}>취소</Button>
+              <Button onClick={handleAddInsuranceExemption} disabled={insExemptSaving}>
+                {insExemptSaving ? '등록 중...' : '면제 등록'}
               </Button>
             </div>
           </div>

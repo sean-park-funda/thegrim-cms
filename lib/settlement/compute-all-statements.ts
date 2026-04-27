@@ -70,6 +70,7 @@ export async function computeAllStatements(
     { data: allMgEntries },
     { data: allPartnerItemLinks },
     { data: confirmedSettlements },
+    { data: allInsuranceExemptions },
   ] = await Promise.all([
     supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
     supabase.from('rs_settlement_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
@@ -77,6 +78,7 @@ export async function computeAllStatements(
     supabase.from('rs_mg_entries').select('id, partner_id, amount, withheld_tax, contracted_at, note').in('partner_id', partnerIds),
     supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('partner_id', partnerIds),
     supabase.from('rs_settlements').select('partner_id').eq('month', month).eq('status', 'confirmed'),
+    supabase.from('rs_insurance_exemptions').select('partner_id, reason').eq('month', month).in('partner_id', partnerIds),
   ]);
 
   // MG entry 관련 벌크 조회
@@ -94,6 +96,7 @@ export async function computeAllStatements(
   }
 
   const confirmedPartnerIds = new Set((confirmedSettlements || []).map((s: any) => s.partner_id));
+  const insuranceExemptPartnerIds = new Set((allInsuranceExemptions || []).map((e: any) => e.partner_id));
 
   // 인건비 벌크
   const allItemIds = [...new Set((allPartnerItemLinks || []).map((l: any) => l.item_id))] as string[];
@@ -267,6 +270,7 @@ export async function computeAllStatements(
       laborCostPartnerLinks: allLaborPartnerLinks.filter(l => myItemIds.has(l.item_id)),
       laborCostWorkLinks: allLaborWorkLinks.filter(l => myItemIds.has(l.item_id)),
       laborCostWpData: allLaborWpData,
+      insuranceExempt: insuranceExemptPartnerIds.has(partnerId),
     };
 
     const result = computeStatement(input);

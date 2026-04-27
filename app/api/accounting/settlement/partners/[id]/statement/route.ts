@@ -98,11 +98,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { data: revAdjustments },
       { data: adjustmentItems },
       { data: mgDeductionAdjItems },
+      { data: insuranceExemptions },
     ] = await Promise.all([
       supabase.from('rs_revenues').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_mg_deduction_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
+      supabase.from('rs_insurance_exemptions').select('id').eq('partner_id', id).eq('month', month).limit(1),
     ]);
 
     const revenueData: RevenueData[] = (revenues || []).map(r => ({
@@ -240,6 +242,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       laborCostPartnerLinks,
       laborCostWorkLinks,
       laborCostWpData,
+      insuranceExempt: (insuranceExemptions || []).length > 0,
     };
 
     const result = computeStatement(input);
