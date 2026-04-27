@@ -460,15 +460,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
 
-      // withheld_tax 엔트리와 일반 엔트리 분리
-      const withheldRemaining = entries.filter(e => e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
-      const normalRemaining = entries.filter(e => !e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
-
-      // withheld 엔트리: 이미 원천징수됨 → subtotal 전액까지 차감 가능
-      const withheldCap = Math.max(0, preSubtotal);
-      withheldMgDeduction = Math.min(withheldRemaining, withheldCap);
-
-      // 예고료: withheld 차감 후 남은 금액 기준 (실제 지급분에만 적용)
+      // 예고료: 항상 순수익 전체 기준 (withheld MG와 무관)
       let preSerialActiveNetShare = 0;
       for (const w of mgEligibleWorks) {
         const wk = workPartners.find(wp => wp.work_id === w.work_id);
@@ -478,21 +470,21 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
           preSerialActiveNetShare += Math.max(0, w.work_total_net_share);
         }
       }
-      const preInsuranceBasis = Math.max(0, preSerialActiveNetShare - withheldMgDeduction);
-      const preInsurance = calculateInsurance(preInsuranceBasis, partner.partner_type, {
+      const preInsurance = calculateInsurance(preSerialActiveNetShare, partner.partner_type, {
         reportType: partner.report_type ?? null,
         isForeign: partner.is_foreign ?? false,
       });
 
-      // 세금: withheld 차감분만 과세 대상에서 제외 (예고료는 빼지 않음)
+      // withheld 세금 면제: 이미 원천징수됨 → subtotal 전액까지 면제 가능
+      const withheldRemaining = entries.filter(e => e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
+      withheldMgDeduction = Math.min(Math.max(0, withheldRemaining), preSubtotal);
+
+      // 세금: withheld 면제분만 과세 대상에서 제외 (예고료는 빼지 않음)
       const preTaxable = Math.max(0, preSubtotal - withheldMgDeduction);
       const preTax = calculateTax(preTaxable, partner.partner_type, preTaxType);
 
-      // 일반 엔트리: 세금 차감 후 남은 금액에서 차감
-      const normalCap = Math.max(0, preSubtotal - preInsurance - withheldMgDeduction - preTax.total);
-      const normalDeduction = Math.min(normalRemaining, normalCap);
-
-      totalCap = withheldMgDeduction + normalDeduction;
+      // MG 차감 상한 = 순수익 - 예고료 - 세금
+      totalCap = Math.max(0, preSubtotal - preInsurance - preTax.total);
     }
 
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
@@ -600,7 +592,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감
   const total_mg_deduction = total_mg_raw;
 
-  // 예고료: withheld 차감 후 남은 금액 기준 (실제 지급분에만 적용)
+  // 예고료: 항상 순수익 전체 기준 (withheld MG와 무관, 세금 차감 전)
   let serialActiveNetShare = 0;
   for (const w of works_final) {
     const wk = workPartners.find(wp => wp.work_id === w.work_id);
@@ -610,8 +602,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       serialActiveNetShare += Math.max(0, w.work_total_net_share);
     }
   }
-  const insuranceBasis = Math.max(0, serialActiveNetShare - withheldMgDeduction);
-  const insurance = calculateInsurance(insuranceBasis, partner.partner_type, {
+  const insurance = calculateInsurance(serialActiveNetShare, partner.partner_type, {
     reportType: partner.report_type ?? null,
     isForeign: partner.is_foreign ?? false,
   });
