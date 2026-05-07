@@ -647,8 +647,8 @@ function CharacterCard({
           </div>
         )}
 
-        {/* 케밥 메뉴 */}
-        {profile && (canEditContent(profile.role as 'admin' | 'manager' | 'staff' | 'viewer') || canDeleteContent(profile.role as 'admin' | 'manager' | 'staff' | 'viewer')) && (
+        {/* 케밥 메뉴 — 로그인한 모든 사용자에게 표시 */}
+        {profile && (
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
