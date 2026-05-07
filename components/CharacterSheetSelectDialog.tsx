@@ -149,7 +149,7 @@ export function CharacterSheetSelectDialog({
               <div className="px-4 py-2 border-b bg-muted/50">
                 <h3 className="text-sm font-medium">캐릭터 선택</h3>
               </div>
-              <ScrollArea className="flex-1">
+              <ScrollArea className="flex-1 min-h-0 overflow-hidden">
                 {loading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -196,7 +196,7 @@ export function CharacterSheetSelectDialog({
                   {selectedCharacter ? `${selectedCharacter.name} - 캐릭터시트` : '캐릭터를 선택하세요'}
                 </h3>
               </div>
-              <ScrollArea className="flex-1">
+              <ScrollArea className="flex-1 min-h-0 overflow-hidden">
                 {selectedCharacter && availableSheets.length > 0 ? (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 p-3">
                     {availableSheets.map((sheet) => {
