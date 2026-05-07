@@ -145,7 +145,7 @@ export function CharacterSheetSelectDialog({
         <div className="flex-1 overflow-hidden flex flex-col gap-4">
           <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
             {/* 왼쪽: 캐릭터 목록 */}
-            <div className="flex flex-col border rounded-lg overflow-hidden">
+            <div className="flex flex-col border rounded-lg overflow-hidden min-h-0">
               <div className="px-4 py-2 border-b bg-muted/50">
                 <h3 className="text-sm font-medium">캐릭터 선택</h3>
               </div>
@@ -190,7 +190,7 @@ export function CharacterSheetSelectDialog({
             </div>
 
             {/* 오른쪽: 캐릭터시트 목록 */}
-            <div className="flex flex-col border rounded-lg overflow-hidden">
+            <div className="flex flex-col border rounded-lg overflow-hidden min-h-0">
               <div className="px-4 py-2 border-b bg-muted/50">
                 <h3 className="text-sm font-medium">
                   {selectedCharacter ? `${selectedCharacter.name} - 캐릭터시트` : '캐릭터를 선택하세요'}
