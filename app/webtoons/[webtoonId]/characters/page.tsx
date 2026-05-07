@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { Plus, User, Edit, Trash2, Image, MoreVertical, Sparkles, Loader2, Folder, FolderPlus, FolderOpen, GripVertical, X, Check, ArrowLeft } from 'lucide-react';
+import { Plus, User, Edit, Trash2, Image, MoreVertical, Sparkles, Loader2, Folder, FolderPlus, FolderOpen, GripVertical, X, Check, ArrowLeft, Layers } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Webtoon, CharacterWithSheets, CharacterFolderWithCount } from '@/lib/supabase';
 import { getCharactersByWebtoon, deleteCharacter } from '@/lib/api/characters';
@@ -13,6 +13,7 @@ import { getCharacterFoldersByWebtoon, createCharacterFolder, updateCharacterFol
 import { getWebtoon } from '@/lib/api/webtoons';
 import { CharacterEditDialog } from '@/components/CharacterEditDialog';
 import { CharacterSheetDialog } from '@/components/CharacterSheetDialog';
+import { CharacterComposerDialog } from '@/components/CharacterComposerDialog';
 import { useStore } from '@/lib/store/useStore';
 import { canCreateContent, canEditContent, canDeleteContent } from '@/lib/utils/permissions';
 
@@ -31,6 +32,8 @@ export default function CharactersPage() {
   const [editingCharacter, setEditingCharacter] = useState<CharacterWithSheets | null>(null);
   const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterWithSheets | null>(null);
+  const [composerDialogOpen, setComposerDialogOpen] = useState(false);
+  const [composerCharacter, setComposerCharacter] = useState<CharacterWithSheets | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
@@ -129,6 +132,18 @@ export default function CharactersPage() {
 
   const handleSheetDialogClose = () => {
     setSheetDialogOpen(false);
+    if (isMountedRef.current) {
+      loadData();
+    }
+  };
+
+  const handleOpenComposer = (character: CharacterWithSheets) => {
+    setComposerCharacter(character);
+    setComposerDialogOpen(true);
+  };
+
+  const handleComposerClose = () => {
+    setComposerDialogOpen(false);
     if (isMountedRef.current) {
       loadData();
     }
@@ -502,6 +517,7 @@ export default function CharactersPage() {
                     onEdit={() => handleEditCharacter(character)}
                     onDelete={() => handleDeleteCharacter(character)}
                     onManageSheets={() => handleManageSheets(character)}
+                    onOpenComposer={() => handleOpenComposer(character)}
                     onImageGenerated={loadData}
                     profile={profile}
                     onDragStart={handleDragStart}
@@ -532,6 +548,15 @@ export default function CharactersPage() {
           character={selectedCharacter}
         />
       )}
+
+      {/* 캐릭터시트 컴포저 다이얼로그 */}
+      {composerCharacter && (
+        <CharacterComposerDialog
+          open={composerDialogOpen}
+          onOpenChange={handleComposerClose}
+          character={composerCharacter}
+        />
+      )}
     </div>
   );
 }
@@ -542,6 +567,7 @@ interface CharacterCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onManageSheets: () => void;
+  onOpenComposer: () => void;
   onImageGenerated: () => void;
   profile: { role: string } | null;
   onDragStart: (e: React.DragEvent, characterId: string) => void;
@@ -549,12 +575,13 @@ interface CharacterCardProps {
   isDragging: boolean;
 }
 
-function CharacterCard({ 
-  character, 
-  onEdit, 
-  onDelete, 
-  onManageSheets, 
-  onImageGenerated, 
+function CharacterCard({
+  character,
+  onEdit,
+  onDelete,
+  onManageSheets,
+  onOpenComposer,
+  onImageGenerated,
   profile,
   onDragStart,
   onDragEnd,
@@ -637,6 +664,10 @@ function CharacterCard({
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onManageSheets(); }}>
                   <Image className="h-4 w-4 mr-2" />
                   캐릭터 시트 관리
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenComposer(); }}>
+                  <Layers className="h-4 w-4 mr-2" />
+                  시트 컴포저
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleGenerateImage(e); }} disabled={generatingImage}>
                   <Sparkles className="h-4 w-4 mr-2" />
