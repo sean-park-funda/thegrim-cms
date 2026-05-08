@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
-import { ReferenceImage } from '@/app/api/compose-character-sheet/route';
+import type { ReferenceImage } from '@/lib/types/compose';
 
 interface RefImage extends ReferenceImage {
   id: string;        // 클라이언트 임시 ID

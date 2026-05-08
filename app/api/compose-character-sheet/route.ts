@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { ReferenceImage } from '@/lib/types/compose';
+
+export type { ReferenceImage };
 
 const FAL_KEY = process.env.FAL_KEY;
 const FAL_QUEUE_URL = 'https://queue.fal.run/fal-ai/openai/gpt-image-2/edit';
-
-export interface ReferenceImage {
-  base64: string;
-  mimeType: string;
-  instruction?: string;
-}
 
 interface ComposeRequest {
   baseSheetUrl: string;       // Supabase public URL for base sheet

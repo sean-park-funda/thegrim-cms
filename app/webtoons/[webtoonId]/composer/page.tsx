@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeft, Plus, Sparkles, Loader2, X, Check, Shirt, Package,
-  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, ChevronDown,
+  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon,
 } from 'lucide-react';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
@@ -20,13 +20,11 @@ import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceI
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
 import { useStore } from '@/lib/store/useStore';
 
-// ─── 타입 ─────────────────────────────────────
 interface EquippedItem {
   item: ReferenceItem;
   instruction: string;
 }
 
-// ─── 상태 텍스트 ───────────────────────────────
 function StatusLabel({ status, queuePosition }: { status: string; queuePosition: number | null }) {
   if (status === 'submitting') return <>요청 전송 중...</>;
   if (status === 'queued') return <>큐 대기{queuePosition != null ? ` (${queuePosition + 1}번째)` : ''}…</>;
@@ -45,14 +43,15 @@ export default function ComposerPage() {
   const [selectedChar, setSelectedChar] = useState<CharacterWithSheets | null>(null);
   const [selectedSheet, setSelectedSheet] = useState<CharacterSheet | null>(null);
   const [loadingChars, setLoadingChars] = useState(true);
+  const [charFilter, setCharFilter] = useState<string>('all');
 
   // ─── 레퍼런스 아이템 리포지터리 ───────────────
   const [items, setItems] = useState<ReferenceItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'outfit' | 'prop'>('outfit');
   const [loadingItems, setLoadingItems] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [outfitSearch, setOutfitSearch] = useState('');
+  const [propSearch, setPropSearch] = useState('');
 
-  // ─── 장착된 아이템 ─────────────────────────────
+  // ─── 선택된 아이템 (멀티셀렉트) ──────────────
   const [equipped, setEquipped] = useState<EquippedItem[]>([]);
   const [globalInstruction, setGlobalInstruction] = useState('');
 
@@ -77,12 +76,13 @@ export default function ComposerPage() {
   const [refineInstruction, setRefineInstruction] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // ─── 데이터 로드 ──────────────────────────────
+  // ─── 마운트 ───────────────────────────────────
   useEffect(() => {
     _isMountedRef.current = true;
     return () => { _isMountedRef.current = false; };
   }, []);
 
+  // ─── 캐릭터 로드 ──────────────────────────────
   useEffect(() => {
     if (!webtoonId) return;
     setLoadingChars(true);
@@ -91,14 +91,14 @@ export default function ComposerPage() {
         setCharacters(data);
         if (data.length > 0) {
           setSelectedChar(data[0]);
-          const firstSheet = data[0].character_sheets?.[0] ?? null;
-          setSelectedSheet(firstSheet);
+          setSelectedSheet(data[0].character_sheets?.[0] ?? null);
         }
       })
       .catch(console.error)
       .finally(() => setLoadingChars(false));
   }, [webtoonId]);
 
+  // ─── 아이템 로드 ──────────────────────────────
   const loadItems = useCallback(async () => {
     if (!webtoonId) return;
     setLoadingItems(true);
@@ -114,7 +114,7 @@ export default function ComposerPage() {
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
-  // ─── 캐릭터 변경 ──────────────────────────────
+  // ─── 캐릭터 선택 ──────────────────────────────
   const handleSelectChar = (char: CharacterWithSheets) => {
     setSelectedChar(char);
     setSelectedSheet(char.character_sheets?.[0] ?? null);
@@ -127,7 +127,7 @@ export default function ComposerPage() {
       const exists = prev.find(e => e.item.id === item.id);
       if (exists) return prev.filter(e => e.item.id !== item.id);
       if (prev.length >= 5) {
-        alert('레퍼런스는 최대 5개까지 장착 가능합니다.');
+        alert('레퍼런스는 최대 5개까지 선택 가능합니다.');
         return prev;
       }
       return [...prev, { item, instruction: '' }];
@@ -136,36 +136,32 @@ export default function ComposerPage() {
 
   const isEquipped = (itemId: string) => equipped.some(e => e.item.id === itemId);
 
+  const unequip = (itemId: string) => setEquipped(prev => prev.filter(e => e.item.id !== itemId));
+
   const updateInstruction = (itemId: string, value: string) =>
     setEquipped(prev => prev.map(e => e.item.id === itemId ? { ...e, instruction: value } : e));
 
-  const unequip = (itemId: string) => setEquipped(prev => prev.filter(e => e.item.id !== itemId));
-
-  // ─── 생성 ──────────────────────────────────────
+  // ─── 생성 ─────────────────────────────────────
   const handleCompose = async () => {
     if (!selectedSheet) return;
-    const outfitImages = equipped
-      .filter(e => e.item.type === 'outfit')
-      .map(e => ({ base64: '', mimeType: 'image/png', instruction: e.instruction || e.item.name, _url: e.item.file_path }));
-    const propImages = equipped
-      .filter(e => e.item.type === 'prop')
-      .map(e => ({ base64: '', mimeType: 'image/png', instruction: e.instruction || e.item.name, _url: e.item.file_path }));
-
-    // URL을 base64로 변환
     const toBase64 = async (url: string) => {
       const res = await fetch(url);
       const buf = await res.arrayBuffer();
       return { base64: Buffer.from(buf).toString('base64'), mimeType: res.headers.get('content-type') || 'image/png' };
     };
 
-    const outfitConverted = await Promise.all(outfitImages.map(async img => {
-      const { base64, mimeType } = await toBase64(img._url);
-      return { base64, mimeType, instruction: img.instruction };
-    }));
-    const propConverted = await Promise.all(propImages.map(async img => {
-      const { base64, mimeType } = await toBase64(img._url);
-      return { base64, mimeType, instruction: img.instruction };
-    }));
+    const outfitConverted = await Promise.all(
+      equipped.filter(e => e.item.type === 'outfit').map(async e => {
+        const { base64, mimeType } = await toBase64(e.item.file_path);
+        return { base64, mimeType, instruction: e.instruction || e.item.name };
+      })
+    );
+    const propConverted = await Promise.all(
+      equipped.filter(e => e.item.type === 'prop').map(async e => {
+        const { base64, mimeType } = await toBase64(e.item.file_path);
+        return { base64, mimeType, instruction: e.instruction || e.item.name };
+      })
+    );
 
     await compose({
       baseSheetUrl: selectedSheet.file_path,
@@ -209,7 +205,7 @@ export default function ComposerPage() {
     }
   };
 
-  // ─── 아이템 업로드 ────────────────────────────
+  // ─── 업로드 ───────────────────────────────────
   const handleUploadFile = (file: File) => {
     if (!file.type.startsWith('image/')) return;
     setUploadFile({ file, previewUrl: URL.createObjectURL(file) });
@@ -232,25 +228,18 @@ export default function ComposerPage() {
     }
   };
 
-  // ─── 아이템 수정본 생성 ───────────────────────
+  // ─── 수정본 생성 ──────────────────────────────
   const handleModifySubmit = async () => {
     if (!modifyDialog.item || !modifyInstruction.trim()) return;
     setModifying(true);
     try {
       const { requestId, parentItem, newName: suggestedName } = await modifyReferenceItem(
-        webtoonId,
-        modifyDialog.item.id,
-        modifyInstruction.trim(),
-        modifyName.trim() || undefined
+        webtoonId, modifyDialog.item.id, modifyInstruction.trim(), modifyName.trim() || undefined
       );
-
-      // 폴링해서 결과 저장 (별도 처리: 완료 후 리포지터리에 추가)
       alert('수정본을 생성 중입니다. 완료되면 자동으로 저장됩니다.');
       setModifyDialog({ open: false, item: null });
       setModifyInstruction('');
       setModifyName('');
-
-      // 백그라운드 폴링
       pollModifyResult(requestId, parentItem, modifyName.trim() || suggestedName);
     } catch (e) {
       alert(e instanceof Error ? e.message : '수정 요청 실패');
@@ -260,7 +249,6 @@ export default function ComposerPage() {
   };
 
   const pollModifyResult = async (requestId: string, parentItem: ReferenceItem, newName: string) => {
-    const FAL_BASE = 'https://queue.fal.run/fal-ai/openai/gpt-image-2';
     let attempts = 0;
     while (attempts < 36) {
       await new Promise(r => setTimeout(r, 10000));
@@ -269,29 +257,22 @@ export default function ComposerPage() {
         const statusRes = await fetch(`/api/compose-character-sheet/status?requestId=${requestId}`);
         const data = await statusRes.json();
         if (data.status === 'COMPLETED') {
-          // 결과를 새 reference_item으로 저장
           const res = await fetch(`/api/webtoons/${webtoonId}/reference-items`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              imageData: data.imageData,
-              mimeType: data.mimeType,
-              type: parentItem.type,
-              name: newName,
-              parentId: parentItem.id,
+              imageData: data.imageData, mimeType: data.mimeType,
+              type: parentItem.type, name: newName, parentId: parentItem.id,
             }),
           });
           if (res.ok) {
             const newItem = await res.json();
             setItems(prev => [newItem, ...prev]);
-            alert(`"${newName}" 수정본이 리포지터리에 추가되었습니다.`);
+            alert(`"${newName}" 수정본이 추가되었습니다.`);
           }
           return;
         }
-        if (data.status === 'FAILED') {
-          alert('수정본 생성에 실패했습니다.');
-          return;
-        }
+        if (data.status === 'FAILED') { alert('수정본 생성에 실패했습니다.'); return; }
       } catch { /* continue */ }
     }
     alert('수정본 생성 시간이 초과되었습니다.');
@@ -309,17 +290,20 @@ export default function ComposerPage() {
     }
   };
 
-  // ─── 필터링된 아이템 ──────────────────────────
-  const filteredItems = items.filter(i => {
-    if (i.type !== activeTab) return false;
-    if (!searchQuery.trim()) return true;
-    return i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (i.description || '').toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  // ─── 필터 ─────────────────────────────────────
+  const filteredChars = charFilter === 'all'
+    ? characters
+    : characters.filter(c => (c as any).role === charFilter || (c as any).category === charFilter);
+
+  const outfitItems = items.filter(i => i.type === 'outfit' &&
+    (!outfitSearch.trim() || i.name.toLowerCase().includes(outfitSearch.toLowerCase())));
+
+  const propItems = items.filter(i => i.type === 'prop' &&
+    (!propSearch.trim() || i.name.toLowerCase().includes(propSearch.toLowerCase())));
 
   const canCompose = !!selectedSheet && equipped.length > 0 && !isLoading;
 
-  // ─── 렌더 ─────────────────────────────────────
+  // ─── 로딩 ─────────────────────────────────────
   if (loadingChars) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -330,320 +314,385 @@ export default function ComposerPage() {
 
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col bg-background">
-      {/* ── 상단 헤더 ─────────────────────────── */}
+
+      {/* ── 상단 헤더 ─────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b bg-card">
         <Button variant="ghost" size="sm" onClick={() => router.back()} className="gap-1.5 text-muted-foreground">
           <ArrowLeft className="h-4 w-4" />
           돌아가기
         </Button>
-
         <div className="h-5 w-px bg-border" />
-
         <span className="text-sm font-semibold">캐릭터 드레스업</span>
-
-        {/* 캐릭터 선택 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1.5 h-8">
-              {selectedChar ? (
-                <>
-                  {selectedChar.character_sheets?.[0] && (
-                    <img src={selectedChar.character_sheets[0].file_path} className="w-5 h-5 rounded-full object-cover" alt="" />
-                  )}
-                  {selectedChar.name}
-                </>
-              ) : '캐릭터 선택'}
-              <ChevronDown className="h-3 w-3 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {characters.map(char => (
-              <DropdownMenuItem
-                key={char.id}
-                onClick={() => handleSelectChar(char)}
-                className="gap-2"
-              >
-                {char.character_sheets?.[0] && (
-                  <img src={char.character_sheets[0].file_path} className="w-6 h-6 rounded-full object-cover" alt="" />
-                )}
-                {char.name}
-                {selectedChar?.id === char.id && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* 베이스 시트 선택 */}
-        {selectedChar && (selectedChar.character_sheets?.length ?? 0) > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 h-8">
-                베이스 시트
-                <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {selectedChar.character_sheets!.map(sheet => (
-                <DropdownMenuItem
-                  key={sheet.id}
-                  onClick={() => setSelectedSheet(sheet)}
-                  className="gap-2"
-                >
-                  <img src={sheet.file_path} className="w-8 h-5 object-cover rounded" alt="" />
-                  <span className="truncate max-w-[140px] text-xs">{sheet.file_name}</span>
-                  {selectedSheet?.id === sheet.id && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        <div className="flex-1" />
-
-        {/* 생성 버튼 */}
-        <Button
-          onClick={handleCompose}
-          disabled={!canCompose}
-          size="sm"
-          className="gap-2 h-8 px-4"
-        >
-          {isLoading ? (
-            <><Loader2 className="h-3.5 w-3.5 animate-spin" /><StatusLabel status={status} queuePosition={queuePosition} /></>
-          ) : (
-            <><Sparkles className="h-3.5 w-3.5" />생성하기</>
-          )}
-        </Button>
       </div>
 
-      {/* ── 메인 영역 ─────────────────────────── */}
+      {/* ── 메인 3단 레이아웃 ──────────────────────── */}
       <div className="flex-1 flex min-h-0">
 
-        {/* ── 왼쪽: 캐릭터 스테이지 ─────────────── */}
-        <div className="w-[360px] flex-shrink-0 flex flex-col border-r bg-muted/20">
-          {/* 캐릭터시트 미리보기 */}
-          <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-            {selectedSheet ? (
-              <img
-                src={selectedSheet.file_path}
-                alt="base character sheet"
-                className="max-w-full max-h-full object-contain rounded-xl shadow-md"
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                <ImageIcon className="h-12 w-12 opacity-30" />
-                <p className="text-sm">캐릭터 시트를 선택하세요</p>
-              </div>
-            )}
+        {/* ────────────────────────────────────────────
+            왼쪽: 캐릭터 목록
+        ──────────────────────────────────────────── */}
+        <div className="w-[200px] flex-shrink-0 flex flex-col border-r bg-muted/20">
+          {/* 필터 */}
+          <div className="flex-shrink-0 p-2 border-b">
+            <Select value={charFilter} onValueChange={setCharFilter}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="전체" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 캐릭터</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          {/* 장착된 아이템 + 지시 */}
-          <div className="flex-shrink-0 border-t p-3 space-y-2 bg-card">
-            {equipped.length === 0 ? (
-              <p className="text-xs text-center text-muted-foreground py-2">
-                오른쪽에서 의상/소품을 선택하세요
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {equipped.map(({ item, instruction }) => (
-                  <div key={item.id} className="flex items-center gap-2 rounded-lg bg-muted/60 px-2 py-1.5">
-                    <img src={item.file_path} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className={`text-[10px] px-1 py-0.5 rounded ${item.type === 'outfit' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {item.type === 'outfit' ? '의상' : '소품'}
-                        </span>
-                        <span className="text-xs font-medium truncate">{item.name}</span>
-                      </div>
-                      <Input
-                        value={instruction}
-                        onChange={e => updateInstruction(item.id, e.target.value)}
-                        placeholder="지시 (예: 검정으로 변경)"
-                        className="h-6 text-xs mt-1 bg-background border-0 px-1 focus-visible:ring-0"
-                      />
-                    </div>
-                    <button onClick={() => unequip(item.id)} className="text-muted-foreground hover:text-destructive flex-shrink-0">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <Input
-              value={globalInstruction}
-              onChange={e => setGlobalInstruction(e.target.value)}
-              placeholder="전체 추가 지시 (예: 전체 톤을 어둡게)"
-              className="h-8 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* ── 가운데: 리포지터리 ─────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* 탭 + 검색 + 업로드 */}
-          <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 border-b bg-card">
-            <div className="flex rounded-lg border overflow-hidden">
-              <button
-                onClick={() => setActiveTab('outfit')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${activeTab === 'outfit' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-              >
-                <Shirt className="h-3.5 w-3.5" />
-                의상
-                <span className="text-xs opacity-70">({items.filter(i => i.type === 'outfit').length})</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('prop')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${activeTab === 'prop' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-              >
-                <Package className="h-3.5 w-3.5" />
-                소품
-                <span className="text-xs opacity-70">({items.filter(i => i.type === 'prop').length})</span>
-              </button>
-            </div>
-
-            <Input
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="검색..."
-              className="h-8 w-48 text-sm"
-            />
-
-            <div className="flex-1" />
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => setUploadDialog({ open: true, type: activeTab })}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {activeTab === 'outfit' ? '의상' : '소품'} 추가
-            </Button>
-          </div>
-
-          {/* 아이템 그리드 */}
+          {/* 캐릭터 카드 목록 */}
           <ScrollArea className="flex-1">
-            <div className="p-3">
-              {loadingItems ? (
-                <div className="flex items-center justify-center h-40">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-                  {activeTab === 'outfit' ? <Shirt className="h-10 w-10 opacity-20 mb-2" /> : <Package className="h-10 w-10 opacity-20 mb-2" />}
-                  <p className="text-sm">아이템이 없습니다</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 gap-1.5"
-                    onClick={() => setUploadDialog({ open: true, type: activeTab })}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    첫 번째 {activeTab === 'outfit' ? '의상' : '소품'} 추가
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
-                  {filteredItems.map(item => (
-                    <ItemCard
-                      key={item.id}
-                      item={item}
-                      equipped={isEquipped(item.id)}
-                      onToggle={() => toggleEquip(item)}
-                      onModify={() => {
-                        setModifyDialog({ open: true, item });
-                        setModifyInstruction('');
-                        setModifyName(`${item.name} (수정본)`);
-                      }}
-                      onDelete={() => handleDeleteItem(item)}
-                    />
-                  ))}
-                </div>
+            <div className="p-2 space-y-2">
+              {filteredChars.map(char => {
+                const thumb = char.character_sheets?.[0]?.file_path;
+                const isSelected = selectedChar?.id === char.id;
+                return (
+                  <div key={char.id}>
+                    <button
+                      onClick={() => handleSelectChar(char)}
+                      className={`w-full rounded-xl overflow-hidden border-2 transition-all duration-150 ${
+                        isSelected
+                          ? 'border-primary shadow-md shadow-primary/20'
+                          : 'border-border hover:border-primary/40'
+                      }`}
+                    >
+                      {/* 썸네일 */}
+                      <div className="aspect-[3/4] bg-muted relative">
+                        {thumb ? (
+                          <img src={thumb} alt={char.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ImageIcon className="h-8 w-8 opacity-20" />
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      {/* 이름 */}
+                      <div className="px-2 py-1.5 bg-card">
+                        <p className="text-xs font-medium text-center truncate">{char.name}</p>
+                      </div>
+                    </button>
+
+                    {/* 시트 선택 (해당 캐릭터가 선택됐고 시트 여러 개일 때) */}
+                    {isSelected && (char.character_sheets?.length ?? 0) > 1 && (
+                      <div className="mt-1.5 px-0.5">
+                        <Select
+                          value={selectedSheet?.id ?? ''}
+                          onValueChange={v => {
+                            const sheet = char.character_sheets?.find(s => s.id === v) ?? null;
+                            setSelectedSheet(sheet);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-[11px]">
+                            <SelectValue placeholder="시트 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {char.character_sheets!.map(sheet => (
+                              <SelectItem key={sheet.id} value={sheet.id} className="text-xs">
+                                {sheet.file_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {filteredChars.length === 0 && (
+                <p className="text-xs text-center text-muted-foreground py-8">캐릭터 없음</p>
               )}
             </div>
           </ScrollArea>
         </div>
 
-        {/* ── 오른쪽: 생성 결과 ──────────────────── */}
-        {(resultImage || isLoading || error) && (
-          <div className="w-[380px] flex-shrink-0 flex flex-col border-l bg-card">
-            <div className="flex-shrink-0 px-4 py-2 border-b flex items-center justify-between">
-              <span className="text-sm font-medium">생성 결과</span>
-              <button onClick={reset} className="text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
+        {/* ────────────────────────────────────────────
+            가운데: 의상 + 소품 리포지터리
+        ──────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-6">
+
+              {/* 의상 섹션 */}
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <Shirt className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm font-semibold">의상</span>
+                  <span className="text-xs text-muted-foreground">({items.filter(i => i.type === 'outfit').length})</span>
+                  <div className="flex-1" />
+                  <Input
+                    value={outfitSearch}
+                    onChange={e => setOutfitSearch(e.target.value)}
+                    placeholder="검색..."
+                    className="h-7 w-32 text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs px-2"
+                    onClick={() => setUploadDialog({ open: true, type: 'outfit' })}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    추가
+                  </Button>
+                </div>
+
+                {loadingItems ? (
+                  <div className="flex items-center justify-center h-24">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : outfitItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-24 text-muted-foreground border-2 border-dashed rounded-xl">
+                    <Shirt className="h-7 w-7 opacity-20 mb-1" />
+                    <p className="text-xs">의상이 없습니다</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+                    {outfitItems.map(item => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        equipped={isEquipped(item.id)}
+                        onToggle={() => toggleEquip(item)}
+                        onModify={() => {
+                          setModifyDialog({ open: true, item });
+                          setModifyInstruction('');
+                          setModifyName(`${item.name} (수정본)`);
+                        }}
+                        onDelete={() => handleDeleteItem(item)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* 소품 섹션 */}
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <Package className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm font-semibold">소품</span>
+                  <span className="text-xs text-muted-foreground">({items.filter(i => i.type === 'prop').length})</span>
+                  <div className="flex-1" />
+                  <Input
+                    value={propSearch}
+                    onChange={e => setPropSearch(e.target.value)}
+                    placeholder="검색..."
+                    className="h-7 w-32 text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs px-2"
+                    onClick={() => setUploadDialog({ open: true, type: 'prop' })}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    추가
+                  </Button>
+                </div>
+
+                {loadingItems ? (
+                  <div className="flex items-center justify-center h-24">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : propItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-24 text-muted-foreground border-2 border-dashed rounded-xl">
+                    <Package className="h-7 w-7 opacity-20 mb-1" />
+                    <p className="text-xs">소품이 없습니다</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+                    {propItems.map(item => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        equipped={isEquipped(item.id)}
+                        onToggle={() => toggleEquip(item)}
+                        onModify={() => {
+                          setModifyDialog({ open: true, item });
+                          setModifyInstruction('');
+                          setModifyName(`${item.name} (수정본)`);
+                        }}
+                        onDelete={() => handleDeleteItem(item)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* ────────────────────────────────────────────
+            오른쪽: 컴포즈 패널 (항상 표시)
+        ──────────────────────────────────────────── */}
+        <div className="w-[340px] flex-shrink-0 flex flex-col border-l bg-card">
+
+          {/* 선택된 아이템 + 지시 */}
+          <div className="flex-shrink-0 border-b">
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                선택된 아이템 ({equipped.length}/5)
+              </p>
+
+              {equipped.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-3 text-center">
+                  가운데에서 의상/소품을 선택하세요
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {equipped.map(({ item, instruction }) => (
+                    <div key={item.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+                      <img src={item.file_path} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
+                            item.type === 'outfit' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {item.type === 'outfit' ? '의상' : '소품'}
+                          </span>
+                          <span className="text-xs truncate">{item.name}</span>
+                        </div>
+                        <Input
+                          value={instruction}
+                          onChange={e => updateInstruction(item.id, e.target.value)}
+                          placeholder="지시 (예: 검정으로)"
+                          className="h-6 text-xs bg-background border-0 px-1 focus-visible:ring-0"
+                        />
+                      </div>
+                      <button onClick={() => unequip(item.id)} className="text-muted-foreground hover:text-destructive">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Input
+                value={globalInstruction}
+                onChange={e => setGlobalInstruction(e.target.value)}
+                placeholder="전체 지시 (예: 어두운 톤으로)"
+                className="h-8 text-xs mt-3"
+              />
             </div>
 
-            <div className="flex-1 overflow-auto p-4 space-y-3">
+            {/* 생성 버튼 */}
+            <div className="px-4 pb-4">
+              <Button
+                onClick={handleCompose}
+                disabled={!canCompose}
+                className="w-full gap-2 h-10"
+                size="default"
+              >
+                {isLoading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /><StatusLabel status={status} queuePosition={queuePosition} /></>
+                ) : (
+                  <><Sparkles className="h-4 w-4" />시트 만들기</>
+                )}
+              </Button>
+              {!selectedSheet && (
+                <p className="text-[11px] text-center text-muted-foreground mt-1.5">
+                  캐릭터를 선택하세요
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 생성 결과 */}
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
               {error && (
-                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
                   {error}
                 </div>
               )}
 
-              {resultImage ? (
-                <img
-                  src={`data:${resultImage.mimeType};base64,${resultImage.base64}`}
-                  alt="결과"
-                  className="w-full rounded-xl border shadow-sm"
-                />
-              ) : isLoading ? (
+              {isLoading && !resultImage && (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
                   <div className="text-sm"><StatusLabel status={status} queuePosition={queuePosition} /></div>
                   <p className="text-xs opacity-60">약 2~4분 소요됩니다</p>
                 </div>
-              ) : null}
+              )}
 
-              {isLoading && resultImage && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <StatusLabel status={status} queuePosition={queuePosition} />
+              {resultImage && (
+                <>
+                  <div className="relative">
+                    <img
+                      src={`data:${resultImage.mimeType};base64,${resultImage.base64}`}
+                      alt="결과"
+                      className="w-full rounded-xl border shadow-sm"
+                    />
+                    <button
+                      onClick={reset}
+                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background shadow"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    {isLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-xl">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 수정 입력 */}
+                  <div className="flex gap-2">
+                    <Input
+                      value={refineInstruction}
+                      onChange={e => setRefineInstruction(e.target.value)}
+                      placeholder="수정 지시 (예: 숄 색상 더 진하게)"
+                      className="flex-1 text-xs h-8"
+                      onKeyDown={e => { if (e.key === 'Enter' && refineInstruction.trim() && !isLoading) handleRefine(); }}
+                      disabled={isLoading}
+                    />
+                    <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={handleRefine}
+                      disabled={!refineInstruction.trim() || isLoading}>
+                      <RefreshCw className="h-3 w-3" />
+                      수정
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 h-8 gap-1" onClick={handleCompose} disabled={!canCompose}>
+                      <Sparkles className="h-3 w-3" />
+                      재생성
+                    </Button>
+                    <Button size="sm" className="flex-1 h-8 gap-1" onClick={handleSave} disabled={saving || isLoading}>
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      시트로 저장
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {!resultImage && !isLoading && !error && (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+                  <Sparkles className="h-10 w-10 opacity-15 mb-2" />
+                  <p className="text-xs">생성 결과가 여기에 표시됩니다</p>
                 </div>
               )}
             </div>
-
-            {resultImage && (
-              <div className="flex-shrink-0 border-t p-3 space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    value={refineInstruction}
-                    onChange={e => setRefineInstruction(e.target.value)}
-                    placeholder="수정 지시 (예: 숄 색상을 더 진하게)"
-                    className="flex-1 text-xs h-8"
-                    onKeyDown={e => { if (e.key === 'Enter' && refineInstruction.trim() && !isLoading) handleRefine(); }}
-                    disabled={isLoading}
-                  />
-                  <Button variant="outline" size="sm" className="h-8 gap-1" onClick={handleRefine}
-                    disabled={!refineInstruction.trim() || isLoading}>
-                    <RefreshCw className="h-3 w-3" />
-                    수정
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 h-8 gap-1" onClick={handleCompose} disabled={!canCompose}>
-                    <Sparkles className="h-3 w-3" />
-                    재생성
-                  </Button>
-                  <Button size="sm" className="flex-1 h-8 gap-1" onClick={handleSave} disabled={saving || isLoading}>
-                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                    시트로 저장
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          </ScrollArea>
+        </div>
       </div>
 
-      {/* ── 업로드 다이얼로그 ─────────────────── */}
+      {/* ── 업로드 다이얼로그 ─────────────────────── */}
       <Dialog open={uploadDialog.open} onOpenChange={o => { if (!o) { setUploadDialog(p => ({ ...p, open: false })); setUploadFile(null); setUploadName(''); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{uploadDialog.type === 'outfit' ? '의상' : '소품'} 추가</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* 드롭존 */}
             <div
               className="border-2 border-dashed rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
               onClick={() => uploadFileRef.current?.click()}
@@ -661,13 +710,11 @@ export default function ComposerPage() {
             </div>
             <input ref={uploadFileRef} type="file" accept="image/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }} />
-
             <Input
               value={uploadName}
               onChange={e => setUploadName(e.target.value)}
               placeholder="이름 (예: 군복 상의, 가죽 초커)"
             />
-
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setUploadDialog(p => ({ ...p, open: false }))}>취소</Button>
               <Button onClick={handleUploadSubmit} disabled={!uploadFile || !uploadName.trim() || uploading} className="gap-1.5">
@@ -679,7 +726,7 @@ export default function ComposerPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── 수정본 생성 다이얼로그 ────────────── */}
+      {/* ── 수정본 생성 다이얼로그 ────────────────── */}
       <Dialog open={modifyDialog.open} onOpenChange={o => setModifyDialog(p => ({ ...p, open: o }))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -707,9 +754,7 @@ export default function ComposerPage() {
               />
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setModifyDialog({ open: false, item: null })}>취소</Button>
-                <Button onClick={handleModifySubmit}
-                  disabled={!modifyInstruction.trim() || modifying}
-                  className="gap-1.5">
+                <Button onClick={handleModifySubmit} disabled={!modifyInstruction.trim() || modifying} className="gap-1.5">
                   {modifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   수정본 생성
                 </Button>
@@ -739,19 +784,16 @@ function ItemCard({
       }`}
       onClick={onToggle}
     >
-      {/* 이미지 */}
       <div className="aspect-square bg-muted">
         <img src={item.file_path} alt={item.name} className="w-full h-full object-cover" />
       </div>
 
-      {/* 장착 뱃지 */}
       {equipped && (
         <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow">
           <Check className="h-3 w-3 text-primary-foreground" />
         </div>
       )}
 
-      {/* 수정/삭제 버튼 — 호버 시 */}
       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={e => { e.stopPropagation(); onModify(); }}
@@ -769,12 +811,9 @@ function ItemCard({
         </button>
       </div>
 
-      {/* 이름 */}
       <div className="px-1.5 py-1 bg-card">
         <p className="text-[11px] text-center truncate">{item.name}</p>
-        {item.parent_id && (
-          <p className="text-[9px] text-center text-muted-foreground">수정본</p>
-        )}
+        {item.parent_id && <p className="text-[9px] text-center text-muted-foreground">수정본</p>}
       </div>
     </div>
   );

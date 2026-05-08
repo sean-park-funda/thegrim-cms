@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { ReferenceImage } from '@/app/api/compose-character-sheet/route';
+import type { ReferenceImage } from '@/lib/types/compose';
 
 export type ComposeStatus =
   | 'idle'
