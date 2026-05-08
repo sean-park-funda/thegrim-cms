@@ -72,13 +72,13 @@ export async function updateReferenceItem(
   return res.json();
 }
 
-// 수정본 생성 요청 (fal.ai 큐 반환)
+// 수정본 생성 (동기 — 완성된 ReferenceItem 반환)
 export async function modifyReferenceItem(
   webtoonId: string,
   itemId: string,
   instruction: string,
   newName?: string
-): Promise<{ requestId: string; parentItem: ReferenceItem; newName: string }> {
+): Promise<ReferenceItem> {
   const res = await fetch(`/api/webtoons/${webtoonId}/reference-items/${itemId}/modify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

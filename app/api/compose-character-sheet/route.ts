@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ReferenceImage } from '@/lib/types/compose';
+import { falGptImageEdit } from '@/lib/fal';
 
 export type { ReferenceImage };
-
-const FAL_KEY = process.env.FAL_KEY;
-const FAL_QUEUE_URL = 'https://queue.fal.run/fal-ai/openai/gpt-image-2/edit';
 
 interface ComposeRequest {
   baseSheetUrl: string;       // Supabase public URL for base sheet
@@ -61,10 +59,6 @@ function buildComposePrompt(
 }
 
 export async function POST(request: NextRequest) {
-  if (!FAL_KEY) {
-    return NextResponse.json({ error: 'FAL_KEY가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
   let body: ComposeRequest;
   try {
     body = await request.json();
@@ -93,40 +87,15 @@ export async function POST(request: NextRequest) {
 
   const prompt = buildComposePrompt(outfitImages, propImages, body.globalInstruction);
 
-  console.log('[compose-character-sheet] fal.ai 큐 제출 시작, 이미지 수:', imageUrls.length);
-
-  let response: Response;
   try {
-    response = await fetch(FAL_QUEUE_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        image_urls: imageUrls,
-        image_size: { width: 1920, height: 1080 },
-        quality: 'high',
-        n: 1,
-      }),
+    const result = await falGptImageEdit({
+      prompt,
+      imageUrls,
+      size: { width: 1920, height: 1080 },
     });
+    return NextResponse.json({ imageData: result.imageData, mimeType: result.mimeType });
   } catch (err) {
-    console.error('[compose-character-sheet] fal.ai 네트워크 오류:', err);
-    return NextResponse.json({ error: 'fal.ai 서버에 연결할 수 없습니다.' }, { status: 503 });
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[compose-character-sheet] fal.ai 오류:', response.status, errorText);
-    return NextResponse.json(
-      { error: `fal.ai 요청 실패 (${response.status}): ${errorText}` },
-      { status: 500 }
-    );
-  }
-
-  const data = await response.json();
-  console.log('[compose-character-sheet] 큐 제출 완료, request_id:', data.request_id);
-
-  return NextResponse.json({ requestId: data.request_id });
 }

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeft, Plus, Sparkles, Loader2, X, Check, Shirt, Package,
-  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon,
+  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2,
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -25,10 +25,8 @@ interface EquippedItem {
   instruction: string;
 }
 
-function StatusLabel({ status, queuePosition }: { status: string; queuePosition: number | null }) {
-  if (status === 'submitting') return <>요청 전송 중...</>;
-  if (status === 'queued') return <>큐 대기{queuePosition != null ? ` (${queuePosition + 1}번째)` : ''}…</>;
-  if (status === 'processing') return <>이미지 생성 중…</>;
+function StatusLabel({ status }: { status: string }) {
+  if (status === 'submitting') return <>이미지 생성 중… (최대 2분)</>;
   return null;
 }
 
@@ -57,10 +55,18 @@ export default function ComposerPage() {
 
   // ─── 업로드 다이얼로그 ─────────────────────────
   const [uploadDialog, setUploadDialog] = useState<{ open: boolean; type: 'outfit' | 'prop' }>({ open: false, type: 'outfit' });
+  const [uploadMode, setUploadMode] = useState<'direct' | 'generate'>('direct');
   const [uploadFile, setUploadFile] = useState<{ file: File; previewUrl: string } | null>(null);
   const [uploadName, setUploadName] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadFileRef = useRef<HTMLInputElement>(null);
+  // 생성형 추가
+  const [genRefFile, setGenRefFile] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [genInstruction, setGenInstruction] = useState('');
+  const [genName, setGenName] = useState('');
+  const [genLoading, setGenLoading] = useState(false);
+  const [genResult, setGenResult] = useState<{ base64: string; mimeType: string } | null>(null);
+  const genRefFileRef = useRef<HTMLInputElement>(null);
 
   // ─── 아이템 수정 다이얼로그 ───────────────────
   const [modifyDialog, setModifyDialog] = useState<{ open: boolean; item: ReferenceItem | null }>({ open: false, item: null });
@@ -69,7 +75,7 @@ export default function ComposerPage() {
   const [modifying, setModifying] = useState(false);
 
   // ─── 생성/수정 훅 ─────────────────────────────
-  const { status, resultImage, error, queuePosition, isLoading, compose, refine, reset, _isMountedRef } =
+  const { status, resultImage, error, isLoading, compose, refine, reset, _isMountedRef } =
     useComposeCharacterSheet();
 
   // ─── 결과 패널 ────────────────────────────────
@@ -228,54 +234,107 @@ export default function ComposerPage() {
     }
   };
 
-  // ─── 수정본 생성 ──────────────────────────────
+  // ─── 다이얼로그 닫기 리셋 ─────────────────────
+  const closeUploadDialog = () => {
+    setUploadDialog(p => ({ ...p, open: false }));
+    setUploadFile(null);
+    setUploadName('');
+    setUploadMode('direct');
+    setGenRefFile(null);
+    setGenInstruction('');
+    setGenName('');
+    setGenResult(null);
+  };
+
+  // ─── 생성형 추가: 레퍼런스 → 만화체 변환 ───────
+  const handleGenRefFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setGenRefFile({ file, previewUrl: URL.createObjectURL(file) });
+    if (!genName) setGenName(file.name.replace(/\.[^.]+$/, ''));
+    setGenResult(null);
+  };
+
+  const handleGenerate = async () => {
+    if (!genRefFile) return;
+    setGenLoading(true);
+    setGenResult(null);
+    try {
+      // 파일 → base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const dataUrl = e.target?.result as string;
+          resolve(dataUrl.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(genRefFile.file);
+      });
+
+      // 생성 요청 (Gemini — 동기 응답, 폴링 불필요)
+      const genRes = await fetch(`/api/webtoons/${webtoonId}/reference-items/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceImageBase64: base64,
+          mimeType: genRefFile.file.type || 'image/png',
+          characterSheetUrl: selectedSheet?.file_path ?? undefined,
+          additionalInstruction: genInstruction.trim() || undefined,
+        }),
+      });
+      if (!genRes.ok) {
+        const err = await genRes.json().catch(() => ({}));
+        throw new Error(err.error || '생성 요청 실패');
+      }
+      const { imageData, mimeType } = await genRes.json();
+      setGenResult({ base64: imageData, mimeType: mimeType ?? 'image/png' });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '생성 실패');
+      setGenLoading(false);
+    }
+  };
+
+  const handleGenSave = async () => {
+    if (!genResult || !genName.trim()) return;
+    setUploading(true);
+    try {
+      const res = await fetch(`/api/webtoons/${webtoonId}/reference-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageData: genResult.base64,
+          mimeType: genResult.mimeType,
+          type: uploadDialog.type,
+          name: genName.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error('저장 실패');
+      const newItem = await res.json();
+      setItems(prev => [newItem, ...prev]);
+      closeUploadDialog();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '저장 실패');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ─── 수정본 생성 (동기) ───────────────────────
   const handleModifySubmit = async () => {
     if (!modifyDialog.item || !modifyInstruction.trim()) return;
     setModifying(true);
     try {
-      const { requestId, parentItem, newName: suggestedName } = await modifyReferenceItem(
+      const newItem = await modifyReferenceItem(
         webtoonId, modifyDialog.item.id, modifyInstruction.trim(), modifyName.trim() || undefined
       );
-      alert('수정본을 생성 중입니다. 완료되면 자동으로 저장됩니다.');
+      setItems(prev => [newItem, ...prev]);
       setModifyDialog({ open: false, item: null });
       setModifyInstruction('');
       setModifyName('');
-      pollModifyResult(requestId, parentItem, modifyName.trim() || suggestedName);
     } catch (e) {
       alert(e instanceof Error ? e.message : '수정 요청 실패');
     } finally {
       setModifying(false);
     }
-  };
-
-  const pollModifyResult = async (requestId: string, parentItem: ReferenceItem, newName: string) => {
-    let attempts = 0;
-    while (attempts < 36) {
-      await new Promise(r => setTimeout(r, 10000));
-      attempts++;
-      try {
-        const statusRes = await fetch(`/api/compose-character-sheet/status?requestId=${requestId}`);
-        const data = await statusRes.json();
-        if (data.status === 'COMPLETED') {
-          const res = await fetch(`/api/webtoons/${webtoonId}/reference-items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imageData: data.imageData, mimeType: data.mimeType,
-              type: parentItem.type, name: newName, parentId: parentItem.id,
-            }),
-          });
-          if (res.ok) {
-            const newItem = await res.json();
-            setItems(prev => [newItem, ...prev]);
-            alert(`"${newName}" 수정본이 추가되었습니다.`);
-          }
-          return;
-        }
-        if (data.status === 'FAILED') { alert('수정본 생성에 실패했습니다.'); return; }
-      } catch { /* continue */ }
-    }
-    alert('수정본 생성 시간이 초과되었습니다.');
   };
 
   // ─── 아이템 삭제 ──────────────────────────────
@@ -594,7 +653,7 @@ export default function ComposerPage() {
                 size="default"
               >
                 {isLoading ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /><StatusLabel status={status} queuePosition={queuePosition} /></>
+                  <><Loader2 className="h-4 w-4 animate-spin" /><StatusLabel status={status} /></>
                 ) : (
                   <><Sparkles className="h-4 w-4" />시트 만들기</>
                 )}
@@ -619,7 +678,7 @@ export default function ComposerPage() {
               {isLoading && !resultImage && (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
-                  <div className="text-sm"><StatusLabel status={status} queuePosition={queuePosition} /></div>
+                  <div className="text-sm"><StatusLabel status={status} /></div>
                   <p className="text-xs opacity-60">약 2~4분 소요됩니다</p>
                 </div>
               )}
@@ -687,42 +746,172 @@ export default function ComposerPage() {
       </div>
 
       {/* ── 업로드 다이얼로그 ─────────────────────── */}
-      <Dialog open={uploadDialog.open} onOpenChange={o => { if (!o) { setUploadDialog(p => ({ ...p, open: false })); setUploadFile(null); setUploadName(''); } }}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={uploadDialog.open} onOpenChange={o => { if (!o) closeUploadDialog(); }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{uploadDialog.type === 'outfit' ? '의상' : '소품'} 추가</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div
-              className="border-2 border-dashed rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => uploadFileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleUploadFile(f); }}
+
+          {/* 모드 선택 탭 */}
+          <div className="flex rounded-lg border overflow-hidden">
+            <button
+              onClick={() => setUploadMode('direct')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm transition-colors ${
+                uploadMode === 'direct' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              }`}
             >
-              {uploadFile ? (
-                <img src={uploadFile.previewUrl} className="w-full max-h-48 object-contain" alt="preview" />
-              ) : (
-                <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
-                  <Upload className="h-8 w-8 opacity-40" />
-                  <p className="text-sm">클릭하거나 드래그하여 이미지 선택</p>
-                </div>
-              )}
-            </div>
-            <input ref={uploadFileRef} type="file" accept="image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }} />
-            <Input
-              value={uploadName}
-              onChange={e => setUploadName(e.target.value)}
-              placeholder="이름 (예: 군복 상의, 가죽 초커)"
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setUploadDialog(p => ({ ...p, open: false }))}>취소</Button>
-              <Button onClick={handleUploadSubmit} disabled={!uploadFile || !uploadName.trim() || uploading} className="gap-1.5">
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                추가
-              </Button>
-            </div>
+              <Upload className="h-3.5 w-3.5" />
+              직접 추가
+            </button>
+            <button
+              onClick={() => setUploadMode('generate')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm transition-colors ${
+                uploadMode === 'generate' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              }`}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              생성형 추가
+            </button>
           </div>
+
+          {/* ── 직접 추가 ── */}
+          {uploadMode === 'direct' && (
+            <div className="space-y-4">
+              <div
+                className="border-2 border-dashed rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => uploadFileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleUploadFile(f); }}
+              >
+                {uploadFile ? (
+                  <img src={uploadFile.previewUrl} className="w-full max-h-48 object-contain" alt="preview" />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                    <Upload className="h-8 w-8 opacity-40" />
+                    <p className="text-sm">클릭하거나 드래그하여 이미지 선택</p>
+                  </div>
+                )}
+              </div>
+              <input ref={uploadFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }} />
+              <Input
+                value={uploadName}
+                onChange={e => setUploadName(e.target.value)}
+                placeholder="이름 (예: 군복 상의, 가죽 초커)"
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={closeUploadDialog}>취소</Button>
+                <Button onClick={handleUploadSubmit} disabled={!uploadFile || !uploadName.trim() || uploading} className="gap-1.5">
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  추가
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── 생성형 추가 ── */}
+          {uploadMode === 'generate' && (
+            <div className="space-y-4">
+              {/* 설명 */}
+              <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                레퍼런스 사진을 업로드하면 현재 선택된 캐릭터의 그림체로 변환합니다.
+                {selectedSheet ? (
+                  <span className="text-primary font-medium"> 스타일 기준: {selectedChar?.name}</span>
+                ) : (
+                  <span className="text-amber-600"> (캐릭터 미선택 — 일반 만화체로 변환)</span>
+                )}
+              </div>
+
+              {/* 레퍼런스 이미지 + 결과 나란히 */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* 레퍼런스 업로드 */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">레퍼런스 사진</p>
+                  <div
+                    className="border-2 border-dashed rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors aspect-square flex items-center justify-center bg-muted/30"
+                    onClick={() => !genLoading && genRefFileRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && !genLoading) handleGenRefFile(f); }}
+                  >
+                    {genRefFile ? (
+                      <img src={genRefFile.previewUrl} className="w-full h-full object-contain" alt="ref" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-muted-foreground p-4 text-center">
+                        <Upload className="h-6 w-6 opacity-40" />
+                        <p className="text-xs">실사 사진, 스케치 등</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 생성 결과 */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">생성 결과</p>
+                  <div className="border-2 border-border rounded-xl overflow-hidden aspect-square flex items-center justify-center bg-muted/30 relative">
+                    {genLoading ? (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                        <p className="text-xs">변환 중…</p>
+                      </div>
+                    ) : genResult ? (
+                      <img
+                        src={`data:${genResult.mimeType};base64,${genResult.base64}`}
+                        className="w-full h-full object-contain"
+                        alt="result"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-muted-foreground p-4 text-center">
+                        <Wand2 className="h-6 w-6 opacity-20" />
+                        <p className="text-xs">생성 후 표시됩니다</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <input ref={genRefFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleGenRefFile(f); }} />
+
+              {/* 추가 지시 */}
+              <Input
+                value={genInstruction}
+                onChange={e => setGenInstruction(e.target.value)}
+                placeholder="추가 지시 (예: 소매 없애줘, 검정 버전으로, 판타지풍으로)"
+                disabled={genLoading}
+              />
+
+              {/* 이름 */}
+              <Input
+                value={genName}
+                onChange={e => setGenName(e.target.value)}
+                placeholder="아이템 이름"
+                disabled={genLoading}
+              />
+
+              {/* 버튼 */}
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={closeUploadDialog} disabled={genLoading}>취소</Button>
+                {!genResult ? (
+                  <Button onClick={handleGenerate} disabled={!genRefFile || genLoading} className="gap-1.5">
+                    {genLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    {genLoading ? '변환 중…' : '생성하기'}
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={handleGenerate} disabled={genLoading} className="gap-1.5">
+                      <RefreshCw className="h-4 w-4" />
+                      재생성
+                    </Button>
+                    <Button onClick={handleGenSave} disabled={!genName.trim() || uploading} className="gap-1.5">
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      추가
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
         </DialogContent>
       </Dialog>
 
