@@ -487,7 +487,7 @@ export default function ComposerPage() {
 
           {/* 캐릭터 카드 목록 */}
           <ScrollArea className="flex-1 min-h-0 overflow-hidden">
-            <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2">
+            <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2 pb-16 md:pb-2">
               {filteredChars.map(char => {
                 const thumb = char.character_sheets?.[0]?.file_path;
                 const isSelected = selectedChar?.id === char.id;
@@ -572,7 +572,7 @@ export default function ComposerPage() {
             </Button>
           </div>
           <ScrollArea className="flex-1">
-            <div className="p-4 space-y-6">
+            <div className="p-4 space-y-6 pb-16 md:pb-4">
 
               {/* 의상 섹션 */}
               <section>
@@ -761,7 +761,7 @@ export default function ComposerPage() {
 
           {/* 생성 결과 */}
           <ScrollArea className="flex-1">
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 pb-16 md:pb-4">
               {error && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
                   {error}
@@ -838,8 +838,8 @@ export default function ComposerPage() {
         </div>
       </div>
 
-      {/* ── 모바일 하단 탭바 ──────────────────────── */}
-      <div className="md:hidden flex-shrink-0 flex border-t bg-card safe-area-inset-bottom">
+      {/* ── 모바일 하단 탭바 (fixed) ─────────────── */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden flex border-t bg-card">
         <button
           onClick={() => setMobileTab('character')}
           className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs transition-colors ${
