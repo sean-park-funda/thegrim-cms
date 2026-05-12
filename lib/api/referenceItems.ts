@@ -91,6 +91,27 @@ export async function modifyReferenceItem(
   return res.json();
 }
 
+// 여러 레퍼런스로 새 요소 생성
+export async function createReferenceItemFromRefs(
+  webtoonId: string,
+  referenceItemIds: string[],
+  instruction: string,
+  name: string,
+  type: 'outfit' | 'prop',
+  tags?: string[]
+): Promise<ReferenceItem> {
+  const res = await fetch(`/api/webtoons/${webtoonId}/reference-items/create-from-refs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ referenceItemIds, instruction, name, type, tags }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || '생성 요청 실패');
+  }
+  return res.json();
+}
+
 // 헬퍼: File → base64 (data URL prefix 제거)
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

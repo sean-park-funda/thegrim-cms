@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { getCharactersByWebtoon } from '@/lib/api/characters';
-import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceItem, modifyReferenceItem } from '@/lib/api/referenceItems';
+import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceItem, modifyReferenceItem, createReferenceItemFromRefs } from '@/lib/api/referenceItems';
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
 import { useStore } from '@/lib/store/useStore';
 
@@ -73,6 +73,14 @@ export default function ComposerPage() {
   const [modifyInstruction, setModifyInstruction] = useState('');
   const [modifyName, setModifyName] = useState('');
   const [modifying, setModifying] = useState(false);
+
+  // ─── 레퍼런스로 새 요소 만들기 ───────────────
+  const [createFromRefsDialog, setCreateFromRefsDialog] = useState(false);
+  const [cfrSelectedIds, setCfrSelectedIds] = useState<Set<string>>(new Set());
+  const [cfrInstruction, setCfrInstruction] = useState('');
+  const [cfrName, setCfrName] = useState('');
+  const [cfrType, setCfrType] = useState<'outfit' | 'prop'>('outfit');
+  const [cfrLoading, setCfrLoading] = useState(false);
 
   // ─── 생성/수정 훅 ─────────────────────────────
   const { status, resultImage, error, isLoading, compose, refine, reset, _isMountedRef } =
@@ -337,6 +345,30 @@ export default function ComposerPage() {
     }
   };
 
+  // ─── 레퍼런스로 새 요소 만들기 ───────────────
+  const handleCreateFromRefs = async () => {
+    if (cfrSelectedIds.size === 0 || !cfrInstruction.trim() || !cfrName.trim()) return;
+    setCfrLoading(true);
+    try {
+      const newItem = await createReferenceItemFromRefs(
+        webtoonId,
+        Array.from(cfrSelectedIds),
+        cfrInstruction.trim(),
+        cfrName.trim(),
+        cfrType,
+      );
+      setItems(prev => [newItem, ...prev]);
+      setCreateFromRefsDialog(false);
+      setCfrSelectedIds(new Set());
+      setCfrInstruction('');
+      setCfrName('');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '생성 요청 실패');
+    } finally {
+      setCfrLoading(false);
+    }
+  };
+
   // ─── 아이템 삭제 ──────────────────────────────
   const handleDeleteItem = async (item: ReferenceItem) => {
     if (!confirm(`"${item.name}"을(를) 삭제하시겠습니까?`)) return;
@@ -478,6 +510,17 @@ export default function ComposerPage() {
             가운데: 의상 + 소품 리포지터리
         ──────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+          <div className="flex-shrink-0 flex items-center justify-end px-4 pt-3 pb-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 text-xs px-2"
+              onClick={() => { setCreateFromRefsDialog(true); setCfrSelectedIds(new Set()); }}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              레퍼런스로 새 요소 만들기
+            </Button>
+          </div>
           <ScrollArea className="flex-1">
             <div className="p-4 space-y-6">
 
@@ -912,6 +955,112 @@ export default function ComposerPage() {
             </div>
           )}
 
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 레퍼런스로 새 요소 만들기 다이얼로그 ─── */}
+      <Dialog open={createFromRefsDialog} onOpenChange={o => { if (!cfrLoading) setCreateFromRefsDialog(o); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>레퍼런스로 새 요소 만들기</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden flex gap-4 min-h-0">
+            {/* 왼쪽: 아이템 선택 */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <p className="text-xs text-muted-foreground mb-2">
+                레퍼런스로 사용할 아이템 선택 (최대 4개 — {cfrSelectedIds.size}/4)
+              </p>
+              <ScrollArea className="flex-1 min-h-0 overflow-hidden border rounded-lg">
+                <div className="p-2 grid grid-cols-3 gap-2">
+                  {items.map(item => {
+                    const selected = cfrSelectedIds.has(item.id);
+                    const maxed = cfrSelectedIds.size >= 4 && !selected;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          if (maxed) return;
+                          setCfrSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                            return next;
+                          });
+                        }}
+                        className={`relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
+                          selected ? 'border-primary' : maxed ? 'border-border opacity-40 cursor-not-allowed' : 'border-border hover:border-primary/40'
+                        }`}
+                      >
+                        <div className="aspect-square bg-muted">
+                          <img src={item.file_path} className="w-full h-full object-cover" alt={item.name} />
+                        </div>
+                        <p className="text-[10px] text-center px-1 py-0.5 truncate">{item.name}</p>
+                        {selected && (
+                          <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {items.length === 0 && (
+                    <div className="col-span-3 flex items-center justify-center py-8 text-muted-foreground text-xs">
+                      아이템이 없습니다
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* 오른쪽: 설정 */}
+            <div className="w-52 flex-shrink-0 flex flex-col gap-3">
+              <div>
+                <p className="text-xs font-medium mb-1">새 요소 이름</p>
+                <Input
+                  value={cfrName}
+                  onChange={e => setCfrName(e.target.value)}
+                  placeholder="예: H3 커스텀 변형"
+                  className="text-sm"
+                  disabled={cfrLoading}
+                />
+              </div>
+              <div>
+                <p className="text-xs font-medium mb-1">타입</p>
+                <Select value={cfrType} onValueChange={v => setCfrType(v as 'outfit' | 'prop')} disabled={cfrLoading}>
+                  <SelectTrigger className="text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="outfit">의상</SelectItem>
+                    <SelectItem value="prop">소품</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-medium mb-1">생성 지시</p>
+                <Textarea
+                  value={cfrInstruction}
+                  onChange={e => setCfrInstruction(e.target.value)}
+                  placeholder="예: 선택한 상의를 베이스로, 소매를 더 넓게 하고 색상을 어두운 네이비로 변경"
+                  rows={5}
+                  disabled={cfrLoading}
+                  className="text-sm resize-none"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={handleCreateFromRefs}
+                  disabled={cfrSelectedIds.size === 0 || !cfrInstruction.trim() || !cfrName.trim() || cfrLoading}
+                  className="w-full gap-1.5"
+                >
+                  {cfrLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {cfrLoading ? '생성 중…' : '새 요소 생성'}
+                </Button>
+                <Button variant="outline" onClick={() => setCreateFromRefsDialog(false)} disabled={cfrLoading} className="w-full">
+                  취소
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
