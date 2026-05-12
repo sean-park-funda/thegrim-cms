@@ -486,8 +486,8 @@ export default function ComposerPage() {
           </div>
 
           {/* 캐릭터 카드 목록 */}
-          <ScrollArea className="flex-1">
-            <div className="p-2 space-y-2">
+          <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+            <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2">
               {filteredChars.map(char => {
                 const thumb = char.character_sheets?.[0]?.file_path;
                 const isSelected = selectedChar?.id === char.id;
