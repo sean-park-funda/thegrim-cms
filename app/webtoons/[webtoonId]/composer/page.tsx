@@ -82,6 +82,9 @@ export default function ComposerPage() {
   const [modifyName, setModifyName] = useState('');
   const [modifying, setModifying] = useState(false);
 
+  // ─── 모바일 탭 ────────────────────────────────
+  const [mobileTab, setMobileTab] = useState<'character' | 'items' | 'compose'>('character');
+
   // ─── 레퍼런스로 새 요소 만들기 ───────────────
   const [createFromRefsDialog, setCreateFromRefsDialog] = useState(false);
   const [cfrSelectedIds, setCfrSelectedIds] = useState<Set<string>>(new Set());
@@ -469,7 +472,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             왼쪽: 캐릭터 목록
         ──────────────────────────────────────────── */}
-        <div className="w-[200px] flex-shrink-0 flex flex-col border-r bg-muted/20">
+        <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex w-full md:w-[200px] flex-shrink-0 flex-col border-r bg-muted/20`}>
           {/* 필터 */}
           <div className="flex-shrink-0 p-2 border-b">
             <Select value={charFilter} onValueChange={setCharFilter}>
@@ -556,7 +559,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             가운데: 의상 + 소품 리포지터리
         ──────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <div className={`${mobileTab === 'items' ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden`}>
           <div className="flex-shrink-0 flex items-center justify-end px-4 pt-3 pb-1">
             <Button
               variant="outline"
@@ -684,7 +687,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             오른쪽: 컴포즈 패널 (항상 표시)
         ──────────────────────────────────────────── */}
-        <div className="w-[340px] flex-shrink-0 flex flex-col border-l bg-card">
+        <div className={`${mobileTab === 'compose' ? 'flex' : 'hidden'} md:flex w-full md:w-[340px] flex-shrink-0 flex-col border-l bg-card`}>
 
           {/* 선택된 아이템 + 지시 */}
           <div className="flex-shrink-0 border-b">
@@ -833,6 +836,45 @@ export default function ComposerPage() {
             </div>
           </ScrollArea>
         </div>
+      </div>
+
+      {/* ── 모바일 하단 탭바 ──────────────────────── */}
+      <div className="md:hidden flex-shrink-0 flex border-t bg-card safe-area-inset-bottom">
+        <button
+          onClick={() => setMobileTab('character')}
+          className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs transition-colors ${
+            mobileTab === 'character' ? 'text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <ImageIcon className="h-5 w-5" />
+          캐릭터
+        </button>
+        <button
+          onClick={() => setMobileTab('items')}
+          className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs transition-colors ${
+            mobileTab === 'items' ? 'text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <Shirt className="h-5 w-5" />
+          아이템
+          {items.length > 0 && <span className="text-[10px]">({items.length})</span>}
+        </button>
+        <button
+          onClick={() => setMobileTab('compose')}
+          className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs transition-colors relative ${
+            mobileTab === 'compose' ? 'text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <div className="relative">
+            <Sparkles className="h-5 w-5" />
+            {equipped.length > 0 && (
+              <span className="absolute -top-1 -right-2 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] flex items-center justify-center font-bold">
+                {equipped.length}
+              </span>
+            )}
+          </div>
+          생성
+        </button>
       </div>
 
       {/* ── 업로드 다이얼로그 ─────────────────────── */}
