@@ -76,6 +76,10 @@ export default function WorkSalesDetailPage() {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
+  const [editingDates, setEditingDates] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [dateSaving, setDateSaving] = useState(false);
 
   const { from, to } = useMemo(() => getDateRange(days), [days]);
   const canManage = profile ? canManageAccounting(profile.role) : false;
@@ -91,6 +95,29 @@ export default function WorkSalesDetailPage() {
   }, [profile, workId, from, to]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const handleSaveDates = async () => {
+    setDateSaving(true);
+    try {
+      await settlementFetch(`/api/accounting/settlement/works/${workId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serial_start_date: startDate || null,
+          serial_end_date: endDate || null,
+        }),
+      });
+      setData(prev => prev ? {
+        ...prev,
+        work: { ...prev.work, serial_start_date: startDate || null, serial_end_date: endDate || null }
+      } : prev);
+      setEditingDates(false);
+    } catch (e) {
+      console.error('날짜 저장 오류:', e);
+    } finally {
+      setDateSaving(false);
+    }
+  };
 
   const handleSaveNote = async () => {
     setNoteSaving(true);
@@ -226,14 +253,72 @@ export default function WorkSalesDetailPage() {
                   {data.work.contract_type ? CONTRACT_TYPE_LABELS[data.work.contract_type] || data.work.contract_type : '-'}
                 </p>
               </div>
-              <div>
-                <span className="text-zinc-400 dark:text-zinc-500">연재 시작</span>
-                <p className="font-medium mt-0.5">{data.work.serial_start_date || '-'}</p>
-              </div>
-              <div>
-                <span className="text-zinc-400 dark:text-zinc-500">연재 종료</span>
-                <p className="font-medium mt-0.5">{data.work.serial_end_date || '연재중'}</p>
-              </div>
+              {editingDates ? (
+                <div className="col-span-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-zinc-400 dark:text-zinc-500 text-xs">연재 시작</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full mt-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 dark:text-zinc-500 text-xs">연재 종료</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full mt-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-2">
+                    <button
+                      onClick={() => setEditingDates(false)}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSaveDates}
+                      disabled={dateSaving}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
+                    >
+                      {dateSaving ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="relative group">
+                    <span className="text-zinc-400 dark:text-zinc-500">연재 시작</span>
+                    <p className="font-medium mt-0.5">{data.work.serial_start_date || '-'}</p>
+                    {canManage && (
+                      <button
+                        onClick={() => { setStartDate(data.work.serial_start_date || ''); setEndDate(data.work.serial_end_date || ''); setEditingDates(true); }}
+                        className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative group">
+                    <span className="text-zinc-400 dark:text-zinc-500">연재 종료</span>
+                    <p className="font-medium mt-0.5">{data.work.serial_end_date || '연재중'}</p>
+                    {canManage && (
+                      <button
+                        onClick={() => { setStartDate(data.work.serial_start_date || ''); setEndDate(data.work.serial_end_date || ''); setEditingDates(true); }}
+                        className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
               {data.work.platform && (
                 <div>
                   <span className="text-zinc-400 dark:text-zinc-500">플랫폼</span>
