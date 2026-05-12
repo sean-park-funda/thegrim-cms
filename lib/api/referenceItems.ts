@@ -91,6 +91,28 @@ export async function modifyReferenceItem(
   return res.json();
 }
 
+// 캐릭터 이미지에서 의상 요소 추출 후 저장
+export async function extractFromCharacter(
+  webtoonId: string,
+  characterImageBase64: string,
+  mimeType: string,
+  extractTarget: string,
+  name: string,
+  type: 'outfit' | 'prop',
+  options?: { instruction?: string; tags?: string[] }
+): Promise<ReferenceItem> {
+  const res = await fetch(`/api/webtoons/${webtoonId}/reference-items/extract-from-character`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterImageBase64, mimeType, extractTarget, name, type, ...options }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || '추출 요청 실패');
+  }
+  return res.json();
+}
+
 // 여러 레퍼런스로 새 요소 생성
 export async function createReferenceItemFromRefs(
   webtoonId: string,

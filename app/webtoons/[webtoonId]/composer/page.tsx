@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeft, Plus, Sparkles, Loader2, X, Check, Shirt, Package,
-  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2,
+  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2, Scissors,
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { getCharactersByWebtoon } from '@/lib/api/characters';
-import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceItem, modifyReferenceItem, createReferenceItemFromRefs } from '@/lib/api/referenceItems';
+import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceItem, modifyReferenceItem, createReferenceItemFromRefs, extractFromCharacter } from '@/lib/api/referenceItems';
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
 import { useStore } from '@/lib/store/useStore';
 
@@ -55,7 +55,7 @@ export default function ComposerPage() {
 
   // ─── 업로드 다이얼로그 ─────────────────────────
   const [uploadDialog, setUploadDialog] = useState<{ open: boolean; type: 'outfit' | 'prop' }>({ open: false, type: 'outfit' });
-  const [uploadMode, setUploadMode] = useState<'direct' | 'generate'>('direct');
+  const [uploadMode, setUploadMode] = useState<'direct' | 'generate' | 'extract'>('direct');
   const [uploadFile, setUploadFile] = useState<{ file: File; previewUrl: string } | null>(null);
   const [uploadName, setUploadName] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -67,6 +67,14 @@ export default function ComposerPage() {
   const [genLoading, setGenLoading] = useState(false);
   const [genResult, setGenResult] = useState<{ base64: string; mimeType: string } | null>(null);
   const genRefFileRef = useRef<HTMLInputElement>(null);
+
+  // ─── 캐릭터에서 추출 ──────────────────────────
+  const [exCharFile, setExCharFile] = useState<{ file: File; previewUrl: string; base64: string } | null>(null);
+  const [exTarget, setExTarget] = useState('상의');
+  const [exInstruction, setExInstruction] = useState('');
+  const [exName, setExName] = useState('');
+  const [exLoading, setExLoading] = useState(false);
+  const exCharFileRef = useRef<HTMLInputElement>(null);
 
   // ─── 아이템 수정 다이얼로그 ───────────────────
   const [modifyDialog, setModifyDialog] = useState<{ open: boolean; item: ReferenceItem | null }>({ open: false, item: null });
@@ -252,6 +260,45 @@ export default function ComposerPage() {
     setGenInstruction('');
     setGenName('');
     setGenResult(null);
+    setExCharFile(null);
+    setExTarget('상의');
+    setExInstruction('');
+    setExName('');
+  };
+
+  // ─── 캐릭터에서 추출 핸들러 ──────────────────
+  const handleExCharFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target?.result as string;
+      const base64 = dataUrl.split(',')[1];
+      setExCharFile({ file, previewUrl: URL.createObjectURL(file), base64 });
+    };
+    reader.readAsDataURL(file);
+    if (!exName) setExName(`${file.name.replace(/\.[^.]+$/, '')} - ${exTarget}`);
+  };
+
+  const handleExtractSubmit = async () => {
+    if (!exCharFile || !exName.trim()) return;
+    setExLoading(true);
+    try {
+      const newItem = await extractFromCharacter(
+        webtoonId,
+        exCharFile.base64,
+        exCharFile.file.type || 'image/png',
+        exTarget,
+        exName.trim(),
+        uploadDialog.type,
+        { instruction: exInstruction.trim() || undefined },
+      );
+      setItems(prev => [newItem, ...prev]);
+      closeUploadDialog();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '추출 요청 실패');
+    } finally {
+      setExLoading(false);
+    }
   };
 
   // ─── 생성형 추가: 레퍼런스 → 만화체 변환 ───────
@@ -815,6 +862,15 @@ export default function ComposerPage() {
               <Wand2 className="h-3.5 w-3.5" />
               생성형 추가
             </button>
+            <button
+              onClick={() => setUploadMode('extract')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm transition-colors ${
+                uploadMode === 'extract' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              }`}
+            >
+              <Scissors className="h-3.5 w-3.5" />
+              캐릭터에서 추출
+            </button>
           </div>
 
           {/* ── 직접 추가 ── */}
@@ -951,6 +1007,86 @@ export default function ComposerPage() {
                     </Button>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 캐릭터에서 추출 ── */}
+          {uploadMode === 'extract' && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                캐릭터 이미지에서 특정 의상/악세서리만 분리하여 단독 요소로 저장합니다.
+                복잡한 레이어링 의상도 깔끔하게 단순화됩니다.
+              </div>
+
+              {/* 캐릭터 이미지 업로드 */}
+              <div
+                className="border-2 border-dashed rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors aspect-video flex items-center justify-center"
+                onClick={() => exCharFileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleExCharFile(f); }}
+              >
+                {exCharFile ? (
+                  <img src={exCharFile.previewUrl} className="w-full h-full object-contain" alt="character" />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <ImageIcon className="h-8 w-8 opacity-40" />
+                    <p className="text-sm">캐릭터 이미지 업로드</p>
+                    <p className="text-xs opacity-60">캐릭터시트, 컷 이미지 등</p>
+                  </div>
+                )}
+              </div>
+              <input ref={exCharFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleExCharFile(f); }} />
+
+              {/* 추출 대상 */}
+              <div>
+                <p className="text-xs font-medium mb-1.5">추출할 요소</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {['상의', '하의', '부츠', '벨트', '숄/망토', '악세서리', '헤어스타일', '전체 의상'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setExTarget(t);
+                        if (exCharFile) setExName(`${exCharFile.file.name.replace(/\.[^.]+$/, '')} - ${t}`);
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                        exTarget === t ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 추가 지시 */}
+              <Input
+                value={exInstruction}
+                onChange={e => setExInstruction(e.target.value)}
+                placeholder="추가 지시 (예: 단추 디테일 유지, 배경 완전 제거)"
+                disabled={exLoading}
+              />
+
+              {/* 이름 */}
+              <Input
+                value={exName}
+                onChange={e => setExName(e.target.value)}
+                placeholder="저장할 이름"
+                disabled={exLoading}
+              />
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={closeUploadDialog} disabled={exLoading}>취소</Button>
+                <Button
+                  onClick={handleExtractSubmit}
+                  disabled={!exCharFile || !exName.trim() || exLoading}
+                  className="gap-1.5"
+                >
+                  {exLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
+                  {exLoading ? '추출 중…' : '요소 추출'}
+                </Button>
               </div>
             </div>
           )}
