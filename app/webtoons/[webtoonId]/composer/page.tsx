@@ -454,7 +454,7 @@ export default function ComposerPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background overflow-hidden">
 
       {/* ── 상단 헤더 ─────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b bg-card">
