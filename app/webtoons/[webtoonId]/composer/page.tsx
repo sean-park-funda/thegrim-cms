@@ -472,7 +472,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             왼쪽: 캐릭터 목록
         ──────────────────────────────────────────── */}
-        <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex w-full md:w-[200px] flex-shrink-0 flex-col border-r bg-muted/20`}>
+        <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[200px] flex-col border-r bg-muted/20`}>
           {/* 필터 */}
           <div className="flex-shrink-0 p-2 border-b">
             <Select value={charFilter} onValueChange={setCharFilter}>
@@ -687,7 +687,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             오른쪽: 컴포즈 패널 (항상 표시)
         ──────────────────────────────────────────── */}
-        <div className={`${mobileTab === 'compose' ? 'flex' : 'hidden'} md:flex w-full md:w-[340px] flex-shrink-0 flex-col border-l bg-card`}>
+        <div className={`${mobileTab === 'compose' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[340px] flex-col border-l bg-card`}>
 
           {/* 선택된 아이템 + 지시 */}
           <div className="flex-shrink-0 border-b">
