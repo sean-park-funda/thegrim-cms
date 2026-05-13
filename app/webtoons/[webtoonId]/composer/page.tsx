@@ -90,6 +90,11 @@ export default function ComposerPage() {
   const [simplifyInstruction, setSimplifyInstruction] = useState('');
   const [simplifyLoading, setSimplifyLoading] = useState(false);
 
+  // ─── 캐릭터 변형하기 ─────────────────────────
+  const [transformDialog, setTransformDialog] = useState(false);
+  const [transformInstruction, setTransformInstruction] = useState('');
+  const [transformLoading, setTransformLoading] = useState(false);
+
   // ─── 레퍼런스로 새 요소 만들기 ───────────────
   const [createFromRefsDialog, setCreateFromRefsDialog] = useState(false);
   const [cfrSelectedIds, setCfrSelectedIds] = useState<Set<string>>(new Set());
@@ -174,6 +179,38 @@ export default function ComposerPage() {
       alert(err instanceof Error ? err.message : '오류 발생');
     } finally {
       setSimplifyLoading(false);
+    }
+  };
+
+  // ─── 캐릭터 변형하기 ─────────────────────────
+  const handleTransform = async () => {
+    if (!selectedChar || !selectedSheet || !transformInstruction.trim()) return;
+    setTransformLoading(true);
+    try {
+      const res = await fetch(`/api/characters/${selectedChar.id}/transform-sheet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetId: selectedSheet.id, instruction: transformInstruction }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '변형 생성 실패');
+      }
+      const newSheet = await res.json();
+      const updated = await getCharactersByWebtoon(webtoonId);
+      setCharacters(updated);
+      const updatedChar = updated.find(c => c.id === selectedChar.id);
+      if (updatedChar) {
+        setSelectedChar(updatedChar);
+        const newS = updatedChar.character_sheets?.find(s => s.id === newSheet.id) ?? newSheet;
+        setSelectedSheet(newS);
+      }
+      setTransformDialog(false);
+      setTransformInstruction('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '오류 발생');
+    } finally {
+      setTransformLoading(false);
     }
   };
 
@@ -511,31 +548,33 @@ export default function ComposerPage() {
             왼쪽: 캐릭터 목록
         ──────────────────────────────────────────── */}
         <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[200px] flex-col border-r bg-muted/20`}>
-          {/* 필터 */}
-          <div className="flex-shrink-0 p-2 border-b">
+          {/* 컴팩트 툴바: 필터 + 기본형 + 변형 */}
+          <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 border-b">
             <Select value={charFilter} onValueChange={setCharFilter}>
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
                 <SelectValue placeholder="전체" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 캐릭터</SelectItem>
               </SelectContent>
             </Select>
+            <button
+              onClick={() => setSimplifyDialog(true)}
+              disabled={!selectedChar || !selectedSheet}
+              title="기본형 만들기"
+              className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-md border text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Scissors className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setTransformDialog(true)}
+              disabled={!selectedChar || !selectedSheet}
+              title="캐릭터 변형하기"
+              className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-md border text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+            </button>
           </div>
-
-          {/* 캐릭터 카드 목록 */}
-          {/* 기본형 만들기 버튼 — 선택된 캐릭터가 있을 때만 */}
-          {selectedChar && selectedSheet && (
-            <div className="flex-shrink-0 px-2 py-2 border-b">
-              <button
-                onClick={() => setSimplifyDialog(true)}
-                className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 py-2 text-xs text-primary/70 hover:bg-primary/5 hover:text-primary transition-colors"
-              >
-                <Scissors className="h-3.5 w-3.5" />
-                기본형 만들기
-              </button>
-            </div>
-          )}
 
           <ScrollArea className="flex-1 min-h-0 overflow-hidden">
             <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2 pb-16 md:pb-2">
@@ -971,6 +1010,53 @@ export default function ComposerPage() {
                 <><Loader2 className="h-4 w-4 animate-spin" />생성 중… (최대 2분)</>
               ) : (
                 <><Scissors className="h-4 w-4" />기본형 생성</>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 캐릭터 변형하기 다이얼로그 ───────────── */}
+      <Dialog open={transformDialog} onOpenChange={o => { if (!o && !transformLoading) { setTransformDialog(false); setTransformInstruction(''); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>캐릭터 변형하기</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedSheet?.file_path && (
+              <div className="flex gap-3 items-start rounded-lg bg-muted/40 p-3">
+                <img
+                  src={selectedSheet.file_path}
+                  alt="원본"
+                  className="w-16 h-20 object-cover rounded border flex-shrink-0"
+                />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">{selectedChar?.name}</p>
+                  <p>요청한 부분만 바꾸고</p>
+                  <p>나머지는 그대로 유지합니다.</p>
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5">변형 지시 <span className="text-destructive">*</span></p>
+              <Textarea
+                value={transformInstruction}
+                onChange={e => setTransformInstruction(e.target.value)}
+                placeholder="예: 머리를 단발로 바꿔줘 / 눈을 더 크게 / 키를 더 크고 날씬하게 / 머리색을 흰색으로"
+                className="text-sm resize-none"
+                rows={3}
+                disabled={transformLoading}
+              />
+            </div>
+            <Button
+              onClick={handleTransform}
+              disabled={transformLoading || !transformInstruction.trim()}
+              className="w-full gap-2"
+            >
+              {transformLoading ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />변형 중… (최대 2분)</>
+              ) : (
+                <><Wand2 className="h-4 w-4" />변형 생성</>
               )}
             </Button>
           </div>
