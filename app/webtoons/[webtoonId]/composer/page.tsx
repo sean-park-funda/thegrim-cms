@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeft, Plus, Sparkles, Loader2, X, Check, Shirt, Package,
-  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2, Scissors,
+  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2, Scissors, Expand,
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -81,6 +81,9 @@ export default function ComposerPage() {
   const [modifyInstruction, setModifyInstruction] = useState('');
   const [modifyName, setModifyName] = useState('');
   const [modifying, setModifying] = useState(false);
+
+  // ─── 라이트박스 ──────────────────────────────
+  const [viewLarge, setViewLarge] = useState<{ url: string; name: string } | null>(null);
 
   // ─── 모바일 탭 ────────────────────────────────
   const [mobileTab, setMobileTab] = useState<'character' | 'items' | 'compose'>('character');
@@ -612,34 +615,46 @@ export default function ComposerPage() {
                 const isSelected = selectedChar?.id === char.id;
                 return (
                   <div key={char.id}>
-                    <button
-                      onClick={() => handleSelectChar(char)}
-                      className={`w-full rounded-xl overflow-hidden border-2 transition-all duration-150 ${
-                        isSelected
-                          ? 'border-primary shadow-md shadow-primary/20'
-                          : 'border-border hover:border-primary/40'
-                      }`}
-                    >
-                      {/* 썸네일 */}
-                      <div className="aspect-[3/4] bg-muted relative">
-                        {thumb ? (
-                          <img src={thumb} alt={char.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ImageIcon className="h-8 w-8 opacity-20" />
-                          </div>
-                        )}
-                        {isSelected && (
-                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="h-3 w-3 text-primary-foreground" />
-                          </div>
-                        )}
-                      </div>
-                      {/* 이름 */}
-                      <div className="px-2 py-1.5 bg-card">
-                        <p className="text-xs font-medium text-center truncate">{char.name}</p>
-                      </div>
-                    </button>
+                    <div className="group relative">
+                      <button
+                        onClick={() => handleSelectChar(char)}
+                        className={`w-full rounded-xl overflow-hidden border-2 transition-all duration-150 ${
+                          isSelected
+                            ? 'border-primary shadow-md shadow-primary/20'
+                            : 'border-border hover:border-primary/40'
+                        }`}
+                      >
+                        {/* 썸네일 */}
+                        <div className="aspect-[3/4] bg-muted relative">
+                          {thumb ? (
+                            <img src={thumb} alt={char.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ImageIcon className="h-8 w-8 opacity-20" />
+                            </div>
+                          )}
+                          {isSelected && (
+                            <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          )}
+                        </div>
+                        {/* 이름 */}
+                        <div className="px-2 py-1.5 bg-card">
+                          <p className="text-xs font-medium text-center truncate">{char.name}</p>
+                        </div>
+                      </button>
+                      {/* 크게보기 버튼 */}
+                      {thumb && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setViewLarge({ url: thumb, name: char.name }); }}
+                          className="absolute bottom-8 left-1 w-6 h-6 rounded bg-background/70 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background shadow"
+                          title="크게보기"
+                        >
+                          <Expand className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
 
                     {/* 시트 선택 (해당 캐릭터가 선택됐고 시트 여러 개일 때) */}
                     {isSelected && (char.character_sheets?.length ?? 0) > 1 && (
@@ -740,6 +755,7 @@ export default function ComposerPage() {
                           setModifyName(`${item.name} (수정본)`);
                         }}
                         onDelete={() => handleDeleteItem(item)}
+                        onViewLarge={() => setViewLarge({ url: item.file_path, name: item.name })}
                       />
                     ))}
                   </div>
@@ -793,6 +809,7 @@ export default function ComposerPage() {
                           setModifyName(`${item.name} (수정본)`);
                         }}
                         onDelete={() => handleDeleteItem(item)}
+                        onViewLarge={() => setViewLarge({ url: item.file_path, name: item.name })}
                       />
                     ))}
                   </div>
@@ -995,6 +1012,31 @@ export default function ComposerPage() {
           생성
         </button>
       </div>
+
+      {/* ── 라이트박스 ───────────────────────────── */}
+      {viewLarge && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setViewLarge(null)}
+        >
+          <div className="relative max-w-3xl max-h-full" onClick={e => e.stopPropagation()}>
+            <img
+              src={viewLarge.url}
+              alt={viewLarge.name}
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            />
+            <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl">
+              <p className="text-white text-sm font-medium text-center">{viewLarge.name}</p>
+            </div>
+            <button
+              onClick={() => setViewLarge(null)}
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 기본형 만들기 다이얼로그 ──────────────── */}
       <Dialog open={simplifyDialog} onOpenChange={o => { if (!o && !simplifyLoading) { setSimplifyDialog(false); setSimplifyInstruction(''); } }}>
@@ -1500,13 +1542,14 @@ export default function ComposerPage() {
 
 // ─── 아이템 카드 컴포넌트 ─────────────────────────────
 function ItemCard({
-  item, equipped, onToggle, onModify, onDelete,
+  item, equipped, onToggle, onModify, onDelete, onViewLarge,
 }: {
   item: ReferenceItem;
   equipped: boolean;
   onToggle: () => void;
   onModify: () => void;
   onDelete: () => void;
+  onViewLarge: () => void;
 }) {
   return (
     <div
@@ -1526,6 +1569,13 @@ function ItemCard({
       )}
 
       <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={e => { e.stopPropagation(); onViewLarge(); }}
+          className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
+          title="크게보기"
+        >
+          <Expand className="h-2.5 w-2.5" />
+        </button>
         <button
           onClick={e => { e.stopPropagation(); onModify(); }}
           className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
