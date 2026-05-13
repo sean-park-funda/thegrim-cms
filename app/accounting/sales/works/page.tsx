@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
-import { DailySalesData, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
+import { DailySalesData, PRESETS, fmtShort, getDateRange, AggMode, aggregateData } from '@/lib/sales/types';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Menu } from 'lucide-react';
 
@@ -17,6 +17,7 @@ export default function WorksTablePage() {
   const [data, setData] = useState<DailySalesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(14);
+  const [aggMode, setAggMode] = useState<AggMode>('daily');
 
   const { from, to } = useMemo(() => getDateRange(days), [days]);
 
@@ -32,22 +33,27 @@ export default function WorksTablePage() {
 
   if (!profile || !canViewSales(profile.role)) return null;
 
+  const agg = useMemo(() => {
+    if (!data?.summary?.dailyTotals || !data?.works) return null;
+    return aggregateData(data.summary.dailyTotals, data.works, aggMode);
+  }, [data, aggMode]);
+
   const dates = useMemo(() =>
-    data?.summary?.dailyTotals?.map(d => d.date).sort() || [],
-  [data]);
+    agg?.totals?.map(d => d.date).sort() || [],
+  [agg]);
 
   const rows = useMemo(() => {
-    if (!data?.works) return [];
-    return Object.entries(data.works).map(([name, salesRows]) => {
+    if (!agg?.works) return [];
+    return Object.entries(agg.works).map(([name, salesRows]) => {
       const byDate: Record<string, number> = {};
       let total = 0;
       for (const r of salesRows) {
-        byDate[r.date] = r.amount;
+        byDate[r.date] = (byDate[r.date] || 0) + r.amount;
         total += r.amount;
       }
       return { name, byDate, total };
     }).sort((a, b) => b.total - a.total);
-  }, [data]);
+  }, [agg]);
 
   const dateTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -77,20 +83,37 @@ export default function WorksTablePage() {
             <Menu className="h-4.5 w-4.5" />
           </button>
         </div>
-        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
-          {PRESETS.map(p => (
-            <button
-              key={p.days}
-              onClick={() => setDays(p.days)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
-                days === p.days
-                  ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
+            {PRESETS.map(p => (
+              <button
+                key={p.days}
+                onClick={() => setDays(p.days)}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+                  days === p.days
+                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
+            {([['daily', '일별'], ['weekly', '주별']] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setAggMode(mode)}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+                  aggMode === mode
+                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -104,7 +127,7 @@ export default function WorksTablePage() {
           <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
             <div className="flex items-center gap-4">
               <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                {rows.length}개 작품 · {dates.length}일
+                {rows.length}개 작품 · {dates.length}{aggMode === 'weekly' ? '주' : '일'}
               </span>
               <span className="text-sm font-semibold tracking-tight">총 {fmtShort(grandTotal)}</span>
             </div>
@@ -119,6 +142,17 @@ export default function WorksTablePage() {
                     작품
                   </th>
                   {dates.map(date => {
+                    if (aggMode === 'weekly') {
+                      const mon = new Date(date);
+                      const sun = new Date(mon);
+                      sun.setDate(sun.getDate() + 6);
+                      return (
+                        <th key={date} className="text-right py-3 px-2.5 font-medium whitespace-nowrap min-w-[5.5rem]">
+                          <div className="text-zinc-500 dark:text-zinc-400">{`${mon.getMonth()+1}/${mon.getDate()}`}</div>
+                          <div className="text-[10px] mt-0.5 text-zinc-400 dark:text-zinc-500">{`~${sun.getMonth()+1}/${sun.getDate()}`}</div>
+                        </th>
+                      );
+                    }
                     const d = new Date(date);
                     const dayName = ['일','월','화','수','목','금','토'][d.getDay()];
                     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
