@@ -42,12 +42,12 @@ export async function POST(request: NextRequest) {
   const imageUrl = `data:${previousImageMimeType || 'image/png'};base64,${previousImageBase64}`;
 
   try {
-    const requestId = await falGptImageEditQueue({
+    const job = await falGptImageEditQueue({
       prompt,
       imageUrls: [imageUrl],
       size: { width: 1920, height: 1080 },
     });
-    return NextResponse.json({ requestId });
+    return NextResponse.json(job);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });

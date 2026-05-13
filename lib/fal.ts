@@ -101,15 +101,21 @@ export async function falGptImageEdit(params: {
   return { imageData, mimeType };
 }
 
+export interface FalQueueJob {
+  requestId: string;
+  statusUrl: string;  // fal.ai가 반환한 status 조회 URL
+  responseUrl: string; // fal.ai가 반환한 결과 조회 URL
+}
+
 /**
  * GPT Image 2 Edit — 비동기 큐 제출 (즉시 반환, Cloudflare Tunnel 타임아웃 우회)
- * 반환값: requestId — 클라이언트에서 falQueueStatus로 폴링
+ * 반환값: { requestId, statusUrl, responseUrl } — fal.ai 응답 URL 그대로 사용
  */
 export async function falGptImageEditQueue(params: {
   prompt: string;
   imageUrls: string[];
   size?: { width: number; height: number };
-}): Promise<string> {
+}): Promise<FalQueueJob> {
   const FAL_KEY = process.env.FAL_KEY;
   if (!FAL_KEY) throw new Error('FAL_KEY 없음');
 
@@ -137,40 +143,40 @@ export async function falGptImageEditQueue(params: {
   }
 
   const data = await response.json();
-  const requestId = data.request_id;
-  if (!requestId) throw new Error(`fal.ai request_id 없음: ${JSON.stringify(data)}`);
-  return requestId;
+  if (!data.request_id) throw new Error(`fal.ai request_id 없음: ${JSON.stringify(data)}`);
+
+  // fal.ai 응답에 status_url/response_url이 있으면 그대로 사용, 없으면 구성
+  const statusUrl = data.status_url
+    ?? `https://queue.fal.run/${FAL_MODEL}/requests/${data.request_id}/status`;
+  const responseUrl = data.response_url
+    ?? `https://queue.fal.run/${FAL_MODEL}/requests/${data.request_id}`;
+
+  return { requestId: data.request_id, statusUrl, responseUrl };
 }
 
 export type FalQueueStatus = 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
 
 /**
- * 큐 작업 상태 조회
+ * 큐 작업 상태 조회 — fal.ai 응답의 statusUrl 직접 사용
  */
-export async function falQueueStatus(requestId: string): Promise<FalQueueStatus> {
+export async function falQueueStatus(statusUrl: string): Promise<FalQueueStatus> {
   const FAL_KEY = process.env.FAL_KEY;
   if (!FAL_KEY) throw new Error('FAL_KEY 없음');
 
-  const res = await fetch(
-    `https://queue.fal.run/${FAL_MODEL}/requests/${requestId}/status`,
-    { headers: { 'Authorization': `Key ${FAL_KEY}` } }
-  );
+  const res = await fetch(statusUrl, { headers: { 'Authorization': `Key ${FAL_KEY}` } });
   if (!res.ok) throw new Error(`상태 조회 실패 (${res.status})`);
   const data = await res.json();
   return data.status as FalQueueStatus;
 }
 
 /**
- * 완료된 큐 작업 결과 이미지 가져오기
+ * 완료된 큐 작업 결과 이미지 가져오기 — fal.ai 응답의 responseUrl 직접 사용
  */
-export async function falQueueResult(requestId: string): Promise<FalEditResult> {
+export async function falQueueResult(responseUrl: string): Promise<FalEditResult> {
   const FAL_KEY = process.env.FAL_KEY;
   if (!FAL_KEY) throw new Error('FAL_KEY 없음');
 
-  const res = await fetch(
-    `https://queue.fal.run/${FAL_MODEL}/requests/${requestId}`,
-    { headers: { 'Authorization': `Key ${FAL_KEY}` } }
-  );
+  const res = await fetch(responseUrl, { headers: { 'Authorization': `Key ${FAL_KEY}` } });
   if (!res.ok) throw new Error(`결과 조회 실패 (${res.status})`);
   const data = await res.json();
 

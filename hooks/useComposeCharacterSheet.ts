@@ -35,11 +35,11 @@ export function useComposeCharacterSheet() {
     setState(INITIAL_STATE);
   }, [stopPolling]);
 
-  const pollStatus = useCallback((requestId: string) => {
+  const pollStatus = useCallback((statusUrl: string, responseUrl: string) => {
     const tick = async () => {
       if (!isMountedRef.current) return;
       try {
-        const res = await fetch(`/api/compose-character-sheet/status?requestId=${requestId}`);
+        const res = await fetch(`/api/compose-character-sheet/status?statusUrl=${encodeURIComponent(statusUrl)}&responseUrl=${encodeURIComponent(responseUrl)}`);
         const data = await res.json();
         if (!isMountedRef.current) return;
 
@@ -84,8 +84,8 @@ export function useComposeCharacterSheet() {
         setState({ status: 'failed', resultImage: null, error: data.error || '요청 실패' });
         return;
       }
-      // requestId 수신 → 폴링 시작
-      pollStatus(data.requestId);
+      // statusUrl/responseUrl 수신 → 폴링 시작
+      pollStatus(data.statusUrl, data.responseUrl);
     } catch {
       if (!isMountedRef.current) return;
       setState({ status: 'failed', resultImage: null, error: '서버에 연결할 수 없습니다.' });
@@ -113,7 +113,7 @@ export function useComposeCharacterSheet() {
         setState(prev => ({ ...prev, status: 'failed', error: data.error || '수정 실패' }));
         return;
       }
-      pollStatus(data.requestId);
+      pollStatus(data.statusUrl, data.responseUrl);
     } catch {
       if (!isMountedRef.current) return;
       setState(prev => ({ ...prev, status: 'failed', error: '서버에 연결할 수 없습니다.' }));

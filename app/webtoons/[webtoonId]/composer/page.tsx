@@ -195,12 +195,11 @@ export default function ComposerPage() {
         body: JSON.stringify({ sheetId: selectedSheet.id, instruction: simplifyInstruction }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '제출 실패');
-      const { requestId } = await res.json();
+      const job = await res.json();
       setSimplifyDialog(false);
       setSimplifyInstruction('');
-      // 폴링 시작 (로딩 상태 유지)
       pollUntilDone(
-        `/api/characters/${selectedChar.id}/simplify-sheet?requestId=${requestId}`,
+        `/api/characters/${selectedChar.id}/simplify-sheet?statusUrl=${encodeURIComponent(job.statusUrl)}&responseUrl=${encodeURIComponent(job.responseUrl)}`,
         async (sheet) => {
           await refreshCharAndSelect(selectedChar.id, sheet.id);
           setSimplifyLoading(false);
@@ -225,11 +224,11 @@ export default function ComposerPage() {
         body: JSON.stringify({ sheetId: selectedSheet.id, instruction }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '제출 실패');
-      const { requestId } = await res.json();
+      const job = await res.json();
       setTransformDialog(false);
       setTransformInstruction('');
       pollUntilDone(
-        `/api/characters/${selectedChar.id}/transform-sheet?requestId=${requestId}&instruction=${encodeURIComponent(instruction)}`,
+        `/api/characters/${selectedChar.id}/transform-sheet?statusUrl=${encodeURIComponent(job.statusUrl)}&responseUrl=${encodeURIComponent(job.responseUrl)}&instruction=${encodeURIComponent(instruction)}`,
         async (sheet) => {
           await refreshCharAndSelect(selectedChar.id, sheet.id);
           setTransformLoading(false);

@@ -88,12 +88,12 @@ export async function POST(request: NextRequest) {
   const prompt = buildComposePrompt(outfitImages, propImages, body.globalInstruction);
 
   try {
-    const requestId = await falGptImageEditQueue({
+    const job = await falGptImageEditQueue({
       prompt,
       imageUrls,
       size: { width: 1920, height: 1080 },
     });
-    return NextResponse.json({ requestId });
+    return NextResponse.json(job);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });

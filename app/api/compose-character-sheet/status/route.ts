@@ -2,24 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { falQueueStatus, falQueueResult } from '@/lib/fal';
 
 export async function GET(request: NextRequest) {
-  const requestId = request.nextUrl.searchParams.get('requestId');
-  if (!requestId) {
-    return NextResponse.json({ error: 'requestId가 필요합니다.' }, { status: 400 });
+  const statusUrl = request.nextUrl.searchParams.get('statusUrl');
+  const responseUrl = request.nextUrl.searchParams.get('responseUrl');
+
+  if (!statusUrl || !responseUrl) {
+    return NextResponse.json({ error: 'statusUrl, responseUrl이 필요합니다.' }, { status: 400 });
   }
 
   try {
-    const status = await falQueueStatus(requestId);
+    const status = await falQueueStatus(statusUrl);
 
     if (status === 'FAILED') {
       return NextResponse.json({ status: 'FAILED', error: '생성 실패' });
     }
-
     if (status !== 'COMPLETED') {
       return NextResponse.json({ status });
     }
 
-    // COMPLETED — 이미지 다운로드 후 반환
-    const result = await falQueueResult(requestId);
+    const result = await falQueueResult(responseUrl);
     return NextResponse.json({ status: 'COMPLETED', imageData: result.imageData, mimeType: result.mimeType });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
