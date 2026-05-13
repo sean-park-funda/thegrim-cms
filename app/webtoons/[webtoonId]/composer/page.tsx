@@ -149,6 +149,38 @@ export default function ComposerPage() {
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
+  // ─── 폴링 공통 헬퍼 ──────────────────────────
+  const pollUntilDone = useCallback(async (
+    url: string,
+    onDone: (sheet: any) => void,
+    onError: (msg: string) => void,
+  ) => {
+    const poll = async () => {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) { onError(data.error || '오류 발생'); return; }
+        if (data.done) { onDone(data.sheet); return; }
+        if (data.status === 'FAILED') { onError('작업 실패'); return; }
+        setTimeout(poll, 3000);
+      } catch {
+        onError('네트워크 오류');
+      }
+    };
+    poll();
+  }, []);
+
+  const refreshCharAndSelect = useCallback(async (charId: string, newSheetId: string) => {
+    const updated = await getCharactersByWebtoon(webtoonId);
+    setCharacters(updated);
+    const updatedChar = updated.find(c => c.id === charId);
+    if (updatedChar) {
+      setSelectedChar(updatedChar);
+      const newS = updatedChar.character_sheets?.find(s => s.id === newSheetId) ?? null;
+      if (newS) setSelectedSheet(newS);
+    }
+  }, [webtoonId]);
+
   // ─── 기본형 만들기 ───────────────────────────
   const handleSimplify = async () => {
     if (!selectedChar || !selectedSheet) return;
@@ -159,25 +191,21 @@ export default function ComposerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sheetId: selectedSheet.id, instruction: simplifyInstruction }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || '기본형 생성 실패');
-      }
-      const newSheet = await res.json();
-      // 캐릭터 목록 새로고침 후 새 시트 선택
-      const updated = await getCharactersByWebtoon(webtoonId);
-      setCharacters(updated);
-      const updatedChar = updated.find(c => c.id === selectedChar.id);
-      if (updatedChar) {
-        setSelectedChar(updatedChar);
-        const newS = updatedChar.character_sheets?.find(s => s.id === newSheet.id) ?? newSheet;
-        setSelectedSheet(newS);
-      }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '제출 실패');
+      const { requestId } = await res.json();
       setSimplifyDialog(false);
       setSimplifyInstruction('');
+      // 폴링 시작 (로딩 상태 유지)
+      pollUntilDone(
+        `/api/characters/${selectedChar.id}/simplify-sheet?requestId=${requestId}`,
+        async (sheet) => {
+          await refreshCharAndSelect(selectedChar.id, sheet.id);
+          setSimplifyLoading(false);
+        },
+        (msg) => { alert(msg); setSimplifyLoading(false); },
+      );
     } catch (err) {
       alert(err instanceof Error ? err.message : '오류 발생');
-    } finally {
       setSimplifyLoading(false);
     }
   };
@@ -186,30 +214,27 @@ export default function ComposerPage() {
   const handleTransform = async () => {
     if (!selectedChar || !selectedSheet || !transformInstruction.trim()) return;
     setTransformLoading(true);
+    const instruction = transformInstruction;
     try {
       const res = await fetch(`/api/characters/${selectedChar.id}/transform-sheet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetId: selectedSheet.id, instruction: transformInstruction }),
+        body: JSON.stringify({ sheetId: selectedSheet.id, instruction }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || '변형 생성 실패');
-      }
-      const newSheet = await res.json();
-      const updated = await getCharactersByWebtoon(webtoonId);
-      setCharacters(updated);
-      const updatedChar = updated.find(c => c.id === selectedChar.id);
-      if (updatedChar) {
-        setSelectedChar(updatedChar);
-        const newS = updatedChar.character_sheets?.find(s => s.id === newSheet.id) ?? newSheet;
-        setSelectedSheet(newS);
-      }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '제출 실패');
+      const { requestId } = await res.json();
       setTransformDialog(false);
       setTransformInstruction('');
+      pollUntilDone(
+        `/api/characters/${selectedChar.id}/transform-sheet?requestId=${requestId}&instruction=${encodeURIComponent(instruction)}`,
+        async (sheet) => {
+          await refreshCharAndSelect(selectedChar.id, sheet.id);
+          setTransformLoading(false);
+        },
+        (msg) => { alert(msg); setTransformLoading(false); },
+      );
     } catch (err) {
       alert(err instanceof Error ? err.message : '오류 발생');
-    } finally {
       setTransformLoading(false);
     }
   };
@@ -559,20 +584,24 @@ export default function ComposerPage() {
               </SelectContent>
             </Select>
             <button
-              onClick={() => setSimplifyDialog(true)}
+              onClick={() => !simplifyLoading && setSimplifyDialog(true)}
               disabled={!selectedChar || !selectedSheet}
-              title="기본형 만들기"
+              title={simplifyLoading ? '기본형 생성 중…' : '기본형 만들기'}
               className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-md border text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <Scissors className="h-3.5 w-3.5" />
+              {simplifyLoading
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                : <Scissors className="h-3.5 w-3.5" />}
             </button>
             <button
-              onClick={() => setTransformDialog(true)}
+              onClick={() => !transformLoading && setTransformDialog(true)}
               disabled={!selectedChar || !selectedSheet}
-              title="캐릭터 변형하기"
+              title={transformLoading ? '변형 생성 중…' : '캐릭터 변형하기'}
               className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-md border text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <Wand2 className="h-3.5 w-3.5" />
+              {transformLoading
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                : <Wand2 className="h-3.5 w-3.5" />}
             </button>
           </div>
 

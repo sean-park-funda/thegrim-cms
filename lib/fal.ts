@@ -1,4 +1,6 @@
-const FAL_EDIT_URL = 'https://fal.run/openai/gpt-image-2/edit';
+const FAL_MODEL = 'openai/gpt-image-2/edit';
+const FAL_EDIT_URL = `https://fal.run/${FAL_MODEL}`;
+const FAL_QUEUE_SUBMIT_URL = `https://queue.fal.run/${FAL_MODEL}`;
 const FAL_STORAGE_INITIATE = 'https://rest.alpha.fal.ai/storage/upload/initiate';
 
 export interface FalEditResult {
@@ -97,4 +99,87 @@ export async function falGptImageEdit(params: {
   const imageData = Buffer.from(buf).toString('base64');
 
   return { imageData, mimeType };
+}
+
+/**
+ * GPT Image 2 Edit — 비동기 큐 제출 (즉시 반환, Cloudflare Tunnel 타임아웃 우회)
+ * 반환값: requestId — 클라이언트에서 falQueueStatus로 폴링
+ */
+export async function falGptImageEditQueue(params: {
+  prompt: string;
+  imageUrls: string[];
+  size?: { width: number; height: number };
+}): Promise<string> {
+  const FAL_KEY = process.env.FAL_KEY;
+  if (!FAL_KEY) throw new Error('FAL_KEY 없음');
+
+  const resolvedUrls = await Promise.all(
+    params.imageUrls.map(url =>
+      url.startsWith('data:') ? uploadDataUrlToFal(url, FAL_KEY) : Promise.resolve(url)
+    )
+  );
+
+  const response = await fetch(FAL_QUEUE_SUBMIT_URL, {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${FAL_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      image_urls: resolvedUrls,
+      image_size: params.size ?? { width: 1024, height: 1024 },
+      quality: 'high',
+      n: 1,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`fal.ai 큐 제출 실패 (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  const requestId = data.request_id;
+  if (!requestId) throw new Error(`fal.ai request_id 없음: ${JSON.stringify(data)}`);
+  return requestId;
+}
+
+export type FalQueueStatus = 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
+/**
+ * 큐 작업 상태 조회
+ */
+export async function falQueueStatus(requestId: string): Promise<FalQueueStatus> {
+  const FAL_KEY = process.env.FAL_KEY;
+  if (!FAL_KEY) throw new Error('FAL_KEY 없음');
+
+  const res = await fetch(
+    `https://queue.fal.run/${FAL_MODEL}/requests/${requestId}/status`,
+    { headers: { 'Authorization': `Key ${FAL_KEY}` } }
+  );
+  if (!res.ok) throw new Error(`상태 조회 실패 (${res.status})`);
+  const data = await res.json();
+  return data.status as FalQueueStatus;
+}
+
+/**
+ * 완료된 큐 작업 결과 이미지 가져오기
+ */
+export async function falQueueResult(requestId: string): Promise<FalEditResult> {
+  const FAL_KEY = process.env.FAL_KEY;
+  if (!FAL_KEY) throw new Error('FAL_KEY 없음');
+
+  const res = await fetch(
+    `https://queue.fal.run/${FAL_MODEL}/requests/${requestId}`,
+    { headers: { 'Authorization': `Key ${FAL_KEY}` } }
+  );
+  if (!res.ok) throw new Error(`결과 조회 실패 (${res.status})`);
+  const data = await res.json();
+
+  const imageUrl: string | undefined =
+    data.images?.[0]?.url ?? data.image?.url ?? data.output?.images?.[0]?.url;
+  if (!imageUrl) throw new Error(`이미지 URL 없음: ${JSON.stringify(data)}`);
+
+  const imgRes = await fetch(imageUrl);
+  const buf = await imgRes.arrayBuffer();
+  const mimeType = imgRes.headers.get('content-type') || 'image/png';
+  return { imageData: Buffer.from(buf).toString('base64'), mimeType };
 }
