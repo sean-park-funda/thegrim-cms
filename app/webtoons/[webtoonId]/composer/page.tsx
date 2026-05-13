@@ -85,6 +85,11 @@ export default function ComposerPage() {
   // ─── 모바일 탭 ────────────────────────────────
   const [mobileTab, setMobileTab] = useState<'character' | 'items' | 'compose'>('character');
 
+  // ─── 기본형 만들기 ───────────────────────────
+  const [simplifyDialog, setSimplifyDialog] = useState(false);
+  const [simplifyInstruction, setSimplifyInstruction] = useState('');
+  const [simplifyLoading, setSimplifyLoading] = useState(false);
+
   // ─── 레퍼런스로 새 요소 만들기 ───────────────
   const [createFromRefsDialog, setCreateFromRefsDialog] = useState(false);
   const [cfrSelectedIds, setCfrSelectedIds] = useState<Set<string>>(new Set());
@@ -138,6 +143,39 @@ export default function ComposerPage() {
   }, [webtoonId]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  // ─── 기본형 만들기 ───────────────────────────
+  const handleSimplify = async () => {
+    if (!selectedChar || !selectedSheet) return;
+    setSimplifyLoading(true);
+    try {
+      const res = await fetch(`/api/characters/${selectedChar.id}/simplify-sheet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetId: selectedSheet.id, instruction: simplifyInstruction }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '기본형 생성 실패');
+      }
+      const newSheet = await res.json();
+      // 캐릭터 목록 새로고침 후 새 시트 선택
+      const updated = await getCharactersByWebtoon(webtoonId);
+      setCharacters(updated);
+      const updatedChar = updated.find(c => c.id === selectedChar.id);
+      if (updatedChar) {
+        setSelectedChar(updatedChar);
+        const newS = updatedChar.character_sheets?.find(s => s.id === newSheet.id) ?? newSheet;
+        setSelectedSheet(newS);
+      }
+      setSimplifyDialog(false);
+      setSimplifyInstruction('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '오류 발생');
+    } finally {
+      setSimplifyLoading(false);
+    }
+  };
 
   // ─── 캐릭터 선택 ──────────────────────────────
   const handleSelectChar = (char: CharacterWithSheets) => {
@@ -486,6 +524,19 @@ export default function ComposerPage() {
           </div>
 
           {/* 캐릭터 카드 목록 */}
+          {/* 기본형 만들기 버튼 — 선택된 캐릭터가 있을 때만 */}
+          {selectedChar && selectedSheet && (
+            <div className="flex-shrink-0 px-2 py-2 border-b">
+              <button
+                onClick={() => setSimplifyDialog(true)}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 py-2 text-xs text-primary/70 hover:bg-primary/5 hover:text-primary transition-colors"
+              >
+                <Scissors className="h-3.5 w-3.5" />
+                기본형 만들기
+              </button>
+            </div>
+          )}
+
           <ScrollArea className="flex-1 min-h-0 overflow-hidden">
             <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2 pb-16 md:pb-2">
               {filteredChars.map(char => {
@@ -876,6 +927,55 @@ export default function ComposerPage() {
           생성
         </button>
       </div>
+
+      {/* ── 기본형 만들기 다이얼로그 ──────────────── */}
+      <Dialog open={simplifyDialog} onOpenChange={o => { if (!o && !simplifyLoading) { setSimplifyDialog(false); setSimplifyInstruction(''); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>기본형 만들기</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* 현재 선택된 시트 미리보기 */}
+            {selectedSheet?.file_path && (
+              <div className="flex gap-3 items-start rounded-lg bg-muted/40 p-3">
+                <img
+                  src={selectedSheet.file_path}
+                  alt="원본"
+                  className="w-16 h-20 object-cover rounded border flex-shrink-0"
+                />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">{selectedChar?.name}</p>
+                  <p>얼굴·신체는 그대로 유지하고</p>
+                  <p>의상·장신구를 단순한 기본복으로</p>
+                  <p>교체한 새 시트를 생성합니다.</p>
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5">추가 지시 (선택)</p>
+              <Textarea
+                value={simplifyInstruction}
+                onChange={e => setSimplifyInstruction(e.target.value)}
+                placeholder="예: 흰 민소매와 검정 레깅스로 / 상체만 단순화"
+                className="text-sm resize-none"
+                rows={2}
+                disabled={simplifyLoading}
+              />
+            </div>
+            <Button
+              onClick={handleSimplify}
+              disabled={simplifyLoading}
+              className="w-full gap-2"
+            >
+              {simplifyLoading ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />생성 중… (최대 2분)</>
+              ) : (
+                <><Scissors className="h-4 w-4" />기본형 생성</>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── 업로드 다이얼로그 ─────────────────────── */}
       <Dialog open={uploadDialog.open} onOpenChange={o => { if (!o) closeUploadDialog(); }}>
