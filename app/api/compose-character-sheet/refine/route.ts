@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { falGptImageEdit } from '@/lib/fal';
+import { falGptImageEditQueue } from '@/lib/fal';
 
 interface RefineRequest {
   previousImageBase64: string;
@@ -42,12 +42,12 @@ export async function POST(request: NextRequest) {
   const imageUrl = `data:${previousImageMimeType || 'image/png'};base64,${previousImageBase64}`;
 
   try {
-    const result = await falGptImageEdit({
+    const requestId = await falGptImageEditQueue({
       prompt,
       imageUrls: [imageUrl],
       size: { width: 1920, height: 1080 },
     });
-    return NextResponse.json({ imageData: result.imageData, mimeType: result.mimeType });
+    return NextResponse.json({ requestId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ReferenceImage } from '@/lib/types/compose';
-import { falGptImageEdit } from '@/lib/fal';
+import { falGptImageEditQueue } from '@/lib/fal';
 
 export type { ReferenceImage };
 
@@ -88,12 +88,12 @@ export async function POST(request: NextRequest) {
   const prompt = buildComposePrompt(outfitImages, propImages, body.globalInstruction);
 
   try {
-    const result = await falGptImageEdit({
+    const requestId = await falGptImageEditQueue({
       prompt,
       imageUrls,
       size: { width: 1920, height: 1080 },
     });
-    return NextResponse.json({ imageData: result.imageData, mimeType: result.mimeType });
+    return NextResponse.json({ requestId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
