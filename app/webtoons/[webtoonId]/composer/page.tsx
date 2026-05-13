@@ -242,6 +242,22 @@ export default function ComposerPage() {
     }
   };
 
+  // ─── 캐릭터 시트 삭제 ────────────────────────
+  const handleDeleteSheet = async (char: CharacterWithSheets, sheetId: string) => {
+    if (!confirm('이 시트를 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/characters/${char.id}/sheets/${sheetId}`, { method: 'DELETE' });
+    if (!res.ok) { alert('삭제 실패'); return; }
+    const updated = await getCharactersByWebtoon(webtoonId);
+    setCharacters(updated);
+    const updatedChar = updated.find(c => c.id === char.id);
+    if (updatedChar) {
+      setSelectedChar(updatedChar);
+      // 삭제된 시트가 선택중이었으면 첫 번째로 전환
+      const stillExists = updatedChar.character_sheets?.find(s => s.id === selectedSheet?.id);
+      setSelectedSheet(stillExists ?? updatedChar.character_sheets?.[0] ?? null);
+    }
+  };
+
   // ─── 캐릭터 선택 ──────────────────────────────
   const handleSelectChar = (char: CharacterWithSheets) => {
     setSelectedChar(char);
@@ -656,27 +672,38 @@ export default function ComposerPage() {
                       )}
                     </div>
 
-                    {/* 시트 선택 (해당 캐릭터가 선택됐고 시트 여러 개일 때) */}
+                    {/* 시트 썸네일 스트립 — 선택된 캐릭터에 시트 2개 이상 */}
                     {isSelected && (char.character_sheets?.length ?? 0) > 1 && (
-                      <div className="mt-1.5 px-0.5">
-                        <Select
-                          value={selectedSheet?.id ?? ''}
-                          onValueChange={v => {
-                            const sheet = char.character_sheets?.find(s => s.id === v) ?? null;
-                            setSelectedSheet(sheet);
-                          }}
-                        >
-                          <SelectTrigger className="h-7 text-[11px]">
-                            <SelectValue placeholder="시트 선택" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {char.character_sheets!.map(sheet => (
-                              <SelectItem key={sheet.id} value={sheet.id} className="text-xs">
-                                {sheet.file_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 px-0.5">
+                        {char.character_sheets!.map(sheet => {
+                          const isActiveSheet = selectedSheet?.id === sheet.id;
+                          const label = sheet.description?.startsWith('기본형') ? '기본형'
+                            : sheet.description?.startsWith('변형') ? '변형'
+                            : '원본';
+                          return (
+                            <div key={sheet.id} className="relative flex-shrink-0 group/sheet">
+                              <button
+                                onClick={() => setSelectedSheet(sheet)}
+                                title={sheet.description || sheet.file_name}
+                                className={`w-10 h-12 rounded overflow-hidden border-2 transition-all ${
+                                  isActiveSheet ? 'border-primary' : 'border-border hover:border-primary/40'
+                                }`}
+                              >
+                                <img src={sheet.file_path} alt={label} className="w-full h-full object-cover" />
+                              </button>
+                              <span className="absolute bottom-0 left-0 right-0 text-[8px] text-center bg-black/50 text-white leading-tight py-px rounded-b truncate px-0.5">
+                                {label}
+                              </span>
+                              <button
+                                onClick={e => { e.stopPropagation(); handleDeleteSheet(char, sheet.id); }}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover/sheet:opacity-100 transition-opacity shadow"
+                                title="시트 삭제"
+                              >
+                                <X className="h-2 w-2" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1568,21 +1595,24 @@ function ItemCard({
         </div>
       )}
 
-      <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={e => { e.stopPropagation(); onViewLarge(); }}
-          className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
-          title="크게보기"
-        >
-          <Expand className="h-2.5 w-2.5" />
-        </button>
-        <button
-          onClick={e => { e.stopPropagation(); onModify(); }}
-          className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
-          title="수정본 만들기"
-        >
-          <Pencil className="h-2.5 w-2.5" />
-        </button>
+      {/* 크게보기·수정: 호버에만 / 삭제: 항상 표시 */}
+      <div className="absolute top-1.5 right-1.5 flex gap-1">
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={e => { e.stopPropagation(); onViewLarge(); }}
+            className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
+            title="크게보기"
+          >
+            <Expand className="h-2.5 w-2.5" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onModify(); }}
+            className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
+            title="수정본 만들기"
+          >
+            <Pencil className="h-2.5 w-2.5" />
+          </button>
+        </div>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
           className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-destructive hover:text-white"
