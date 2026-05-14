@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { canViewAccounting } from '@/lib/utils/permissions';
+import { canViewSales } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
 
 // GET /api/accounting/sales/compare?workIds=id1,id2,id3&from=2026-01-01&to=2026-03-20
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const { supabase } = auth;
 
     const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
-    if (!profile || !canViewAccounting(profile.role)) {
+    if (!profile || !canViewSales(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 
