@@ -586,7 +586,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   }));
   const adj_sum = adjustments.reduce((s, a) => s + a.amount, 0);
   const transfer_sum = partner_transfers.reduce((s, t) => s + t.amount, 0);
-  const total_adjustment = adj_sum + transfer_sum;
+  // 개인: 작가 간 거래는 수익에 포함(세금 대상), 법인: 세금계산서에 반영(adj와 동일)
+  const total_adjustment = isCorp ? adj_sum + transfer_sum : adj_sum;
   const total_mg_raw = works_final.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
   const total_mg_from_labor_cost = works_final.reduce((s, w) => s + w.mg_from_labor_cost, 0);
 
@@ -634,15 +635,17 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   });
 
   // 세금: withheld MG 차감분만 과세 대상에서 제외 (예고료는 빼지 않음)
+  // 개인: 작가 간 거래(transfer_sum)를 수익에 포함하여 세금 대상으로 함
   const taxType = workPartners[0]?.tax_type || 'standard';
-  const taxable = Math.max(0, subtotal - withheldMgDeduction);
+  const subtotalWithTransfers = isCorp ? subtotal : subtotal + transfer_sum;
+  const taxable = Math.max(0, subtotalWithTransfers - withheldMgDeduction);
   const tax_breakdown = calculateTax(taxable, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
-  // final = net_share - 세금 - 예고료 - MG차감 + 조정
+  // final = net_share + 작가간거래 - 세금 - 예고료 - MG차감 + 조정
   const final_payment = isCorp
     ? tax_invoice_total - total_mg_deduction
-    : subtotal - tax_amount - insurance - total_mg_deduction + total_adjustment;
+    : subtotalWithTransfers - tax_amount - insurance - total_mg_deduction + total_adjustment;
 
   return {
     partner,

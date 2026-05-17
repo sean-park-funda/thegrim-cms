@@ -895,7 +895,7 @@ export default function PartnerDetailPage() {
                             <td className="py-2 px-3 text-right tabular-nums">
                               {((hasAnyDeduction
                                 ? statement.grand_total_net_share
-                                : statement.grand_total_share) + statement.total_adjustment).toLocaleString()}
+                                : statement.grand_total_share) + statement.total_adjustment + (statement.partner_transfers || []).reduce((s: number, t: any) => s + t.amount, 0)).toLocaleString()}
                             </td>
                             <td className="py-2 px-3"></td>
                           </tr>
