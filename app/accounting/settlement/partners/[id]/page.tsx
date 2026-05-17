@@ -998,20 +998,17 @@ export default function PartnerDetailPage() {
                             {statement.adjustments.map(adj => (
                               <th key={adj.id} className="py-2 px-3 font-medium text-right">{adj.label}</th>
                             ))}
-                            {(statement.partner_transfers || []).map(t => (
-                              <th key={t.id} className="py-2 px-3 font-medium text-right">
-                                {t.direction === 'outgoing' ? '→' : '←'} {t.counterpart_name} {t.label}
-                              </th>
-                            ))}
                             <th className="py-2 px-3 font-medium text-right">지급액</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr className="border-b font-semibold">
                             <td className="py-2 px-3 text-right tabular-nums">
-                              {statement.grand_total_labor_cost > 0
-                                ? statement.grand_total_net_share.toLocaleString()
-                                : statement.grand_total_share.toLocaleString()}
+                              {(() => {
+                                const base = statement.grand_total_labor_cost > 0 ? statement.grand_total_net_share : statement.grand_total_share;
+                                const transferSum = (statement.partner_transfers || []).reduce((s: number, t: any) => s + t.amount, 0);
+                                return (base + transferSum).toLocaleString();
+                              })()}
                             </td>
                             <>
                               <td className="py-2 px-3 text-right tabular-nums text-red-600">
@@ -1034,11 +1031,6 @@ export default function PartnerDetailPage() {
                             {statement.adjustments.map(adj => (
                               <td key={adj.id} className={`py-2 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
                                 {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
-                              </td>
-                            ))}
-                            {(statement.partner_transfers || []).map(t => (
-                              <td key={t.id} className={`py-2 px-3 text-right tabular-nums ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                {t.amount >= 0 ? '+' : ''}{t.amount.toLocaleString()}
                               </td>
                             ))}
                             <td className="py-2 px-3 text-right tabular-nums text-lg">{statement.final_payment.toLocaleString()}</td>
