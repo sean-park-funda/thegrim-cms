@@ -71,6 +71,7 @@ export async function computeAllStatements(
     { data: allPartnerItemLinks },
     { data: confirmedSettlements },
     { data: allInsuranceExemptions },
+    { data: allPartnerTransfers },
   ] = await Promise.all([
     supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
     supabase.from('rs_settlement_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
@@ -79,6 +80,7 @@ export async function computeAllStatements(
     supabase.from('rs_labor_cost_item_partners').select('item_id, partner_id').in('partner_id', partnerIds),
     supabase.from('rs_settlements').select('partner_id').eq('month', month).eq('status', 'confirmed'),
     supabase.from('rs_insurance_exemptions').select('partner_id, reason').eq('month', month).in('partner_id', partnerIds),
+    supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('month', month),
   ]);
 
   // MG entry 관련 벌크 조회
@@ -266,6 +268,20 @@ export async function computeAllStatements(
         .map((a: any) => ({ id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount) })),
       mgDeductionAdjustments: (allMgDeductionAdj || []).filter((a: any) => a.partner_id === partnerId)
         .map((a: any) => ({ id: a.id, partner_id: a.partner_id, work_id: a.work_id, label: a.label, amount: Number(a.amount) })),
+      partnerTransfers: [
+        ...(allPartnerTransfers || []).filter((t: any) => t.from_partner_id === partnerId).map((t: any) => ({
+          id: t.id, from_partner_id: t.from_partner_id, from_partner_name: t.from_partner?.name || '',
+          to_partner_id: t.to_partner_id, to_partner_name: t.to_partner?.name || '',
+          work_id: t.work_id, work_name: t.work?.name || null,
+          label: t.label, amount: Number(t.amount), direction: 'outgoing' as const,
+        })),
+        ...(allPartnerTransfers || []).filter((t: any) => t.to_partner_id === partnerId).map((t: any) => ({
+          id: t.id, from_partner_id: t.from_partner_id, from_partner_name: t.from_partner?.name || '',
+          to_partner_id: t.to_partner_id, to_partner_name: t.to_partner?.name || '',
+          work_id: t.work_id, work_name: t.work?.name || null,
+          label: t.label, amount: Number(t.amount), direction: 'incoming' as const,
+        })),
+      ],
       laborCostItems: allLaborItems.filter(i => myItemIds.has(i.id)),
       laborCostPartnerLinks: allLaborPartnerLinks.filter(l => myItemIds.has(l.item_id)),
       laborCostWorkLinks: allLaborWorkLinks.filter(l => myItemIds.has(l.item_id)),

@@ -15,6 +15,7 @@ import {
   type LaborCostPartnerLink,
   type LaborCostWorkLink,
   type LaborCostWpData,
+  type PartnerTransferItem,
 } from '@/lib/settlement/compute-statement';
 
 // GET /api/accounting/settlement/partners/[id]/statement?month=YYYY-MM
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], mgDeductionAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], mgDeductionAdjustments: [], partnerTransfers: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -99,12 +100,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { data: adjustmentItems },
       { data: mgDeductionAdjItems },
       { data: insuranceExemptions },
+      { data: transfersFrom },
+      { data: transfersTo },
     ] = await Promise.all([
       supabase.from('rs_revenues').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
       supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_mg_deduction_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_insurance_exemptions').select('id').eq('partner_id', id).eq('month', month).limit(1),
+      supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('from_partner_id', id).eq('month', month),
+      supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('to_partner_id', id).eq('month', month),
     ]);
 
     const revenueData: RevenueData[] = (revenues || []).map(r => ({
@@ -238,6 +243,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       mgDeductionAdjustments: (mgDeductionAdjItems || []).map(a => ({
         id: a.id, partner_id: a.partner_id, work_id: a.work_id, label: a.label, amount: Number(a.amount),
       })),
+      partnerTransfers: [
+        ...(transfersFrom || []).map((t: any) => ({
+          id: t.id, from_partner_id: t.from_partner_id, from_partner_name: t.from_partner?.name || '',
+          to_partner_id: t.to_partner_id, to_partner_name: t.to_partner?.name || '',
+          work_id: t.work_id, work_name: t.work?.name || null,
+          label: t.label, amount: Number(t.amount), direction: 'outgoing' as const,
+        })),
+        ...(transfersTo || []).map((t: any) => ({
+          id: t.id, from_partner_id: t.from_partner_id, from_partner_name: t.from_partner?.name || '',
+          to_partner_id: t.to_partner_id, to_partner_name: t.to_partner?.name || '',
+          work_id: t.work_id, work_name: t.work?.name || null,
+          label: t.label, amount: Number(t.amount), direction: 'incoming' as const,
+        })),
+      ],
       laborCostItems,
       laborCostPartnerLinks,
       laborCostWorkLinks,

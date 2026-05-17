@@ -108,6 +108,7 @@ interface StatementData {
   total_mg_deduction: number;
   total_mg_from_labor_cost: number;
   adjustments: { id: string; label: string; amount: number }[];
+  partner_transfers: { id: string; label: string; amount: number; direction: 'outgoing' | 'incoming'; counterpart_name: string; work_name: string | null }[];
   total_adjustment: number;
   final_payment: number;
   mg_history?: MgWorkHistory[];
@@ -834,6 +835,22 @@ export default function PartnerDetailPage() {
                               </td>
                             </tr>
                           ))}
+                          {/* 작가 간 거래 */}
+                          {(statement.partner_transfers || []).map(t => (
+                            <tr key={t.id} className={`border-b ${t.direction === 'incoming' ? 'bg-green-50/50 dark:bg-green-950/20' : 'bg-red-50/50 dark:bg-red-950/20'}`}>
+                              <td className="py-1.5 px-3"></td>
+                              <td className="py-1.5 px-3 text-sm text-muted-foreground">
+                                {t.direction === 'outgoing' ? '→' : '←'} {t.counterpart_name} {t.label}
+                                {t.work_name && <span className="text-xs ml-1">({t.work_name})</span>}
+                              </td>
+                              <td></td>
+                              {midCols > 0 && <td colSpan={midCols}></td>}
+                              <td className={`py-1.5 px-3 text-right tabular-nums ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {t.amount >= 0 ? '+' : ''}{t.amount.toLocaleString()}
+                              </td>
+                              <td className="py-1.5 px-3"></td>
+                            </tr>
+                          ))}
                           {canManage && (
                             <tr className="border-b">
                               <td colSpan={colCount} className="py-1 px-3">
@@ -981,6 +998,11 @@ export default function PartnerDetailPage() {
                             {statement.adjustments.map(adj => (
                               <th key={adj.id} className="py-2 px-3 font-medium text-right">{adj.label}</th>
                             ))}
+                            {(statement.partner_transfers || []).map(t => (
+                              <th key={t.id} className="py-2 px-3 font-medium text-right">
+                                {t.direction === 'outgoing' ? '→' : '←'} {t.counterpart_name} {t.label}
+                              </th>
+                            ))}
                             <th className="py-2 px-3 font-medium text-right">지급액</th>
                           </tr>
                         </thead>
@@ -1012,6 +1034,11 @@ export default function PartnerDetailPage() {
                             {statement.adjustments.map(adj => (
                               <td key={adj.id} className={`py-2 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
                                 {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}
+                              </td>
+                            ))}
+                            {(statement.partner_transfers || []).map(t => (
+                              <td key={t.id} className={`py-2 px-3 text-right tabular-nums ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {t.amount >= 0 ? '+' : ''}{t.amount.toLocaleString()}
                               </td>
                             ))}
                             <td className="py-2 px-3 text-right tabular-nums text-lg">{statement.final_payment.toLocaleString()}</td>

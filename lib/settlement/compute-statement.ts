@@ -86,6 +86,19 @@ export interface MgDeductionAdjustmentItem {
   amount: number;
 }
 
+export interface PartnerTransferItem {
+  id: string;
+  from_partner_id: string;
+  from_partner_name: string;
+  to_partner_id: string;
+  to_partner_name: string;
+  work_id: string | null;
+  work_name: string | null;
+  label: string;
+  amount: number;
+  direction: 'outgoing' | 'incoming';
+}
+
 export interface LaborCostItem {
   id: string;
   amount: number;
@@ -150,6 +163,7 @@ export interface PartnerComputeInput {
   revenueAdjustments: RevenueAdjustmentItem[];
   settlementAdjustments: SettlementAdjustmentItem[];
   mgDeductionAdjustments: MgDeductionAdjustmentItem[];
+  partnerTransfers: PartnerTransferItem[];
   laborCostItems: LaborCostItem[];
   laborCostPartnerLinks: LaborCostPartnerLink[];
   laborCostWorkLinks: LaborCostWorkLink[];
@@ -231,6 +245,7 @@ export interface StatementResult {
   total_mg_deduction: number;
   total_mg_from_labor_cost: number;
   adjustments: { id: string; label: string; amount: number }[];
+  partner_transfers: { id: string; label: string; amount: number; direction: 'outgoing' | 'incoming'; counterpart_name: string; work_name: string | null }[];
   total_adjustment: number;
   final_payment: number;
   mg_history: { work_name: string; history: Omit<MgHistoryEntry, 'work_id' | 'work_name'>[] }[];
@@ -561,7 +576,17 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
   // 조정 항목
   const adjustments = input.settlementAdjustments.map(a => ({ id: a.id, label: a.label, amount: a.amount }));
-  const total_adjustment = adjustments.reduce((s, a) => s + a.amount, 0);
+  const partner_transfers = (input.partnerTransfers || []).map(t => ({
+    id: t.id,
+    label: t.label,
+    amount: t.direction === 'outgoing' ? -t.amount : t.amount,
+    direction: t.direction,
+    counterpart_name: t.direction === 'outgoing' ? t.to_partner_name : t.from_partner_name,
+    work_name: t.work_name,
+  }));
+  const adj_sum = adjustments.reduce((s, a) => s + a.amount, 0);
+  const transfer_sum = partner_transfers.reduce((s, t) => s + t.amount, 0);
+  const total_adjustment = adj_sum + transfer_sum;
   const total_mg_raw = works_final.reduce((s, w) => s + Math.abs(w.mg_deduction), 0);
   const total_mg_from_labor_cost = works_final.reduce((s, w) => s + w.mg_from_labor_cost, 0);
 
@@ -640,6 +665,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     total_mg_deduction,
     total_mg_from_labor_cost,
     adjustments,
+    partner_transfers,
     total_adjustment,
     final_payment,
     mg_history,
@@ -660,7 +686,7 @@ function emptyResult(partner: PartnerData, month: string): StatementResult {
     subtotal: 0, tax_type: 'standard',
     tax_breakdown: { income_tax: 0, local_tax: 0, vat: 0, total: 0 },
     tax_amount: 0, insurance: 0, total_mg_deduction: 0, total_mg_from_labor_cost: 0,
-    adjustments: [], total_adjustment: 0, final_payment: 0,
+    adjustments: [], partner_transfers: [], total_adjustment: 0, final_payment: 0,
     mg_history: [], tax_invoice: null, tax_invoice_total: 0,
     mg_dep_references: [],
   };
