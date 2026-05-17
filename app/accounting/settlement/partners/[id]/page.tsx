@@ -108,6 +108,8 @@ interface StatementData {
   total_mg_deduction: number;
   total_mg_from_labor_cost: number;
   adjustments: { id: string; label: string; amount: number }[];
+  payment_adjustments: { id: string; label: string; amount: number }[];
+  total_payment_adjustment: number;
   partner_transfers: { id: string; label: string; amount: number; direction: 'outgoing' | 'incoming'; counterpart_name: string; work_name: string | null }[];
   total_adjustment: number;
   final_payment: number;
@@ -944,13 +946,23 @@ export default function PartnerDetailPage() {
                             )}
                           </tbody>
                         </table>
-                        {statement.total_mg_deduction > 0 && (
+                        {(statement.total_mg_deduction > 0 || (statement.payment_adjustments || []).length > 0) && (
                           <table className="w-full text-sm mt-2">
                             <tbody>
+                              {statement.total_mg_deduction > 0 && (
                               <tr className="border-b">
                                 <td className="py-1.5 px-3 text-muted-foreground">MG차감대상</td>
                                 <td className="py-1.5 px-3 text-right tabular-nums text-red-600">-{preMgDeduction.toLocaleString()}</td>
                               </tr>
+                              )}
+                              {(statement.payment_adjustments || []).map((pa: any) => (
+                              <tr key={pa.id} className="border-b">
+                                <td className="py-1.5 px-3 text-muted-foreground">{pa.label}</td>
+                                <td className={`py-1.5 px-3 text-right tabular-nums ${pa.amount < 0 ? 'text-red-600' : ''}`}>
+                                  {pa.amount >= 0 ? '+' : ''}{pa.amount.toLocaleString()}
+                                </td>
+                              </tr>
+                              ))}
                             </tbody>
                           </table>
                         )}
@@ -995,6 +1007,9 @@ export default function PartnerDetailPage() {
                             {statement.total_mg_deduction > 0 && (
                               <th className="py-2 px-3 font-medium text-right">MG 차감</th>
                             )}
+                            {(statement.payment_adjustments || []).map((pa: any) => (
+                              <th key={pa.id} className="py-2 px-3 font-medium text-right">{pa.label}</th>
+                            ))}
                             {statement.adjustments.map(adj => (
                               <th key={adj.id} className="py-2 px-3 font-medium text-right">{adj.label}</th>
                             ))}
@@ -1028,6 +1043,11 @@ export default function PartnerDetailPage() {
                                 -{statement.total_mg_deduction.toLocaleString()}
                               </td>
                             )}
+                            {(statement.payment_adjustments || []).map((pa: any) => (
+                              <td key={pa.id} className={`py-2 px-3 text-right tabular-nums ${pa.amount < 0 ? 'text-red-600' : ''}`}>
+                                {pa.amount >= 0 ? '+' : ''}{pa.amount.toLocaleString()}
+                              </td>
+                            ))}
                             {statement.adjustments.map(adj => (
                               <td key={adj.id} className={`py-2 px-3 text-right tabular-nums ${adj.amount < 0 ? 'text-red-600' : ''}`}>
                                 {adj.amount >= 0 ? '+' : ''}{adj.amount.toLocaleString()}

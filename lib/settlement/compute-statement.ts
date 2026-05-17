@@ -78,6 +78,13 @@ export interface SettlementAdjustmentItem {
   amount: number;
 }
 
+export interface PaymentAdjustmentItem {
+  id: string;
+  partner_id: string;
+  label: string;
+  amount: number;
+}
+
 export interface MgDeductionAdjustmentItem {
   id: string;
   partner_id: string;
@@ -163,6 +170,7 @@ export interface PartnerComputeInput {
   revenueAdjustments: RevenueAdjustmentItem[];
   settlementAdjustments: SettlementAdjustmentItem[];
   mgDeductionAdjustments: MgDeductionAdjustmentItem[];
+  paymentAdjustments: PaymentAdjustmentItem[];
   partnerTransfers: PartnerTransferItem[];
   laborCostItems: LaborCostItem[];
   laborCostPartnerLinks: LaborCostPartnerLink[];
@@ -247,6 +255,8 @@ export interface StatementResult {
   adjustments: { id: string; label: string; amount: number }[];
   partner_transfers: { id: string; label: string; amount: number; direction: 'outgoing' | 'incoming'; counterpart_name: string; work_name: string | null }[];
   total_adjustment: number;
+  payment_adjustments: { id: string; label: string; amount: number }[];
+  total_payment_adjustment: number;
   final_payment: number;
   mg_history: { work_name: string; history: Omit<MgHistoryEntry, 'work_id' | 'work_name'>[] }[];
   tax_invoice: { item: string; supply: number; vat: number; total: number }[] | null;
@@ -642,10 +652,14 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   const tax_breakdown = calculateTax(taxable, partner.partner_type, taxType);
   const tax_amount = tax_breakdown.total;
 
-  // final = net_share + 작가간거래 - 세금 - 예고료 - MG차감 + 조정
+  // 지급 조정 (세금 후 지급액에서 직접 차감)
+  const payment_adjustments = (input.paymentAdjustments || []).map(a => ({ id: a.id, label: a.label, amount: a.amount }));
+  const total_payment_adjustment = payment_adjustments.reduce((s, a) => s + a.amount, 0);
+
+  // final = net_share + 작가간거래 - 세금 - 예고료 - MG차감 + 정산조정 + 지급조정
   const final_payment = isCorp
-    ? tax_invoice_total - total_mg_deduction
-    : subtotalWithTransfers - tax_amount - insurance - total_mg_deduction + total_adjustment;
+    ? tax_invoice_total - total_mg_deduction + total_payment_adjustment
+    : subtotalWithTransfers - tax_amount - insurance - total_mg_deduction + total_adjustment + total_payment_adjustment;
 
   return {
     partner,
@@ -670,6 +684,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
     adjustments,
     partner_transfers,
     total_adjustment,
+    payment_adjustments,
+    total_payment_adjustment,
     final_payment,
     mg_history,
     tax_invoice,
@@ -689,7 +705,7 @@ function emptyResult(partner: PartnerData, month: string): StatementResult {
     subtotal: 0, tax_type: 'standard',
     tax_breakdown: { income_tax: 0, local_tax: 0, vat: 0, total: 0 },
     tax_amount: 0, insurance: 0, total_mg_deduction: 0, total_mg_from_labor_cost: 0,
-    adjustments: [], partner_transfers: [], total_adjustment: 0, final_payment: 0,
+    adjustments: [], partner_transfers: [], total_adjustment: 0, payment_adjustments: [], total_payment_adjustment: 0, final_payment: 0,
     mg_history: [], tax_invoice: null, tax_invoice_total: 0,
     mg_dep_references: [],
   };

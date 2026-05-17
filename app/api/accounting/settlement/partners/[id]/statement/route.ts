@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (!workPartners || workPartners.length === 0) {
-      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], mgDeductionAdjustments: [], partnerTransfers: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
+      return NextResponse.json(computeStatement({ partner: partnerData, month, workPartners: [], revenues: [], mgEntries: [], mgDepBlocked: new Map(), revenueAdjustments: [], settlementAdjustments: [], mgDeductionAdjustments: [], partnerTransfers: [], paymentAdjustments: [], laborCostItems: [], laborCostPartnerLinks: [], laborCostWorkLinks: [], laborCostWpData: [] }));
     }
 
     const wpData: WorkPartnerData[] = workPartners.map(wp => ({
@@ -100,6 +100,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { data: adjustmentItems },
       { data: mgDeductionAdjItems },
       { data: insuranceExemptions },
+      { data: paymentAdjItems },
       { data: transfersFrom },
       { data: transfersTo },
     ] = await Promise.all([
@@ -108,6 +109,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       supabase.from('rs_settlement_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_mg_deduction_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_insurance_exemptions').select('id').eq('partner_id', id).eq('month', month).limit(1),
+      supabase.from('rs_payment_adjustments').select('*').eq('partner_id', id).eq('month', month).order('created_at'),
       supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('from_partner_id', id).eq('month', month),
       supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('to_partner_id', id).eq('month', month),
     ]);
@@ -257,6 +259,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           label: t.label, amount: Number(t.amount), direction: 'incoming' as const,
         })),
       ],
+      paymentAdjustments: (paymentAdjItems || []).map((a: any) => ({
+        id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount),
+      })),
       laborCostItems,
       laborCostPartnerLinks,
       laborCostWorkLinks,

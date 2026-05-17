@@ -72,6 +72,7 @@ export async function computeAllStatements(
     { data: confirmedSettlements },
     { data: allInsuranceExemptions },
     { data: allPartnerTransfers },
+    { data: allPaymentAdj },
   ] = await Promise.all([
     supabase.from('rs_revenue_adjustments').select('*').eq('month', month).in('work_id', workIds),
     supabase.from('rs_settlement_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
@@ -81,6 +82,7 @@ export async function computeAllStatements(
     supabase.from('rs_settlements').select('partner_id').eq('month', month).eq('status', 'confirmed'),
     supabase.from('rs_insurance_exemptions').select('partner_id, reason').eq('month', month).in('partner_id', partnerIds),
     supabase.from('rs_partner_transfers').select('*, from_partner:rs_partners!rs_partner_transfers_from_partner_id_fkey(name), to_partner:rs_partners!rs_partner_transfers_to_partner_id_fkey(name), work:rs_works(name)').eq('month', month),
+    supabase.from('rs_payment_adjustments').select('*').eq('month', month).in('partner_id', partnerIds),
   ]);
 
   // MG entry 관련 벌크 조회
@@ -282,6 +284,8 @@ export async function computeAllStatements(
           label: t.label, amount: Number(t.amount), direction: 'incoming' as const,
         })),
       ],
+      paymentAdjustments: (allPaymentAdj || []).filter((a: any) => a.partner_id === partnerId)
+        .map((a: any) => ({ id: a.id, partner_id: a.partner_id, label: a.label, amount: Number(a.amount) })),
       laborCostItems: allLaborItems.filter(i => myItemIds.has(i.id)),
       laborCostPartnerLinks: allLaborPartnerLinks.filter(l => myItemIds.has(l.item_id)),
       laborCostWorkLinks: allLaborWorkLinks.filter(l => myItemIds.has(l.item_id)),
