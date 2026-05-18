@@ -839,7 +839,14 @@ function computeLaborCosts(
     worksByItem.set(link.item_id, list);
   }
 
-  for (const item of myItems) {
+  // 인건비 공제를 먼저 처리해야 근로소득공제 배분 시 팀인건비 차감 기준 사용 가능
+  const sortedItems = [...myItems].sort((a, b) => {
+    if (a.deduction_type === '인건비 공제' && b.deduction_type !== '인건비 공제') return -1;
+    if (a.deduction_type !== '인건비 공제' && b.deduction_type === '인건비 공제') return 1;
+    return 0;
+  });
+
+  for (const item of sortedItems) {
     const amount = Number(item.amount);
     if (amount <= 0) continue;
 
@@ -878,7 +885,11 @@ function computeLaborCosts(
     } else {
       let totalShare = 0;
       const shares = eligible.map(wid => {
-        const share = revenueShareByWork.get(wid) || 0;
+        let share = revenueShareByWork.get(wid) || 0;
+        if (dtype === '근로소득공제') {
+          const teamLabor = outByWorkType.get(`${wid}:인건비 공제`) || 0;
+          share = Math.max(0, share - teamLabor);
+        }
         totalShare += share;
         return { wid, share };
       });
