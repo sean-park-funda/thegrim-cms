@@ -391,11 +391,14 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
           d.net_share = d.revenue_share;
         }
       } else {
-        for (const dtype of ['인건비 공제', '근로소득공제'] as const) {
-          const typeCost = laborCostByWorkType.get(`${wp.work_id}:${dtype}`) || 0;
-          if (typeCost > 0) {
-            distributeByRevenueShare(details, typeCost, dtype === '근로소득공제' ? 'self_labor_cost' : 'team_labor_cost');
-          }
+        const teamCost = laborCostByWorkType.get(`${wp.work_id}:인건비 공제`) || 0;
+        if (teamCost > 0) {
+          distributeByRevenueShare(details, teamCost, 'team_labor_cost');
+        }
+        const selfCost = laborCostByWorkType.get(`${wp.work_id}:근로소득공제`) || 0;
+        if (selfCost > 0) {
+          distributeByRevenueShare(details, selfCost, 'self_labor_cost',
+            d => Math.max(0, d.revenue_share - d.team_labor_cost));
         }
         for (const d of details) {
           d.labor_cost = d.self_labor_cost + d.team_labor_cost;
@@ -473,53 +476,36 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
 
     const totalMgRemaining = entries.reduce((s, e) => s + e.remaining, 0);
 
-    // mg_hold인 작품은 MG 차감 대상에서 제외
-    const mgEligibleWorks = works.filter(w => !w.mg_hold);
+    // MG entry에 연결된 작품만 차감 대상 (작품별 MG 격리)
+    const mgWorks = works.filter(w =>
+      !w.mg_hold && entries.some(e => e.work_ids.includes(w.work_id))
+    );
     let totalCap = 0;
     if (isCorp) {
-      for (const w of mgEligibleWorks) {
+      for (const w of mgWorks) {
         if (w.work_total_net_share > 0) {
           totalCap += computeCorpMgCap(w.details, w.work_total_net_share, corpVatType);
         }
       }
     } else {
-      const preSubtotal = mgEligibleWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
+      const preSubtotal = mgWorks.reduce((s, w) => s + Math.max(0, w.work_total_net_share), 0);
       const preTaxType = workPartners[0]?.tax_type || 'standard';
 
-      // 예고료: 항상 순수익 전체 기준 (withheld MG와 무관)
-      let preSerialActiveNetShare = 0;
-      for (const w of mgEligibleWorks) {
-        const wk = workPartners.find(wp => wp.work_id === w.work_id);
-        const wkData = wk?.work;
-        const hasSerial = !wkData?.serial_end_date || new Date(wkData.serial_end_date) >= new Date(month + '-01');
-        if (hasSerial) {
-          preSerialActiveNetShare += Math.max(0, w.work_total_net_share);
-        }
-      }
-      const preInsurance = input.insuranceExempt ? 0 : calculateInsurance(preSerialActiveNetShare, partner.partner_type, {
-        reportType: partner.report_type ?? null,
-        isForeign: partner.is_foreign ?? false,
-      });
-
-      // withheld 세금 면제: 이미 원천징수됨 → subtotal 전액까지 면제 가능
+      // withheld 세금 면제: 이미 원천징수됨 → MG 연결 작품 순수익 한도
       const withheldRemaining = entries.filter(e => e.withheld_tax).reduce((s, e) => s + e.remaining, 0);
       withheldMgDeduction = Math.min(Math.max(0, withheldRemaining), preSubtotal);
 
-      // 세금: withheld 면제분만 과세 대상에서 제외 (예고료는 빼지 않음)
+      // 세금: withheld 면제분만 과세 대상에서 제외
       const preTaxable = Math.max(0, preSubtotal - withheldMgDeduction);
       const preTax = calculateTax(preTaxable, partner.partner_type, preTaxType);
 
-      // MG 차감 상한 = 순수익 - 예고료 - 세금
-      totalCap = Math.max(0, preSubtotal - preInsurance - preTax.total);
+      // MG 차감 상한 = MG 연결 작품 순수익 - 세금 (예고료는 MG 차감 후 잔액 기준)
+      totalCap = Math.max(0, preSubtotal - preTax.total);
     }
 
     const totalDeduction = Math.min(totalMgRemaining, Math.max(0, totalCap));
 
-    // 작품별 차감 배분: 법인은 cap 비율, 개인은 net_share 비율
-    // mg_hold인 작품은 차감 대상에서 제외
-    const mgWorks = works.filter(w =>
-      !w.mg_hold && entries.some(e => e.work_ids.includes(w.work_id))
-    );
+    // 작품별 차감 배분
 
     // 작품별 배분 기준 계산
     const workBasis = mgWorks.map(w => {
@@ -629,7 +615,7 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
   // MG 차감
   const total_mg_deduction = total_mg_raw;
 
-  // 예고료: 항상 순수익 전체 기준 (withheld MG와 무관, 세금 차감 전)
+  // 예고료: MG 차감 후 잔액 기준
   let serialActiveNetShare = 0;
   for (const w of works_final) {
     const wk = workPartners.find(wp => wp.work_id === w.work_id);
@@ -639,7 +625,8 @@ export function computeStatement(input: PartnerComputeInput): StatementResult {
       serialActiveNetShare += Math.max(0, w.work_total_net_share);
     }
   }
-  const insurance = input.insuranceExempt ? 0 : calculateInsurance(serialActiveNetShare, partner.partner_type, {
+  const insuranceBasis = Math.max(0, serialActiveNetShare - total_mg_raw);
+  const insurance = input.insuranceExempt ? 0 : calculateInsurance(insuranceBasis, partner.partner_type, {
     reportType: partner.report_type ?? null,
     isForeign: partner.is_foreign ?? false,
   });
@@ -748,15 +735,20 @@ function applyExclusionMode(details: WorkDetail[], workFullLaborCost: number, ef
   }
 }
 
-function distributeByRevenueShare(details: WorkDetail[], cost: number, field: 'team_labor_cost' | 'self_labor_cost') {
-  const totalBasis = details.reduce((s, d) => s + Math.max(0, d.revenue_share), 0);
+function distributeByRevenueShare(
+  details: WorkDetail[],
+  cost: number,
+  field: 'team_labor_cost' | 'self_labor_cost',
+  basisFn: (d: WorkDetail) => number = d => d.revenue_share
+) {
+  const totalBasis = details.reduce((s, d) => s + Math.max(0, basisFn(d)), 0);
   if (totalBasis <= 0) return;
-  const eligible = details.filter(d => d.revenue_share > 0);
+  const eligible = details.filter(d => basisFn(d) > 0);
   let distributed = 0;
   for (let i = 0; i < eligible.length; i++) {
     const c = i === eligible.length - 1
       ? cost - distributed
-      : Math.round(cost * (eligible[i].revenue_share / totalBasis));
+      : Math.round(cost * (basisFn(eligible[i]) / totalBasis));
     eligible[i][field] += c;
     distributed += c;
   }
