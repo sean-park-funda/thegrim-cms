@@ -400,7 +400,7 @@ export default function MasterDetailPage() {
 
             <div className="mt-4">
               <FieldLabel>엘리먼트</FieldLabel>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">{data.element}</p>
+              <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">{data.element}</div>
             </div>
 
             <div className="mt-4">
