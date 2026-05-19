@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
@@ -26,6 +26,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function TitleCard({ title }: { title: TitleMasterInfo }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const thumb = localStorage.getItem(`title-thumb-${title.slug}`);
+      if (thumb) setThumbUrl(thumb);
+    } catch {}
+  }, [title.slug]);
+
   const writer = title.creators.find((c) => c.role === '글')?.name;
   const artist = title.creators.find((c) => c.role === '그림')?.name;
   const creatorStr =
@@ -38,92 +47,91 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
       href={`/accounting/sales/master/${title.slug}`}
       className="group rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden hover:shadow-lg dark:hover:border-zinc-600 transition-all duration-200"
     >
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-base truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
-                {title.title}
-              </h3>
-              <span
-                className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                  STATUS_COLORS[title.status] || STATUS_COLORS['완결']
-                }`}
-              >
-                {title.status}
-              </span>
+      <div className="flex">
+        {/* 썸네일 */}
+        <div className="w-24 min-h-[140px] bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
+          {thumbUrl ? (
+            <img src={thumbUrl} alt={title.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-600">
+              <BookOpen className="h-6 w-6" />
             </div>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-              {creatorStr}
-            </p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors flex-shrink-0 mt-1" />
-        </div>
-
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-zinc-400 dark:text-zinc-500">
-          <span className="flex items-center gap-1">
-            <BookOpen className="h-3 w-3" />
-            {title.platform}
-          </span>
-          {title.dayOfWeek && (
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {title.dayOfWeek}
-            </span>
           )}
-          <span className="flex items-center gap-1">
-            <Hash className="h-3 w-3" />
-            {title.episodeCount}화
-          </span>
-          <span>{title.ageRating}</span>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 mt-3">
-          <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-semibold">
-            {title.mainGenre}
-          </span>
-          {title.subGenre && (
-            <span className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[10px] font-semibold">
-              {title.subGenre}
-            </span>
-          )}
-          {title.keywords.slice(0, 3).map((kw) => (
-            <span
-              key={kw}
-              className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]"
-            >
-              #{kw}
-            </span>
-          ))}
-        </div>
+        {/* 정보 */}
+        <div className="flex-1 min-w-0">
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                    {title.title}
+                  </h3>
+                  <span
+                    className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                      STATUS_COLORS[title.status] || STATUS_COLORS['완결']
+                    }`}
+                  >
+                    {title.status}
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                  {creatorStr}
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors flex-shrink-0 mt-1" />
+            </div>
 
-        {/* 글로벌 진출 미니 뱃지 */}
-        {Object.keys(title.globalInfo).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {GLOBAL_COUNTRIES.filter(c => title.globalInfo[c.code] && title.globalInfo[c.code]!.status !== '미진출').map((c) => {
-              const info = title.globalInfo[c.code]!;
-              return (
-                <span key={c.code} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[info.status] || STATUS_COLORS['미진출']}`}>
-                  {c.flag} {info.status}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5 text-xs text-zinc-400 dark:text-zinc-500">
+              <span className="flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
+                {title.platform}
+              </span>
+              {title.dayOfWeek && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {title.dayOfWeek}
                 </span>
-              );
-            })}
-            {GLOBAL_COUNTRIES.filter(c => !title.globalInfo[c.code] || title.globalInfo[c.code]!.status === '미진출').length === GLOBAL_COUNTRIES.length && (
-              <span className="text-[10px] text-zinc-400">글로벌 미진출</span>
+              )}
+              <span className="flex items-center gap-1">
+                <Hash className="h-3 w-3" />
+                {title.episodeCount}화
+              </span>
+              <span>{title.ageRating}</span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-semibold">
+                {title.mainGenre}
+              </span>
+              {title.subGenre && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[10px] font-semibold">
+                  {title.subGenre}
+                </span>
+              )}
+              {title.keywords.slice(0, 3).map((kw) => (
+                <span
+                  key={kw}
+                  className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]"
+                >
+                  #{kw}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
+            <span>
+              {title.startDate} ~ {title.endDate || '연재중'}
+            </span>
+            {title.nonExclusiveDate && (
+              <span className="text-amber-500 dark:text-amber-400">
+                비독점 {title.nonExclusiveDate}
+              </span>
             )}
           </div>
-        )}
-      </div>
-
-      <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
-        <span>
-          {title.startDate} ~ {title.endDate || '연재중'}
-        </span>
-        {title.nonExclusiveDate && (
-          <span className="text-amber-500 dark:text-amber-400">
-            비독점 {title.nonExclusiveDate}
-          </span>
-        )}
+        </div>
       </div>
     </Link>
   );
