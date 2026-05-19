@@ -65,7 +65,7 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
       className="group rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden hover:shadow-lg dark:hover:border-zinc-600 transition-all duration-200"
     >
       <div className="flex h-full">
-        <div className="w-24 xl:w-20 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
+        <div className="w-28 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
           {thumbUrl ? (
             <img src={thumbUrl} alt={title.title} className="w-full h-full object-cover" />
           ) : (
