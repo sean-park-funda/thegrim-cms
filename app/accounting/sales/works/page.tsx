@@ -171,7 +171,7 @@ export default function WorksTablePage() {
   }, [agg, titleMap]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-[1800px]">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">작품별 매출 확인하기</h1>
@@ -185,7 +185,7 @@ export default function WorksTablePage() {
 
       {/* 필터 영역 */}
       <div className="space-y-3">
-        {/* 기간 설정 + 집계 모드 */}
+        {/* 기간 + 검색 + 집계 모드 */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <input
@@ -210,6 +210,16 @@ export default function WorksTablePage() {
               </button>
             )}
           </div>
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="작품명, 작가, 장르 검색..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+          </div>
           <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
             {PERIOD_MODES.map(p => (
               <button
@@ -225,18 +235,6 @@ export default function WorksTablePage() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* 검색 */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <input
-            type="text"
-            placeholder="작품명, 작가, 장르로 검색..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          />
         </div>
 
         {/* 상태 필터 */}
