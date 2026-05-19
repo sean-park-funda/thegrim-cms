@@ -14,7 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-type StatusFilter = 'all' | '연재중' | '완결' | '휴재';
+type StatusFilter = 'all' | '연재중' | '완결' | '휴재' | '준비중';
 
 const STATUS_COLORS: Record<string, string> = {
   '연재중': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -161,11 +161,13 @@ export default function MasterBoardPage() {
 
   if (!profile || !canViewSales(profile.role)) return null;
 
-  const statCounts = {
-    total: TITLE_MASTER_DATA.length,
-    active: TITLE_MASTER_DATA.filter((t) => t.status === '연재중').length,
-    completed: TITLE_MASTER_DATA.filter((t) => t.status === '완결').length,
-  };
+  const statusOptions: { value: StatusFilter; label: string; count: number }[] = [
+    { value: 'all', label: '전체', count: TITLE_MASTER_DATA.length },
+    { value: '연재중', label: '연재중', count: TITLE_MASTER_DATA.filter((t) => t.status === '연재중').length },
+    { value: '완결', label: '완결', count: TITLE_MASTER_DATA.filter((t) => t.status === '완결').length },
+    { value: '준비중', label: '준비중', count: TITLE_MASTER_DATA.filter((t) => t.status === '준비중').length },
+    { value: '휴재', label: '휴재', count: TITLE_MASTER_DATA.filter((t) => t.status === '휴재').length },
+  ];
 
   return (
     <div className="space-y-6">
@@ -181,8 +183,8 @@ export default function MasterBoardPage() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="space-y-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
           <input
             type="text"
@@ -192,42 +194,21 @@ export default function MasterBoardPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
           />
         </div>
-        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
-          {(
-            [
-              { value: 'all', label: '전체' },
-              { value: '연재중', label: '연재중' },
-              { value: '완결', label: '완결' },
-            ] as const
-          ).map((f) => (
+        <div className="flex flex-wrap gap-2">
+          {statusOptions.filter((f) => f.value === 'all' || f.count > 0).map((f) => (
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-full border transition-all duration-200 ${
                 statusFilter === f.value
-                  ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                  ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
+                  : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'
               }`}
             >
-              {f.label}
+              {f.label} <span className="ml-1 tabular-nums">{f.count}</span>
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
-        <span>
-          전체{' '}
-          <strong className="text-zinc-700 dark:text-zinc-200">{statCounts.total}</strong>
-          작품
-        </span>
-        <span>
-          연재중{' '}
-          <strong className="text-green-600 dark:text-green-400">{statCounts.active}</strong>
-        </span>
-        <span>
-          완결 <strong className="text-zinc-500">{statCounts.completed}</strong>
-        </span>
       </div>
 
       {filtered.length === 0 ? (
