@@ -377,7 +377,7 @@ export default function MasterBoardPage() {
           <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
           {([
             { value: 'all' as const, label: '전체' },
-            ...TEAM_LABELS.filter((l) => titles.some((t) => t.teamLabel === l)).map((l) => ({ value: l, label: l })),
+            ...TEAM_LABELS.map((l) => ({ value: l, label: l })),
             { value: 'none' as const, label: '미지정' },
           ]).map((f) => (
             <button
