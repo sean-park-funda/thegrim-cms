@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
@@ -25,13 +25,11 @@ import {
   Clapperboard,
   ScrollText,
   Pencil,
-  Check,
-  X,
   Plus,
   Trash2,
+  ImagePlus,
 } from 'lucide-react';
 
-// ─── 상수 ───
 const STATUS_OPTIONS: TitleStatus[] = ['연재중', '휴재', '완결', '준비중'];
 const SERIAL_TYPE_OPTIONS: SerialType[] = ['요일웹툰', '매일+', '기타'];
 const DAY_OPTIONS: DayOfWeek[] = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
@@ -61,14 +59,8 @@ const BIZ_ICONS: Record<string, string> = {
   '출판': '📚', '드라마': '📺', '영화': '🎬', '애니메이션': '🎞️', '그 외': '📋',
 };
 
-// ─── 공통 UI ───
 function Section({ icon: Icon, title, children, accent, onEdit, editing }: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  children: React.ReactNode;
-  accent?: string;
-  onEdit?: () => void;
-  editing?: boolean;
+  icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode; accent?: string; onEdit?: () => void; editing?: boolean;
 }) {
   return (
     <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
@@ -76,9 +68,7 @@ function Section({ icon: Icon, title, children, accent, onEdit, editing }: {
         <Icon className={`h-4 w-4 ${accent || 'text-zinc-400'}`} />
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex-1">{title}</h2>
         {onEdit && !editing && (
-          <button onClick={onEdit} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
+          <button onClick={onEdit} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
         )}
       </div>
       {children}
@@ -86,15 +76,12 @@ function Section({ icon: Icon, title, children, accent, onEdit, editing }: {
   );
 }
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start py-2.5 border-b border-zinc-50 dark:border-zinc-800/50 last:border-0">
-      <span className="w-28 flex-shrink-0 text-xs text-zinc-400 dark:text-zinc-500 pt-0.5">{label}</span>
-      <div className="flex-1 text-sm font-medium min-w-0">
-        {children || <span className="text-zinc-300 dark:text-zinc-600">-</span>}
-      </div>
-    </div>
-  );
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mb-0.5 block">{children}</span>;
+}
+
+function FieldValue({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={`text-sm font-medium ${className || ''}`}>{children || <span className="text-zinc-300 dark:text-zinc-600">-</span>}</div>;
 }
 
 function EditActions({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
@@ -108,38 +95,32 @@ function EditActions({ onSave, onCancel }: { onSave: () => void; onCancel: () =>
 
 function Input({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
   return (
-    <input
-      type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-      className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 ${className || 'w-full'}`}
-    />
+    <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+      className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 ${className || 'w-full'}`} />
   );
 }
 
 function Select<T extends string>({ value, options, onChange, className }: { value: T; options: readonly T[]; onChange: (v: T) => void; className?: string }) {
   return (
-    <select
-      value={value} onChange={(e) => onChange(e.target.value as T)}
-      className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 ${className || ''}`}
-    >{options.map(o => <option key={o} value={o}>{o}</option>)}</select>
+    <select value={value} onChange={(e) => onChange(e.target.value as T)}
+      className={`rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 ${className || ''}`}>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
   );
 }
 
-// ─── 메인 ───
 export default function MasterDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
   const { profile } = useStore();
   const titleData = getTitleBySlug(slug);
   const [data, setData] = useState<TitleMasterInfo | null>(titleData ? { ...titleData } : null);
-
-  // 편집 상태
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
-
-  // 편집 임시 데이터
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = useCallback((section: string) => {
     if (!data) return;
@@ -166,6 +147,17 @@ export default function MasterDetailPage() {
     if (section === 'notes') setEditingNotes(false);
   }, []);
 
+  const handleThumbnailUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = reader.result as string;
+      setData(prev => prev ? { ...prev, thumbnailUrl: url } : prev);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   if (!profile || !canViewSales(profile.role)) return null;
   if (!data) {
     return (
@@ -178,80 +170,55 @@ export default function MasterDetailPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* 헤더 */}
-      <div className="flex items-center gap-3">
-        <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all">
+      {/* ───── 헤더: 썸네일 + 타이틀 ───── */}
+      <div className="flex items-start gap-4">
+        <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0 mt-1">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <div className="flex-1 min-w-0">
+
+        {/* 썸네일 */}
+        <div
+          className="w-20 h-28 rounded-xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {data.thumbnailUrl ? (
+            <img src={data.thumbnailUrl} alt={data.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-zinc-300 dark:text-zinc-600">
+              <ImagePlus className="h-5 w-5" />
+              <span className="text-[9px]">썸네일</span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <ImagePlus className="h-4 w-4 text-white" />
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleThumbnailUpload} />
+        </div>
+
+        <div className="flex-1 min-w-0 pt-1">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight truncate">{data.title}</h1>
             <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
           </div>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+            {data.creators.map(c => `${c.name}(${c.role})`).join(' / ')}
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-medium">{data.platform}</span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.serialType}</span>
+            {data.dayOfWeek && <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.dayOfWeek}</span>}
+          </div>
         </div>
       </div>
 
-      {/* ───── 기본 정보 (통합) ───── */}
+      {/* ───── 기본 정보 ───── */}
       <Section icon={BookOpen} title="기본 정보" accent="text-cyan-500" onEdit={() => startEdit('basic')} editing={editingBasic}>
         {editingBasic && draft ? (
           <div className="px-5 py-4 space-y-4">
-            {/* 작품명 & 상태 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
-                <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">상태</label>
-                <Select value={draft.status} options={STATUS_OPTIONS} onChange={(v) => setDraft({ ...draft, status: v })} className="w-full" />
-              </div>
-            </div>
-            {/* 플랫폼 / 연재방식 / 요일 */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">플랫폼</label>
-                <Input value={draft.platform} onChange={(v) => setDraft({ ...draft, platform: v })} />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">연재방식</label>
-                <Select value={draft.serialType} options={SERIAL_TYPE_OPTIONS} onChange={(v) => setDraft({ ...draft, serialType: v })} className="w-full" />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">요일</label>
-                <select
-                  value={draft.dayOfWeek || ''} onChange={(e) => setDraft({ ...draft, dayOfWeek: (e.target.value || undefined) as DayOfWeek | undefined })}
-                  className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                >
-                  <option value="">선택 안 함</option>
-                  {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-            </div>
-            {/* 날짜 */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">연재 시작</label>
-                <input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">연재 종료</label>
-                <input type="date" value={draft.endDate || ''} onChange={(e) => setDraft({ ...draft, endDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">비독점 변경일</label>
-                <input type="date" value={draft.nonExclusiveDate || ''} onChange={(e) => setDraft({ ...draft, nonExclusiveDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
-            </div>
-            {/* 에피소드 & 연령 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">에피소드 수</label>
-                <input type="number" value={draft.episodeCount} onChange={(e) => setDraft({ ...draft, episodeCount: parseInt(e.target.value) || 0 })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">연령 등급</label>
-                <Input value={draft.ageRating} onChange={(v) => setDraft({ ...draft, ageRating: v })} />
-              </div>
+            {/* 작품명 */}
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
+              <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
             </div>
             {/* 작가 */}
             <div>
@@ -264,98 +231,145 @@ export default function MasterDetailPage() {
                       {CREATOR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                     <Input value={c.name} onChange={(v) => { const nc = [...draft.creators]; nc[i] = { ...nc[i], name: v }; setDraft({ ...draft, creators: nc }); }} className="flex-1" />
-                    <button onClick={() => { const nc = draft.creators.filter((_, j) => j !== i); setDraft({ ...draft, creators: nc }); }} className="text-zinc-400 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setDraft({ ...draft, creators: draft.creators.filter((_, j) => j !== i) })} className="text-zinc-400 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 ))}
                 <button onClick={() => setDraft({ ...draft, creators: [...draft.creators, { role: '기타', name: '' }] })} className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"><Plus className="h-3 w-3" /> 작가 추가</button>
               </div>
             </div>
-            {/* 장르 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">주장르</label>
-                <Input value={draft.mainGenre} onChange={(v) => setDraft({ ...draft, mainGenre: v })} />
+            {/* 연령등급 / 장르 / 에피소드 */}
+            <div className="grid grid-cols-4 gap-3">
+              <div><label className="text-xs text-zinc-400 mb-1 block">연령 등급</label><Input value={draft.ageRating} onChange={(v) => setDraft({ ...draft, ageRating: v })} /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">주장르</label><Input value={draft.mainGenre} onChange={(v) => setDraft({ ...draft, mainGenre: v })} /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">부장르</label><Input value={draft.subGenre || ''} onChange={(v) => setDraft({ ...draft, subGenre: v || undefined })} /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">에피소드 수</label><input type="number" value={draft.episodeCount} onChange={(e) => setDraft({ ...draft, episodeCount: parseInt(e.target.value) || 0 })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
+            </div>
+            {/* 상태 / 플랫폼 / 연재방식 / 요일 */}
+            <div className="grid grid-cols-4 gap-3">
+              <div><label className="text-xs text-zinc-400 mb-1 block">상태</label><Select value={draft.status} options={STATUS_OPTIONS} onChange={(v) => setDraft({ ...draft, status: v })} className="w-full" /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">플랫폼</label><Input value={draft.platform} onChange={(v) => setDraft({ ...draft, platform: v })} /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">연재방식</label><Select value={draft.serialType} options={SERIAL_TYPE_OPTIONS} onChange={(v) => setDraft({ ...draft, serialType: v })} className="w-full" /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">요일</label>
+                <select value={draft.dayOfWeek || ''} onChange={(e) => setDraft({ ...draft, dayOfWeek: (e.target.value || undefined) as DayOfWeek | undefined })}
+                  className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                  <option value="">선택 안 함</option>
+                  {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">부장르</label>
-                <Input value={draft.subGenre || ''} onChange={(v) => setDraft({ ...draft, subGenre: v || undefined })} />
-              </div>
+            </div>
+            {/* 날짜 */}
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className="text-xs text-zinc-400 mb-1 block">연재 시작</label><input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">연재 종료</label><input type="date" value={draft.endDate || ''} onChange={(e) => setDraft({ ...draft, endDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">비독점 변경일</label><input type="date" value={draft.nonExclusiveDate || ''} onChange={(e) => setDraft({ ...draft, nonExclusiveDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
             </div>
             {/* 키워드 */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">키워드 (쉼표 구분)</label>
-              <Input value={draft.keywords.join(', ')} onChange={(v) => setDraft({ ...draft, keywords: v.split(',').map(k => k.trim()).filter(Boolean) })} />
+            <div><label className="text-xs text-zinc-400 mb-1 block">키워드 (쉼표 구분)</label><Input value={draft.keywords.join(', ')} onChange={(v) => setDraft({ ...draft, keywords: v.split(',').map(k => k.trim()).filter(Boolean) })} /></div>
+            {/* 엘리먼트 */}
+            <div><label className="text-xs text-zinc-400 mb-1 block">엘리먼트</label>
+              <textarea value={draft.element} onChange={(e) => setDraft({ ...draft, element: e.target.value })} rows={2} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
             </div>
-            {/* 엘리먼트 / 로그라인 */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">엘리먼트</label>
-              <textarea value={draft.element} onChange={(e) => setDraft({ ...draft, element: e.target.value })} rows={2}
-                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">로그라인</label>
-              <textarea value={draft.logline} onChange={(e) => setDraft({ ...draft, logline: e.target.value })} rows={5}
-                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
+            {/* 로그라인 */}
+            <div><label className="text-xs text-zinc-400 mb-1 block">로그라인</label>
+              <textarea value={draft.logline} onChange={(e) => setDraft({ ...draft, logline: e.target.value })} rows={5} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
             </div>
             <EditActions onSave={() => save('basic')} onCancel={() => cancel('basic')} />
           </div>
         ) : (
-          <div className="px-5 py-3">
-            <InfoRow label="작품명">{data.title}</InfoRow>
-            <InfoRow label="상태">
-              <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
-            </InfoRow>
-            <InfoRow label="플랫폼">
-              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-medium">{data.platform}</span>
-            </InfoRow>
-            <InfoRow label="연재방식">{data.serialType}</InfoRow>
-            {data.dayOfWeek && <InfoRow label="요일">{data.dayOfWeek}</InfoRow>}
-            <InfoRow label="연재 시작">{data.startDate}</InfoRow>
-            <InfoRow label="연재 종료">{data.endDate || <span className="text-green-500">연재중</span>}</InfoRow>
-            {data.nonExclusiveDate && (
-              <InfoRow label="비독점 변경일">
-                <span className="text-amber-600 dark:text-amber-400">{data.nonExclusiveDate}</span>
-              </InfoRow>
-            )}
-            <InfoRow label="에피소드 수">{data.episodeCount}화</InfoRow>
-            <InfoRow label="연령 등급">{data.ageRating}</InfoRow>
+          <div className="px-5 py-4 space-y-4">
+            {/* 작품명 */}
+            <div>
+              <FieldLabel>작품명</FieldLabel>
+              <FieldValue className="text-base font-bold">{data.title}</FieldValue>
+            </div>
 
             {/* 작가 */}
-            <InfoRow label="작가">
-              <div className="flex flex-wrap gap-2">
+            <div>
+              <FieldLabel>작가</FieldLabel>
+              <div className="flex flex-wrap gap-2 mt-0.5">
                 {data.creators.map((c, i) => (
                   <span key={i} className="inline-flex items-center gap-1.5">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
-                    <span className="text-sm">{c.name}</span>
+                    <span className="text-sm font-medium">{c.name}</span>
                   </span>
                 ))}
               </div>
-            </InfoRow>
+            </div>
 
-            {/* 장르 */}
-            <InfoRow label="장르">
-              <div className="flex gap-2">
-                <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold">주: {data.mainGenre}</span>
-                {data.subGenre && <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-semibold">부: {data.subGenre}</span>}
+            {/* 연령등급 / 장르 / 에피소드수 — 가로 배열 */}
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <FieldLabel>연령 등급</FieldLabel>
+                <FieldValue>{data.ageRating}</FieldValue>
               </div>
-            </InfoRow>
+              <div>
+                <FieldLabel>장르</FieldLabel>
+                <div className="flex gap-1.5 mt-0.5">
+                  <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">{data.mainGenre}</span>
+                  {data.subGenre && <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[11px] font-semibold">{data.subGenre}</span>}
+                </div>
+              </div>
+              <div>
+                <FieldLabel>에피소드 수</FieldLabel>
+                <FieldValue>{data.episodeCount}화</FieldValue>
+              </div>
+              <div>
+                <FieldLabel>상태</FieldLabel>
+                <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
+              </div>
+            </div>
+
+            {/* 플랫폼 / 연재방식 / 요일 — 가로 배열 */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <FieldLabel>플랫폼</FieldLabel>
+                <FieldValue>{data.platform}</FieldValue>
+              </div>
+              <div>
+                <FieldLabel>연재방식</FieldLabel>
+                <FieldValue>{data.serialType}</FieldValue>
+              </div>
+              <div>
+                <FieldLabel>요일</FieldLabel>
+                <FieldValue>{data.dayOfWeek}</FieldValue>
+              </div>
+            </div>
+
+            {/* 연재시작 / 연재종료 / 비독점 변경일 — 가로 배열 */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <FieldLabel>연재 시작</FieldLabel>
+                <FieldValue>{data.startDate}</FieldValue>
+              </div>
+              <div>
+                <FieldLabel>연재 종료</FieldLabel>
+                <FieldValue>{data.endDate || <span className="text-green-500">연재중</span>}</FieldValue>
+              </div>
+              <div>
+                <FieldLabel>비독점 변경일</FieldLabel>
+                <FieldValue className="text-amber-600 dark:text-amber-400">{data.nonExclusiveDate}</FieldValue>
+              </div>
+            </div>
 
             {/* 키워드 */}
-            <InfoRow label="키워드">
-              <div className="flex flex-wrap gap-1.5">
-                {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs">#{kw}</span>)}
+            <div>
+              <FieldLabel>키워드</FieldLabel>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium">#{kw}</span>)}
               </div>
-            </InfoRow>
+            </div>
 
             {/* 엘리먼트 */}
-            <InfoRow label="엘리먼트">
-              <p className="text-sm leading-relaxed whitespace-pre-line">{data.element}</p>
-            </InfoRow>
+            <div>
+              <FieldLabel>엘리먼트</FieldLabel>
+              <p className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">{data.element}</p>
+            </div>
 
             {/* 로그라인 */}
-            <InfoRow label="로그라인">
-              <p className="text-sm leading-relaxed whitespace-pre-line">{data.logline}</p>
-            </InfoRow>
+            <div>
+              <FieldLabel>로그라인</FieldLabel>
+              <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3 whitespace-pre-line">{data.logline}</div>
+            </div>
           </div>
         )}
       </Section>
@@ -437,9 +451,7 @@ export default function MasterDetailPage() {
                   <div className="flex items-center gap-2 mb-2">
                     <span>{BIZ_ICONS[cat]}</span>
                     <span className="text-sm font-semibold">{cat}</span>
-                    <button onClick={() => setDraft({ ...draft, secondaryBiz: [...draft.secondaryBiz, { category: cat, status: '준비중' }] })} className="ml-auto text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1">
-                      <Plus className="h-3 w-3" /> 추가
-                    </button>
+                    <button onClick={() => setDraft({ ...draft, secondaryBiz: [...draft.secondaryBiz, { category: cat, status: '준비중' }] })} className="ml-auto text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"><Plus className="h-3 w-3" /> 추가</button>
                   </div>
                   {items.length === 0 && <p className="text-xs text-zinc-400 ml-7 mb-2">등록된 항목 없음</p>}
                   {items.map((item, idx) => {
