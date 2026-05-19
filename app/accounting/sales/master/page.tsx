@@ -280,7 +280,7 @@ export default function MasterBoardPage() {
   const { profile } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [labelFilter, setLabelFilter] = useState<TeamLabel | 'all' | 'none'>('all');
+  const [labelFilter, setLabelFilter] = useState<TeamLabel | 'all'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [titles, setTitles] = useState<TitleMasterInfo[]>([]);
 
@@ -291,8 +291,7 @@ export default function MasterBoardPage() {
   const filtered = useMemo(() => {
     return titles.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
-      if (labelFilter === 'none' && t.teamLabel) return false;
-      if (labelFilter !== 'all' && labelFilter !== 'none' && t.teamLabel !== labelFilter) return false;
+      if (labelFilter !== 'all' && t.teamLabel !== labelFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const match =
@@ -378,7 +377,6 @@ export default function MasterBoardPage() {
           {([
             { value: 'all' as const, label: '전체' },
             ...TEAM_LABELS.map((l) => ({ value: l, label: l })),
-            { value: 'none' as const, label: '미지정' },
           ]).map((f) => (
             <button
               key={f.value}
