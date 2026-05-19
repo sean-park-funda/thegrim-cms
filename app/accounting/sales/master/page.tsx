@@ -19,7 +19,6 @@ import {
 import {
   Search,
   BookOpen,
-  Crown,
   Calendar,
   Hash,
   ChevronRight,
@@ -325,17 +324,7 @@ export default function MasterBoardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20">
-            <Crown className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-              보유 작품의 종합 정보를 관리합니다
-            </p>
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
         <button
           onClick={() => setShowAddModal(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-sm transition-all duration-200"
