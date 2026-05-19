@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { getTitleBySlug, isValidCountry, COUNTRIES, CountryCode } from '@/lib/sales/title-master-data';
+import { getTitleBySlug, COUNTRIES } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
   BookOpen,
@@ -44,66 +44,48 @@ function Section({
   );
 }
 
-function InfoRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start py-2.5 border-b border-zinc-50 dark:border-zinc-800/50 last:border-0">
       <span className="w-28 flex-shrink-0 text-xs text-zinc-400 dark:text-zinc-500 pt-0.5">
         {label}
       </span>
       <div className="flex-1 text-sm font-medium min-w-0">
-        {children || (
-          <span className="text-zinc-300 dark:text-zinc-600">-</span>
-        )}
+        {children || <span className="text-zinc-300 dark:text-zinc-600">-</span>}
       </div>
     </div>
   );
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  '연재중':
-    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  '완결':
-    'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
-  '휴재':
-    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  '연재중': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  '완결': 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+  '휴재': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  '미진출': 'bg-zinc-50 text-zinc-400 dark:bg-zinc-800/50 dark:text-zinc-500',
+  '계약중': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  '준비중': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
 const ROLE_COLORS: Record<string, string> = {
   '글': 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-  '그림':
-    'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-  '원작':
-    'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400',
+  '그림': 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+  '원작': 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400',
   '컬러': 'bg-pink-50 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400',
   '각색': 'bg-teal-50 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400',
   '기타': 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 };
 
 const BIZ_TYPE_ICONS: Record<string, string> = {
-  '출판': '📚',
-  '드라마': '📺',
-  '영화': '🎬',
-  '애니메이션': '🎞️',
-  '라이선스': '📄',
-  '기타': '📋',
+  '출판': '📚', '드라마': '📺', '영화': '🎬',
+  '애니메이션': '🎞️', '라이선스': '📄', '기타': '📋',
 };
 
 export default function MasterDetailPage() {
   const params = useParams();
-  const countryParam = params.country as string;
   const slug = params.slug as string;
   const { profile } = useStore();
 
-  if (!isValidCountry(countryParam)) return null;
-  const country = countryParam as CountryCode;
-  const countryInfo = COUNTRIES.find((c) => c.code === country)!;
-  const title = getTitleBySlug(country, slug);
+  const title = getTitleBySlug(slug);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
@@ -111,10 +93,7 @@ export default function MasterDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-zinc-400 gap-4">
         <span className="text-sm">작품을 찾을 수 없습니다</span>
-        <Link
-          href={`/accounting/sales/master/${country}`}
-          className="text-sm text-cyan-600 hover:underline"
-        >
+        <Link href="/accounting/sales/master" className="text-sm text-cyan-600 hover:underline">
           목록으로 돌아가기
         </Link>
       </div>
@@ -126,7 +105,7 @@ export default function MasterDetailPage() {
       {/* 헤더 */}
       <div className="flex items-center gap-3">
         <Link
-          href={`/accounting/sales/master/${country}`}
+          href="/accounting/sales/master"
           className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -164,12 +143,9 @@ export default function MasterDetailPage() {
               </span>
             </InfoRow>
           )}
-          <InfoRow label="연재 상태">{title.status}</InfoRow>
           <InfoRow label="연재 시작">{title.startDate}</InfoRow>
           <InfoRow label="연재 종료">
-            {title.endDate || (
-              <span className="text-green-500">연재중</span>
-            )}
+            {title.endDate || <span className="text-green-500">연재중</span>}
           </InfoRow>
           {title.nonExclusiveDate && (
             <InfoRow label="비독점 변경일">
@@ -226,9 +202,7 @@ export default function MasterDetailPage() {
       <Section icon={Tag} title="장르 & 키워드" accent="text-blue-500">
         <div className="p-5 space-y-4">
           <div>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              장르
-            </span>
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">장르</span>
             <div className="flex flex-wrap gap-2 mt-2">
               <span className="px-3 py-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold">
                 주: {title.mainGenre}
@@ -241,9 +215,7 @@ export default function MasterDetailPage() {
             </div>
           </div>
           <div>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              키워드
-            </span>
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">키워드</span>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {title.keywords.map((kw) => (
                 <span
@@ -280,32 +252,79 @@ export default function MasterDetailPage() {
         </div>
       </Section>
 
-      {/* 국가별 론칭 정보 */}
-      <Section icon={Globe} title="국가별 론칭 정보" accent="text-teal-500">
+      {/* 국가별 진출 현황 */}
+      <Section icon={Globe} title="국가별 진출 현황" accent="text-teal-500">
         <div className="p-5">
-          {title.globalLaunches && title.globalLaunches.length > 0 ? (
-            <div className="space-y-2">
-              {title.globalLaunches.map((gl, i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {COUNTRIES.map((c) => {
+              const info = title.countryInfo[c.code];
+              const isActive = info.status !== '미진출';
+              return (
                 <div
-                  key={i}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800"
+                  key={c.code}
+                  className={`rounded-xl border p-4 ${
+                    isActive
+                      ? 'bg-white dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700'
+                      : 'bg-zinc-50 dark:bg-zinc-800/30 border-zinc-100 dark:border-zinc-800 opacity-60'
+                  }`}
                 >
-                  <span className="text-lg">{gl.country}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{gl.platform}</p>
-                    {gl.note && (
-                      <p className="text-xs text-zinc-400">{gl.note}</p>
-                    )}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-lg">{c.flag}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                        STATUS_COLORS[info.status] || STATUS_COLORS['미진출']
+                      }`}
+                    >
+                      {info.status}
+                    </span>
                   </div>
-                  <span className="text-xs text-zinc-400">{gl.status}</span>
+                  {isActive ? (
+                    <div className="space-y-1.5 text-xs">
+                      {info.platform && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">플랫폼</span>
+                          <span className="font-medium">{info.platform}</span>
+                        </div>
+                      )}
+                      {info.title && info.title !== title.title && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">현지 제목</span>
+                          <span className="font-medium">{info.title}</span>
+                        </div>
+                      )}
+                      {info.startDate && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">시작</span>
+                          <span className="font-medium">{info.startDate}</span>
+                        </div>
+                      )}
+                      {info.endDate && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">종료</span>
+                          <span className="font-medium">{info.endDate}</span>
+                        </div>
+                      )}
+                      {info.episodeCount && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">화수</span>
+                          <span className="font-medium">{info.episodeCount}화</span>
+                        </div>
+                      )}
+                      {info.note && (
+                        <p className="text-zinc-400 mt-1 pt-1 border-t border-zinc-100 dark:border-zinc-700">
+                          {info.note}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                      미진출
+                    </p>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-300 dark:text-zinc-600 text-center py-4">
-              등록된 론칭 정보가 없습니다
-            </p>
-          )}
+              );
+            })}
+          </div>
         </div>
       </Section>
 
@@ -332,9 +351,7 @@ export default function MasterDetailPage() {
                       {biz.partner ? ` | ${biz.partner}` : ''}
                     </p>
                     {biz.note && (
-                      <p className="text-xs text-zinc-400 mt-1">
-                        {biz.note}
-                      </p>
+                      <p className="text-xs text-zinc-400 mt-1">{biz.note}</p>
                     )}
                   </div>
                 </div>
@@ -353,15 +370,12 @@ export default function MasterDetailPage() {
         <div className="p-5">
           <p className="text-sm whitespace-pre-wrap leading-relaxed">
             {title.notes || (
-              <span className="text-zinc-300 dark:text-zinc-600">
-                특이사항 없음
-              </span>
+              <span className="text-zinc-300 dark:text-zinc-600">특이사항 없음</span>
             )}
           </p>
         </div>
       </Section>
 
-      {/* 하단 여백 */}
       <div className="pb-8" />
     </div>
   );

@@ -1,17 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import {
-  getTitlesByCountry,
-  isValidCountry,
-  COUNTRIES,
-  TitleMasterInfo,
-  CountryCode,
-} from '@/lib/sales/title-master-data';
+import { TITLE_MASTER_DATA, COUNTRIES, TitleMasterInfo } from '@/lib/sales/title-master-data';
 import {
   Search,
   BookOpen,
@@ -27,9 +20,12 @@ const STATUS_COLORS: Record<string, string> = {
   '연재중': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   '완결': 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
   '휴재': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  '미진출': 'bg-zinc-50 text-zinc-400 dark:bg-zinc-800/50 dark:text-zinc-500',
+  '계약중': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  '준비중': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
-function TitleCard({ title, country }: { title: TitleMasterInfo; country: CountryCode }) {
+function TitleCard({ title }: { title: TitleMasterInfo }) {
   const writer = title.creators.find((c) => c.role === '글')?.name;
   const artist = title.creators.find((c) => c.role === '그림')?.name;
   const creatorStr =
@@ -39,7 +35,7 @@ function TitleCard({ title, country }: { title: TitleMasterInfo; country: Countr
 
   return (
     <Link
-      href={`/accounting/sales/master/${country}/${title.slug}`}
+      href={`/accounting/sales/master/${title.slug}`}
       className="group rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden hover:shadow-lg dark:hover:border-zinc-600 transition-all duration-200"
     >
       <div className="p-5">
@@ -99,16 +95,24 @@ function TitleCard({ title, country }: { title: TitleMasterInfo; country: Countr
               #{kw}
             </span>
           ))}
-          {title.keywords.length > 3 && (
-            <span className="px-1.5 py-0.5 text-zinc-400 text-[10px]">
-              +{title.keywords.length - 3}
-            </span>
-          )}
         </div>
 
-        <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-3 line-clamp-2 leading-relaxed">
-          {title.element}
-        </p>
+        {/* 국가별 상태 미니 뱃지 */}
+        <div className="flex gap-2 mt-3">
+          {COUNTRIES.map((c) => {
+            const info = title.countryInfo[c.code];
+            return (
+              <span
+                key={c.code}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                  STATUS_COLORS[info.status] || STATUS_COLORS['미진출']
+                }`}
+              >
+                {c.flag} {info.status}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
@@ -125,23 +129,13 @@ function TitleCard({ title, country }: { title: TitleMasterInfo; country: Countr
   );
 }
 
-export default function MasterCountryPage() {
-  const params = useParams();
-  const countryParam = params.country as string;
+export default function MasterBoardPage() {
   const { profile } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  if (!isValidCountry(countryParam)) {
-    notFound();
-  }
-
-  const country = countryParam as CountryCode;
-  const countryInfo = COUNTRIES.find((c) => c.code === country)!;
-  const allTitles = getTitlesByCountry(country);
-
   const filtered = useMemo(() => {
-    return allTitles.filter((t) => {
+    return TITLE_MASTER_DATA.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -155,52 +149,30 @@ export default function MasterCountryPage() {
       }
       return true;
     });
-  }, [allTitles, search, statusFilter]);
+  }, [search, statusFilter]);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
   const statCounts = {
-    total: allTitles.length,
-    active: allTitles.filter((t) => t.status === '연재중').length,
-    completed: allTitles.filter((t) => t.status === '완결').length,
+    total: TITLE_MASTER_DATA.length,
+    active: TITLE_MASTER_DATA.filter((t) => t.status === '연재중').length,
+    completed: TITLE_MASTER_DATA.filter((t) => t.status === '완결').length,
   };
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20 text-lg">
-          {countryInfo.flag}
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20">
+          <Crown className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            작품 관리 ({countryInfo.label})
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-            {countryInfo.label} 지역 작품의 종합 정보를 관리합니다
+            보유 작품의 종합 정보를 관리합니다
           </p>
         </div>
       </div>
 
-      {/* 국가 탭 */}
-      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 w-fit">
-        {COUNTRIES.map((c) => (
-          <Link
-            key={c.code}
-            href={`/accounting/sales/master/${c.code}`}
-            className={`px-4 py-2 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 ${
-              c.code === country
-                ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
-                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-            }`}
-          >
-            <span>{c.flag}</span>
-            <span>{c.label}</span>
-          </Link>
-        ))}
-      </div>
-
-      {/* 검색 & 필터 */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
@@ -235,7 +207,6 @@ export default function MasterCountryPage() {
         </div>
       </div>
 
-      {/* 통계 */}
       <div className="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
         <span>
           전체{' '}
@@ -251,7 +222,6 @@ export default function MasterCountryPage() {
         </span>
       </div>
 
-      {/* 작품 카드 */}
       {filtered.length === 0 ? (
         <div className="flex items-center justify-center h-48 text-zinc-400 text-sm">
           {search || statusFilter !== 'all'
@@ -261,7 +231,7 @@ export default function MasterCountryPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map((title) => (
-            <TitleCard key={title.slug} title={title} country={country} />
+            <TitleCard key={title.slug} title={title} />
           ))}
         </div>
       )}
