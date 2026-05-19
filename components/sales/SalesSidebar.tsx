@@ -136,7 +136,7 @@ export function SalesSidebar() {
       <SidebarContent className="px-2">
         {navGroups.map((group) => (
           <SidebarGroup key={group.label} className="py-2">
-            <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/60 px-2">
+            <SidebarGroupLabel className="text-xs font-bold tracking-wide text-sidebar-foreground/90 px-2">
               {group.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -152,8 +152,8 @@ export function SalesSidebar() {
                       )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
                         <Link href={item.href} onClick={closeMobileSidebar}>
-                          <span className={`h-1.5 w-1.5 rounded-sm flex-shrink-0 ${isActive ? 'bg-cyan-400' : 'bg-sidebar-foreground/30'}`} />
-                          <span className={`font-semibold ${isActive ? 'text-white' : 'text-sidebar-foreground/80'}`}>
+                          <span className={`h-1.5 w-1.5 rounded-sm flex-shrink-0 ${isActive ? 'bg-cyan-400' : 'bg-sidebar-foreground/50'}`} />
+                          <span className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-sidebar-foreground/90'}`}>
                             {item.label}
                           </span>
                         </Link>
