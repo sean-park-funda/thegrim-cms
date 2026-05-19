@@ -185,21 +185,31 @@ export default function WorksTablePage() {
 
       {/* 필터 영역 */}
       <div className="space-y-3">
-        {/* 기간 설정 + 집계 모드 (1줄) */}
+        {/* 검색 + 기간 설정 + 집계 모드 (1줄) */}
         <div className="flex items-center gap-3">
+          <div className="relative min-w-[180px] max-w-xs flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="작품명, 작가, 장르 검색..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="date"
               value={customFrom || defaultRange.from}
               onChange={e => setCustomFrom(e.target.value)}
-              className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              className="px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
             <span className="text-zinc-400 text-sm">~</span>
             <input
               type="date"
               value={customTo || defaultRange.to}
               onChange={e => setCustomTo(e.target.value)}
-              className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              className="px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
             {(customFrom || customTo) && (
               <button
@@ -215,7 +225,7 @@ export default function WorksTablePage() {
               <button
                 key={p.mode}
                 onClick={() => setAggMode(p.mode)}
-                className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
+                className={`px-3.5 py-2 text-sm font-medium rounded-[10px] transition-all duration-200 ${
                   aggMode === p.mode
                     ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
                     : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
@@ -227,21 +237,9 @@ export default function WorksTablePage() {
           </div>
         </div>
 
-        {/* 검색 */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <input
-            type="text"
-            placeholder="작품명, 작가, 장르로 검색..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-          />
-        </div>
-
         {/* 상태 필터 */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">상태</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 mr-1 font-medium">상태</span>
           {([
             { value: 'all' as const, label: '전체' },
             { value: '연재중' as const, label: '연재중' },
@@ -252,7 +250,7 @@ export default function WorksTablePage() {
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
-              className={`px-3 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
+              className={`px-3.5 py-1.5 text-sm font-medium rounded-full border transition-all duration-200 ${
                 statusFilter === f.value
                   ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
                   : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'
@@ -265,7 +263,7 @@ export default function WorksTablePage() {
 
         {/* 레이블 필터 */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 mr-1 font-medium">레이블</span>
           {([
             { value: 'all' as const, label: '전체' },
             ...TEAM_LABELS.map(l => ({ value: l, label: l })),
@@ -273,7 +271,7 @@ export default function WorksTablePage() {
             <button
               key={f.value}
               onClick={() => setLabelFilter(f.value)}
-              className={`px-3 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
+              className={`px-3.5 py-1.5 text-sm font-medium rounded-full border transition-all duration-200 ${
                 labelFilter === f.value
                   ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
                   : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'
@@ -303,27 +301,27 @@ export default function WorksTablePage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
+          <div className="overflow-auto max-h-[70vh]">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-20">
                 <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-                  <th className="sticky left-0 z-10 bg-zinc-50 dark:bg-zinc-800/80 backdrop-blur text-left py-3 px-4 font-semibold text-zinc-600 dark:text-zinc-300 min-w-40">
+                  <th className="sticky left-0 z-30 bg-zinc-50 dark:bg-zinc-800/80 backdrop-blur text-left py-3 px-4 font-semibold text-zinc-600 dark:text-zinc-300 min-w-44">
                     작품
                   </th>
                   {dates.map(date => {
                     const h = fmtColumnHeader(date, aggMode) as { main: string; sub?: string; isWeekend?: boolean };
                     return (
-                      <th key={date} className="text-right py-3 px-2.5 font-medium whitespace-nowrap min-w-[5.5rem]">
+                      <th key={date} className="text-right py-3 px-3 font-medium whitespace-nowrap min-w-[6rem]">
                         <div className="text-zinc-500 dark:text-zinc-400">{h.main}</div>
                         {h.sub && (
-                          <div className={`text-[10px] mt-0.5 ${h.isWeekend ? 'text-red-400' : 'text-zinc-400 dark:text-zinc-500'}`}>
+                          <div className={`text-xs mt-0.5 ${h.isWeekend ? 'text-red-400' : 'text-zinc-400 dark:text-zinc-500'}`}>
                             {h.sub}
                           </div>
                         )}
                       </th>
                     );
                   })}
-                  <th className="sticky right-0 z-10 bg-zinc-50 dark:bg-zinc-800/80 backdrop-blur text-right py-3 px-4 font-semibold text-zinc-600 dark:text-zinc-300 min-w-28">
+                  <th className="sticky right-0 z-30 bg-zinc-50 dark:bg-zinc-800/80 backdrop-blur text-right py-3 px-4 font-semibold text-zinc-600 dark:text-zinc-300 min-w-28">
                     합계
                   </th>
                 </tr>
@@ -335,8 +333,8 @@ export default function WorksTablePage() {
                   const slug = getSlugByWorkName(row.name);
                   return (
                     <tr key={row.name} className="border-t border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors duration-150">
-                      <td className="sticky left-0 z-10 bg-white dark:bg-zinc-900 py-2.5 px-4 font-medium truncate max-w-52">
-                        <span className={`inline-block w-5 text-right mr-2 tabular-nums text-xs ${
+                      <td className="sticky left-0 z-10 bg-white dark:bg-zinc-900 py-3 px-4 font-medium truncate max-w-56">
+                        <span className={`inline-block w-5 text-right mr-2 tabular-nums text-sm ${
                           i === 0 ? 'text-amber-500 font-bold' : i < 3 ? 'text-zinc-400 font-semibold' : 'text-zinc-300 dark:text-zinc-600'
                         }`}>{i + 1}</span>
                         {slug ? (
@@ -354,7 +352,7 @@ export default function WorksTablePage() {
                         const amount = row.byDate[date] || 0;
                         const isMax = amount === maxAmt && amount > 0;
                         return (
-                          <td key={date} className={`text-right py-2.5 px-2.5 tabular-nums transition-colors ${
+                          <td key={date} className={`text-right py-3 px-3 tabular-nums transition-colors ${
                             amount === 0
                               ? 'text-zinc-200 dark:text-zinc-700'
                               : isMax
@@ -365,7 +363,7 @@ export default function WorksTablePage() {
                           </td>
                         );
                       })}
-                      <td className="sticky right-0 z-10 bg-white dark:bg-zinc-900 text-right py-2.5 px-4 tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">
+                      <td className="sticky right-0 z-10 bg-white dark:bg-zinc-900 text-right py-3 px-4 tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">
                         {fmtComma(row.total)}
                       </td>
                     </tr>
@@ -378,7 +376,7 @@ export default function WorksTablePage() {
                     합계
                   </td>
                   {dates.map(date => (
-                    <td key={date} className="text-right py-3 px-2.5 tabular-nums font-semibold text-zinc-700 dark:text-zinc-200">
+                    <td key={date} className="text-right py-3 px-3 tabular-nums font-semibold text-zinc-700 dark:text-zinc-200">
                       {fmtComma(dateTotals[date] || 0)}
                     </td>
                   ))}
