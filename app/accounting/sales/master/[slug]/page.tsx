@@ -341,12 +341,6 @@ export default function MasterDetailPage() {
                   </div>
                 </div>
 
-                {/* 엘리먼트 */}
-                <div>
-                  <FieldLabel>엘리먼트</FieldLabel>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-0.5 leading-relaxed">{data.element}</p>
-                </div>
-
                 {/* 연령등급 / 장르 / 에피소드수 / 플랫폼 / 연재방식 / 요일 */}
                 <div className="grid grid-cols-3 xl:grid-cols-6 gap-x-4 gap-y-2">
                   <div>
@@ -396,7 +390,12 @@ export default function MasterDetailPage() {
               </div>
             </div>
 
-            {/* 키워드 + 로그라인 */}
+            {/* 엘리먼트 + 키워드 + 로그라인 */}
+            <div className="mt-4">
+              <FieldLabel>엘리먼트</FieldLabel>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">{data.element}</p>
+            </div>
+
             <div className="mt-4">
               <FieldLabel>키워드</FieldLabel>
               <div className="flex flex-wrap gap-1.5 mt-1">
