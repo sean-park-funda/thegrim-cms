@@ -44,9 +44,9 @@ const navGroups = [
   {
     label: '작품 관리',
     items: [
-      { href: '/accounting/sales/master/kr', label: '작품 관리(KR)', icon: Crown },
-      { href: '/accounting/sales/master/jp', label: '작품 관리(JP)', icon: Crown },
-      { href: '/accounting/sales/master/us', label: '작품 관리(US)', icon: Crown },
+      { href: '/accounting/sales/master/kr', label: 'KR', icon: Crown },
+      { href: '/accounting/sales/master/jp', label: 'JP', icon: Crown },
+      { href: '/accounting/sales/master/us', label: 'US', icon: Crown },
     ],
   },
   {
