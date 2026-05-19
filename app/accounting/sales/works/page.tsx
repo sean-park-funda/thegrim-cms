@@ -88,7 +88,11 @@ export default function WorksTablePage() {
     return m;
   }, [titles]);
 
-  const { from, to } = useMemo(() => getDateRangeForMode(aggMode), [aggMode]);
+  const defaultRange = useMemo(() => getDateRangeForMode(aggMode), [aggMode]);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const from = customFrom || defaultRange.from;
+  const to = customTo || defaultRange.to;
 
   useEffect(() => {
     if (!profile || !canViewSales(profile.role)) return;
@@ -181,17 +185,30 @@ export default function WorksTablePage() {
 
       {/* 필터 영역 */}
       <div className="space-y-3">
-        {/* 검색 + 기간 */}
+        {/* 기간 설정 + 집계 모드 */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <div className="flex items-center gap-2">
             <input
-              type="text"
-              placeholder="작품명, 작가, 장르로 검색..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              type="date"
+              value={customFrom || defaultRange.from}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
+            <span className="text-zinc-400 text-sm">~</span>
+            <input
+              type="date"
+              value={customTo || defaultRange.to}
+              onChange={e => setCustomTo(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+            {(customFrom || customTo) && (
+              <button
+                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                className="px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+              >
+                초기화
+              </button>
+            )}
           </div>
           <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">
             {PERIOD_MODES.map(p => (
@@ -208,6 +225,18 @@ export default function WorksTablePage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 검색 */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="작품명, 작가, 장르로 검색..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          />
         </div>
 
         {/* 상태 필터 */}
