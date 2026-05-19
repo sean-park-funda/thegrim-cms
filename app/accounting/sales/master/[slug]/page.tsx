@@ -240,32 +240,33 @@ export default function MasterDetailPage() {
       <Section icon={BookOpen} title="기본 정보" accent="text-cyan-500" onEdit={() => startEdit('basic')} editing={editingBasic}>
         {editingBasic && draft ? (
           <div className="px-5 py-4 space-y-4">
-            {/* 작품명 + 링크 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
-                <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400 mb-1 block">작품 링크 (URL)</label>
-                <Input value={draft.titleUrl || ''} onChange={(v) => setDraft({ ...draft, titleUrl: v || undefined })} placeholder="https://..." />
-              </div>
-            </div>
-            {/* 작가 */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">작가 정보</label>
+            {/* 작품명 + 작가 정보 (가로 배열) */}
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                {draft.creators.map((c, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <select value={c.role} onChange={(e) => { const nc = [...draft.creators]; nc[i] = { ...nc[i], role: e.target.value as TitleCreator['role'] }; setDraft({ ...draft, creators: nc }); }}
-                      className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-2 py-1.5 text-sm w-20">
-                      {CREATOR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                    <Input value={c.name} onChange={(v) => { const nc = [...draft.creators]; nc[i] = { ...nc[i], name: v }; setDraft({ ...draft, creators: nc }); }} className="flex-1" />
-                    <button onClick={() => setDraft({ ...draft, creators: draft.creators.filter((_, j) => j !== i) })} className="text-zinc-400 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
-                  </div>
-                ))}
-                <button onClick={() => setDraft({ ...draft, creators: [...draft.creators, { role: '기타', name: '' }] })} className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"><Plus className="h-3 w-3" /> 작가 추가</button>
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
+                  <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">작품 링크 (URL)</label>
+                  <Input value={draft.titleUrl || ''} onChange={(v) => setDraft({ ...draft, titleUrl: v || undefined })} placeholder="https://..." />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">작가 정보</label>
+                <div className="space-y-2">
+                  {draft.creators.map((c, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <select value={c.role} onChange={(e) => { const nc = [...draft.creators]; nc[i] = { ...nc[i], role: e.target.value as TitleCreator['role'] }; setDraft({ ...draft, creators: nc }); }}
+                        className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-2 py-1.5 text-sm w-20">
+                        {CREATOR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <Input value={c.name} onChange={(v) => { const nc = [...draft.creators]; nc[i] = { ...nc[i], name: v }; setDraft({ ...draft, creators: nc }); }} className="flex-1" />
+                      <button onClick={() => setDraft({ ...draft, creators: draft.creators.filter((_, j) => j !== i) })} className="text-zinc-400 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                  <button onClick={() => setDraft({ ...draft, creators: [...draft.creators, { role: '기타', name: '' }] })} className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"><Plus className="h-3 w-3" /> 작가 추가</button>
+                </div>
               </div>
             </div>
             {/* 연령등급 / 장르 / 에피소드 */}
