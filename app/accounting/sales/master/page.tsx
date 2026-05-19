@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { TITLE_MASTER_DATA, GLOBAL_COUNTRIES, TitleMasterInfo } from '@/lib/sales/title-master-data';
+import { TITLE_MASTER_DATA, GLOBAL_COUNTRIES, TitleMasterInfo, TEAM_LABELS, TeamLabel } from '@/lib/sales/title-master-data';
 import {
   Search,
   BookOpen,
@@ -141,10 +141,13 @@ export default function MasterBoardPage() {
   const { profile } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [labelFilter, setLabelFilter] = useState<TeamLabel | 'all' | 'none'>('all');
 
   const filtered = useMemo(() => {
     return TITLE_MASTER_DATA.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+      if (labelFilter === 'none' && t.teamLabel) return false;
+      if (labelFilter !== 'all' && labelFilter !== 'none' && t.teamLabel !== labelFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const match =
@@ -157,7 +160,7 @@ export default function MasterBoardPage() {
       }
       return true;
     });
-  }, [search, statusFilter]);
+  }, [search, statusFilter, labelFilter]);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
@@ -194,7 +197,8 @@ export default function MasterBoardPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">상태</span>
           {statusOptions.filter((f) => f.value === 'all' || f.count > 0).map((f) => (
             <button
               key={f.value}
@@ -209,11 +213,31 @@ export default function MasterBoardPage() {
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
+          {([
+            { value: 'all' as const, label: '전체' },
+            ...TEAM_LABELS.filter((l) => TITLE_MASTER_DATA.some((t) => t.teamLabel === l)).map((l) => ({ value: l, label: l })),
+            { value: 'none' as const, label: '미지정' },
+          ]).map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setLabelFilter(f.value)}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-full border transition-all duration-200 ${
+                labelFilter === f.value
+                  ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
+                  : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="flex items-center justify-center h-48 text-zinc-400 text-sm">
-          {search || statusFilter !== 'all'
+          {search || statusFilter !== 'all' || labelFilter !== 'all'
             ? '검색 결과가 없습니다'
             : '등록된 작품이 없습니다'}
         </div>
