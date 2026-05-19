@@ -1,12 +1,13 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
   getTitleBySlug,
+  getAllTitleBySlug,
   GLOBAL_COUNTRIES,
   TitleMasterInfo,
   TitleCreator,
@@ -19,6 +20,7 @@ import {
   DayOfWeek,
   TeamLabel,
   TEAM_LABELS,
+  deleteTitle,
 } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
@@ -114,14 +116,16 @@ function Select<T extends string>({ value, options, onChange, className }: { val
 
 export default function MasterDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
   const { profile } = useStore();
-  const titleData = getTitleBySlug(slug);
+  const titleData = getAllTitleBySlug(slug);
   const [data, setData] = useState<TitleMasterInfo | null>(titleData ? { ...titleData } : null);
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInitRef = useRef(false);
@@ -217,7 +221,10 @@ export default function MasterDetailPage() {
           <BookOpen className="h-4 w-4 text-cyan-500" />
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex-1">기본 정보</h2>
           {!editingBasic && (
-            <button onClick={() => startEdit('basic')} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+            <>
+              <button onClick={() => startEdit('basic')} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setShowDeleteConfirm(true)} className="text-zinc-400 hover:text-red-500 transition-colors ml-1"><Trash2 className="h-3.5 w-3.5" /></button>
+            </>
           )}
         </div>
 
@@ -562,6 +569,34 @@ export default function MasterDetailPage() {
       </Section>
 
       <div className="pb-8" />
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl dark:border dark:border-zinc-800 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+                <Trash2 className="h-5 w-5 text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold mb-1">작품 삭제</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                <strong>{data.title}</strong>을(를) 삭제하시겠습니까?<br />
+                저장된 데이터와 썸네일이 모두 삭제됩니다.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-sm rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+                취소
+              </button>
+              <button
+                onClick={() => { deleteTitle(slug); router.push('/accounting/sales/master'); }}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

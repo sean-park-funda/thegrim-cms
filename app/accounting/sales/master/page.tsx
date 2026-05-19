@@ -1,10 +1,21 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { TITLE_MASTER_DATA, GLOBAL_COUNTRIES, TitleMasterInfo, TEAM_LABELS, TeamLabel } from '@/lib/sales/title-master-data';
+import {
+  TitleMasterInfo,
+  TEAM_LABELS,
+  TeamLabel,
+  TitleStatus,
+  SerialType,
+  DayOfWeek,
+  getAllTitles,
+  addCustomTitle,
+  TitleCreator,
+} from '@/lib/sales/title-master-data';
 import {
   Search,
   BookOpen,
@@ -12,6 +23,8 @@ import {
   Calendar,
   Hash,
   ChevronRight,
+  Plus,
+  X,
 } from 'lucide-react';
 
 type StatusFilter = 'all' | '연재중' | '완결' | '휴재' | '준비중';
@@ -24,6 +37,10 @@ const STATUS_COLORS: Record<string, string> = {
   '계약중': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   '준비중': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
+
+const STATUS_OPTIONS: TitleStatus[] = ['연재중', '완결', '휴재', '준비중'];
+const SERIAL_TYPE_OPTIONS: SerialType[] = ['요일웹툰', '매일+', '기타'];
+const DAY_OPTIONS: DayOfWeek[] = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
 
 function TitleCard({ title }: { title: TitleMasterInfo }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
@@ -48,7 +65,6 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
       className="group rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden hover:shadow-lg dark:hover:border-zinc-600 transition-all duration-200"
     >
       <div className="flex h-full">
-        {/* 썸네일 */}
         <div className="w-28 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
           {thumbUrl ? (
             <img src={thumbUrl} alt={title.title} className="w-full h-full object-cover" />
@@ -59,7 +75,6 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
           )}
         </div>
 
-        {/* 정보 */}
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="p-4 flex-1">
             <div className="flex items-start justify-between gap-3">
@@ -137,14 +152,144 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
   );
 }
 
+function AddTitleModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: TitleMasterInfo) => void }) {
+  const [title, setTitle] = useState('');
+  const [writer, setWriter] = useState('');
+  const [artist, setArtist] = useState('');
+  const [status, setStatus] = useState<TitleStatus>('연재중');
+  const [platform, setPlatform] = useState('네이버웹툰');
+  const [teamLabel, setTeamLabel] = useState<TeamLabel | ''>('');
+  const [serialType, setSerialType] = useState<SerialType>('요일웹툰');
+  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek | ''>('');
+  const [mainGenre, setMainGenre] = useState('');
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    const creators: TitleCreator[] = [];
+    if (writer.trim()) creators.push({ role: '글', name: writer.trim() });
+    if (artist.trim()) creators.push({ role: '그림', name: artist.trim() });
+    if (creators.length === 0) creators.push({ role: '글', name: '-' });
+
+    const newTitle = addCustomTitle({
+      title: title.trim(),
+      creators,
+      status,
+      platform,
+      teamLabel: teamLabel || undefined,
+      serialType,
+      dayOfWeek: dayOfWeek || undefined,
+      mainGenre: mainGenre.trim() || '기타',
+    });
+    onAdd(newTitle);
+  };
+
+  const inputClass = 'w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500';
+  const selectClass = inputClass;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="w-full max-w-lg mx-4 rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl dark:border dark:border-zinc-800 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+          <h2 className="text-lg font-bold">작품 등록</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">작품명 *</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="작품명을 입력하세요" className={inputClass} autoFocus />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">글 작가</label>
+              <input type="text" value={writer} onChange={(e) => setWriter(e.target.value)} placeholder="작가명" className={inputClass} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">그림 작가</label>
+              <input type="text" value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="작가명" className={inputClass} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">상태</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value as TitleStatus)} className={selectClass}>
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">레이블</label>
+              <select value={teamLabel} onChange={(e) => setTeamLabel(e.target.value as TeamLabel | '')} className={selectClass}>
+                <option value="">선택 안 함</option>
+                {TEAM_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">플랫폼</label>
+              <input type="text" value={platform} onChange={(e) => setPlatform(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">연재방식</label>
+              <select value={serialType} onChange={(e) => setSerialType(e.target.value as SerialType)} className={selectClass}>
+                {SERIAL_TYPE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">요일</label>
+              <select value={dayOfWeek} onChange={(e) => setDayOfWeek(e.target.value as DayOfWeek | '')} className={selectClass}>
+                <option value="">선택 안 함</option>
+                {DAY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1 block">주장르</label>
+            <input type="text" value={mainGenre} onChange={(e) => setMainGenre(e.target.value)} placeholder="드라마, 액션, 로맨스..." className={inputClass} />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!title.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            등록
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MasterBoardPage() {
+  const router = useRouter();
   const { profile } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [labelFilter, setLabelFilter] = useState<TeamLabel | 'all' | 'none'>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [titles, setTitles] = useState<TitleMasterInfo[]>([]);
+
+  useEffect(() => {
+    setTitles(getAllTitles());
+  }, []);
 
   const filtered = useMemo(() => {
-    return TITLE_MASTER_DATA.filter((t) => {
+    return titles.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (labelFilter === 'none' && t.teamLabel) return false;
       if (labelFilter !== 'all' && labelFilter !== 'none' && t.teamLabel !== labelFilter) return false;
@@ -160,30 +305,45 @@ export default function MasterBoardPage() {
       }
       return true;
     });
-  }, [search, statusFilter, labelFilter]);
+  }, [titles, search, statusFilter, labelFilter]);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
   const statusOptions: { value: StatusFilter; label: string; count: number }[] = [
-    { value: 'all', label: '전체', count: TITLE_MASTER_DATA.length },
-    { value: '연재중', label: '연재중', count: TITLE_MASTER_DATA.filter((t) => t.status === '연재중').length },
-    { value: '완결', label: '완결', count: TITLE_MASTER_DATA.filter((t) => t.status === '완결').length },
-    { value: '준비중', label: '준비중', count: TITLE_MASTER_DATA.filter((t) => t.status === '준비중').length },
-    { value: '휴재', label: '휴재', count: TITLE_MASTER_DATA.filter((t) => t.status === '휴재').length },
+    { value: 'all', label: '전체', count: titles.length },
+    { value: '연재중', label: '연재중', count: titles.filter((t) => t.status === '연재중').length },
+    { value: '완결', label: '완결', count: titles.filter((t) => t.status === '완결').length },
+    { value: '준비중', label: '준비중', count: titles.filter((t) => t.status === '준비중').length },
+    { value: '휴재', label: '휴재', count: titles.filter((t) => t.status === '휴재').length },
   ];
+
+  const handleAdd = (newTitle: TitleMasterInfo) => {
+    setShowAddModal(false);
+    setTitles(getAllTitles());
+    router.push(`/accounting/sales/master/${newTitle.slug}`);
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20">
-          <Crown className="h-5 w-5 text-white" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20">
+            <Crown className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+              보유 작품의 종합 정보를 관리합니다
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-            보유 작품의 종합 정보를 관리합니다
-          </p>
-        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-sm transition-all duration-200"
+        >
+          <Plus className="h-4 w-4" />
+          작품 등록
+        </button>
       </div>
 
       <div className="space-y-3">
@@ -217,7 +377,7 @@ export default function MasterBoardPage() {
           <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
           {([
             { value: 'all' as const, label: '전체' },
-            ...TEAM_LABELS.filter((l) => TITLE_MASTER_DATA.some((t) => t.teamLabel === l)).map((l) => ({ value: l, label: l })),
+            ...TEAM_LABELS.filter((l) => titles.some((t) => t.teamLabel === l)).map((l) => ({ value: l, label: l })),
             { value: 'none' as const, label: '미지정' },
           ]).map((f) => (
             <button
@@ -248,6 +408,8 @@ export default function MasterBoardPage() {
           ))}
         </div>
       )}
+
+      {showAddModal && <AddTitleModal onClose={() => setShowAddModal(false)} onAdd={handleAdd} />}
     </div>
   );
 }

@@ -1693,14 +1693,15 @@ const slugByNameCache: Record<string, string | null> = {};
 export function getSlugByWorkName(workName: string): string | null {
   if (workName in slugByNameCache) return slugByNameCache[workName];
 
+  const allTitles = getAllTitles();
   const norm = normalize(workName);
-  for (const t of TITLE_MASTER_DATA) {
+  for (const t of allTitles) {
     if (normalize(t.title) === norm) {
       slugByNameCache[workName] = t.slug;
       return t.slug;
     }
   }
-  for (const t of TITLE_MASTER_DATA) {
+  for (const t of allTitles) {
     if (normalize(t.title).includes(norm) || norm.includes(normalize(t.title))) {
       slugByNameCache[workName] = t.slug;
       return t.slug;
@@ -1708,4 +1709,107 @@ export function getSlugByWorkName(workName: string): string | null {
   }
   slugByNameCache[workName] = null;
   return null;
+}
+
+const CUSTOM_TITLES_KEY = 'title-master-custom-list';
+const DELETED_TITLES_KEY = 'title-master-deleted-slugs';
+
+function generateSlug(title: string): string {
+  const base = title
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9가-힣\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  const suffix = Date.now().toString(36).slice(-4);
+  return `${base}-${suffix}`;
+}
+
+export function getCustomTitles(): TitleMasterInfo[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_TITLES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getDeletedSlugs(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_TITLES_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function getAllTitles(): TitleMasterInfo[] {
+  const deleted = getDeletedSlugs();
+  const base = TITLE_MASTER_DATA.filter((t) => !deleted.has(t.slug));
+  const custom = getCustomTitles();
+  return [...base, ...custom];
+}
+
+export function getAllTitleBySlug(slug: string): TitleMasterInfo | undefined {
+  return getAllTitles().find((t) => t.slug === slug);
+}
+
+export function addCustomTitle(partial: {
+  title: string;
+  creators: TitleCreator[];
+  status: TitleStatus;
+  platform: string;
+  teamLabel?: TeamLabel;
+  serialType?: SerialType;
+  dayOfWeek?: DayOfWeek;
+  mainGenre?: string;
+  ageRating?: string;
+}): TitleMasterInfo {
+  const slug = generateSlug(partial.title);
+  const newTitle: TitleMasterInfo = {
+    slug,
+    title: partial.title,
+    status: partial.status,
+    creators: partial.creators,
+    platform: partial.platform,
+    teamLabel: partial.teamLabel,
+    serialType: partial.serialType || '기타',
+    dayOfWeek: partial.dayOfWeek,
+    startDate: new Date().toISOString().slice(0, 10),
+    episodeCount: 0,
+    ageRating: partial.ageRating || '전체',
+    mainGenre: partial.mainGenre || '기타',
+    keywords: [],
+    element: '',
+    logline: '',
+    globalInfo: {},
+    secondaryBiz: [],
+    notes: '',
+  };
+  const list = getCustomTitles();
+  list.push(newTitle);
+  localStorage.setItem(CUSTOM_TITLES_KEY, JSON.stringify(list));
+  Object.keys(slugByNameCache).forEach((k) => delete slugByNameCache[k]);
+  return newTitle;
+}
+
+export function deleteTitle(slug: string): void {
+  const custom = getCustomTitles();
+  const idx = custom.findIndex((t) => t.slug === slug);
+  if (idx >= 0) {
+    custom.splice(idx, 1);
+    localStorage.setItem(CUSTOM_TITLES_KEY, JSON.stringify(custom));
+  } else {
+    const deleted = getDeletedSlugs();
+    deleted.add(slug);
+    localStorage.setItem(DELETED_TITLES_KEY, JSON.stringify([...deleted]));
+  }
+  localStorage.removeItem(`title-master-${slug}`);
+  localStorage.removeItem(`title-thumb-${slug}`);
+  Object.keys(slugByNameCache).forEach((k) => delete slugByNameCache[k]);
+}
+
+export function isCustomTitle(slug: string): boolean {
+  return getCustomTitles().some((t) => t.slug === slug);
 }
