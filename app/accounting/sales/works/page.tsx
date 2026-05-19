@@ -36,29 +36,26 @@ function getDateRangeForMode(mode: AggMode): { from: string; to: string } {
   return { from: dateStr(fromDate), to };
 }
 
-function fmtColumnHeader(date: string, mode: AggMode): { main: string; sub?: string } {
+function fmtColumnHeader(date: string, mode: AggMode): { top?: string; main: string; isWeekend?: boolean } {
   if (mode === 'yearly') return { main: `${date}년` };
   if (mode === 'quarterly') {
     const [y, q] = date.split('-Q');
-    return { main: `${q}분기`, sub: y };
+    return { top: y, main: `${q}분기` };
   }
   if (mode === 'monthly') {
     const m = parseInt(date.slice(5, 7), 10);
-    return { main: `${m}월`, sub: date.slice(0, 4) };
+    return { top: date.slice(0, 4), main: `${m}월` };
   }
   if (mode === 'weekly') {
     const mon = new Date(date);
     const sun = new Date(mon);
     sun.setDate(sun.getDate() + 6);
-    return {
-      main: `${mon.getMonth() + 1}/${mon.getDate()}`,
-      sub: `~${sun.getMonth() + 1}/${sun.getDate()}`,
-    };
+    return { main: `${mon.getMonth() + 1}/${mon.getDate()}~${sun.getMonth() + 1}/${sun.getDate()}` };
   }
   const d = new Date(date);
   const dayName = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
   const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-  return { main: date.slice(5), sub: dayName, isWeekend } as { main: string; sub?: string; isWeekend?: boolean };
+  return { top: date.slice(5), main: dayName, isWeekend };
 }
 
 function periodUnit(mode: AggMode): string {
@@ -309,15 +306,15 @@ export default function WorksTablePage() {
                     작품
                   </th>
                   {dates.map(date => {
-                    const h = fmtColumnHeader(date, aggMode) as { main: string; sub?: string; isWeekend?: boolean };
+                    const h = fmtColumnHeader(date, aggMode);
                     return (
                       <th key={date} className="text-right py-3 px-3 font-medium whitespace-nowrap min-w-[6rem]">
-                        <div className="text-zinc-500 dark:text-zinc-400">{h.main}</div>
-                        {h.sub && (
-                          <div className={`text-xs mt-0.5 ${h.isWeekend ? 'text-red-400' : 'text-zinc-400 dark:text-zinc-500'}`}>
-                            {h.sub}
-                          </div>
+                        {h.top && (
+                          <div className="text-zinc-400 dark:text-zinc-500 text-xs">{h.top}</div>
                         )}
+                        <div className={`${h.isWeekend ? 'text-red-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                          {h.main}
+                        </div>
                       </th>
                     );
                   })}
