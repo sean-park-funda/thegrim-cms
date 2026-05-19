@@ -19,18 +19,11 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import {
-  LayoutDashboard,
-  TrendingUp,
-  BookOpen,
-  Trophy,
-  MessageCircle,
   ArrowLeft,
   Plus,
   Trash2,
   Sparkles,
-  GitCompareArrows,
-  Library,
-  Crown,
+  TrendingUp,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -44,28 +37,28 @@ const navGroups = [
   {
     label: '개요',
     items: [
-      { href: '/accounting/sales', label: '대시보드', icon: LayoutDashboard, exact: true },
+      { href: '/accounting/sales', label: '대시보드', exact: true },
     ],
   },
   {
     label: '작품 관리',
     items: [
-      { href: '/accounting/sales/master', label: '작품 관리 보드', icon: Crown },
+      { href: '/accounting/sales/master', label: '작품 관리 보드' },
     ],
   },
   {
     label: '매출 분석',
     items: [
-      { href: '/accounting/sales/works', label: '작품별 매출', icon: BookOpen },
-      { href: '/accounting/sales/compare', label: '작품 비교', icon: GitCompareArrows },
-      { href: '/accounting/sales/ranking', label: '랭킹', icon: Trophy },
-      { href: '/accounting/sales/growth', label: '성장률', icon: TrendingUp },
+      { href: '/accounting/sales/works', label: '작품별 매출' },
+      { href: '/accounting/sales/compare', label: '작품 비교' },
+      { href: '/accounting/sales/ranking', label: '랭킹' },
+      { href: '/accounting/sales/growth', label: '성장률' },
     ],
   },
   {
     label: '도구',
     items: [
-      { href: '/accounting/sales/chat', label: 'AI 검색', icon: MessageCircle },
+      { href: '/accounting/sales/chat', label: 'AI 검색' },
     ],
   },
 ];
@@ -143,7 +136,7 @@ export function SalesSidebar() {
       <SidebarContent className="px-2">
         {navGroups.map((group) => (
           <SidebarGroup key={group.label} className="py-2">
-            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 px-2">
+            <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/60 px-2">
               {group.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -159,8 +152,8 @@ export function SalesSidebar() {
                       )}
                       <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
                         <Link href={item.href} onClick={closeMobileSidebar}>
-                          <item.icon className={isActive ? 'text-cyan-400' : ''} />
-                          <span className={isActive ? 'text-sidebar-primary-foreground font-medium' : ''}>
+                          <span className={`h-1.5 w-1.5 rounded-sm flex-shrink-0 ${isActive ? 'bg-cyan-400' : 'bg-sidebar-foreground/30'}`} />
+                          <span className={`font-semibold ${isActive ? 'text-white' : 'text-sidebar-foreground/80'}`}>
                             {item.label}
                           </span>
                         </Link>
