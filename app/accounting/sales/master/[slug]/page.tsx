@@ -125,6 +125,7 @@ export default function MasterDetailPage() {
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInitRef = useRef(false);
+  const skipSaveRef = useRef(true);
 
   useEffect(() => {
     if (!slug || isInitRef.current) return;
@@ -143,7 +144,11 @@ export default function MasterDetailPage() {
   }, [slug, titleData]);
 
   useEffect(() => {
-    if (!data || !slug || !isInitRef.current) return;
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false;
+      return;
+    }
+    if (!data || !slug) return;
     try {
       const { thumbnailUrl, ...rest } = data;
       localStorage.setItem(`title-master-${slug}`, JSON.stringify(rest));
