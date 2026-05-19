@@ -190,11 +190,22 @@ export default function MasterDetailPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const url = reader.result as string;
-      if (slug) {
-        try { localStorage.setItem(`title-thumb-${slug}`, url); } catch {}
-      }
-      setData(prev => prev ? { ...prev, thumbnailUrl: url } : prev);
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 400;
+        const w = Math.min(img.width, MAX_W);
+        const h = img.height * (w / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.85);
+        if (slug) {
+          try { localStorage.setItem(`title-thumb-${slug}`, compressed); } catch {}
+        }
+        setData(prev => prev ? { ...prev, thumbnailUrl: compressed } : prev);
+      };
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   }, [slug]);
