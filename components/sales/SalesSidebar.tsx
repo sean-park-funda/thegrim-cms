@@ -42,15 +42,15 @@ interface Conversation {
 
 const navGroups = [
   {
-    label: '작품 관리',
-    items: [
-      { href: '/accounting/sales/master', label: '작품 관리 보드', icon: Crown },
-    ],
-  },
-  {
     label: '개요',
     items: [
       { href: '/accounting/sales', label: '대시보드', icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    label: '작품 관리',
+    items: [
+      { href: '/accounting/sales/master', label: '작품 관리 보드', icon: Crown },
     ],
   },
   {
