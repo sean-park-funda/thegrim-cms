@@ -324,7 +324,7 @@ export default function MasterBoardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">작품 관리 보드</h1>
+        <h1 className="text-3xl font-bold tracking-tight">작품 관리 보드</h1>
         <button
           onClick={() => setShowAddModal(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-sm transition-all duration-200"

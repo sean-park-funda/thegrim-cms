@@ -107,7 +107,7 @@ export default function ComparePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">작품 비교</h1>
+      <h1 className="text-3xl font-bold tracking-tight">작품 비교</h1>
 
       {/* 기간 선택 */}
       <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5 w-fit">

@@ -112,7 +112,7 @@ export default function ChatPage() {
           <Sparkles className="h-5 w-5 text-white" />
         </div>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">AI 검색</h1>
+          <h1 className="text-3xl font-bold tracking-tight">AI 검색</h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">일별 매출 데이터를 자연어로 검색하고 분석합니다</p>
         </div>
         <div className="flex items-center gap-2">

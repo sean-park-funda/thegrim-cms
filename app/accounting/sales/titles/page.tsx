@@ -113,7 +113,7 @@ export default function TitlesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">작품 정보 관리</h1>
+        <h1 className="text-3xl font-bold tracking-tight">작품 정보 관리</h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
           보유 작품의 상세 정보를 확인하고 관리합니다
         </p>
