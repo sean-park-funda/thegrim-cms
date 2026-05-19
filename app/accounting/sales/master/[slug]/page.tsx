@@ -183,7 +183,7 @@ export default function MasterDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-screen-xl">
       {/* ───── 헤더: 썸네일 + 타이틀 + 엘리먼트 ───── */}
       <div className="flex items-start gap-3">
         <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0 mt-1">
@@ -192,7 +192,7 @@ export default function MasterDetailPage() {
 
         {/* 썸네일 */}
         <div
-          className="w-36 h-48 rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
+          className="w-44 h-60 rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
           onClick={() => fileInputRef.current?.click()}
         >
           {data.thumbnailUrl ? (
