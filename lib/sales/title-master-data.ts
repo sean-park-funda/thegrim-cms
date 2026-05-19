@@ -30,6 +30,9 @@ export interface CountryPublishing {
 export type TitleStatus = '연재중' | '완결' | '휴재' | '준비중';
 export type SerialType = '요일웹툰' | '매일+' | '기타';
 export type DayOfWeek = '월요일' | '화요일' | '수요일' | '목요일' | '금요일' | '토요일' | '일요일';
+export type TeamLabel = '팀 숭늉' | 'MUTE' | 'MAJOR' | '팀 박태준' | '팀 꿀빨' | '팀 유호빈' | '팀 병장';
+export const TEAM_LABELS: TeamLabel[] = ['팀 숭늉', 'MUTE', 'MAJOR', '팀 박태준', '팀 꿀빨', '팀 유호빈', '팀 병장'];
+
 export type SecondaryBizCategory = '출판' | '드라마' | '영화' | '애니메이션' | '그 외';
 
 export interface SecondaryBizItem {
@@ -45,6 +48,7 @@ export interface TitleMasterInfo {
   workId?: string;
   title: string;
   titleUrl?: string;
+  teamLabel?: TeamLabel;
   status: TitleStatus;
   creators: TitleCreator[];
   platform: string;
@@ -70,6 +74,7 @@ export const TITLE_MASTER_DATA: TitleMasterInfo[] = [
   {
     slug: 'life-or-death',
     title: '인생존망',
+    teamLabel: '팀 박태준',
     status: '완결',
     creators: [
       { role: '글', name: '박태준' },

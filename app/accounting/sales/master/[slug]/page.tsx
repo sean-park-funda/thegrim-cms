@@ -17,6 +17,8 @@ import {
   TitleStatus,
   SerialType,
   DayOfWeek,
+  TeamLabel,
+  TEAM_LABELS,
 } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
@@ -218,9 +220,19 @@ export default function MasterDetailPage() {
           <div className="px-5 py-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
-                  <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
+                    <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">레이블</label>
+                    <select value={draft.teamLabel || ''} onChange={(e) => setDraft({ ...draft, teamLabel: (e.target.value || undefined) as TeamLabel | undefined })}
+                      className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                      <option value="">선택 안 함</option>
+                      {TEAM_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">작품 링크 (URL)</label>
@@ -300,15 +312,18 @@ export default function MasterDetailPage() {
 
               {/* 정보 (오른쪽) */}
               <div className="flex-1 min-w-0 space-y-3">
-                {/* 작품명 + 상태 */}
-                <div className="flex items-center gap-2">
+                {/* 작품명 + 레이블 + 상태 */}
+                <div className="flex items-center gap-2.5 flex-wrap">
                   {data.titleUrl ? (
-                    <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-xl font-bold tracking-tight truncate hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
+                    <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-2xl font-bold tracking-tight hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
                       {data.title}
                       <ExternalLink className="h-4 w-4 flex-shrink-0 opacity-40" />
                     </a>
                   ) : (
-                    <h1 className="text-xl font-bold tracking-tight truncate">{data.title}</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">{data.title}</h1>
+                  )}
+                  {data.teamLabel && (
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">{data.teamLabel}</span>
                   )}
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
                 </div>
