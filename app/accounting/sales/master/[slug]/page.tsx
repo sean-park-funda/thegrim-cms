@@ -115,25 +115,42 @@ export default function MasterDetailPage() {
   const slug = params.slug as string;
   const { profile } = useStore();
   const titleData = getTitleBySlug(slug);
-  const [data, setData] = useState<TitleMasterInfo | null>(() => {
-    if (typeof window === 'undefined' || !titleData) return titleData ? { ...titleData } : null;
-    try {
-      const saved = localStorage.getItem(`title-master-${slug}`);
-      if (saved) return JSON.parse(saved) as TitleMasterInfo;
-    } catch {}
-    return { ...titleData };
-  });
+  const [data, setData] = useState<TitleMasterInfo | null>(titleData ? { ...titleData } : null);
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isInitRef = useRef(false);
 
   useEffect(() => {
-    if (data && slug) {
-      try { localStorage.setItem(`title-master-${slug}`, JSON.stringify(data)); } catch {}
-    }
+    if (!slug || isInitRef.current) return;
+    isInitRef.current = true;
+    try {
+      const saved = localStorage.getItem(`title-master-${slug}`);
+      const thumb = localStorage.getItem(`title-thumb-${slug}`);
+      if (saved) {
+        const parsed = JSON.parse(saved) as TitleMasterInfo;
+        if (thumb) parsed.thumbnailUrl = thumb;
+        setData(parsed);
+      } else if (thumb && titleData) {
+        setData({ ...titleData, thumbnailUrl: thumb });
+      }
+    } catch {}
+  }, [slug, titleData]);
+
+  useEffect(() => {
+    if (!data || !slug || !isInitRef.current) return;
+    try {
+      const { thumbnailUrl, ...rest } = data;
+      localStorage.setItem(`title-master-${slug}`, JSON.stringify(rest));
+      if (thumbnailUrl) {
+        localStorage.setItem(`title-thumb-${slug}`, thumbnailUrl);
+      } else {
+        localStorage.removeItem(`title-thumb-${slug}`);
+      }
+    } catch {}
   }, [data, slug]);
 
   const startEdit = useCallback((section: string) => {
@@ -183,7 +200,7 @@ export default function MasterDetailPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-screen-xl">
+    <div className="space-y-6 max-w-[1800px]">
       {/* ───── 헤더: 썸네일 + 타이틀 + 엘리먼트 ───── */}
       <div className="flex items-start gap-3">
         <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0 mt-1">
@@ -192,7 +209,7 @@ export default function MasterDetailPage() {
 
         {/* 썸네일 */}
         <div
-          className="w-44 h-60 rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
+          className="w-56 h-[300px] rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
           onClick={() => fileInputRef.current?.click()}
         >
           {data.thumbnailUrl ? (
