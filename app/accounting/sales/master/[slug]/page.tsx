@@ -201,54 +201,21 @@ export default function MasterDetailPage() {
 
   return (
     <div className="space-y-6 max-w-[1800px]">
-      {/* ───── 헤더: 썸네일 + 타이틀 + 엘리먼트 ───── */}
-      <div className="flex items-start gap-3">
-        <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0 mt-1">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-
-        {/* 썸네일 */}
-        <div
-          className="w-56 h-[300px] rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {data.thumbnailUrl ? (
-            <img src={data.thumbnailUrl} alt={data.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-300 dark:text-zinc-600">
-              <ImagePlus className="h-7 w-7" />
-              <span className="text-[10px]">썸네일 등록</span>
-            </div>
+      {/* ───── 기본 정보: 썸네일 + 정보 통합 ───── */}
+      <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+          <Link href="/accounting/sales/master" className="h-7 w-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0">
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </Link>
+          <BookOpen className="h-4 w-4 text-cyan-500" />
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex-1">기본 정보</h2>
+          {!editingBasic && (
+            <button onClick={() => startEdit('basic')} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
           )}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
-            <ImagePlus className="h-5 w-5 text-white" />
-          </div>
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleThumbnailUpload} />
         </div>
 
-        <div className="flex-1 min-w-0 pt-1">
-          <div className="flex items-center gap-2">
-            {data.titleUrl ? (
-              <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-2xl font-bold tracking-tight truncate hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
-                {data.title}
-                <ExternalLink className="h-4 w-4 flex-shrink-0 opacity-40" />
-              </a>
-            ) : (
-              <h1 className="text-2xl font-bold tracking-tight truncate">{data.title}</h1>
-            )}
-            <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
-          </div>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed line-clamp-3">
-            {data.element}
-          </p>
-        </div>
-      </div>
-
-      {/* ───── 기본 정보 ───── */}
-      <Section icon={BookOpen} title="기본 정보" accent="text-cyan-500" onEdit={() => startEdit('basic')} editing={editingBasic}>
         {editingBasic && draft ? (
           <div className="px-5 py-4 space-y-4">
-            {/* 작품명 + 작가 정보 (가로 배열) */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div>
@@ -277,14 +244,12 @@ export default function MasterDetailPage() {
                 </div>
               </div>
             </div>
-            {/* 연령등급 / 장르 / 에피소드 */}
             <div className="grid grid-cols-4 gap-3">
               <div><label className="text-xs text-zinc-400 mb-1 block">연령 등급</label><Input value={draft.ageRating} onChange={(v) => setDraft({ ...draft, ageRating: v })} /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">주장르</label><Input value={draft.mainGenre} onChange={(v) => setDraft({ ...draft, mainGenre: v })} /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">부장르</label><Input value={draft.subGenre || ''} onChange={(v) => setDraft({ ...draft, subGenre: v || undefined })} /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">에피소드 수</label><input type="number" value={draft.episodeCount} onChange={(e) => setDraft({ ...draft, episodeCount: parseInt(e.target.value) || 0 })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
             </div>
-            {/* 상태 / 플랫폼 / 연재방식 / 요일 */}
             <div className="grid grid-cols-4 gap-3">
               <div><label className="text-xs text-zinc-400 mb-1 block">상태</label><Select value={draft.status} options={STATUS_OPTIONS} onChange={(v) => setDraft({ ...draft, status: v })} className="w-full" /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">플랫폼</label><Input value={draft.platform} onChange={(v) => setDraft({ ...draft, platform: v })} /></div>
@@ -297,123 +262,132 @@ export default function MasterDetailPage() {
                 </select>
               </div>
             </div>
-            {/* 날짜 */}
             <div className="grid grid-cols-3 gap-3">
               <div><label className="text-xs text-zinc-400 mb-1 block">연재 시작</label><input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">연재 종료</label><input type="date" value={draft.endDate || ''} onChange={(e) => setDraft({ ...draft, endDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">비독점 변경일</label><input type="date" value={draft.nonExclusiveDate || ''} onChange={(e) => setDraft({ ...draft, nonExclusiveDate: e.target.value || undefined })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
             </div>
-            {/* 키워드 */}
             <div><label className="text-xs text-zinc-400 mb-1 block">키워드 (쉼표 구분)</label><Input value={draft.keywords.join(', ')} onChange={(v) => setDraft({ ...draft, keywords: v.split(',').map(k => k.trim()).filter(Boolean) })} /></div>
-            {/* 엘리먼트 */}
             <div><label className="text-xs text-zinc-400 mb-1 block">엘리먼트</label>
               <textarea value={draft.element} onChange={(e) => setDraft({ ...draft, element: e.target.value })} rows={2} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
             </div>
-            {/* 로그라인 */}
             <div><label className="text-xs text-zinc-400 mb-1 block">로그라인</label>
               <textarea value={draft.logline} onChange={(e) => setDraft({ ...draft, logline: e.target.value })} rows={5} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
             </div>
             <EditActions onSave={() => save('basic')} onCancel={() => cancel('basic')} />
           </div>
         ) : (
-          <div className="px-5 py-4 space-y-4">
-            {/* 작품명 */}
-            <div>
-              <FieldLabel>작품명</FieldLabel>
-              {data.titleUrl ? (
-                <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-base font-bold hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
-                  {data.title}
-                  <ExternalLink className="h-3.5 w-3.5 opacity-40" />
-                </a>
-              ) : (
-                <FieldValue className="text-base font-bold">{data.title}</FieldValue>
-              )}
-            </div>
-
-            {/* 작가 */}
-            <div>
-              <FieldLabel>작가</FieldLabel>
-              <div className="flex flex-wrap gap-2 mt-0.5">
-                {data.creators.map((c, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
-                    <span className="text-sm font-medium">{c.name}</span>
-                  </span>
-                ))}
+          <div className="p-5">
+            <div className="flex gap-6">
+              {/* 썸네일 (왼쪽) */}
+              <div
+                className="w-48 h-64 rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {data.thumbnailUrl ? (
+                  <img src={data.thumbnailUrl} alt={data.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-300 dark:text-zinc-600">
+                    <ImagePlus className="h-7 w-7" />
+                    <span className="text-[10px]">썸네일 등록</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
+                  <ImagePlus className="h-5 w-5 text-white" />
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleThumbnailUpload} />
               </div>
-            </div>
 
-            {/* 연령등급 / 장르 / 에피소드수 — 가로 배열 */}
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <FieldLabel>연령 등급</FieldLabel>
-                <FieldValue>{data.ageRating}</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>장르</FieldLabel>
-                <div className="flex gap-1.5 mt-0.5">
-                  <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">{data.mainGenre}</span>
-                  {data.subGenre && <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[11px] font-semibold">{data.subGenre}</span>}
+              {/* 정보 (오른쪽) */}
+              <div className="flex-1 min-w-0 space-y-3">
+                {/* 작품명 + 상태 */}
+                <div className="flex items-center gap-2">
+                  {data.titleUrl ? (
+                    <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-xl font-bold tracking-tight truncate hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
+                      {data.title}
+                      <ExternalLink className="h-4 w-4 flex-shrink-0 opacity-40" />
+                    </a>
+                  ) : (
+                    <h1 className="text-xl font-bold tracking-tight truncate">{data.title}</h1>
+                  )}
+                  <span className={`flex-shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
+                </div>
+
+                {/* 작가 */}
+                <div className="flex flex-wrap gap-2">
+                  {data.creators.map((c, i) => (
+                    <span key={i} className="inline-flex items-center gap-1">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
+                      <span className="text-sm font-medium">{c.name}</span>
+                    </span>
+                  ))}
+                </div>
+
+                {/* 연령등급 / 장르 / 에피소드수 / 플랫폼 / 연재방식 / 요일 */}
+                <div className="grid grid-cols-3 xl:grid-cols-6 gap-x-4 gap-y-2">
+                  <div>
+                    <FieldLabel>연령 등급</FieldLabel>
+                    <FieldValue>{data.ageRating}</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>장르</FieldLabel>
+                    <div className="flex gap-1 mt-0.5">
+                      <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">{data.mainGenre}</span>
+                      {data.subGenre && <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-semibold">{data.subGenre}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <FieldLabel>에피소드</FieldLabel>
+                    <FieldValue>{data.episodeCount}화</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>플랫폼</FieldLabel>
+                    <FieldValue>{data.platform}</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>연재방식</FieldLabel>
+                    <FieldValue>{data.serialType}</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>요일</FieldLabel>
+                    <FieldValue>{data.dayOfWeek}</FieldValue>
+                  </div>
+                </div>
+
+                {/* 날짜 */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <FieldLabel>연재 시작</FieldLabel>
+                    <FieldValue>{data.startDate}</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>연재 종료</FieldLabel>
+                    <FieldValue>{data.endDate || <span className="text-green-500">연재중</span>}</FieldValue>
+                  </div>
+                  <div>
+                    <FieldLabel>비독점 변경일</FieldLabel>
+                    <FieldValue className="text-amber-600 dark:text-amber-400">{data.nonExclusiveDate}</FieldValue>
+                  </div>
+                </div>
+
+                {/* 키워드 */}
+                <div className="flex flex-wrap gap-1.5">
+                  {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium">#{kw}</span>)}
                 </div>
               </div>
-              <div>
-                <FieldLabel>에피소드 수</FieldLabel>
-                <FieldValue>{data.episodeCount}화</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>상태</FieldLabel>
-                <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
-              </div>
             </div>
 
-            {/* 플랫폼 / 연재방식 / 요일 — 가로 배열 */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <FieldLabel>플랫폼</FieldLabel>
-                <FieldValue>{data.platform}</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>연재방식</FieldLabel>
-                <FieldValue>{data.serialType}</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>요일</FieldLabel>
-                <FieldValue>{data.dayOfWeek}</FieldValue>
-              </div>
-            </div>
-
-            {/* 연재시작 / 연재종료 / 비독점 변경일 — 가로 배열 */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <FieldLabel>연재 시작</FieldLabel>
-                <FieldValue>{data.startDate}</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>연재 종료</FieldLabel>
-                <FieldValue>{data.endDate || <span className="text-green-500">연재중</span>}</FieldValue>
-              </div>
-              <div>
-                <FieldLabel>비독점 변경일</FieldLabel>
-                <FieldValue className="text-amber-600 dark:text-amber-400">{data.nonExclusiveDate}</FieldValue>
-              </div>
-            </div>
-
-            {/* 키워드 */}
-            <div>
-              <FieldLabel>키워드</FieldLabel>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium">#{kw}</span>)}
-              </div>
-            </div>
+            {/* 엘리먼트 (전체 너비) */}
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-4 leading-relaxed">{data.element}</p>
 
             {/* 로그라인 */}
-            <div>
+            <div className="mt-4">
               <FieldLabel>로그라인</FieldLabel>
               <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3 whitespace-pre-line">{data.logline}</div>
             </div>
           </div>
         )}
-      </Section>
+      </div>
 
       {/* ───── 글로벌 전개 현황 ───── */}
       <Section icon={Globe} title="글로벌 전개 현황" accent="text-teal-500" onEdit={() => startEdit('global')} editing={editingGlobal}>
