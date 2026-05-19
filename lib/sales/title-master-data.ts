@@ -1748,7 +1748,22 @@ export function getAllTitles(): TitleMasterInfo[] {
   const deleted = getDeletedSlugs();
   const base = TITLE_MASTER_DATA.filter((t) => !deleted.has(t.slug));
   const custom = getCustomTitles();
-  return [...base, ...custom];
+  const all = [...base, ...custom];
+  if (typeof window === 'undefined') return all;
+  return all.map((t) => {
+    try {
+      const saved = localStorage.getItem(`title-master-${t.slug}`);
+      if (saved) {
+        const parsed = JSON.parse(saved) as TitleMasterInfo;
+        const thumb = localStorage.getItem(`title-thumb-${t.slug}`);
+        if (thumb) parsed.thumbnailUrl = thumb;
+        return parsed;
+      }
+      const thumb = localStorage.getItem(`title-thumb-${t.slug}`);
+      if (thumb) return { ...t, thumbnailUrl: thumb };
+    } catch {}
+    return t;
+  });
 }
 
 export function getAllTitleBySlug(slug: string): TitleMasterInfo | undefined {
