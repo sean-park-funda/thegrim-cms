@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { getTitleBySlug, TitleMasterInfo } from '@/lib/sales/title-master-data';
+import { getTitleBySlug, isValidCountry, COUNTRIES, CountryCode } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
   BookOpen,
@@ -96,10 +96,14 @@ const BIZ_TYPE_ICONS: Record<string, string> = {
 
 export default function MasterDetailPage() {
   const params = useParams();
+  const countryParam = params.country as string;
   const slug = params.slug as string;
   const { profile } = useStore();
 
-  const title = getTitleBySlug(slug);
+  if (!isValidCountry(countryParam)) return null;
+  const country = countryParam as CountryCode;
+  const countryInfo = COUNTRIES.find((c) => c.code === country)!;
+  const title = getTitleBySlug(country, slug);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
@@ -108,7 +112,7 @@ export default function MasterDetailPage() {
       <div className="flex flex-col items-center justify-center h-64 text-zinc-400 gap-4">
         <span className="text-sm">작품을 찾을 수 없습니다</span>
         <Link
-          href="/accounting/sales/master"
+          href={`/accounting/sales/master/${country}`}
           className="text-sm text-cyan-600 hover:underline"
         >
           목록으로 돌아가기
@@ -122,7 +126,7 @@ export default function MasterDetailPage() {
       {/* 헤더 */}
       <div className="flex items-center gap-3">
         <Link
-          href="/accounting/sales/master"
+          href={`/accounting/sales/master/${country}`}
           className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
         >
           <ArrowLeft className="h-4 w-4" />

@@ -3,8 +3,17 @@ export interface TitleCreator {
   name: string;
 }
 
+export type CountryCode = 'kr' | 'jp' | 'us';
+
+export const COUNTRIES: { code: CountryCode; label: string; flag: string }[] = [
+  { code: 'kr', label: 'KR', flag: '🇰🇷' },
+  { code: 'jp', label: 'JP', flag: '🇯🇵' },
+  { code: 'us', label: 'US', flag: '🇺🇸' },
+];
+
 export interface TitleMasterInfo {
   slug: string;
+  country: CountryCode;
   workId?: string;
   title: string;
   creators: TitleCreator[];
@@ -42,6 +51,7 @@ export interface TitleMasterInfo {
 export const TITLE_MASTER_DATA: TitleMasterInfo[] = [
   {
     slug: 'life-or-death',
+    country: 'kr',
     title: '인생존망',
     creators: [
       { role: '글', name: '박태준' },
@@ -68,6 +78,14 @@ export const TITLE_MASTER_DATA: TitleMasterInfo[] = [
   },
 ];
 
-export function getTitleBySlug(slug: string): TitleMasterInfo | undefined {
-  return TITLE_MASTER_DATA.find((t) => t.slug === slug);
+export function getTitlesByCountry(country: CountryCode): TitleMasterInfo[] {
+  return TITLE_MASTER_DATA.filter((t) => t.country === country);
+}
+
+export function getTitleBySlug(country: CountryCode, slug: string): TitleMasterInfo | undefined {
+  return TITLE_MASTER_DATA.find((t) => t.country === country && t.slug === slug);
+}
+
+export function isValidCountry(code: string): code is CountryCode {
+  return ['kr', 'jp', 'us'].includes(code);
 }

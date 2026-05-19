@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { TITLE_MASTER_DATA, TitleMasterInfo } from '@/lib/sales/title-master-data';
+import {
+  getTitlesByCountry,
+  isValidCountry,
+  COUNTRIES,
+  TitleMasterInfo,
+  CountryCode,
+} from '@/lib/sales/title-master-data';
 import {
   Search,
   BookOpen,
@@ -22,19 +29,19 @@ const STATUS_COLORS: Record<string, string> = {
   '휴재': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
-function TitleCard({ title }: { title: TitleMasterInfo }) {
+function TitleCard({ title, country }: { title: TitleMasterInfo; country: CountryCode }) {
   const writer = title.creators.find((c) => c.role === '글')?.name;
   const artist = title.creators.find((c) => c.role === '그림')?.name;
-  const creatorStr = writer && artist && writer !== artist
-    ? `${writer} / ${artist}`
-    : writer || artist || '-';
+  const creatorStr =
+    writer && artist && writer !== artist
+      ? `${writer} / ${artist}`
+      : writer || artist || '-';
 
   return (
     <Link
-      href={`/accounting/sales/master/${title.slug}`}
+      href={`/accounting/sales/master/${country}/${title.slug}`}
       className="group rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden hover:shadow-lg dark:hover:border-zinc-600 transition-all duration-200"
     >
-      {/* 상단: 제목 + 상태 */}
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -57,7 +64,6 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
           <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors flex-shrink-0 mt-1" />
         </div>
 
-        {/* 메타 정보 */}
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-zinc-400 dark:text-zinc-500">
           <span className="flex items-center gap-1">
             <BookOpen className="h-3 w-3" />
@@ -76,7 +82,6 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
           <span>{title.ageRating}</span>
         </div>
 
-        {/* 장르 + 키워드 */}
         <div className="flex flex-wrap gap-1.5 mt-3">
           <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-semibold">
             {title.mainGenre}
@@ -101,13 +106,11 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
           )}
         </div>
 
-        {/* 엘리먼트 (한 줄) */}
         <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-3 line-clamp-2 leading-relaxed">
           {title.element}
         </p>
       </div>
 
-      {/* 하단: 기간 */}
       <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
         <span>
           {title.startDate} ~ {title.endDate || '연재중'}
@@ -122,13 +125,23 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
   );
 }
 
-export default function MasterPage() {
+export default function MasterCountryPage() {
+  const params = useParams();
+  const countryParam = params.country as string;
   const { profile } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
+  if (!isValidCountry(countryParam)) {
+    notFound();
+  }
+
+  const country = countryParam as CountryCode;
+  const countryInfo = COUNTRIES.find((c) => c.code === country)!;
+  const allTitles = getTitlesByCountry(country);
+
   const filtered = useMemo(() => {
-    return TITLE_MASTER_DATA.filter((t) => {
+    return allTitles.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -142,29 +155,49 @@ export default function MasterPage() {
       }
       return true;
     });
-  }, [search, statusFilter]);
+  }, [allTitles, search, statusFilter]);
 
   if (!profile || !canViewSales(profile.role)) return null;
 
   const statCounts = {
-    total: TITLE_MASTER_DATA.length,
-    active: TITLE_MASTER_DATA.filter((t) => t.status === '연재중').length,
-    completed: TITLE_MASTER_DATA.filter((t) => t.status === '완결').length,
+    total: allTitles.length,
+    active: allTitles.filter((t) => t.status === '연재중').length,
+    completed: allTitles.filter((t) => t.status === '완결').length,
   };
 
   return (
     <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20">
-          <Crown className="h-5 w-5 text-white" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/20 text-lg">
+          {countryInfo.flag}
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">작품 마스터</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            작품 관리 ({countryInfo.label})
+          </h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-            보유 작품의 종합 정보를 관리합니다
+            {countryInfo.label} 지역 작품의 종합 정보를 관리합니다
           </p>
         </div>
+      </div>
+
+      {/* 국가 탭 */}
+      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 w-fit">
+        {COUNTRIES.map((c) => (
+          <Link
+            key={c.code}
+            href={`/accounting/sales/master/${c.code}`}
+            className={`px-4 py-2 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 ${
+              c.code === country
+                ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+            }`}
+          >
+            <span>{c.flag}</span>
+            <span>{c.label}</span>
+          </Link>
+        ))}
       </div>
 
       {/* 검색 & 필터 */}
@@ -206,20 +239,15 @@ export default function MasterPage() {
       <div className="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
         <span>
           전체{' '}
-          <strong className="text-zinc-700 dark:text-zinc-200">
-            {statCounts.total}
-          </strong>
+          <strong className="text-zinc-700 dark:text-zinc-200">{statCounts.total}</strong>
           작품
         </span>
         <span>
           연재중{' '}
-          <strong className="text-green-600 dark:text-green-400">
-            {statCounts.active}
-          </strong>
+          <strong className="text-green-600 dark:text-green-400">{statCounts.active}</strong>
         </span>
         <span>
-          완결{' '}
-          <strong className="text-zinc-500">{statCounts.completed}</strong>
+          완결 <strong className="text-zinc-500">{statCounts.completed}</strong>
         </span>
       </div>
 
@@ -233,7 +261,7 @@ export default function MasterPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map((title) => (
-            <TitleCard key={title.slug} title={title} />
+            <TitleCard key={title.slug} title={title} country={country} />
           ))}
         </div>
       )}
