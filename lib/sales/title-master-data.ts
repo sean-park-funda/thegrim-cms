@@ -1683,3 +1683,29 @@ export const TITLE_MASTER_DATA: TitleMasterInfo[] = [
 export function getTitleBySlug(slug: string): TitleMasterInfo | undefined {
   return TITLE_MASTER_DATA.find((t) => t.slug === slug);
 }
+
+function normalize(s: string): string {
+  return s.replace(/[\s\-_:!?·.,()（）\[\]【】]/g, '').toLowerCase();
+}
+
+const slugByNameCache: Record<string, string | null> = {};
+
+export function getSlugByWorkName(workName: string): string | null {
+  if (workName in slugByNameCache) return slugByNameCache[workName];
+
+  const norm = normalize(workName);
+  for (const t of TITLE_MASTER_DATA) {
+    if (normalize(t.title) === norm) {
+      slugByNameCache[workName] = t.slug;
+      return t.slug;
+    }
+  }
+  for (const t of TITLE_MASTER_DATA) {
+    if (normalize(t.title).includes(norm) || norm.includes(normalize(t.title))) {
+      slugByNameCache[workName] = t.slug;
+      return t.slug;
+    }
+  }
+  slugByNameCache[workName] = null;
+  return null;
+}

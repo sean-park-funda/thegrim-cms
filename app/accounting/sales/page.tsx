@@ -8,6 +8,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, dateStr, AggMode, WorkFilter, aggregateData } from '@/lib/sales/types';
+import { getSlugByWorkName } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Menu, Sparkles, CalendarIcon } from 'lucide-react';
 import Link from 'next/link';
@@ -467,7 +468,14 @@ export default function SalesDashboardPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-sm font-medium truncate flex items-center gap-1.5">
-                          {w.name}
+                          {(() => {
+                            const slug = getSlugByWorkName(w.name);
+                            return slug ? (
+                              <Link href={`/accounting/sales/master/${slug}`} className="hover:text-cyan-600 dark:hover:text-cyan-400 hover:underline transition-colors">
+                                {w.name}
+                              </Link>
+                            ) : w.name;
+                          })()}
                           {status?.serialEndDate && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-400">완결</span>
                           )}

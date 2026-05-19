@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
+import { getSlugByWorkName } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
 import { ArrowUp, ArrowDown, Minus, Menu } from 'lucide-react';
 
@@ -159,7 +161,16 @@ export default function RankingPage() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: WORK_COLORS[(r.rank - 1) % WORK_COLORS.length] }} />
-                          <span className="font-medium truncate max-w-48 text-zinc-900 dark:text-zinc-100">{r.name}</span>
+                          {(() => {
+                            const slug = getSlugByWorkName(r.name);
+                            return slug ? (
+                              <Link href={`/accounting/sales/master/${slug}`} className="font-medium truncate max-w-48 text-zinc-900 dark:text-zinc-100 hover:text-cyan-600 dark:hover:text-cyan-400 hover:underline transition-colors">
+                                {r.name}
+                              </Link>
+                            ) : (
+                              <span className="font-medium truncate max-w-48 text-zinc-900 dark:text-zinc-100">{r.name}</span>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="text-right py-3 px-3 tabular-nums font-semibold text-zinc-700 dark:text-zinc-300">{fmtShort(r.total)}</td>

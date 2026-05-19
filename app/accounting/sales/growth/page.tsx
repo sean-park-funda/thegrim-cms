@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
+import { getSlugByWorkName } from '@/lib/sales/title-master-data';
 import { ArrowUp, ArrowDown, Minus, Menu } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
 import {
@@ -265,8 +267,17 @@ export default function GrowthPage() {
                           {i + 1}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-52">
-                        {r.name}
+                      <td className="py-3 px-4 font-medium truncate max-w-52">
+                        {(() => {
+                          const slug = getSlugByWorkName(r.name);
+                          return slug ? (
+                            <Link href={`/accounting/sales/master/${slug}`} className="text-zinc-900 dark:text-zinc-100 hover:text-cyan-600 dark:hover:text-cyan-400 hover:underline transition-colors">
+                              {r.name}
+                            </Link>
+                          ) : (
+                            <span className="text-zinc-900 dark:text-zinc-100">{r.name}</span>
+                          );
+                        })()}
                       </td>
                       <td className="text-right py-3 px-4 tabular-nums text-zinc-500 dark:text-zinc-400">
                         {fmtShort(r.previous)}
