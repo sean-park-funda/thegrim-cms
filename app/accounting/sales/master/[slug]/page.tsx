@@ -221,16 +221,7 @@ export default function MasterDetailPage() {
             )}
             <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
           </div>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-            {data.creators.map(c => `${c.name}(${c.role})`).join(' / ')}
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-medium">{data.platform}</span>
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.serialType}</span>
-            {data.dayOfWeek && <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.dayOfWeek}</span>}
-          </div>
-          {/* 엘리먼트 */}
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-3 leading-relaxed line-clamp-3">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed line-clamp-3">
             {data.element}
           </p>
         </div>
@@ -396,12 +387,6 @@ export default function MasterDetailPage() {
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs font-medium">#{kw}</span>)}
               </div>
-            </div>
-
-            {/* 엘리먼트 */}
-            <div>
-              <FieldLabel>엘리먼트</FieldLabel>
-              <p className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">{data.element}</p>
             </div>
 
             {/* 로그라인 */}
