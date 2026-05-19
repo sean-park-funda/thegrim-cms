@@ -29,6 +29,8 @@ import {
   Trash2,
   Sparkles,
   GitCompareArrows,
+  Library,
+  Crown,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -39,6 +41,13 @@ interface Conversation {
 }
 
 const navGroups = [
+  {
+    label: '작품 관리',
+    items: [
+      { href: '/accounting/sales/master', label: '작품 마스터', icon: Crown },
+      { href: '/accounting/sales/titles', label: '작품 목록', icon: Library },
+    ],
+  },
   {
     label: '개요',
     items: [
