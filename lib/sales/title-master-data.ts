@@ -44,6 +44,7 @@ export interface TitleMasterInfo {
   slug: string;
   workId?: string;
   title: string;
+  titleUrl?: string;
   status: TitleStatus;
   creators: TitleCreator[];
   platform: string;

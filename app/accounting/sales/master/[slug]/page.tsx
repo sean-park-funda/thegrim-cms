@@ -28,6 +28,7 @@ import {
   Plus,
   Trash2,
   ImagePlus,
+  ExternalLink,
 } from 'lucide-react';
 
 const STATUS_OPTIONS: TitleStatus[] = ['연재중', '휴재', '완결', '준비중'];
@@ -169,35 +170,42 @@ export default function MasterDetailPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* ───── 헤더: 썸네일 + 타이틀 ───── */}
-      <div className="flex items-start gap-4">
+    <div className="space-y-6">
+      {/* ───── 헤더: 썸네일 + 타이틀 + 엘리먼트 ───── */}
+      <div className="flex items-start gap-3">
         <Link href="/accounting/sales/master" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0 mt-1">
           <ArrowLeft className="h-4 w-4" />
         </Link>
 
         {/* 썸네일 */}
         <div
-          className="w-20 h-28 rounded-xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative"
+          className="w-36 h-48 rounded-2xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0 cursor-pointer group relative shadow-md"
           onClick={() => fileInputRef.current?.click()}
         >
           {data.thumbnailUrl ? (
             <img src={data.thumbnailUrl} alt={data.title} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-zinc-300 dark:text-zinc-600">
-              <ImagePlus className="h-5 w-5" />
-              <span className="text-[9px]">썸네일</span>
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-300 dark:text-zinc-600">
+              <ImagePlus className="h-7 w-7" />
+              <span className="text-[10px]">썸네일 등록</span>
             </div>
           )}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <ImagePlus className="h-4 w-4 text-white" />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl">
+            <ImagePlus className="h-5 w-5 text-white" />
           </div>
           <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleThumbnailUpload} />
         </div>
 
         <div className="flex-1 min-w-0 pt-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight truncate">{data.title}</h1>
+            {data.titleUrl ? (
+              <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-2xl font-bold tracking-tight truncate hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
+                {data.title}
+                <ExternalLink className="h-4 w-4 flex-shrink-0 opacity-40" />
+              </a>
+            ) : (
+              <h1 className="text-2xl font-bold tracking-tight truncate">{data.title}</h1>
+            )}
             <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
           </div>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
@@ -208,6 +216,10 @@ export default function MasterDetailPage() {
             <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.serialType}</span>
             {data.dayOfWeek && <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]">{data.dayOfWeek}</span>}
           </div>
+          {/* 엘리먼트 */}
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-3 leading-relaxed line-clamp-3">
+            {data.element}
+          </p>
         </div>
       </div>
 
@@ -215,10 +227,16 @@ export default function MasterDetailPage() {
       <Section icon={BookOpen} title="기본 정보" accent="text-cyan-500" onEdit={() => startEdit('basic')} editing={editingBasic}>
         {editingBasic && draft ? (
           <div className="px-5 py-4 space-y-4">
-            {/* 작품명 */}
-            <div>
-              <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
-              <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+            {/* 작품명 + 링크 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">작품명</label>
+                <Input value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">작품 링크 (URL)</label>
+                <Input value={draft.titleUrl || ''} onChange={(v) => setDraft({ ...draft, titleUrl: v || undefined })} placeholder="https://..." />
+              </div>
             </div>
             {/* 작가 */}
             <div>
@@ -280,7 +298,14 @@ export default function MasterDetailPage() {
             {/* 작품명 */}
             <div>
               <FieldLabel>작품명</FieldLabel>
-              <FieldValue className="text-base font-bold">{data.title}</FieldValue>
+              {data.titleUrl ? (
+                <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-base font-bold hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
+                  {data.title}
+                  <ExternalLink className="h-3.5 w-3.5 opacity-40" />
+                </a>
+              ) : (
+                <FieldValue className="text-base font-bold">{data.title}</FieldValue>
+              )}
             </div>
 
             {/* 작가 */}
