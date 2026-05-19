@@ -390,17 +390,17 @@ export default function MasterDetailPage() {
               </div>
             </div>
 
-            {/* 엘리먼트 + 키워드 + 로그라인 */}
-            <div className="mt-4">
-              <FieldLabel>엘리먼트</FieldLabel>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">{data.element}</p>
-            </div>
-
+            {/* 키워드 + 엘리먼트 + 로그라인 */}
             <div className="mt-4">
               <FieldLabel>키워드</FieldLabel>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium">#{kw}</span>)}
               </div>
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>엘리먼트</FieldLabel>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">{data.element}</p>
             </div>
 
             <div className="mt-4">
