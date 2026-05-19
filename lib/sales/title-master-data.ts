@@ -30,8 +30,8 @@ export interface CountryPublishing {
 export type TitleStatus = '연재중' | '완결' | '휴재' | '준비중';
 export type SerialType = '요일웹툰' | '매일+' | '기타';
 export type DayOfWeek = '월요일' | '화요일' | '수요일' | '목요일' | '금요일' | '토요일' | '일요일';
-export type TeamLabel = '팀 숭늉' | 'MUTE' | 'MAJOR' | '팀 박태준' | '팀 꿀빨' | '팀 유호빈' | '팀 병장';
-export const TEAM_LABELS: TeamLabel[] = ['팀 숭늉', 'MUTE', 'MAJOR', '팀 박태준', '팀 꿀빨', '팀 유호빈', '팀 병장'];
+export type TeamLabel = '팀 박태준' | '팀 병장' | '팀 유호빈' | 'MUTE' | 'MAJOR' | '팀 꿀빨' | '팀 숭늉' | '전략기획팀' | '그 외';
+export const TEAM_LABELS: TeamLabel[] = ['팀 박태준', '팀 병장', '팀 유호빈', 'MUTE', 'MAJOR', '팀 꿀빨', '팀 숭늉', '전략기획팀', '그 외'];
 
 export type SecondaryBizCategory = '출판' | '드라마' | '영화' | '애니메이션' | '그 외';
 
