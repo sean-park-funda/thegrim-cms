@@ -191,15 +191,13 @@ export default function MasterDetailPage() {
     const reader = new FileReader();
     reader.onload = () => {
       const url = reader.result as string;
-      setData(prev => {
-        if (!prev) return prev;
-        const newData = { ...prev, thumbnailUrl: url };
-        saveToStorage(newData);
-        return newData;
-      });
+      if (slug) {
+        try { localStorage.setItem(`title-thumb-${slug}`, url); } catch {}
+      }
+      setData(prev => prev ? { ...prev, thumbnailUrl: url } : prev);
     };
     reader.readAsDataURL(file);
-  }, [saveToStorage]);
+  }, [slug]);
 
   if (!profile || !canViewSales(profile.role)) return null;
   if (!data) {
