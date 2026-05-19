@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
@@ -115,13 +115,26 @@ export default function MasterDetailPage() {
   const slug = params.slug as string;
   const { profile } = useStore();
   const titleData = getTitleBySlug(slug);
-  const [data, setData] = useState<TitleMasterInfo | null>(titleData ? { ...titleData } : null);
+  const [data, setData] = useState<TitleMasterInfo | null>(() => {
+    if (typeof window === 'undefined' || !titleData) return titleData ? { ...titleData } : null;
+    try {
+      const saved = localStorage.getItem(`title-master-${slug}`);
+      if (saved) return JSON.parse(saved) as TitleMasterInfo;
+    } catch {}
+    return { ...titleData };
+  });
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (data && slug) {
+      try { localStorage.setItem(`title-master-${slug}`, JSON.stringify(data)); } catch {}
+    }
+  }, [data, slug]);
 
   const startEdit = useCallback((section: string) => {
     if (!data) return;
