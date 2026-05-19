@@ -128,12 +128,9 @@ export default function MasterDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isInitRef = useRef(false);
-  const skipSaveRef = useRef(true);
 
   useEffect(() => {
-    if (!slug || isInitRef.current) return;
-    isInitRef.current = true;
+    if (!slug) return;
     try {
       const saved = localStorage.getItem(`title-master-${slug}`);
       const thumb = localStorage.getItem(`title-thumb-${slug}`);
@@ -145,16 +142,13 @@ export default function MasterDetailPage() {
         setData({ ...titleData, thumbnailUrl: thumb });
       }
     } catch {}
-  }, [slug, titleData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
-  useEffect(() => {
-    if (skipSaveRef.current) {
-      skipSaveRef.current = false;
-      return;
-    }
-    if (!data || !slug) return;
+  const saveToStorage = useCallback((newData: TitleMasterInfo) => {
+    if (!slug) return;
     try {
-      const { thumbnailUrl, ...rest } = data;
+      const { thumbnailUrl, ...rest } = newData;
       localStorage.setItem(`title-master-${slug}`, JSON.stringify(rest));
       if (thumbnailUrl) {
         localStorage.setItem(`title-thumb-${slug}`, thumbnailUrl);
@@ -162,7 +156,7 @@ export default function MasterDetailPage() {
         localStorage.removeItem(`title-thumb-${slug}`);
       }
     } catch {}
-  }, [data, slug]);
+  }, [slug]);
 
   const startEdit = useCallback((section: string) => {
     if (!data) return;
@@ -175,12 +169,14 @@ export default function MasterDetailPage() {
 
   const save = useCallback((section: string) => {
     if (!draft) return;
-    setData({ ...draft });
+    const newData = { ...draft };
+    setData(newData);
+    saveToStorage(newData);
     if (section === 'basic') setEditingBasic(false);
     if (section === 'global') setEditingGlobal(false);
     if (section === 'biz') setEditingBiz(false);
     if (section === 'notes') setEditingNotes(false);
-  }, [draft]);
+  }, [draft, saveToStorage]);
 
   const cancel = useCallback((section: string) => {
     if (section === 'basic') setEditingBasic(false);
@@ -195,10 +191,15 @@ export default function MasterDetailPage() {
     const reader = new FileReader();
     reader.onload = () => {
       const url = reader.result as string;
-      setData(prev => prev ? { ...prev, thumbnailUrl: url } : prev);
+      setData(prev => {
+        if (!prev) return prev;
+        const newData = { ...prev, thumbnailUrl: url };
+        saveToStorage(newData);
+        return newData;
+      });
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [saveToStorage]);
 
   if (!profile || !canViewSales(profile.role)) return null;
   if (!data) {
