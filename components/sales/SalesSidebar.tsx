@@ -49,7 +49,7 @@ const navGroups = [
   {
     label: '매출 분석',
     items: [
-      { href: '/accounting/sales/works', label: '작품별 매출' },
+      { href: '/accounting/sales/works', label: '작품별 매출 확인하기' },
       { href: '/accounting/sales/compare', label: '작품 비교' },
       { href: '/accounting/sales/ranking', label: '랭킹' },
       { href: '/accounting/sales/growth', label: '성장률' },

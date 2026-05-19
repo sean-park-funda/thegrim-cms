@@ -22,7 +22,7 @@ export interface DailySalesData {
   };
 }
 
-export type AggMode = 'daily' | 'weekly' | 'monthly';
+export type AggMode = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 export type WorkFilter = 'all' | 'active' | 'completed';
 
 export function aggregateData(
@@ -32,14 +32,23 @@ export function aggregateData(
 ) {
   if (mode === 'daily') return { totals: dailyTotals, works };
 
-  const keyFn = mode === 'weekly'
-    ? (d: string) => {
-        const dt = new Date(d);
-        const day = dt.getDay();
-        dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1)); // Monday
-        return dt.toISOString().slice(0, 10);
-      }
-    : (d: string) => d.slice(0, 7);
+  const keyFn =
+    mode === 'weekly'
+      ? (d: string) => {
+          const dt = new Date(d);
+          const day = dt.getDay();
+          dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1));
+          return dt.toISOString().slice(0, 10);
+        }
+      : mode === 'quarterly'
+        ? (d: string) => {
+            const m = parseInt(d.slice(5, 7), 10);
+            const q = Math.ceil(m / 3);
+            return `${d.slice(0, 4)}-Q${q}`;
+          }
+        : mode === 'yearly'
+          ? (d: string) => d.slice(0, 4)
+          : (d: string) => d.slice(0, 7);
 
   const aggTotals: Record<string, number> = {};
   for (const { date, total } of dailyTotals) {
