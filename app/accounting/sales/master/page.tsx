@@ -49,9 +49,9 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
     >
       <div className="flex">
         {/* 썸네일 */}
-        <div className="w-24 min-h-[140px] bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
+        <div className="w-28 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
           {thumbUrl ? (
-            <img src={thumbUrl} alt={title.title} className="w-full h-full object-cover" />
+            <img src={thumbUrl} alt={title.title} className="w-full h-full object-contain" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-600">
               <BookOpen className="h-6 w-6" />

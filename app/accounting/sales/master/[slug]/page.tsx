@@ -202,7 +202,7 @@ export default function MasterDetailPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-[1500px]">
+    <div className="space-y-6 max-w-[1800px]">
       {/* ───── 기본 정보: 썸네일 + 정보 통합 ───── */}
       <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
