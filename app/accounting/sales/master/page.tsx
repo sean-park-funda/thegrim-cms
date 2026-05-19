@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
-import { TITLE_MASTER_DATA, COUNTRIES, TitleMasterInfo } from '@/lib/sales/title-master-data';
+import { TITLE_MASTER_DATA, GLOBAL_COUNTRIES, TitleMasterInfo } from '@/lib/sales/title-master-data';
 import {
   Search,
   BookOpen,
@@ -97,22 +97,22 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
           ))}
         </div>
 
-        {/* 국가별 상태 미니 뱃지 */}
-        <div className="flex gap-2 mt-3">
-          {COUNTRIES.map((c) => {
-            const info = title.countryInfo[c.code];
-            return (
-              <span
-                key={c.code}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                  STATUS_COLORS[info.status] || STATUS_COLORS['미진출']
-                }`}
-              >
-                {c.flag} {info.status}
-              </span>
-            );
-          })}
-        </div>
+        {/* 글로벌 진출 미니 뱃지 */}
+        {Object.keys(title.globalInfo).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {GLOBAL_COUNTRIES.filter(c => title.globalInfo[c.code] && title.globalInfo[c.code]!.status !== '미진출').map((c) => {
+              const info = title.globalInfo[c.code]!;
+              return (
+                <span key={c.code} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[info.status] || STATUS_COLORS['미진출']}`}>
+                  {c.flag} {info.status}
+                </span>
+              );
+            })}
+            {GLOBAL_COUNTRIES.filter(c => !title.globalInfo[c.code] || title.globalInfo[c.code]!.status === '미진출').length === GLOBAL_COUNTRIES.length && (
+              <span className="text-[10px] text-zinc-400">글로벌 미진출</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
