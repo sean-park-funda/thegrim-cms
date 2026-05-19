@@ -313,7 +313,7 @@ export default function MasterDetailPage() {
               {/* 정보 (오른쪽) */}
               <div className="flex-1 min-w-0 space-y-3">
                 {/* 작품명 + 레이블 + 상태 */}
-                <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-baseline gap-2.5 flex-wrap">
                   {data.titleUrl ? (
                     <a href={data.titleUrl} target="_blank" rel="noopener noreferrer" className="text-2xl font-bold tracking-tight hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1.5">
                       {data.title}
@@ -323,19 +323,28 @@ export default function MasterDetailPage() {
                     <h1 className="text-2xl font-bold tracking-tight">{data.title}</h1>
                   )}
                   {data.teamLabel && (
-                    <span className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">{data.teamLabel}</span>
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-lg text-sm font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">{data.teamLabel}</span>
                   )}
-                  <span className={`flex-shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
+                  <span className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-sm font-semibold ${STATUS_COLORS[data.status]}`}>{data.status}</span>
                 </div>
 
                 {/* 작가 */}
-                <div className="flex flex-wrap gap-2">
-                  {data.creators.map((c, i) => (
-                    <span key={i} className="inline-flex items-center gap-1">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
-                      <span className="text-sm font-medium">{c.name}</span>
-                    </span>
-                  ))}
+                <div>
+                  <FieldLabel>작가</FieldLabel>
+                  <div className="flex flex-wrap gap-2 mt-0.5">
+                    {data.creators.map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-1">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
+                        <span className="text-sm font-medium">{c.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 엘리먼트 */}
+                <div>
+                  <FieldLabel>엘리먼트</FieldLabel>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-0.5 leading-relaxed">{data.element}</p>
                 </div>
 
                 {/* 연령등급 / 장르 / 에피소드수 / 플랫폼 / 연재방식 / 요일 */}
@@ -384,18 +393,17 @@ export default function MasterDetailPage() {
                     <FieldValue className="text-amber-600 dark:text-amber-400">{data.nonExclusiveDate}</FieldValue>
                   </div>
                 </div>
-
-                {/* 키워드 */}
-                <div className="flex flex-wrap gap-1.5">
-                  {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium">#{kw}</span>)}
-                </div>
               </div>
             </div>
 
-            {/* 엘리먼트 (전체 너비) */}
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-4 leading-relaxed">{data.element}</p>
+            {/* 키워드 + 로그라인 */}
+            <div className="mt-4">
+              <FieldLabel>키워드</FieldLabel>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium">#{kw}</span>)}
+              </div>
+            </div>
 
-            {/* 로그라인 */}
             <div className="mt-4">
               <FieldLabel>로그라인</FieldLabel>
               <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3 whitespace-pre-line">{data.logline}</div>
