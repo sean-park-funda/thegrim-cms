@@ -115,3 +115,8 @@ export function canViewSales(role: UserRole): boolean {
   return role === 'admin' || role === 'executive' || role === 'accountant' || role === 'strategy' || role === 'manager';
 }
 
+// 작품 마스터 관리 권한 (등록/수정/삭제)
+export function canManageTitleMaster(role: UserRole): boolean {
+  return role === 'admin' || role === 'executive' || role === 'accountant' || role === 'strategy' || role === 'manager';
+}
+

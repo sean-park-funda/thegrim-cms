@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
-import { canViewSales, canManageAccounting } from '@/lib/utils/permissions';
+import { canViewSales, canManageTitleMaster } from '@/lib/utils/permissions';
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -55,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       .eq('id', auth.userId)
       .single();
 
-    if (!profile || !canManageAccounting(profile.role)) {
+    if (!profile || !canManageTitleMaster(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 
@@ -136,7 +136,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       .eq('id', auth.userId)
       .single();
 
-    if (!profile || !canManageAccounting(profile.role)) {
+    if (!profile || !canManageTitleMaster(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 

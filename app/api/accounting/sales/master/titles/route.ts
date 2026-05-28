@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
-import { canViewSales, canManageAccounting } from '@/lib/utils/permissions';
+import { canViewSales, canManageTitleMaster } from '@/lib/utils/permissions';
 
 // GET /api/accounting/sales/master/titles — 전체 작품 목록 조회
 export async function GET(request: NextRequest) {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       .eq('id', auth.userId)
       .single();
 
-    if (!profile || !canManageAccounting(profile.role)) {
+    if (!profile || !canManageTitleMaster(profile.role)) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 
