@@ -2,7 +2,8 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { getThumbnail, setThumbnail, removeThumbnail } from '@/lib/sales/thumbnail-store';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
@@ -20,7 +21,9 @@ import {
   DayOfWeek,
   TeamLabel,
   TEAM_LABELS,
-  deleteTitle,
+  fetchTitleBySlug,
+  deleteTitleFromDB,
+  upsertTitleToDB,
 } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
@@ -33,6 +36,11 @@ import {
   Trash2,
   ImagePlus,
   ExternalLink,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Power,
+  PowerOff,
 } from 'lucide-react';
 
 const STATUS_OPTIONS: TitleStatus[] = ['연재중', '휴재', '완결', '준비중'];
@@ -70,8 +78,8 @@ function Section({ icon: Icon, title, children, accent, onEdit, editing }: {
   return (
     <div className="rounded-2xl bg-white dark:bg-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 overflow-hidden">
       <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${accent || 'text-zinc-400'}`} />
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex-1">{title}</h2>
+        <Icon className={`h-5 w-5 ${accent || 'text-zinc-400'}`} />
+        <h2 className="text-base font-semibold text-zinc-700 dark:text-zinc-200 flex-1">{title}</h2>
         {onEdit && !editing && (
           <button onClick={onEdit} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
         )}
@@ -82,11 +90,11 @@ function Section({ icon: Icon, title, children, accent, onEdit, editing }: {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mb-0.5 block">{children}</span>;
+  return <span className="text-[13px] text-zinc-400 dark:text-zinc-500 mb-0.5 block">{children}</span>;
 }
 
 function FieldValue({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={`text-sm font-medium ${className || ''}`}>{children || <span className="text-zinc-300 dark:text-zinc-600">-</span>}</div>;
+  return <div className={`text-base font-medium ${className || ''}`}>{children || <span className="text-zinc-300 dark:text-zinc-600">-</span>}</div>;
 }
 
 function EditActions({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
@@ -117,10 +125,12 @@ function Select<T extends string>({ value, options, onChange, className }: { val
 export default function MasterDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const slug = params.slug as string;
+  const rawSlug = params.slug as string;
+  const slug = (() => { try { return decodeURIComponent(rawSlug); } catch { return rawSlug; } })();
   const { profile } = useStore();
-  const titleData = getAllTitleBySlug(slug);
-  const [data, setData] = useState<TitleMasterInfo | null>(titleData ? { ...titleData } : null);
+  const builtinTitle = getAllTitleBySlug(slug);
+  const [data, setData] = useState<TitleMasterInfo | null>(builtinTitle ? { ...builtinTitle } : null);
+  const [loaded, setLoaded] = useState(!!builtinTitle);
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
@@ -129,33 +139,122 @@ export default function MasterDetailPage() {
   const [draft, setDraft] = useState<TitleMasterInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 네이버 프렌즈 계정
+  interface NaverAccount {
+    id: number;
+    work_name: string;
+    login_id: string;
+    login_pw: string | null;
+    note: string | null;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  }
+  const [naverAccounts, setNaverAccounts] = useState<NaverAccount[]>([]);
+  const [naverLoading, setNaverLoading] = useState(false);
+  const [editingNaver, setEditingNaver] = useState(false);
+  const [naverDraft, setNaverDraft] = useState<{
+    id?: number;
+    login_id: string;
+    login_pw: string;
+    note: string;
+    is_active: boolean;
+  } | null>(null);
+  const [showNaverPw, setShowNaverPw] = useState(false);
+  const [naverSaving, setNaverSaving] = useState(false);
+  const [showNaverAdd, setShowNaverAdd] = useState(false);
+
+  const fetchNaverAccounts = useCallback(async (workName: string) => {
+    setNaverLoading(true);
+    try {
+      const res = await fetch(`/api/accounting/sales/naver-accounts?work_name=${encodeURIComponent(workName)}`);
+      if (res.ok) {
+        const json = await res.json();
+        setNaverAccounts(json.accounts || []);
+      }
+    } catch { /* ignore */ }
+    setNaverLoading(false);
+  }, []);
+
+  const saveNaverAccount = useCallback(async (payload: {
+    id?: number;
+    work_name: string;
+    login_id: string;
+    login_pw: string;
+    note: string;
+    is_active: boolean;
+  }) => {
+    setNaverSaving(true);
+    try {
+      const isNew = !payload.id;
+      const res = await fetch('/api/accounting/sales/naver-accounts', {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isNew ? {
+          work_name: payload.work_name,
+          login_id: payload.login_id,
+          login_pw: payload.login_pw,
+          note: payload.note,
+        } : {
+          id: payload.id,
+          login_id: payload.login_id,
+          login_pw: payload.login_pw || undefined,
+          note: payload.note,
+          is_active: payload.is_active,
+        }),
+      });
+      if (res.ok) {
+        await fetchNaverAccounts(payload.work_name);
+        setEditingNaver(false);
+        setShowNaverAdd(false);
+        setNaverDraft(null);
+      }
+    } catch { /* ignore */ }
+    setNaverSaving(false);
+  }, [fetchNaverAccounts]);
+
+  const deleteNaverAccount = useCallback(async (id: number, workName: string) => {
+    if (!confirm('이 계정을 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch(`/api/accounting/sales/naver-accounts?id=${id}`, { method: 'DELETE' });
+      if (res.ok) await fetchNaverAccounts(workName);
+    } catch { /* ignore */ }
+  }, [fetchNaverAccounts]);
+
   useEffect(() => {
     if (!slug) return;
-    try {
-      const saved = localStorage.getItem(`title-master-${slug}`);
-      const thumb = localStorage.getItem(`title-thumb-${slug}`);
-      if (saved) {
-        const parsed = JSON.parse(saved) as TitleMasterInfo;
-        if (thumb) parsed.thumbnailUrl = thumb;
-        setData(parsed);
-      } else if (thumb && titleData) {
-        setData({ ...titleData, thumbnailUrl: thumb });
+
+    const builtin = getAllTitleBySlug(slug);
+
+    // DB 우선 조회 → 없으면 하드코딩 데이터 사용
+    fetchTitleBySlug(slug).then(async (dbTitle) => {
+      if (dbTitle) {
+        const thumb = await getThumbnail(slug).catch(() => null);
+        setData(thumb ? { ...dbTitle, thumbnailUrl: thumb } : dbTitle);
+      } else if (builtin) {
+        const thumb = await getThumbnail(slug).catch(() => null);
+        setData(thumb ? { ...builtin, thumbnailUrl: thumb } : { ...builtin });
       }
-    } catch {}
+    }).catch(() => {
+      if (builtin) setData({ ...builtin });
+    }).finally(() => setLoaded(true));
+
+    const titleForNaver = builtin?.title;
+    if (titleForNaver) fetchNaverAccounts(titleForNaver);
+    else {
+      fetchTitleBySlug(slug).then(t => { if (t) fetchNaverAccounts(t.title); });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   const saveToStorage = useCallback((newData: TitleMasterInfo) => {
     if (!slug) return;
-    try {
-      const { thumbnailUrl, ...rest } = newData;
-      localStorage.setItem(`title-master-${slug}`, JSON.stringify(rest));
-      if (thumbnailUrl) {
-        localStorage.setItem(`title-thumb-${slug}`, thumbnailUrl);
-      } else {
-        localStorage.removeItem(`title-thumb-${slug}`);
-      }
-    } catch {}
+    upsertTitleToDB(slug, newData).catch(console.error);
+    if (newData.thumbnailUrl) {
+      setThumbnail(slug, newData.thumbnailUrl);
+    } else {
+      removeThumbnail(slug);
+    }
   }, [slug]);
 
   const startEdit = useCallback((section: string) => {
@@ -201,16 +300,20 @@ export default function MasterDetailPage() {
         canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.85);
         if (slug) {
-          try { localStorage.setItem(`title-thumb-${slug}`, compressed); } catch {}
+          setThumbnail(slug, compressed).catch(console.error);
         }
         setData(prev => prev ? { ...prev, thumbnailUrl: compressed } : prev);
       };
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   }, [slug]);
 
   if (!profile || !canViewSales(profile.role)) return null;
+  if (!loaded) {
+    return <div className="flex items-center justify-center h-64 text-zinc-400 text-sm">불러오는 중...</div>;
+  }
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-zinc-400 gap-4">
@@ -228,8 +331,8 @@ export default function MasterDetailPage() {
           <Link href="/accounting/sales/master" className="h-7 w-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex-shrink-0">
             <ArrowLeft className="h-3.5 w-3.5" />
           </Link>
-          <BookOpen className="h-4 w-4 text-cyan-500" />
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex-1">기본 정보</h2>
+          <BookOpen className="h-5 w-5 text-cyan-500" />
+          <h2 className="text-base font-semibold text-zinc-700 dark:text-zinc-200 flex-1">기본 정보</h2>
           {!editingBasic && (
             <>
               <button onClick={() => startEdit('basic')} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
@@ -355,9 +458,9 @@ export default function MasterDetailPage() {
                   <FieldLabel>작가</FieldLabel>
                   <div className="flex flex-wrap gap-2 mt-0.5">
                     {data.creators.map((c, i) => (
-                      <span key={i} className="inline-flex items-center gap-1">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
-                        <span className="text-sm font-medium">{c.name}</span>
+                      <span key={i} className="inline-flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${ROLE_COLORS[c.role] || ROLE_COLORS['기타']}`}>{c.role}</span>
+                        <span className="text-base font-medium">{c.name}</span>
                       </span>
                     ))}
                   </div>
@@ -372,8 +475,8 @@ export default function MasterDetailPage() {
                   <div>
                     <FieldLabel>장르</FieldLabel>
                     <div className="flex gap-1 mt-0.5">
-                      <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">{data.mainGenre}</span>
-                      {data.subGenre && <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-semibold">{data.subGenre}</span>}
+                      <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold">{data.mainGenre}</span>
+                      {data.subGenre && <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-semibold">{data.subGenre}</span>}
                     </div>
                   </div>
                   <div>
@@ -416,22 +519,199 @@ export default function MasterDetailPage() {
             <div className="mt-4">
               <FieldLabel>키워드</FieldLabel>
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {data.keywords.map(kw => <span key={kw} className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[11px] font-medium">#{kw}</span>)}
+                {data.keywords.map(kw => <span key={kw} className="px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[13px] font-medium">#{kw}</span>)}
               </div>
             </div>
 
             <div className="mt-4">
               <FieldLabel>엘리먼트</FieldLabel>
-              <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">{data.element}</div>
+              <div className="text-base leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3">{data.element}</div>
             </div>
 
             <div className="mt-4">
               <FieldLabel>로그라인</FieldLabel>
-              <div className="text-sm leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3 whitespace-pre-line">{data.logline}</div>
+              <div className="text-base leading-relaxed mt-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-4 py-3 whitespace-pre-line">{data.logline}</div>
             </div>
           </div>
         )}
       </div>
+
+      {/* ───── 네이버 프렌즈 계정 ───── */}
+      <Section icon={KeyRound} title="네이버 프렌즈 계정" accent="text-emerald-500">
+        <div className="p-5">
+          {naverLoading ? (
+            <p className="text-sm text-zinc-400">불러오는 중...</p>
+          ) : naverAccounts.length === 0 && !showNaverAdd ? (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-zinc-400">등록된 계정이 없습니다.</p>
+              <button
+                onClick={() => {
+                  setShowNaverAdd(true);
+                  setNaverDraft({ login_id: '', login_pw: '', note: '', is_active: true });
+                }}
+                className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> 계정 등록
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {naverAccounts.map(acc => (
+                <div key={acc.id} className={`rounded-xl border p-4 ${acc.is_active ? 'bg-white dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700' : 'bg-zinc-50 dark:bg-zinc-800/30 border-zinc-100 dark:border-zinc-800 opacity-60'}`}>
+                  {editingNaver && naverDraft?.id === acc.id ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-zinc-400 mb-1 block">로그인 ID</label>
+                          <Input value={naverDraft.login_id} onChange={(v) => setNaverDraft({ ...naverDraft, login_id: v })} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-zinc-400 mb-1 block">비밀번호 (변경 시에만 입력)</label>
+                          <div className="relative">
+                            <input
+                              type={showNaverPw ? 'text' : 'password'}
+                              value={naverDraft.login_pw}
+                              onChange={(e) => setNaverDraft({ ...naverDraft, login_pw: e.target.value })}
+                              placeholder="변경 없으면 비워두세요"
+                              className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 pr-8"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNaverPw(!showNaverPw)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                            >
+                              {showNaverPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+                        <div>
+                          <label className="text-xs text-zinc-400 mb-1 block">메모</label>
+                          <Input value={naverDraft.note} onChange={(v) => setNaverDraft({ ...naverDraft, note: v })} placeholder="메모 (선택)" />
+                        </div>
+                        <label className="flex items-center gap-2 pb-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={naverDraft.is_active}
+                            onChange={(e) => setNaverDraft({ ...naverDraft, is_active: e.target.checked })}
+                            className="rounded"
+                          />
+                          <span className="text-sm">활성</span>
+                        </label>
+                      </div>
+                      <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                        <button
+                          onClick={() => { setEditingNaver(false); setNaverDraft(null); setShowNaverPw(false); }}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          취소
+                        </button>
+                        <button
+                          onClick={() => saveNaverAccount({ ...naverDraft, work_name: acc.work_name })}
+                          disabled={naverSaving}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 transition-colors disabled:opacity-50"
+                        >
+                          {naverSaving ? '저장 중...' : '저장'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {acc.is_active ? (
+                          <Power className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        ) : (
+                          <PowerOff className="h-4 w-4 text-zinc-400 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-mono font-semibold">{acc.login_id}</span>
+                            <span className="text-xs text-zinc-400 font-mono">{acc.login_pw}</span>
+                          </div>
+                          {acc.note && (
+                            <p className="text-xs text-zinc-400 mt-0.5 truncate">{acc.note}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingNaver(true);
+                            setNaverDraft({ id: acc.id, login_id: acc.login_id, login_pw: '', note: acc.note || '', is_active: acc.is_active });
+                            setShowNaverPw(false);
+                          }}
+                          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteNaverAccount(acc.id, acc.work_name)}
+                          className="text-zinc-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 신규 계정 등록 폼 */}
+          {showNaverAdd && naverDraft && !naverDraft.id && (
+            <div className="mt-3 rounded-xl border border-cyan-200 dark:border-cyan-800 p-4 bg-cyan-50/50 dark:bg-cyan-900/10">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">로그인 ID</label>
+                    <Input value={naverDraft.login_id} onChange={(v) => setNaverDraft({ ...naverDraft, login_id: v })} placeholder="fra00000" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">비밀번호</label>
+                    <div className="relative">
+                      <input
+                        type={showNaverPw ? 'text' : 'password'}
+                        value={naverDraft.login_pw}
+                        onChange={(e) => setNaverDraft({ ...naverDraft, login_pw: e.target.value })}
+                        placeholder="비밀번호"
+                        className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 pr-8"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNaverPw(!showNaverPw)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                      >
+                        {showNaverPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">메모</label>
+                  <Input value={naverDraft.note} onChange={(v) => setNaverDraft({ ...naverDraft, note: v })} placeholder="메모 (선택)" />
+                </div>
+                <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                  <button
+                    onClick={() => { setShowNaverAdd(false); setNaverDraft(null); setShowNaverPw(false); }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => data && saveNaverAccount({ ...naverDraft, work_name: data.title })}
+                    disabled={naverSaving || !naverDraft.login_id || !naverDraft.login_pw}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 transition-colors disabled:opacity-50"
+                  >
+                    {naverSaving ? '등록 중...' : '등록'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
 
       {/* ───── 글로벌 전개 현황 ───── */}
       <Section icon={Globe} title="글로벌 전개 현황" accent="text-teal-500" onEdit={() => startEdit('global')} editing={editingGlobal}>
@@ -478,19 +758,19 @@ export default function MasterDetailPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-base">{gc.flag}</span>
-                        <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">{gc.label}</span>
+                        <span className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">{gc.label}</span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${STATUS_COLORS[info?.status || '미진출']}`}>{info?.status || '미진출'}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_COLORS[info?.status || '미진출']}`}>{info?.status || '미진출'}</span>
                     </div>
                     {isActive && info && (
-                      <div className="space-y-1 text-xs">
+                      <div className="space-y-1 text-sm">
                         {info.platform && <div className="flex justify-between"><span className="text-zinc-400">플랫폼</span><span className="font-medium">{info.platform}</span></div>}
                         {info.title && <div className="flex justify-between"><span className="text-zinc-400">현지 제목</span><span className="font-medium">{info.title}</span></div>}
                         {info.startDate && <div className="flex justify-between"><span className="text-zinc-400">시작</span><span className="font-medium">{info.startDate}</span></div>}
                         {info.episodeCount && <div className="flex justify-between"><span className="text-zinc-400">화수</span><span className="font-medium">{info.episodeCount}화</span></div>}
                       </div>
                     )}
-                    {!isActive && <p className="text-xs text-zinc-400">미진출</p>}
+                    {!isActive && <p className="text-sm text-zinc-400">미진출</p>}
                   </div>
                 );
               })}
@@ -538,15 +818,15 @@ export default function MasterDetailPage() {
                 <div key={cat} className="mb-4 last:mb-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span>{BIZ_ICONS[cat]}</span>
-                    <span className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">{cat}</span>
-                    <span className="text-[10px] text-zinc-400">{items.length}건</span>
+                    <span className="text-base font-semibold text-zinc-600 dark:text-zinc-300">{cat}</span>
+                    <span className="text-xs text-zinc-400">{items.length}건</span>
                   </div>
                   {items.length === 0 ? (
                     <p className="text-xs text-zinc-300 dark:text-zinc-600 ml-7">없음</p>
                   ) : (
                     <div className="ml-7 space-y-1.5">
                       {items.map((biz, i) => (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-xs">
+                        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-sm">
                           <span className="font-medium flex-1">{biz.title || '-'}</span>
                           <span className="text-zinc-400">{biz.status}</span>
                           {biz.partner && <span className="text-zinc-400">| {biz.partner}</span>}
@@ -571,7 +851,7 @@ export default function MasterDetailPage() {
           </div>
         ) : (
           <div className="p-5">
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">
+            <p className="text-base whitespace-pre-wrap leading-relaxed">
               {data.notes || <span className="text-zinc-300 dark:text-zinc-600">특이사항 없음</span>}
             </p>
           </div>
@@ -598,7 +878,7 @@ export default function MasterDetailPage() {
                 취소
               </button>
               <button
-                onClick={() => { deleteTitle(slug); router.push('/accounting/sales/master'); }}
+                onClick={() => { deleteTitleFromDB(slug).catch(console.error); router.push('/accounting/sales/master'); }}
                 className="px-4 py-2 text-sm font-medium rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors"
               >
                 삭제
