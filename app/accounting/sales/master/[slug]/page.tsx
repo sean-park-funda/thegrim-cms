@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { getThumbnail, setThumbnail, removeThumbnail } from '@/lib/sales/thumbnail-store';
+import { settlementFetch } from '@/lib/settlement/api';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
@@ -167,7 +168,7 @@ export default function MasterDetailPage() {
   const fetchNaverAccounts = useCallback(async (workName: string) => {
     setNaverLoading(true);
     try {
-      const res = await fetch(`/api/accounting/sales/naver-accounts?work_name=${encodeURIComponent(workName)}`);
+      const res = await settlementFetch(`/api/accounting/sales/naver-accounts?work_name=${encodeURIComponent(workName)}`);
       if (res.ok) {
         const json = await res.json();
         setNaverAccounts(json.accounts || []);
@@ -187,7 +188,7 @@ export default function MasterDetailPage() {
     setNaverSaving(true);
     try {
       const isNew = !payload.id;
-      const res = await fetch('/api/accounting/sales/naver-accounts', {
+      const res = await settlementFetch('/api/accounting/sales/naver-accounts', {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(isNew ? {
@@ -216,7 +217,7 @@ export default function MasterDetailPage() {
   const deleteNaverAccount = useCallback(async (id: number, workName: string) => {
     if (!confirm('이 계정을 삭제하시겠습니까?')) return;
     try {
-      const res = await fetch(`/api/accounting/sales/naver-accounts?id=${id}`, { method: 'DELETE' });
+      const res = await settlementFetch(`/api/accounting/sales/naver-accounts?id=${id}`, { method: 'DELETE' });
       if (res.ok) await fetchNaverAccounts(workName);
     } catch { /* ignore */ }
   }, [fetchNaverAccounts]);
