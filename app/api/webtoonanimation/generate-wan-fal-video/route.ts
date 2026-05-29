@@ -102,7 +102,9 @@ export async function POST(request: NextRequest) {
     const duration: number = cut.video_duration || 5;
     // FLF2V num_frames 범위: 81~100 (약 5~6초 @16fps)
     const numFrames = Math.min(100, Math.max(81, Math.round(duration * 16 + 1)));
-    const aspectRatio: string = cut.aspect_ratio || '16:9';
+    const rawAspect: string = cut.aspect_ratio || '16:9';
+    // custom:WxH 포맷은 'auto'로 변환 (API가 입력 이미지 비율 자동 감지)
+    const aspectRatio = rawAspect.startsWith('custom:') ? 'auto' : rawAspect;
 
     // 기존 영상 history에 보존
     const prevUrl = cut.comfyui_video_url;

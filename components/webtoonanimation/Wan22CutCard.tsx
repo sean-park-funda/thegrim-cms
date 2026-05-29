@@ -46,10 +46,11 @@ function CopyBtn({ text, id, copied, onCopy }: { text: string; id: string; copie
 }
 
 /** 결과 없을 때 빈 박스 */
-function EmptyResult({ label, ratio = '16:9' }: { label: string; ratio?: string }) {
-  const cls = ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
+function EmptyResult({ label, ratio = '16:9', style }: { label: string; ratio?: string; style?: React.CSSProperties }) {
+  const isCustom = ratio.startsWith('custom:');
+  const cls = isCustom ? '' : (ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video');
   return (
-    <div className={`w-full ${cls} border-2 border-dashed border-muted-foreground/20 rounded flex items-center justify-center`}>
+    <div className={`w-full ${cls} border-2 border-dashed border-muted-foreground/20 rounded flex items-center justify-center`} style={style}>
       <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>
   );
@@ -161,8 +162,9 @@ function StepCard({
 }
 
 /** 이전 컷 자동 연결 — 읽기 전용 스텝 카드 */
-function PrevCutCard({ stepNum, frameUrl, ratio, onLightbox }: { stepNum: number; frameUrl: string | null; ratio: string; onLightbox: (url: string) => void }) {
-  const cls = ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
+function PrevCutCard({ stepNum, frameUrl, ratio, customStyle, onLightbox }: { stepNum: number; frameUrl: string | null; ratio: string; customStyle?: React.CSSProperties; onLightbox: (url: string) => void }) {
+  const isCustom = ratio.startsWith('custom:');
+  const cls = isCustom ? '' : (ratio === '9:16' ? 'aspect-[9/16]' : 'aspect-video');
   return (
     <div className="rounded-lg border bg-card flex flex-col overflow-hidden">
       <div className="px-3 py-1.5 bg-muted/30 border-b flex items-center gap-2 shrink-0">
@@ -172,9 +174,9 @@ function PrevCutCard({ stepNum, frameUrl, ratio, onLightbox }: { stepNum: number
       </div>
       <div className="p-2 bg-muted/10 shrink-0 border-b">
         {frameUrl
-          ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border cursor-pointer hover:opacity-90 transition-opacity`} onClick={() => onLightbox(frameUrl)} />
+          ? <img src={frameUrl} alt="이전 컷 프레임" className={`w-full ${cls} object-cover rounded border cursor-pointer hover:opacity-90 transition-opacity`} style={customStyle} onClick={() => onLightbox(frameUrl)} />
           : (
-            <div className={`w-full ${cls} border-2 border-dashed border-amber-500/30 rounded flex items-center justify-center`}>
+            <div className={`w-full ${cls} border-2 border-dashed border-amber-500/30 rounded flex items-center justify-center`} style={customStyle}>
               <span className="text-[10px] text-amber-500/70">이전 컷 프레임 생성 필요</span>
             </div>
           )}
@@ -193,7 +195,16 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
   const [frameRole, setFrameRole] = useState<FrameRole>((cut.frame_role as FrameRole) || 'end');
   const [frameStrategy, setFrameStrategy] = useState(cut.frame_strategy || '');
   const [useColorize, setUseColorize] = useState(cut.use_colorize !== false);
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>((cut.aspect_ratio as '16:9' | '9:16') || '16:9');
+  const _initAspect = cut.aspect_ratio || '16:9';
+  const [aspectRatio, setAspectRatio] = useState<string>(_initAspect);
+  const [customW, setCustomW] = useState<number>(() => {
+    const m = _initAspect.match(/^custom:(\d+)x(\d+)$/);
+    return m ? parseInt(m[1]) : 1280;
+  });
+  const [customH, setCustomH] = useState<number>(() => {
+    const m = _initAspect.match(/^custom:(\d+)x(\d+)$/);
+    return m ? parseInt(m[2]) : 720;
+  });
   const [usePrevCut, setUsePrevCut] = useState(cut.use_prev_cut_as_start || false);
   const [useStartFrameBgRef, setUseStartFrameBgRef] = useState(cut.use_start_frame_bg_ref || false);
   const [videoDuration, setVideoDuration] = useState<number>(cut.video_duration || 7);
@@ -472,7 +483,9 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
     ? !!anchorUrl && !!prevCutFrame
     : frameRole === 'middle' ? !!anchorUrl : (!!anchorUrl && !!otherUrl);
 
-  const imgCls = cn('w-full rounded border object-cover', aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video');
+  const isCustomAspect = aspectRatio.startsWith('custom:');
+  const imgCls = cn('w-full rounded border object-cover', !isCustomAspect && (aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video'));
+  const customAspectStyle: React.CSSProperties | undefined = isCustomAspect ? { aspectRatio: `${customW}/${customH}` } : undefined;
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -540,7 +553,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">비율</Label>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap">
                   {(['16:9', '9:16'] as const).map((r) => (
                     <button key={r}
                       onClick={() => { setAspectRatio(r); save('aspect_ratio', r); }}
@@ -552,7 +565,52 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                       )}
                     >{r}</button>
                   ))}
+                  <button
+                    onClick={() => {
+                      const val = `custom:${customW}x${customH}`;
+                      setAspectRatio(val);
+                      save('aspect_ratio', val);
+                    }}
+                    className={cn(
+                      'text-xs py-1 px-2.5 rounded border transition-colors',
+                      isCustomAspect
+                        ? 'border-primary bg-primary/5 text-primary font-medium'
+                        : 'border-border hover:border-muted-foreground text-muted-foreground'
+                    )}
+                  >커스텀</button>
                 </div>
+                {isCustomAspect && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      type="number"
+                      value={customW}
+                      min={64} max={4096} step={8}
+                      onChange={(e) => {
+                        const w = parseInt(e.target.value) || 1280;
+                        setCustomW(w);
+                        const val = `custom:${w}x${customH}`;
+                        setAspectRatio(val);
+                        save('aspect_ratio', val);
+                      }}
+                      className="w-16 text-xs border rounded px-1.5 py-1 bg-background text-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">×</span>
+                    <input
+                      type="number"
+                      value={customH}
+                      min={64} max={4096} step={8}
+                      onChange={(e) => {
+                        const h = parseInt(e.target.value) || 720;
+                        setCustomH(h);
+                        const val = `custom:${customW}x${h}`;
+                        setAspectRatio(val);
+                        save('aspect_ratio', val);
+                      }}
+                      className="w-16 text-xs border rounded px-1.5 py-1 bg-background text-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">px</span>
+                  </div>
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">컬러화</Label>
@@ -608,8 +666,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             stepNum={1} title="컬러화"
             resultSlot={
               colorUrl
-                ? <img src={colorUrl} alt="컬러" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(colorUrl)} />
-                : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
+                ? <img src={colorUrl} alt="컬러" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} style={customAspectStyle} onClick={() => setLightboxUrl(colorUrl)} />
+                : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} style={customAspectStyle} />
             }
             promptEn={colorizeEn} promptKo={colorizeKo} enField="gemini_colorize_prompt"
             copied={copied} onCopy={handleCopy}
@@ -638,8 +696,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
           title={`앵커 (${frameRole === 'start' ? '시작' : frameRole === 'end' ? '끝' : 'ref'}) ${aspectRatio}`}
           resultSlot={
             anchorUrl
-              ? <img src={anchorUrl} alt="앵커" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(anchorUrl)} />
-              : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} />
+              ? <img src={anchorUrl} alt="앵커" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} style={customAspectStyle} onClick={() => setLightboxUrl(anchorUrl)} />
+              : <EmptyResult label="아직 생성 안됨" ratio={aspectRatio} style={customAspectStyle} />
           }
           promptEn={expandEn} promptKo={expandKo} enField="gemini_expand_prompt"
           copied={copied} onCopy={handleCopy}
@@ -682,6 +740,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             stepNum={useColorize ? 3 : 2}
             frameUrl={prevCutFrame}
             ratio={aspectRatio}
+            customStyle={customAspectStyle}
             onLightbox={setLightboxUrl}
           />
         ) : frameRole !== 'middle' ? (
@@ -691,8 +750,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
             disabled={!hasAnchor}
             resultSlot={
               otherUrl
-                ? <img src={otherUrl} alt="나머지" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} onClick={() => setLightboxUrl(otherUrl)} />
-                : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} ratio={aspectRatio} />
+                ? <img src={otherUrl} alt="나머지" className={cn(imgCls, 'cursor-pointer hover:opacity-90 transition-opacity')} style={customAspectStyle} onClick={() => setLightboxUrl(otherUrl)} />
+                : <EmptyResult label={hasAnchor ? '아직 생성 안됨' : '앵커 먼저'} ratio={aspectRatio} style={customAspectStyle} />
             }
             promptEn={otherEn} promptKo={otherKo} enField="gemini_start_frame_prompt"
             copied={copied} onCopy={handleCopy}
@@ -725,11 +784,12 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               ...(videoUrl ? [videoUrl] : []),
               ...videoHistory,
             ];
-            if (allVideos.length === 0) return <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} />;
+            if (allVideos.length === 0) return <EmptyResult label={canVideo ? '아직 생성 안됨' : '프레임 먼저'} ratio={aspectRatio} style={customAspectStyle} />;
             const active = selectedVideoUrl ?? allVideos[0];
+            const videoAspect = isCustomAspect ? `${customW}/${customH}` : aspectRatio === '9:16' ? '9/16' : '16/9';
             return (
               <div className="w-full space-y-2">
-                <video src={active} controls className="w-full rounded border" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : '832/480' }} />
+                <video src={active} controls className="w-full rounded border" style={{ aspectRatio: videoAspect }} />
                 <a href={active} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline block text-center">새 탭</a>
                 {allVideos.length > 1 && (
                   <div className="flex flex-wrap gap-1">
