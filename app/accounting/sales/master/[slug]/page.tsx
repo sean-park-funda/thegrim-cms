@@ -164,6 +164,7 @@ export default function MasterDetailPage() {
   const [showNaverPw, setShowNaverPw] = useState(false);
   const [naverSaving, setNaverSaving] = useState(false);
   const [showNaverAdd, setShowNaverAdd] = useState(false);
+  const [naverBrandManaged, setNaverBrandManaged] = useState(false);
 
   const fetchNaverAccounts = useCallback(async (workName: string) => {
     setNaverLoading(true);
@@ -172,6 +173,7 @@ export default function MasterDetailPage() {
       if (res.ok) {
         const json = await res.json();
         setNaverAccounts(json.accounts || []);
+        setNaverBrandManaged(json.brand_managed || false);
       }
     } catch { /* ignore */ }
     setNaverLoading(false);
@@ -543,18 +545,25 @@ export default function MasterDetailPage() {
           {naverLoading ? (
             <p className="text-sm text-zinc-400">불러오는 중...</p>
           ) : naverAccounts.length === 0 && !showNaverAdd ? (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-zinc-400">등록된 계정이 없습니다.</p>
-              <button
-                onClick={() => {
-                  setShowNaverAdd(true);
-                  setNaverDraft({ login_id: '', login_pw: '', note: '', is_active: true });
-                }}
-                className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"
-              >
-                <Plus className="h-3 w-3" /> 계정 등록
-              </button>
-            </div>
+            naverBrandManaged ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-800">
+                <KeyRound className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">브랜드 통합 계정으로 관리됩니다</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-zinc-400">등록된 계정이 없습니다.</p>
+                <button
+                  onClick={() => {
+                    setShowNaverAdd(true);
+                    setNaverDraft({ login_id: '', login_pw: '', note: '', is_active: true });
+                  }}
+                  className="text-xs text-cyan-500 hover:text-cyan-600 flex items-center gap-1"
+                >
+                  <Plus className="h-3 w-3" /> 계정 등록
+                </button>
+              </div>
+            )
           ) : (
             <div className="space-y-3">
               {naverAccounts.map(acc => (

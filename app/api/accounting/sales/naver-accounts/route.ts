@@ -59,7 +59,18 @@ export async function GET(request: NextRequest) {
     login_pw: acc.login_pw ? acc.login_pw.substring(0, 2) + '••••' : null,
   }));
 
-  return NextResponse.json({ accounts: masked });
+  let brandManaged = false;
+  if (workName && masked.length === 0) {
+    const { data: work } = await admin
+      .from('rs_works')
+      .select('id')
+      .or(`name.eq.${workName},naver_name.eq.${workName}`)
+      .limit(1)
+      .maybeSingle();
+    if (work) brandManaged = true;
+  }
+
+  return NextResponse.json({ accounts: masked, brand_managed: brandManaged });
 }
 
 // POST — 네이버 계정 생성
