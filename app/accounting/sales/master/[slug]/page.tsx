@@ -3,7 +3,6 @@
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { getThumbnail, setThumbnail, removeThumbnail } from '@/lib/sales/thumbnail-store';
 import { settlementFetch } from '@/lib/settlement/api';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
@@ -23,6 +22,7 @@ import {
   fetchTitleBySlug,
   deleteTitleFromDB,
   upsertTitleToDB,
+  updateTitleInDB,
 } from '@/lib/sales/title-master-data';
 import {
   ArrowLeft,
@@ -225,10 +225,9 @@ export default function MasterDetailPage() {
   useEffect(() => {
     if (!slug) return;
 
-    fetchTitleBySlug(slug).then(async (dbTitle) => {
+    fetchTitleBySlug(slug).then((dbTitle) => {
       if (dbTitle) {
-        const thumb = await getThumbnail(slug).catch(() => null);
-        setData(thumb ? { ...dbTitle, thumbnailUrl: thumb } : dbTitle);
+        setData(dbTitle);
         fetchNaverAccounts(dbTitle.title);
       }
     }).catch(() => {}).finally(() => setLoaded(true));
@@ -238,11 +237,6 @@ export default function MasterDetailPage() {
   const saveToStorage = useCallback((newData: TitleMasterInfo) => {
     if (!slug) return;
     upsertTitleToDB(slug, newData).catch(console.error);
-    if (newData.thumbnailUrl) {
-      setThumbnail(slug, newData.thumbnailUrl);
-    } else {
-      removeThumbnail(slug);
-    }
   }, [slug]);
 
   const startEdit = useCallback((section: string) => {
@@ -287,10 +281,10 @@ export default function MasterDetailPage() {
         canvas.height = h;
         canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.85);
-        if (slug) {
-          setThumbnail(slug, compressed).catch(console.error);
-        }
         setData(prev => prev ? { ...prev, thumbnailUrl: compressed } : prev);
+        if (slug) {
+          updateTitleInDB(slug, { thumbnailUrl: compressed }).catch(console.error);
+        }
       };
       img.src = reader.result as string;
     };

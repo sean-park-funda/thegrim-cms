@@ -16,7 +16,6 @@ import {
   fetchAllTitlesFromDB,
   createTitleInDB,
 } from '@/lib/sales/title-master-data';
-import { getThumbnail } from '@/lib/sales/thumbnail-store';
 import {
   Search,
   BookOpen,
@@ -43,14 +42,6 @@ const SERIAL_TYPE_OPTIONS: SerialType[] = ['요일웹툰', '매일+', '기타'];
 const DAY_OPTIONS: DayOfWeek[] = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
 
 function TitleCard({ title }: { title: TitleMasterInfo }) {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    getThumbnail(title.slug).then(thumb => {
-      if (thumb) setThumbUrl(thumb);
-    });
-  }, [title.slug]);
-
   const writer = title.creators.find((c) => c.role === '글')?.name;
   const artist = title.creators.find((c) => c.role === '그림')?.name;
   const creatorStr =
@@ -65,8 +56,8 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
     >
       <div className="flex h-44">
         <div className="w-28 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
-          {thumbUrl ? (
-            <img src={thumbUrl} alt={title.title} className="w-full h-full object-cover" />
+          {title.thumbnailUrl ? (
+            <img src={title.thumbnailUrl} alt={title.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-600">
               <BookOpen className="h-6 w-6" />
