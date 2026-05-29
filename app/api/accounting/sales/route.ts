@@ -58,13 +58,13 @@ export async function GET(request: NextRequest) {
     }
 
     // 작품별로 그룹화하여 차트 데이터 형태로 변환
-    const workMap: Record<string, { date: string; amount: number }[]> = {};
+    const workMap: Record<string, { date: string; amount: number; marketFee: number }[]> = {};
     const dailyTotals: Record<string, number> = {};
 
     for (const row of data || []) {
       const wn = row.work_name;
       if (!workMap[wn]) workMap[wn] = [];
-      workMap[wn].push({ date: row.sale_date, amount: Number(row.amount) });
+      workMap[wn].push({ date: row.sale_date, amount: Number(row.amount), marketFee: Number(row.market_fee || 0) });
       dailyTotals[row.sale_date] = (dailyTotals[row.sale_date] || 0) + Number(row.amount);
     }
 

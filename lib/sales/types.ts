@@ -9,7 +9,7 @@ export interface DailySalesRow {
 
 export interface DailySalesData {
   sales: DailySalesRow[];
-  works: Record<string, { date: string; amount: number }[]>;
+  works: Record<string, { date: string; amount: number; marketFee?: number }[]>;
   workStatus: Record<string, { serialEndDate: string | null }>;
   workIdMap: Record<string, string>;
   summary: {
@@ -22,12 +22,74 @@ export interface DailySalesData {
   };
 }
 
+const SALES_NAME_MAP: Record<string, string> = {
+  '간첩 18세': '간첩18세',
+  '공주님 학교가신다': '공주님 학교 가신다',
+  '구룡:사로카': '구룡: 사로카',
+  '레벨999 고블린': '레벨 999고블린',
+  '매지컬 급식:암살법사': '매지컬급식: 암살법사',
+  '범죄도시0': '범죄도시 제로',
+  '소극적 인간': '소극적인간',
+  '오! 나의 교주님': '오나의교주님',
+  '욕망일기Deep': '욕망일기DEEP',
+  '좋아? 죽어!': '좋아?죽어!',
+  '캐슬2:만인지상': '캐슬2: 만인지상',
+};
+
+export function normalizeSalesData(data: DailySalesData): DailySalesData {
+  const mapName = (n: string) => SALES_NAME_MAP[n] || n;
+
+  const works: Record<string, { date: string; amount: number; marketFee?: number }[]> = {};
+  for (const [name, rows] of Object.entries(data.works)) {
+    const mapped = mapName(name);
+    if (works[mapped]) {
+      works[mapped] = works[mapped].concat(rows);
+    } else {
+      works[mapped] = rows;
+    }
+  }
+
+  const workStatus: Record<string, { serialEndDate: string | null }> = {};
+  for (const [name, status] of Object.entries(data.workStatus)) {
+    workStatus[mapName(name)] = status;
+  }
+
+  const workIdMap: Record<string, string> = {};
+  for (const [name, id] of Object.entries(data.workIdMap)) {
+    workIdMap[mapName(name)] = id;
+  }
+
+  const workTotals = data.summary.workTotals.reduce<{ name: string; total: number }[]>((acc, w) => {
+    const mapped = mapName(w.name);
+    const existing = acc.find(a => a.name === mapped);
+    if (existing) {
+      existing.total += w.total;
+    } else {
+      acc.push({ name: mapped, total: w.total });
+    }
+    return acc;
+  }, []).sort((a, b) => b.total - a.total);
+
+  return {
+    ...data,
+    works,
+    workStatus,
+    workIdMap,
+    summary: {
+      ...data.summary,
+      workCount: workTotals.length,
+      topWork: workTotals[0] || null,
+      workTotals,
+    },
+  };
+}
+
 export type AggMode = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 export type WorkFilter = 'all' | 'active' | 'completed';
 
 export function aggregateData(
   dailyTotals: { date: string; total: number }[],
-  works: Record<string, { date: string; amount: number }[]>,
+  works: Record<string, { date: string; amount: number; marketFee?: number }[]>,
   mode: AggMode,
 ) {
   if (mode === 'daily') return { totals: dailyTotals, works };
@@ -56,15 +118,17 @@ export function aggregateData(
     aggTotals[k] = (aggTotals[k] || 0) + total;
   }
 
-  const aggWorks: Record<string, { date: string; amount: number }[]> = {};
+  const aggWorks: Record<string, { date: string; amount: number; marketFee?: number }[]> = {};
   for (const [name, rows] of Object.entries(works)) {
-    const m: Record<string, number> = {};
-    for (const { date, amount } of rows) {
+    const m: Record<string, { amount: number; marketFee: number }> = {};
+    for (const { date, amount, marketFee } of rows) {
       const k = keyFn(date);
-      m[k] = (m[k] || 0) + amount;
+      if (!m[k]) m[k] = { amount: 0, marketFee: 0 };
+      m[k].amount += amount;
+      m[k].marketFee += marketFee || 0;
     }
     aggWorks[name] = Object.entries(m)
-      .map(([date, amount]) => ({ date, amount }))
+      .map(([date, v]) => ({ date, amount: v.amount, marketFee: v.marketFee }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 
