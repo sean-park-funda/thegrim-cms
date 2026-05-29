@@ -157,9 +157,9 @@ function frontendToDb(data: Partial<TitleMasterInfo>): Record<string, unknown> {
   if (data.teamLabel !== undefined) map.teamLabel = data.teamLabel;
   if (data.serialType !== undefined) map.serialType = data.serialType;
   if (data.dayOfWeek !== undefined) map.dayOfWeek = data.dayOfWeek;
-  if (data.startDate !== undefined) map.startDate = data.startDate;
-  if (data.endDate !== undefined) map.endDate = data.endDate;
-  if (data.nonExclusiveDate !== undefined) map.nonExclusiveDate = data.nonExclusiveDate;
+  if (data.startDate !== undefined) map.startDate = data.startDate || null;
+  if (data.endDate !== undefined) map.endDate = data.endDate || null;
+  if (data.nonExclusiveDate !== undefined) map.nonExclusiveDate = data.nonExclusiveDate || null;
   if (data.episodeCount !== undefined) map.episodeCount = data.episodeCount;
   if (data.ageRating !== undefined) map.ageRating = data.ageRating;
   if (data.mainGenre !== undefined) map.mainGenre = data.mainGenre;
