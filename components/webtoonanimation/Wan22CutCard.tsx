@@ -718,7 +718,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
         {/* STEP 4: 영상 */}
         <StepCard
           stepNum={frameRole === 'middle' ? (useColorize ? 3 : 2) : (useColorize ? 4 : 3)}
-          title="영상 (Wan 2.2)"
+          title="영상 (Wan FLF2V)"
           disabled={!canVideo}
           resultSlot={(() => {
             const allVideos = [
@@ -775,7 +775,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               </div>
               {/* 영상 길이 */}
               <div className="flex gap-1">
-                {(videoModel === 'seedance2' ? [4, 5, 7, 10, 15] : [3, 5, 7, 9, 10]).map((sec) => (
+                {(videoModel === 'seedance2' ? [4, 5, 7, 10, 15] : [5, 6]).map((sec) => (
                   <button key={sec}
                     onClick={() => { setVideoDuration(sec); save('video_duration', sec); }}
                     className={cn(
@@ -791,7 +791,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
                 <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · 시작+끝 프레임 보간</p>
               )}
               {videoModel === 'wan22' && (
-                <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · Wan 2.2 A14B</p>
+                <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · Wan 2.1 FLF2V (시작+끝 보간)</p>
               )}
               <Button
                 onClick={handleGenVideo}

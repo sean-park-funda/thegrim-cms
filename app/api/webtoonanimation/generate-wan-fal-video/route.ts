@@ -10,10 +10,11 @@ const supabase = createClient(
 
 const FAL_KEY = process.env.FAL_KEY || '';
 const FAL_BASE = 'https://queue.fal.run';
-const ENDPOINT = 'fal-ai/wan/v2.2-a14b/image-to-video';
+// Wan 2.1 FLF2V — 시작+끝 프레임 보간 (fal.ai에 Wan 2.2 FLF2V 엔드포인트 없음)
+const ENDPOINT = 'fal-ai/wan-flf2v';
 
 async function falRequest(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const log = (msg: string) => console.log(`[wan22-fal] ${msg}`);
+  const log = (msg: string) => console.log(`[wan-flf2v] ${msg}`);
 
   const submitRes = await fetch(`${FAL_BASE}/${ENDPOINT}`, {
     method: 'POST',
@@ -41,7 +42,7 @@ async function falRequest(payload: Record<string, unknown>): Promise<Record<stri
     return resultRes.json();
   }
 
-  const timeout = Date.now() + 270000; // 4.5분 (maxDuration 여유)
+  const timeout = Date.now() + 270000; // 4.5분
   let pollCount = 0;
   while (Date.now() < timeout) {
     await new Promise((r) => setTimeout(r, 5000));
@@ -60,13 +61,16 @@ async function falRequest(payload: Record<string, unknown>): Promise<Record<stri
     }
   }
 
-  throw new Error('Wan 2.2 타임아웃 (4.5분)');
+  throw new Error('Wan FLF2V 타임아웃 (4.5분)');
 }
 
 /**
  * POST { cutId }
- * → fal.ai Wan 2.2 A14B I2V 호출 (시작 프레임 기준 영상 생성)
+ * → fal.ai Wan 2.1 FLF2V 호출 (시작+끝 프레임 보간)
  * → Supabase Storage 업로드 후 comfyui_video_url 업데이트
+ *
+ * note: fal.ai에 Wan 2.2 FLF2V 엔드포인트가 없어 2.1로 대체.
+ * Wan 2.2 모델 자체는 FLF2V를 지원하지만 fal.ai가 해당 엔드포인트를 미제공.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -87,8 +91,17 @@ export async function POST(request: NextRequest) {
     if (!cut.video_prompt) return NextResponse.json({ error: 'video_prompt를 먼저 작성해주세요' }, { status: 400 });
     if (!cut.start_frame_url) return NextResponse.json({ error: '앵커 프레임을 먼저 생성해주세요' }, { status: 400 });
 
+    const isMidRef = (cut.frame_role || 'end') === 'middle';
+    const startUrl: string = cut.start_frame_url;
+    const endUrl: string = isMidRef ? cut.start_frame_url : (cut.end_frame_url || cut.start_frame_url);
+
+    if (!isMidRef && !cut.end_frame_url) {
+      return NextResponse.json({ error: '나머지 프레임을 먼저 생성해주세요' }, { status: 400 });
+    }
+
     const duration: number = cut.video_duration || 5;
-    const numFrames = Math.min(161, Math.max(17, Math.round(duration * 16 + 1)));
+    // FLF2V num_frames 범위: 81~100 (약 5~6초 @16fps)
+    const numFrames = Math.min(100, Math.max(81, Math.round(duration * 16 + 1)));
     const aspectRatio: string = cut.aspect_ratio || '16:9';
 
     // 기존 영상 history에 보존
@@ -100,27 +113,27 @@ export async function POST(request: NextRequest) {
       .update({ comfyui_video_url: null, video_history: newHistory })
       .eq('id', cutId);
 
-    // fal.ai Wan 2.2 A14B 호출
+    // fal.ai Wan 2.1 FLF2V 호출
     const payload: Record<string, unknown> = {
       prompt: cut.video_prompt,
-      image_url: cut.start_frame_url,
+      start_image_url: startUrl,
+      end_image_url: endUrl,
       num_frames: numFrames,
       resolution: '720p',
       aspect_ratio: aspectRatio,
       enable_safety_checker: false,
-      enable_output_safety_checker: false,
     };
 
-    console.log(`[wan22-fal] cut=${cutId}, num_frames=${numFrames}, aspect=${aspectRatio}`);
+    console.log(`[wan-flf2v] cut=${cutId}, num_frames=${numFrames}, aspect=${aspectRatio}`);
     const result = await falRequest(payload) as Record<string, unknown>;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = result as any;
     if (r.detail) {
       const detail = r.detail;
-      if (typeof detail === 'string') throw new Error(`Wan 2.2: ${detail}`);
-      if (Array.isArray(detail) && detail[0]?.msg) throw new Error(`Wan 2.2: ${detail[0].msg}`);
-      throw new Error(`Wan 2.2: ${JSON.stringify(detail).slice(0, 300)}`);
+      if (typeof detail === 'string') throw new Error(`Wan FLF2V: ${detail}`);
+      if (Array.isArray(detail) && detail[0]?.msg) throw new Error(`Wan FLF2V: ${detail[0].msg}`);
+      throw new Error(`Wan FLF2V: ${JSON.stringify(detail).slice(0, 300)}`);
     }
 
     const videoUrl: string | undefined =
@@ -128,7 +141,7 @@ export async function POST(request: NextRequest) {
       (Array.isArray(r.videos) && r.videos[0]?.url) || r.url;
 
     if (!videoUrl) {
-      throw new Error(`Wan 2.2: 영상 URL을 찾을 수 없습니다. Keys: ${Object.keys(result).join(', ')}, Snapshot: ${JSON.stringify(result).slice(0, 300)}`);
+      throw new Error(`Wan FLF2V: 영상 URL을 찾을 수 없습니다. Keys: ${Object.keys(result).join(', ')}, Snapshot: ${JSON.stringify(result).slice(0, 300)}`);
     }
 
     // 영상 다운로드 → Supabase Storage 업로드
@@ -137,7 +150,7 @@ export async function POST(request: NextRequest) {
     const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
 
     const seed = Math.floor(Math.random() * 999999999);
-    const storagePath = `webtoonanimation/${cut.project_id}/${cutId}/wan22_${seed}.mp4`;
+    const storagePath = `webtoonanimation/${cut.project_id}/${cutId}/wan_flf2v_${seed}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from('webtoon-files')
@@ -154,10 +167,10 @@ export async function POST(request: NextRequest) {
       .update({ comfyui_video_url: publicUrl })
       .eq('id', cutId);
 
-    console.log(`[wan22-fal] 완료 cut=${cutId}`);
+    console.log(`[wan-flf2v] 완료 cut=${cutId}`);
     return NextResponse.json({ video_url: publicUrl });
   } catch (error) {
-    console.error('[wan22-fal] 실패:', error);
+    console.error('[wan-flf2v] 실패:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '영상 생성 실패' },
       { status: 500 }
