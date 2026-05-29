@@ -49,7 +49,7 @@ export default function WebtoonAnimationPage() {
   const [activeGroup, setActiveGroup] = useState<WebtoonAnimationPromptGroupWithCuts | null>(null);
 
   // State: 탭 전환 (seedance 프롬프트 vs 세그먼트 영상)
-  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments' | '5090'>('5090');
+  const [activeTab, setActiveTab] = useState<'seedance' | 'testlab' | 'segments' | 'wan22'>('wan22');
 
   // State: 컷 상세 시트
   const [detailCut, setDetailCut] = useState<WebtoonAnimationCut | null>(null);
@@ -480,7 +480,7 @@ export default function WebtoonAnimationPage() {
       {/* 탭 전환 — 그리드 바깥, 전체 너비 */}
       {cuts.length > 0 && (
         <div className="flex rounded-lg border p-1 bg-muted/50 mb-6">
-          {(['5090', 'testlab', 'segments', 'seedance'] as const).map((tab) => (
+          {(['wan22', 'testlab', 'segments', 'seedance'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -490,14 +490,14 @@ export default function WebtoonAnimationPage() {
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === '5090' ? '5090' : tab === 'testlab' ? 'Video Lab' : tab === 'segments' ? '세그먼트' : 'Seedance'}
+              {tab === 'wan22' ? 'WAN 2.2' : tab === 'testlab' ? 'Video Lab' : tab === 'segments' ? '세그먼트' : 'Seedance'}
             </button>
           ))}
         </div>
       )}
 
-      {/* 5090 — 전체 너비 (사이드바 없음) */}
-      {activeTab === '5090' && (
+      {/* WAN 2.2 — 전체 너비 (사이드바 없음) */}
+      {activeTab === 'wan22' && (
         <div className="space-y-4">
           {selectedProject && (
             <div className="flex justify-end">
@@ -531,7 +531,7 @@ export default function WebtoonAnimationPage() {
       )}
 
       {/* 나머지 탭 — 사이드바 그리드 유지 */}
-      {activeTab !== '5090' && (
+      {activeTab !== 'wan22' && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
           <div className="space-y-6">
             {/* Video Lab */}

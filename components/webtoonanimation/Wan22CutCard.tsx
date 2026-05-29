@@ -449,7 +449,7 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
 
       const endpoint = videoModel === 'seedance2'
         ? '/api/webtoonanimation/generate-seedance2-video'
-        : '/api/webtoonanimation/generate-comfyui-video';
+        : '/api/webtoonanimation/generate-wan-fal-video';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -457,27 +457,8 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      if (data.polling) {
-        const startTime = Date.now();
-        while (Date.now() - startTime < 5 * 60 * 1000) {
-          await new Promise((r) => setTimeout(r, 10000));
-          const pollRes = await fetch(`/api/webtoonanimation/cuts/${cut.id}`);
-          if (pollRes.ok) {
-            const pollData = await pollRes.json();
-            if (pollData.comfyui_video_url) {
-              setVideoUrl(pollData.comfyui_video_url);
-              setVideoHistory(pollData.video_history || []);
-              setSelectedVideoUrl(pollData.comfyui_video_url);
-              update({ comfyui_video_url: pollData.comfyui_video_url });
-              return;
-            }
-          }
-        }
-        throw new Error('영상 생성 타임아웃 (5분)');
-      } else {
-        setVideoUrl(data.video_url);
-        update({ comfyui_video_url: data.video_url });
-      }
+      setVideoUrl(data.video_url);
+      update({ comfyui_video_url: data.video_url });
     } catch (e) { alert(`영상 생성 실패: ${e instanceof Error ? e.message : e}`); }
     finally { setGenVideo(false); }
   };
@@ -808,6 +789,9 @@ export function Wan22CutCard({ cut, project, onCutUpdated, prevCut }: Props) {
               </div>
               {videoModel === 'seedance2' && (
                 <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · 시작+끝 프레임 보간</p>
+              )}
+              {videoModel === 'wan22' && (
+                <p className="text-[10px] text-muted-foreground text-center">fal.ai · 720p · Wan 2.2 A14B</p>
               )}
               <Button
                 onClick={handleGenVideo}

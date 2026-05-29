@@ -318,6 +318,34 @@ const wan21I2VConfig: FalModelConfig = {
   },
 };
 
+const wan22A14BConfig: FalModelConfig = {
+  capabilities: {
+    id: 'wan22_i2v',
+    name: 'Wan 2.2 I2V (A14B)',
+    inputModes: ['single_image'],
+    durations: [3, 5, 7, 9],
+    aspectRatios: ['16:9', '9:16'],
+    maxImages: 1,
+    contentSafety: 'lenient',
+    costPerSec: 0.035,
+    platform: 'fal.ai',
+  },
+  endpoint: 'fal-ai/wan/v2.2-a14b/image-to-video',
+  buildPayload: (req) => {
+    const img = req.images[0];
+    const numFrames = Math.min(161, Math.max(17, Math.round(req.duration * 16 + 1)));
+    return {
+      prompt: req.prompt,
+      image_url: img ? getImageUrl(img) : undefined,
+      num_frames: numFrames,
+      resolution: '720p',
+      aspect_ratio: req.aspectRatio,
+      enable_safety_checker: false,
+      enable_output_safety_checker: false,
+    };
+  },
+};
+
 const hunyuanConfig: FalModelConfig = {
   capabilities: {
     id: 'hunyuan_i2v',
@@ -475,6 +503,7 @@ export function getFalProviders(): VideoProvider[] {
     lumaRay2Config,
     wan21FlF2VConfig,
     wan21I2VConfig,
+    wan22A14BConfig,
     hunyuanConfig,
     klingO1RefConfig,
     veo31RefConfig,
