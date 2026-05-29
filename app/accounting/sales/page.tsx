@@ -6,11 +6,12 @@ import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line,
 } from 'recharts';
-import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, dateStr, AggMode, WorkFilter, aggregateData } from '@/lib/sales/types';
-import { getSlugByWorkName } from '@/lib/sales/title-master-data';
+import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, dateStr, AggMode, WorkFilter, aggregateData, normalizeSalesData } from '@/lib/sales/types';
+import { getSlugByWorkName, fetchAllTitlesFromDB, TitleMasterInfo } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
-import { Menu, Sparkles, CalendarIcon } from 'lucide-react';
+import { Menu, Sparkles, CalendarIcon, BookOpen, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -26,7 +27,7 @@ function ChartTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s, p) => s + (p.value || 0), 0);
   return (
-    <div className="rounded-xl border-none bg-white dark:bg-zinc-900 px-4 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.1)] max-h-80 overflow-y-auto">
+    <div className="rounded-xl border-none bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl px-4 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.1)] max-h-80 overflow-y-auto">
       <p className="mb-2 text-sm font-semibold tracking-tight">{label}</p>
       {payload.filter(p => p.value > 0).sort((a, b) => b.value - a.value).map((p) => (
         <div key={p.name} className="flex items-center gap-2.5 text-xs leading-relaxed py-0.5">
@@ -51,6 +52,13 @@ const AGG_OPTIONS: { label: string; value: AggMode }[] = [
   { label: '월별', value: 'monthly' },
 ];
 
+const DIST_OPTIONS: { label: string; value: AggMode }[] = [
+  { value: 'weekly', label: '주별' },
+  { value: 'monthly', label: '월별' },
+  { value: 'quarterly', label: '분기별' },
+  { value: 'yearly', label: '연도별' },
+];
+
 const FILTER_OPTIONS: { label: string; value: WorkFilter }[] = [
   { label: '전체', value: 'all' },
   { label: '연재중', value: 'active' },
@@ -65,7 +73,16 @@ export default function SalesDashboardPage() {
   const [days, setDays] = useState(30);
   const [selectedWorks, setSelectedWorks] = useState<Set<string>>(new Set());
   const [userChangedSelection, setUserChangedSelection] = useState(false);
+
+  const [titles, setTitles] = useState<TitleMasterInfo[]>([]);
+  useEffect(() => { fetchAllTitlesFromDB().then(setTitles).catch(() => {}); }, []);
+  const titleMap = useMemo(() => {
+    const m = new Map<string, TitleMasterInfo>();
+    for (const t of titles) m.set(t.title, t);
+    return m;
+  }, [titles]);
   const [aggMode, setAggMode] = useState<AggMode>('daily');
+  const [distMode, setDistMode] = useState<AggMode>('monthly');
   const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -89,9 +106,10 @@ export default function SalesDashboardPage() {
     settlementFetch(`/api/accounting/sales?from=${from}&to=${to}`)
       .then(r => r.json())
       .then((d: DailySalesData) => {
-        setData(d);
-        if (!userChangedSelection && d.summary?.workTotals) {
-          setSelectedWorks(new Set(d.summary.workTotals.slice(0, 3).map(w => w.name)));
+        const nd = normalizeSalesData(d);
+        setData(nd);
+        if (!userChangedSelection && nd.summary?.workTotals) {
+          setSelectedWorks(new Set(nd.summary.workTotals.slice(0, 3).map(w => w.name)));
         }
       })
       .catch(console.error)
@@ -100,18 +118,19 @@ export default function SalesDashboardPage() {
 
   if (!profile || !canViewSales(profile.role)) return null;
 
-  // 작품 필터링
+  // 작품 필터링 (title-master-data 기반)
   const filteredWorkNames = useMemo(() => {
     if (!data?.summary?.workTotals) return [];
     return data.summary.workTotals
       .filter(w => {
         if (workFilter === 'all') return true;
-        const status = data.workStatus?.[w.name];
-        const isCompleted = status?.serialEndDate != null;
-        return workFilter === 'completed' ? isCompleted : !isCompleted;
+        const info = titleMap.get(w.name);
+        if (!info) return workFilter === 'active';
+        if (workFilter === 'completed') return info.status === '완결';
+        return info.status === '연재중';
       })
       .map(w => w.name);
-  }, [data, workFilter]);
+  }, [data, workFilter, titleMap]);
 
   // 필터 적용된 works 데이터
   const filteredWorks = useMemo(() => {
@@ -196,6 +215,25 @@ export default function SalesDashboardPage() {
     };
   }, [data, filteredDailyTotals, filteredWorkNames, workFilter]);
 
+  const distAgg = useMemo(() =>
+    aggregateData(filteredDailyTotals, filteredWorks, distMode),
+  [filteredDailyTotals, filteredWorks, distMode]);
+
+  const distChartData = useMemo(() => {
+    if (!distAgg.totals.length) return [];
+    return distAgg.totals.map(({ date }) => {
+      const fmtDate = distMode === 'weekly'
+        ? (() => { const [, m, d] = date.split('-'); return `${parseInt(m)}/${parseInt(d)}`; })()
+        : date;
+      const point: Record<string, string | number> = { date: fmtDate };
+      for (const [workName, rows] of Object.entries(distAgg.works)) {
+        const row = rows.find(r => r.date === date);
+        if (row && row.amount > 0) point[workName] = row.amount;
+      }
+      return point;
+    });
+  }, [distAgg, distMode]);
+
   const toggleWork = (name: string) => {
     setUserChangedSelection(true);
     setSelectedWorks(prev => {
@@ -223,31 +261,28 @@ export default function SalesDashboardPage() {
     : days;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 min-h-screen">
       {/* 헤더 */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">매출</h1>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">일별 매출 추이와 작품별 현황</p>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight">매출 관리보드</h1>
           <button
             onClick={toggleSidebar}
-            className="md:hidden h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all duration-200"
+            className="md:hidden h-9 w-9 rounded-xl bg-white/60 dark:bg-white/10 backdrop-blur-sm border border-black/[0.12] dark:border-white/[0.12] flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-white/80 dark:hover:bg-white/15 transition-all duration-200"
           >
             <Menu className="h-4.5 w-4.5" />
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* 프리셋 버튼 */}
-          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5">
+          <div className="flex bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-sm rounded-xl p-0.5">
             {PRESETS.map(p => (
               <button
                 key={p.days}
                 onClick={() => handlePreset(p.days)}
                 className={`px-3.5 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
                   !isCustomRange && days === p.days
-                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    ? 'bg-white/80 dark:bg-white/15 shadow-sm backdrop-blur-sm text-zinc-900 dark:text-zinc-100'
                     : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
                 }`}
               >
@@ -262,7 +297,7 @@ export default function SalesDashboardPage() {
                 className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-xl border transition-all duration-200 ${
                   isCustomRange
                     ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                    : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600'
+                    : 'border-black/[0.12] dark:border-white/[0.12] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-black/[0.2] dark:hover:border-white/[0.2]'
                 }`}
               >
                 <CalendarIcon className="h-3.5 w-3.5" />
@@ -283,14 +318,14 @@ export default function SalesDashboardPage() {
             </PopoverContent>
           </Popover>
           {/* 완결/연재 필터 */}
-          <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-xl p-0.5">
+          <div className="flex bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-sm rounded-xl p-0.5">
             {FILTER_OPTIONS.map(f => (
               <button
                 key={f.value}
                 onClick={() => setWorkFilter(f.value)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-[10px] transition-all duration-200 ${
                   workFilter === f.value
-                    ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                    ? 'bg-white/80 dark:bg-white/15 shadow-sm backdrop-blur-sm text-zinc-900 dark:text-zinc-100'
                     : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
                 }`}
               >
@@ -307,6 +342,36 @@ export default function SalesDashboardPage() {
         <div className="flex items-center justify-center h-64 text-zinc-400">데이터 없음</div>
       ) : (
         <>
+          {/* 바로가기 */}
+          <div className="grid grid-cols-2 gap-4">
+            <Link
+              href="/accounting/sales/master"
+              className="group flex items-center gap-4 rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-5 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03] hover:shadow-xl hover:shadow-black/[0.06] hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/30">
+                <BookOpen className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">작품 관리 보드</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">작품 정보·작가·장르·상태 관리</p>
+              </div>
+              <span className="text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors text-lg">→</span>
+            </Link>
+            <Link
+              href="/accounting/sales/works"
+              className="group flex items-center gap-4 rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-5 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03] hover:shadow-xl hover:shadow-black/[0.06] hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-100 dark:bg-cyan-900/30">
+                <BarChart3 className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">작품별 매출 확인하기</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">네이버 매출·수수료·더그림 매출 상세</p>
+              </div>
+              <span className="text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors text-lg">→</span>
+            </Link>
+          </div>
+
           {/* 요약 카드 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -317,7 +382,7 @@ export default function SalesDashboardPage() {
             ].map((card) => (
               <div
                 key={card.label}
-                className="rounded-2xl bg-white dark:bg-zinc-900 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800 transition-all duration-300 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:-translate-y-0.5"
+                className="rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-5 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03] transition-all duration-300 hover:shadow-xl hover:shadow-black/[0.06] hover:-translate-y-0.5"
               >
                 <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
                 <p className={`${card.isName ? 'text-xl' : 'text-3xl'} font-bold tracking-tight mt-1 truncate`}>
@@ -329,19 +394,19 @@ export default function SalesDashboardPage() {
           </div>
 
           {/* 차트 */}
-          <div className="rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800">
+          <div className="rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-6 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03]">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold tracking-tight">매출 추이</h2>
                 {/* 집계 토글 */}
-                <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                <div className="flex bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-sm rounded-xl p-0.5">
                   {AGG_OPTIONS.map(a => (
                     <button
                       key={a.value}
                       onClick={() => setAggMode(a.value)}
                       className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
                         aggMode === a.value
-                          ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100'
+                          ? 'bg-white/80 dark:bg-white/15 shadow-sm backdrop-blur-sm text-zinc-900 dark:text-zinc-100'
                           : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
                       }`}
                     >
@@ -353,13 +418,13 @@ export default function SalesDashboardPage() {
               <div className="flex gap-1.5">
                 <button
                   onClick={() => { setUserChangedSelection(true); setSelectedWorks(new Set(filteredWorkNames)); }}
-                  className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                 >
                   전체
                 </button>
                 <button
                   onClick={() => { setUserChangedSelection(true); setSelectedWorks(new Set()); }}
-                  className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                 >
                   해제
                 </button>
@@ -376,7 +441,7 @@ export default function SalesDashboardPage() {
                     className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full transition-all duration-200 ${
                       isSelected
                         ? 'text-white shadow-sm'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                        : 'bg-black/[0.05] dark:bg-white/[0.06] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
                     }`}
                     style={isSelected ? { backgroundColor: color } : {}}
                   >
@@ -448,16 +513,88 @@ export default function SalesDashboardPage() {
             </div>
           </div>
 
+          {/* 매출 분포도 */}
+          <div className="rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-6 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03]">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold tracking-tight">매출 분포도</h2>
+                <div className="flex bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-sm rounded-xl p-0.5">
+                  {DIST_OPTIONS.map(a => (
+                    <button
+                      key={a.value}
+                      onClick={() => setDistMode(a.value)}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                        distMode === a.value
+                          ? 'bg-white/80 dark:bg-white/15 shadow-sm backdrop-blur-sm text-zinc-900 dark:text-zinc-100'
+                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                      }`}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">작품별 매출 분포</p>
+            </div>
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={distChartData}>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="currentColor"
+                    className="text-zinc-100 dark:text-zinc-800"
+                  />
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#8E8E93' }}
+                    dy={8}
+                  />
+                  <YAxis
+                    tickFormatter={fmtShort}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#8E8E93' }}
+                    width={50}
+                    tickCount={5}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  {filteredWorkNames.map((name, i) => {
+                    const color = WORK_COLORS[i % WORK_COLORS.length];
+                    return (
+                      <Line
+                        key={name}
+                        type="monotone"
+                        dataKey={name}
+                        stroke={color}
+                        strokeWidth={0}
+                        dot={{ r: 5, fill: color, strokeWidth: 0 }}
+                        activeDot={{ r: 7, fill: color, strokeWidth: 2, stroke: '#fff' }}
+                        connectNulls={false}
+                      />
+                    );
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           {/* 작품별 매출 순위 */}
-          <div className="rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-none dark:border dark:border-zinc-800">
-            <h2 className="text-lg font-semibold tracking-tight mb-5">작품별 매출 순위</h2>
+          <div className="rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl p-6 border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03]">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold tracking-tight">작품별 매출 순위</h2>
+              <Link href="/accounting/sales/works" className="text-xs font-medium text-zinc-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
+                상세 매출 보기 →
+              </Link>
+            </div>
             <div className="space-y-3">
               {(filteredSummary?.workTotals || []).map((w, i) => {
                 const ratio = (filteredSummary?.workTotals || [])[0]?.total
                   ? (w.total / (filteredSummary?.workTotals || [])[0].total) * 100
                   : 0;
                 const color = WORK_COLORS[i % WORK_COLORS.length];
-                const status = data.workStatus?.[w.name];
+                const titleInfo = titleMap.get(w.name);
                 return (
                   <div key={w.name} className="flex items-center gap-3 group">
                     <span className={`text-sm font-bold w-6 text-right tabular-nums ${
@@ -476,13 +613,13 @@ export default function SalesDashboardPage() {
                               </Link>
                             ) : w.name;
                           })()}
-                          {status?.serialEndDate && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-400">완결</span>
+                          {titleInfo?.status && titleInfo.status !== '연재중' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/[0.05] dark:bg-white/[0.06] text-zinc-400">{titleInfo.status}</span>
                           )}
                         </span>
                         <span className="text-sm tabular-nums font-semibold tracking-tight">{fmtShort(w.total)}</span>
                       </div>
-                      <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-2 bg-black/[0.06] dark:bg-white/[0.06] rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500 ease-out"
                           style={{ width: `${ratio}%`, backgroundColor: color }}

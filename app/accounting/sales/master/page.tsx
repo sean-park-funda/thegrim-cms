@@ -12,10 +12,11 @@ import {
   TitleStatus,
   SerialType,
   DayOfWeek,
-  getAllTitles,
-  addCustomTitle,
   TitleCreator,
+  fetchAllTitlesFromDB,
+  createTitleInDB,
 } from '@/lib/sales/title-master-data';
+import { getThumbnail } from '@/lib/sales/thumbnail-store';
 import {
   Search,
   BookOpen,
@@ -45,10 +46,9 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const thumb = localStorage.getItem(`title-thumb-${title.slug}`);
+    getThumbnail(title.slug).then(thumb => {
       if (thumb) setThumbUrl(thumb);
-    } catch {}
+    });
   }, [title.slug]);
 
   const writer = title.creators.find((c) => c.role === '글')?.name;
@@ -79,55 +79,55 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-base truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                  <h3 className="font-bold text-lg truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
                     {title.title}
                   </h3>
                   <span
-                    className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                    className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[11px] font-semibold ${
                       STATUS_COLORS[title.status] || STATUS_COLORS['완결']
                     }`}
                   >
                     {title.status}
                   </span>
                 </div>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                <p className="text-[15px] text-zinc-500 dark:text-zinc-400 mt-1">
                   {creatorStr}
                 </p>
               </div>
               <ChevronRight className="h-5 w-5 text-zinc-300 dark:text-zinc-600 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 transition-colors flex-shrink-0 mt-1" />
             </div>
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5 text-xs text-zinc-400 dark:text-zinc-500">
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5 text-sm text-zinc-400 dark:text-zinc-500">
               <span className="flex items-center gap-1">
-                <BookOpen className="h-3 w-3" />
+                <BookOpen className="h-3.5 w-3.5" />
                 {title.platform}
               </span>
               {title.dayOfWeek && (
                 <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
+                  <Calendar className="h-3.5 w-3.5" />
                   {title.dayOfWeek}
                 </span>
               )}
               <span className="flex items-center gap-1">
-                <Hash className="h-3 w-3" />
+                <Hash className="h-3.5 w-3.5" />
                 {title.episodeCount}화
               </span>
               <span>{title.ageRating}</span>
             </div>
 
             <div className="flex flex-wrap gap-1.5 mt-2.5">
-              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-semibold">
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[11px] font-semibold">
                 {title.mainGenre}
               </span>
               {title.subGenre && (
-                <span className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[10px] font-semibold">
+                <span className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[11px] font-semibold">
                   {title.subGenre}
                 </span>
               )}
               {title.keywords.slice(0, 3).map((kw) => (
                 <span
                   key={kw}
-                  className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[10px]"
+                  className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-[11px]"
                 >
                   #{kw}
                 </span>
@@ -135,7 +135,7 @@ function TitleCard({ title }: { title: TitleMasterInfo }) {
             </div>
           </div>
 
-          <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 dark:text-zinc-500 mt-auto">
+          <div className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-xs text-zinc-400 dark:text-zinc-500 mt-auto">
             <span>
               {title.startDate} ~ {title.endDate || '연재중'}
             </span>
@@ -162,24 +162,35 @@ function AddTitleModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Tit
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek | ''>('');
   const [mainGenre, setMainGenre] = useState('');
 
-  const handleSubmit = () => {
-    if (!title.trim()) return;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    setError('');
     const creators: TitleCreator[] = [];
     if (writer.trim()) creators.push({ role: '글', name: writer.trim() });
     if (artist.trim()) creators.push({ role: '그림', name: artist.trim() });
     if (creators.length === 0) creators.push({ role: '글', name: '-' });
 
-    const newTitle = addCustomTitle({
-      title: title.trim(),
-      creators,
-      status,
-      platform,
-      teamLabel: teamLabel || undefined,
-      serialType,
-      dayOfWeek: dayOfWeek || undefined,
-      mainGenre: mainGenre.trim() || '기타',
-    });
-    onAdd(newTitle);
+    try {
+      const newTitle = await createTitleInDB({
+        title: title.trim(),
+        creators,
+        status,
+        platform,
+        teamLabel: teamLabel || undefined,
+        serialType,
+        dayOfWeek: dayOfWeek || undefined,
+        mainGenre: mainGenre.trim() || '기타',
+      });
+      onAdd(newTitle);
+    } catch (e) {
+      console.error('작품 등록 실패:', e);
+      setError(e instanceof Error ? e.message : '등록에 실패했습니다. 다시 시도해주세요.');
+      setSaving(false);
+    }
   };
 
   const inputClass = 'w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500';
@@ -257,17 +268,22 @@ function AddTitleModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Tit
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
-            취소
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!title.trim()}
-            className="px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            등록
-          </button>
+        <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+          {error && (
+            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+              취소
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!title.trim() || saving}
+              className="px-4 py-2 text-sm font-medium rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? '등록 중...' : '등록'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -284,7 +300,7 @@ export default function MasterBoardPage() {
   const [titles, setTitles] = useState<TitleMasterInfo[]>([]);
 
   useEffect(() => {
-    setTitles(getAllTitles());
+    fetchAllTitlesFromDB().then(setTitles).catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -317,7 +333,7 @@ export default function MasterBoardPage() {
 
   const handleAdd = (newTitle: TitleMasterInfo) => {
     setShowAddModal(false);
-    setTitles(getAllTitles());
+    fetchAllTitlesFromDB().then(setTitles).catch(() => {});
     router.push(`/accounting/sales/master/${newTitle.slug}`);
   };
 
@@ -346,12 +362,12 @@ export default function MasterBoardPage() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">상태</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 mr-1">상태</span>
           {statusOptions.filter((f) => f.value === 'all' || f.count > 0).map((f) => (
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-full border transition-all duration-200 ${
+              className={`px-3.5 py-1.5 text-sm font-medium rounded-full border transition-all duration-200 ${
                 statusFilter === f.value
                   ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
                   : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'
@@ -362,7 +378,7 @@ export default function MasterBoardPage() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 mr-1">레이블</span>
           {([
             { value: 'all' as const, label: '전체' },
             ...TEAM_LABELS.map((l) => ({ value: l, label: l })),
@@ -370,7 +386,7 @@ export default function MasterBoardPage() {
             <button
               key={f.value}
               onClick={() => setLabelFilter(f.value)}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-full border transition-all duration-200 ${
+              className={`px-3.5 py-1.5 text-sm font-medium rounded-full border transition-all duration-200 ${
                 labelFilter === f.value
                   ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
                   : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500'

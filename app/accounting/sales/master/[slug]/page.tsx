@@ -8,8 +8,6 @@ import { settlementFetch } from '@/lib/settlement/api';
 import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import {
-  getTitleBySlug,
-  getAllTitleBySlug,
   GLOBAL_COUNTRIES,
   TitleMasterInfo,
   TitleCreator,
@@ -45,6 +43,7 @@ import {
 } from 'lucide-react';
 
 const STATUS_OPTIONS: TitleStatus[] = ['연재중', '휴재', '완결', '준비중'];
+const AGE_RATING_OPTIONS = ['ALL', '12+', '15+', '18+'] as const;
 const SERIAL_TYPE_OPTIONS: SerialType[] = ['요일웹툰', '매일+', '기타'];
 const DAY_OPTIONS: DayOfWeek[] = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
 const CREATOR_ROLES: TitleCreator['role'][] = ['글', '그림', '원작', '컬러', '각색', '기타'];
@@ -129,9 +128,8 @@ export default function MasterDetailPage() {
   const rawSlug = params.slug as string;
   const slug = (() => { try { return decodeURIComponent(rawSlug); } catch { return rawSlug; } })();
   const { profile } = useStore();
-  const builtinTitle = getAllTitleBySlug(slug);
-  const [data, setData] = useState<TitleMasterInfo | null>(builtinTitle ? { ...builtinTitle } : null);
-  const [loaded, setLoaded] = useState(!!builtinTitle);
+  const [data, setData] = useState<TitleMasterInfo | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingGlobal, setEditingGlobal] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
@@ -227,26 +225,13 @@ export default function MasterDetailPage() {
   useEffect(() => {
     if (!slug) return;
 
-    const builtin = getAllTitleBySlug(slug);
-
-    // DB 우선 조회 → 없으면 하드코딩 데이터 사용
     fetchTitleBySlug(slug).then(async (dbTitle) => {
       if (dbTitle) {
         const thumb = await getThumbnail(slug).catch(() => null);
         setData(thumb ? { ...dbTitle, thumbnailUrl: thumb } : dbTitle);
-      } else if (builtin) {
-        const thumb = await getThumbnail(slug).catch(() => null);
-        setData(thumb ? { ...builtin, thumbnailUrl: thumb } : { ...builtin });
+        fetchNaverAccounts(dbTitle.title);
       }
-    }).catch(() => {
-      if (builtin) setData({ ...builtin });
-    }).finally(() => setLoaded(true));
-
-    const titleForNaver = builtin?.title;
-    if (titleForNaver) fetchNaverAccounts(titleForNaver);
-    else {
-      fetchTitleBySlug(slug).then(t => { if (t) fetchNaverAccounts(t.title); });
-    }
+    }).catch(() => {}).finally(() => setLoaded(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
@@ -385,7 +370,7 @@ export default function MasterDetailPage() {
               </div>
             </div>
             <div className="grid grid-cols-4 gap-3">
-              <div><label className="text-xs text-zinc-400 mb-1 block">연령 등급</label><Input value={draft.ageRating} onChange={(v) => setDraft({ ...draft, ageRating: v })} /></div>
+              <div><label className="text-xs text-zinc-400 mb-1 block">연령 등급</label><Select value={draft.ageRating as typeof AGE_RATING_OPTIONS[number]} options={AGE_RATING_OPTIONS} onChange={(v) => setDraft({ ...draft, ageRating: v })} className="w-full" /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">주장르</label><Input value={draft.mainGenre} onChange={(v) => setDraft({ ...draft, mainGenre: v })} /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">부장르</label><Input value={draft.subGenre || ''} onChange={(v) => setDraft({ ...draft, subGenre: v || undefined })} /></div>
               <div><label className="text-xs text-zinc-400 mb-1 block">에피소드 수</label><input type="number" value={draft.episodeCount} onChange={(e) => setDraft({ ...draft, episodeCount: parseInt(e.target.value) || 0 })} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>

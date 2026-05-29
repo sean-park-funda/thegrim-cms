@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, fmtShort, dateStr, AggMode, aggregateData, normalizeSalesData } from '@/lib/sales/types';
-import { getSlugByWorkName, getAllTitles, TEAM_LABELS, TeamLabel, TitleMasterInfo } from '@/lib/sales/title-master-data';
+import { getSlugByWorkName, fetchAllTitlesFromDB, TEAM_LABELS, TeamLabel, TitleMasterInfo } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Menu, Search, ChevronDown } from 'lucide-react';
 
@@ -120,7 +120,8 @@ export default function WorksTablePage() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [workFilterOpen]);
 
-  const titles = useMemo(() => getAllTitles(), []);
+  const [titles, setTitles] = useState<TitleMasterInfo[]>([]);
+  useEffect(() => { fetchAllTitlesFromDB().then(setTitles).catch(() => {}); }, []);
   const titleMap = useMemo(() => {
     const m = new Map<string, TitleMasterInfo>();
     for (const t of titles) m.set(t.title, t);

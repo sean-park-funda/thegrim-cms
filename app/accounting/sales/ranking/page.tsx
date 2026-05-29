@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { canViewSales } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, WORK_COLORS, PRESETS, fmtShort, getDateRange } from '@/lib/sales/types';
-import { getSlugByWorkName } from '@/lib/sales/title-master-data';
+import { getSlugByWorkName, fetchAllTitlesFromDB } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
 import { ArrowUp, ArrowDown, Minus, Menu } from 'lucide-react';
 
@@ -34,6 +34,8 @@ export default function RankingPage() {
   const [sortKey, setSortKey] = useState<SortKey>('total');
 
   const { from, to } = useMemo(() => getDateRange(days), [days]);
+
+  useEffect(() => { fetchAllTitlesFromDB().catch(() => {}); }, []);
 
   useEffect(() => {
     if (!profile || !canViewSales(profile.role)) return;
