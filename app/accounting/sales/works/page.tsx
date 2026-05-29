@@ -11,7 +11,6 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { Menu, Search, ChevronDown } from 'lucide-react';
 
 const fmtComma = (n: number) => n.toLocaleString();
-const MARKET_FEE_RATE_FALLBACK = 0.1;
 
 function getRsRate(workName: string): number {
   if (workName === '외모지상주의') return 0.7;
@@ -171,11 +170,10 @@ export default function WorksTablePage() {
           totalFee += rowFee;
         }
         const titleInfo = titleMap.get(name);
-        const fee = totalFee > 0 ? Math.round(totalFee) : Math.round(total * MARKET_FEE_RATE_FALLBACK);
-        const hasRealFee = totalFee > 0;
+        const fee = Math.round(totalFee);
         const rsRate = getRsRate(name);
         const grimSales = Math.round((total - fee) * rsRate);
-        return { name, byDate, feeByDate, total, titleInfo, fee, grimSales, rsRate, hasRealFee };
+        return { name, byDate, feeByDate, total, titleInfo, fee, grimSales, rsRate };
       })
       .filter(row => {
         if (statusFilter !== 'all') {
@@ -223,8 +221,7 @@ export default function WorksTablePage() {
       m[date] = { naver: 0, fee: 0, grim: 0 };
       for (const row of visibleRows) {
         const amount = row.byDate[date] || 0;
-        const realFee = row.feeByDate[date] || 0;
-        const fee = realFee > 0 ? Math.round(realFee) : Math.round(amount * MARKET_FEE_RATE_FALLBACK);
+        const fee = Math.round(row.feeByDate[date] || 0);
         m[date].naver += amount;
         m[date].fee += fee;
         m[date].grim += Math.round((amount - fee) * row.rsRate);
@@ -427,8 +424,7 @@ export default function WorksTablePage() {
                         const amount = row.byDate[date] || 0;
                         const prevDateKey = dateIdx > 0 ? dates[dateIdx - 1] : null;
                         const prevAmount = prevDateKey ? (row.byDate[prevDateKey] || 0) : 0;
-                        const realFee = row.feeByDate[date] || 0;
-                        const cellFee = realFee > 0 ? Math.round(realFee) : Math.round(amount * MARKET_FEE_RATE_FALLBACK);
+                        const cellFee = Math.round(row.feeByDate[date] || 0);
                         const cellGrim = Math.round((amount - cellFee) * row.rsRate);
                         const empty = amount === 0;
                         return (
