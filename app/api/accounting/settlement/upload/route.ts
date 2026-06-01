@@ -183,9 +183,15 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (existing) {
+        const { data: currentRow } = await supabase
+          .from('rs_revenues')
+          .select(column)
+          .eq('id', existing.id)
+          .single();
+        const currentVal = currentRow ? Number((currentRow as unknown as Record<string, unknown>)[column]) || 0 : 0;
         await supabase
           .from('rs_revenues')
-          .update({ [column]: item.amount })
+          .update({ [column]: currentVal + item.amount })
           .eq('id', existing.id);
       } else {
         await supabase
@@ -284,6 +290,58 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('업로드 오류:', error);
+    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+  }
+}
+
+// DELETE /api/accounting/settlement/upload - 특정 수익유형 매출 초기화
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await getAuthenticatedClient(request);
+    if (!auth) return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    const { supabase } = auth;
+
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', auth.userId).single();
+    if (!profile || !canManageAccounting(profile.role)) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
+
+    const { month, revenue_type } = await request.json();
+    if (!month || !revenue_type) {
+      return NextResponse.json({ error: 'month, revenue_type은 필수입니다.' }, { status: 400 });
+    }
+
+    const column = REVENUE_TYPE_COLUMNS[revenue_type as RevenueType];
+    if (!column) {
+      return NextResponse.json({ error: '잘못된 수익 유형입니다.' }, { status: 400 });
+    }
+
+    // 해당 수익유형 컬럼만 0으로 리셋
+    const { data: resetRows } = await supabase
+      .from('rs_revenues')
+      .update({ [column]: 0 })
+      .eq('month', month)
+      .gt(column, 0)
+      .select('id');
+    const count = resetRows?.length || 0;
+
+    // 해당 수익유형의 revenue_lines 삭제
+    await supabase
+      .from('rs_revenue_lines')
+      .delete()
+      .eq('month', month)
+      .eq('revenue_type', revenue_type);
+
+    // 해당 수익유형의 upload_history 삭제
+    await supabase
+      .from('rs_upload_history')
+      .delete()
+      .eq('month', month)
+      .eq('revenue_type', revenue_type);
+
+    return NextResponse.json({ success: true, reset_count: count || 0 });
+  } catch (error) {
+    console.error('매출 초기화 오류:', error);
     return NextResponse.json({ error: '서버 오류' }, { status: 500 });
   }
 }

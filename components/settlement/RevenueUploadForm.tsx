@@ -6,7 +6,7 @@ import { useSettlementStore } from '@/lib/store/useSettlementStore';
 import { settlementFetch } from '@/lib/settlement/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, X, Loader2, RotateCcw } from 'lucide-react';
 import { RevenueType } from '@/lib/types/settlement';
 
 interface UploadHistoryItem {
@@ -48,6 +48,7 @@ function RevenueTypeCard({ revenueType, history, uploaded, onUploadComplete }: R
   const { selectedMonth } = useSettlementStore();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,6 +110,30 @@ function RevenueTypeCard({ revenueType, history, uploaded, onUploadComplete }: R
     }
   };
 
+  const handleReset = async () => {
+    if (!confirm(`${config.label} 매출 데이터를 초기화하시겠습니까?\n모든 작품의 ${config.label} 금액이 0원으로 리셋됩니다.`)) return;
+    setResetting(true);
+    setError(null);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/upload', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: selectedMonth, revenue_type: revenueType }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || '초기화 실패');
+        return;
+      }
+      setResult(null);
+      onUploadComplete?.();
+    } catch {
+      setError('초기화 중 오류가 발생했습니다.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   // 최신 업로드 파일명 (중복 제거)
   const latestFiles = useMemo(() => {
     const seen = new Set<string>();
@@ -141,11 +166,18 @@ function RevenueTypeCard({ revenueType, history, uploaded, onUploadComplete }: R
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">{config.label}</CardTitle>
-          {uploaded && (
-            <span className={`text-xs px-2 py-0.5 rounded-full ${badgeColorMap[config.color]}`}>
-              {uploaded.count}건 · {uploaded.total.toLocaleString()}원
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {uploaded && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${badgeColorMap[config.color]}`}>
+                {uploaded.count}건 · {uploaded.total.toLocaleString()}원
+              </span>
+            )}
+            {uploaded && (
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={handleReset} disabled={resetting} title="초기화">
+                {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">{config.description}</p>
       </CardHeader>
