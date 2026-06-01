@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Film, Search, LogOut, User, Settings, X, Wand2, BookOpen, Sparkles, ChevronDown, LogIn, DollarSign, TrendingUp, Clapperboard } from 'lucide-react';
 import { useImageModel } from '@/lib/contexts/ImageModelContext';
 import { type ApiProvider } from '@/lib/supabase';
+import { APP_VERSION } from '@/lib/version';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -147,7 +148,7 @@ export function Navigation() {
               </Link>
             )}
             {profile && (profile.role === 'admin' || profile.role === 'executive' || profile.role === 'accountant') && (
-              <Link href="/accounting">
+              <Link href="/accounting/settlement">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -200,6 +201,7 @@ export function Navigation() {
 
           {/* 오른쪽 액션 - Linear 스타일: 미니멀한 버튼 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[10px] font-mono hidden sm:block" style={{ color: 'rgba(0, 191, 255, 0.35)' }}>{APP_VERSION}</span>
             {/* 비로그인 상태: 로그인 버튼 */}
             {!user && (
               <Button
