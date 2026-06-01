@@ -154,6 +154,21 @@ export default function PartnerDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [contractWp, setContractWp] = useState<RsWorkPartner | null>(null);
 
+  // 지급 조정 추가
+  const [payAdjDialogOpen, setPayAdjDialogOpen] = useState(false);
+  const [payAdjLabel, setPayAdjLabel] = useState('');
+  const [payAdjAmount, setPayAdjAmount] = useState('');
+  const [payAdjSaving, setPayAdjSaving] = useState(false);
+
+  // 작가 간 거래 추가
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferToPartnerId, setTransferToPartnerId] = useState('');
+  const [transferWorkId, setTransferWorkId] = useState('');
+  const [transferLabel, setTransferLabel] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferSaving, setTransferSaving] = useState(false);
+  const [allPartners, setAllPartners] = useState<{ id: string; name: string }[]>([]);
+
   // 조정 항목 추가
   const [adjDialogOpen, setAdjDialogOpen] = useState(false);
   const [adjLabel, setAdjLabel] = useState('');
@@ -196,6 +211,91 @@ export default function PartnerDetailPage() {
     const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
     if (res.ok) setStatement(await res.json());
   };
+  const handleAddPaymentAdjustment = async () => {
+    if (!payAdjLabel || !payAdjAmount || !statement) return;
+    setPayAdjSaving(true);
+    try {
+      await settlementFetch('/api/accounting/settlement/payment-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: partnerId,
+          month: statement.month,
+          label: payAdjLabel,
+          amount: Number(payAdjAmount),
+        }),
+      });
+      setPayAdjDialogOpen(false);
+      setPayAdjLabel('');
+      setPayAdjAmount('');
+      const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+      if (res.ok) setStatement(await res.json());
+    } finally {
+      setPayAdjSaving(false);
+    }
+  };
+
+  const handleDeletePaymentAdjustment = async (paId: string) => {
+    if (!confirm('이 지급 조정을 삭제하시겠습니까?')) return;
+    if (!statement) return;
+    await settlementFetch('/api/accounting/settlement/payment-adjustments', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: paId }),
+    });
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+    if (res.ok) setStatement(await res.json());
+  };
+
+  const handleOpenTransferDialog = async () => {
+    const res = await settlementFetch('/api/accounting/settlement/partners');
+    if (res.ok) {
+      const data = await res.json();
+      setAllPartners((data.partners || data || []).filter((p: any) => p.id !== partnerId));
+    }
+    setTransferDialogOpen(true);
+  };
+
+  const handleAddTransfer = async () => {
+    if (!transferToPartnerId || !transferLabel || !transferAmount || !statement) return;
+    setTransferSaving(true);
+    try {
+      await settlementFetch('/api/accounting/settlement/partner-transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_partner_id: partnerId,
+          to_partner_id: transferToPartnerId,
+          work_id: transferWorkId && transferWorkId !== 'none' ? transferWorkId : null,
+          month: statement.month,
+          label: transferLabel,
+          amount: Number(transferAmount),
+        }),
+      });
+      setTransferDialogOpen(false);
+      setTransferToPartnerId('');
+      setTransferWorkId('');
+      setTransferLabel('');
+      setTransferAmount('');
+      const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+      if (res.ok) setStatement(await res.json());
+    } finally {
+      setTransferSaving(false);
+    }
+  };
+
+  const handleDeleteTransfer = async (transferId: string) => {
+    if (!confirm('이 작가 간 거래를 삭제하시겠습니까?')) return;
+    if (!statement) return;
+    await settlementFetch('/api/accounting/settlement/partner-transfers', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: transferId }),
+    });
+    const res = await settlementFetch(`/api/accounting/settlement/partners/${partnerId}/statement?month=${statement.month}`);
+    if (res.ok) setStatement(await res.json());
+  };
+
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
 
@@ -850,18 +950,31 @@ export default function PartnerDetailPage() {
                               <td className={`py-1.5 px-3 text-right tabular-nums ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                                 {t.amount >= 0 ? '+' : ''}{t.amount.toLocaleString()}
                               </td>
-                              <td className="py-1.5 px-3"></td>
+                              <td className="py-1.5 px-3 text-center">
+                                {canManage && (
+                                  <button onClick={() => handleDeleteTransfer(t.id)} className="text-muted-foreground hover:text-red-500">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))}
                           {canManage && (
                             <tr className="border-b">
-                              <td colSpan={colCount} className="py-1 px-3">
+                              <td colSpan={colCount} className="py-1 px-3 flex items-center gap-3">
                                 <button
                                   onClick={() => setAdjDialogOpen(true)}
                                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
                                 >
                                   <Plus className="h-3 w-3" />
                                   조정 항목 추가
+                                </button>
+                                <button
+                                  onClick={handleOpenTransferDialog}
+                                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                                >
+                                  <Users className="h-3 w-3" />
+                                  작가 간 거래 추가
                                 </button>
                               </td>
                             </tr>
@@ -961,10 +1074,26 @@ export default function PartnerDetailPage() {
                                 <td className={`py-1.5 px-3 text-right tabular-nums ${pa.amount < 0 ? 'text-red-600' : ''}`}>
                                   {pa.amount >= 0 ? '+' : ''}{pa.amount.toLocaleString()}
                                 </td>
+                                <td className="py-1.5 px-3 text-center w-8">
+                                  {canManage && (
+                                    <button onClick={() => handleDeletePaymentAdjustment(pa.id)} className="text-muted-foreground hover:text-red-500">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                               ))}
                             </tbody>
                           </table>
+                        )}
+                        {canManage && (
+                          <button
+                            onClick={() => setPayAdjDialogOpen(true)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary mt-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            지급 조정 추가
+                          </button>
                         )}
                         <div className="flex justify-between items-center mt-3 pt-2 border-t-2">
                           <span className="font-semibold">지급액</span>
@@ -1058,6 +1187,15 @@ export default function PartnerDetailPage() {
                         </tbody>
                       </table>
                     </div>
+                    )}
+                    {canManage && (
+                      <button
+                        onClick={() => setPayAdjDialogOpen(true)}
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary mt-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        지급 조정 추가
+                      </button>
                     )}
                   </div>
 
@@ -1543,6 +1681,99 @@ export default function PartnerDetailPage() {
               <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>취소</Button>
               <Button onClick={handleAddAdjustment} disabled={adjSaving || !adjLabel || !adjAmount}>
                 {adjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 지급 조정 추가 다이얼로그 */}
+      <Dialog open={payAdjDialogOpen} onOpenChange={setPayAdjDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>지급 조정 추가</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">세금 계산에 영향 없이 지급액에서 직접 차감/추가합니다.</p>
+            <div>
+              <Label>항목명</Label>
+              <Input
+                value={payAdjLabel}
+                onChange={(e) => setPayAdjLabel(e.target.value)}
+                placeholder="예: 대여금 상환"
+              />
+            </div>
+            <div>
+              <Label>금액 (음수=차감)</Label>
+              <Input
+                type="number"
+                value={payAdjAmount}
+                onChange={(e) => setPayAdjAmount(e.target.value)}
+                placeholder="예: -20000000"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPayAdjDialogOpen(false)}>취소</Button>
+              <Button onClick={handleAddPaymentAdjustment} disabled={payAdjSaving || !payAdjLabel || !payAdjAmount}>
+                {payAdjSaving ? '추가 중...' : '추가'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 작가 간 거래 추가 다이얼로그 */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>작가 간 거래 추가</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">현재 파트너가 보내는 쪽(outgoing)으로 등록됩니다. 상대방 정산서에 자동 반영됩니다.</p>
+            <div>
+              <Label>받는 파트너</Label>
+              <Select value={transferToPartnerId} onValueChange={setTransferToPartnerId}>
+                <SelectTrigger><SelectValue placeholder="파트너 선택" /></SelectTrigger>
+                <SelectContent>
+                  {allPartners.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>관련 작품 (선택)</Label>
+              <Select value={transferWorkId} onValueChange={setTransferWorkId}>
+                <SelectTrigger><SelectValue placeholder="작품 선택 (선택사항)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">없음</SelectItem>
+                  {works.map(w => (
+                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>항목명</Label>
+              <Input
+                value={transferLabel}
+                onChange={(e) => setTransferLabel(e.target.value)}
+                placeholder="예: 어시비"
+              />
+            </div>
+            <div>
+              <Label>금액 (양수)</Label>
+              <Input
+                type="number"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+                placeholder="예: 800000"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>취소</Button>
+              <Button onClick={handleAddTransfer} disabled={transferSaving || !transferToPartnerId || !transferLabel || !transferAmount}>
+                {transferSaving ? '추가 중...' : '추가'}
               </Button>
             </div>
           </div>
