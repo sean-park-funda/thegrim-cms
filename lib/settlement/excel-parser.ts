@@ -38,28 +38,27 @@ export function parseRevenueExcel(
   let lines: ParsedRevenueLine[] | undefined;
 
   try {
+    const detailLines: ParsedRevenueLine[] = [];
     switch (revenueType) {
       case 'domestic_paid':
-        rows = parseDomesticPaid(workbook, fileName, errors);
+        rows = parseDomesticPaid(workbook, fileName, errors, detailLines);
         break;
-      case 'global_paid': {
-        const detailLines: ParsedRevenueLine[] = [];
+      case 'global_paid':
         rows = parseGlobalPaid(workbook, fileName, errors, adjustments, detailLines);
-        if (detailLines.length > 0) lines = detailLines;
         break;
-      }
       case 'domestic_ad':
-        rows = parseDomesticAd(workbook, fileName, errors);
+        rows = parseDomesticAd(workbook, fileName, errors, detailLines);
         break;
       case 'global_ad':
-        rows = parseGlobalAd(workbook, fileName, errors);
+        rows = parseGlobalAd(workbook, fileName, errors, detailLines);
         break;
       case 'secondary':
-        rows = parseSecondary(workbook, fileName, errors);
+        rows = parseSecondary(workbook, fileName, errors, detailLines);
         break;
       default:
         errors.push(`알 수 없는 수익 유형: ${revenueType}`);
     }
+    if (detailLines.length > 0) lines = detailLines;
   } catch (e) {
     errors.push(`파싱 오류: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -84,7 +83,8 @@ export function parseRevenueExcel(
 function parseDomesticPaid(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
 
@@ -118,6 +118,22 @@ function parseDomesticPaid(
       const revenue = parseNumber(row[revenueColIdx]);
       if (revenue !== 0) {
         rows.push({ work_name: workName, amount: revenue });
+        if (detailLines) {
+          detailLines.push({
+            work_name: workName,
+            service_platform: '작품별 집계',
+            country: 'KR',
+            sales_period: '',
+            rs_rate: 0,
+            sale_currency: 'KRW',
+            sales_amount: revenue,
+            payment_krw: revenue,
+            supply_amount: revenue,
+            vat_amount: 0,
+            source_sheet: summarySheetName,
+            source_row: i + 1,
+          });
+        }
       }
     }
 
@@ -130,17 +146,20 @@ function parseDomesticPaid(
     const sheet = workbook.Sheets[settlementSheetName];
     const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-    // 헤더에서 "CP 정산액" 컬럼 동적 탐색 (기본값: H열 = index 7)
+    // 헤더에서 컬럼 동적 탐색
     let cpColIdx = 7;
+    let supplyColIdx = 5;
+    let vatColIdx = 6;
+    let salesColIdx = 1;
     for (let i = 0; i < Math.min(10, data.length); i++) {
       const row = data[i];
       if (!row) continue;
       for (let j = 0; j < row.length; j++) {
         const val = String(row[j] || '');
-        if (val.includes('CP') && val.includes('정산')) {
-          cpColIdx = j;
-          break;
-        }
+        if (val.includes('CP') && val.includes('정산')) cpColIdx = j;
+        if (val.includes('CP') && val.includes('공급')) supplyColIdx = j;
+        if (val.includes('CP') && val.includes('부가')) vatColIdx = j;
+        if (val === '매출액') salesColIdx = j;
       }
     }
 
@@ -164,6 +183,33 @@ function parseDomesticPaid(
     const workName = extractWorkNameFromDomesticPaidFileName(fileName);
     if (workName && revenue !== 0) {
       rows.push({ work_name: workName, amount: revenue });
+
+      // 상세 행 수집: 결제수단별 개별 행
+      if (detailLines) {
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          if (!row || !row[0]) continue;
+          const firstCell = String(row[0]).trim();
+          if (firstCell === '구분' || firstCell.includes('합계') || !firstCell) continue;
+          const cpSettlement = parseNumber(row[cpColIdx]);
+          if (cpSettlement === 0) continue;
+          detailLines.push({
+            work_name: workName,
+            service_platform: firstCell,
+            country: 'KR',
+            sales_period: '',
+            rs_rate: 0,
+            sale_currency: 'KRW',
+            sales_amount: parseNumber(row[salesColIdx]),
+            payment_krw: cpSettlement,
+            supply_amount: parseNumber(row[supplyColIdx]),
+            vat_amount: parseNumber(row[vatColIdx]),
+            source_sheet: settlementSheetName,
+            source_row: i + 1,
+          });
+        }
+      }
+
       return rows;
     }
   }
@@ -377,7 +423,8 @@ function parseGlobalPaid(
 function parseDomesticAd(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
   const sheetName = workbook.SheetNames.find(n => n.includes('정산리포트')) || workbook.SheetNames[0];
@@ -393,6 +440,9 @@ function parseDomesticAd(
   let headerRowIdx = 7;
   let nameColIdx = 1;
   let revenueColIdx = 6;
+  let salesPeriodColIdx = 0;
+  let servicePlatformColIdx = -1;
+  let currencyColIdx = -1;
 
   for (let i = 5; i < Math.min(10, data.length); i++) {
     const row = data[i];
@@ -410,6 +460,12 @@ function parseDomesticAd(
         const revenueIdx = rowStr.findIndex(c => c.includes('발생 수익'));
         if (revenueIdx >= 0) revenueColIdx = revenueIdx;
       }
+      const periodIdx = rowStr.findIndex(c => c.includes('발생월'));
+      if (periodIdx >= 0) salesPeriodColIdx = periodIdx;
+      const platformIdx = rowStr.findIndex(c => c.includes('플랫폼'));
+      if (platformIdx >= 0) servicePlatformColIdx = platformIdx;
+      const currIdx = rowStr.findIndex(c => c.includes('통화'));
+      if (currIdx >= 0) currencyColIdx = currIdx;
       break;
     }
   }
@@ -425,6 +481,22 @@ function parseDomesticAd(
     const revenue = parseNumber(row[revenueColIdx]);
     if (revenue !== 0) {
       rows.push({ work_name: workName, amount: revenue });
+      if (detailLines) {
+        detailLines.push({
+          work_name: workName,
+          service_platform: servicePlatformColIdx >= 0 ? String(row[servicePlatformColIdx] || '').trim() : '',
+          country: 'KR',
+          sales_period: String(row[salesPeriodColIdx] || '').trim(),
+          rs_rate: 0,
+          sale_currency: currencyColIdx >= 0 ? String(row[currencyColIdx] || '').trim() : 'KRW',
+          sales_amount: revenue,
+          payment_krw: revenue,
+          supply_amount: revenue,
+          vat_amount: 0,
+          source_sheet: sheetName,
+          source_row: i + 1,
+        });
+      }
     }
   }
 
@@ -439,7 +511,8 @@ function parseDomesticAd(
 function parseGlobalAd(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
   const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('invoice')) || workbook.SheetNames[0];
@@ -462,6 +535,22 @@ function parseGlobalAd(
     const payment = parseNumber(row[5]);
     if (payment !== 0) {
       rows.push({ work_name: itemName, amount: payment });
+      if (detailLines) {
+        detailLines.push({
+          work_name: itemName,
+          service_platform: row[2] ? String(row[2]).trim() : '',
+          country: row[3] ? String(row[3]).trim() : '',
+          sales_period: row[0] ? String(row[0]).trim() : '',
+          rs_rate: 0,
+          sale_currency: row[4] ? String(row[4]).trim() : '',
+          sales_amount: 0,
+          payment_krw: payment,
+          supply_amount: payment,
+          vat_amount: 0,
+          source_sheet: sheetName,
+          source_row: i + 1,
+        });
+      }
     }
   }
 
@@ -477,15 +566,14 @@ function parseGlobalAd(
 function parseSecondary(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
 
   if (fileName.includes('이모티콘') && fileName.includes('카카오')) {
-    // 카카오 이모티콘 파일
-    return parseKakaoEmoticon(workbook, fileName, errors);
+    return parseKakaoEmoticon(workbook, fileName, errors, detailLines);
   } else if (fileName.includes('Super Like') || fileName.includes('SuperLike')) {
-    // SuperLike 파일
     const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('invoice')) || workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) {
@@ -505,11 +593,27 @@ function parseSecondary(
       const payment = parseNumber(row[8]);
       if (payment !== 0) {
         rows.push({ work_name: itemName, amount: payment });
+        if (detailLines) {
+          detailLines.push({
+            work_name: itemName,
+            service_platform: row[2] ? String(row[2]).trim() : '',
+            country: row[3] ? String(row[3]).trim() : '',
+            sales_period: row[0] ? String(row[0]).trim() : '',
+            rs_rate: parseNumber(row[4]),
+            sale_currency: row[5] ? String(row[5]).trim() : '',
+            sales_amount: parseNumber(row[6]),
+            payment_krw: payment,
+            supply_amount: payment,
+            vat_amount: 0,
+            source_sheet: sheetName,
+            source_row: i + 1,
+          });
+        }
       }
     }
   } else if (fileName.includes('매니지먼트') || fileName.includes('Management')) {
-    // 매니지먼트 파일: 개별 항목 파싱 후 작품별 합산
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const mgSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[mgSheetName];
     if (!sheet) {
       errors.push(`시트를 찾을 수 없습니다: ${fileName}`);
       return rows;
@@ -517,61 +621,77 @@ function parseSecondary(
 
     const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-    // 개별 항목 파싱: 번호(idx 0) + 구분(idx 1) + 설명(idx 2) + 금액(idx 9)
     const workAmounts = new Map<string, number>();
-    let publishingTotal = 0; // [출판] 항목 별도 합산
-    let inUnpaidSection = false; // "미지급 항목" 섹션 진입 여부
+    let publishingTotal = 0;
+    let inUnpaidSection = false;
+    const publishingLineIndices: number[] = [];
 
     for (let i = 10; i < data.length; i++) {
       const row = data[i];
       if (!row) continue;
 
-      // "실 지급 총 합계" 행이면 중단
       const anyCell = row.map(c => String(c || '')).join('');
       if (anyCell.includes('실 지급 총 합계')) break;
 
-      // "미지급 항목" 섹션 감지 → 이후 항목은 스킵
       const col2Str = String(row[2] || '');
       if (col2Str.includes('미지급')) {
         inUnpaidSection = true;
         continue;
       }
 
-      // 미지급 섹션 내 항목은 건너뜀 (정산서에서 미반영)
       if (inUnpaidSection) continue;
 
-      // 번호가 있고 금액이 있는 행만 처리
       if (typeof row[0] !== 'number') continue;
       const amount = parseNumber(row[9]);
       if (amount === 0) continue;
 
       const desc = col2Str;
       const workName = extractWorkNameFromMgDescription(desc);
+      const isPublishing = !workName && desc.includes('[출판]');
       if (workName) {
         workAmounts.set(workName, (workAmounts.get(workName) || 0) + amount);
-      } else if (desc.includes('[출판]')) {
-        // 출판 항목은 작품명 추출 불가 → 별도 합산 후 파일명 기준 배분
+      } else if (isPublishing) {
         publishingTotal += amount;
+      }
+
+      if (detailLines) {
+        if (isPublishing) publishingLineIndices.push(detailLines.length);
+        detailLines.push({
+          work_name: workName || desc,
+          service_platform: String(row[1] || '').trim(),
+          country: 'KR',
+          sales_period: '',
+          rs_rate: 0,
+          sale_currency: 'KRW',
+          sales_amount: amount,
+          payment_krw: amount,
+          supply_amount: amount,
+          vat_amount: 0,
+          source_sheet: mgSheetName,
+          source_row: i + 1,
+        });
       }
     }
 
-    // 출판 합산액을 파일명의 마지막 작품에 전액 배정
     if (publishingTotal !== 0) {
       const names = extractWorkNamesFromMgFileName(fileName);
       if (names.length > 0) {
         const targetName = names[names.length - 1];
         workAmounts.set(targetName, (workAmounts.get(targetName) || 0) + publishingTotal);
+        if (detailLines) {
+          for (const idx of publishingLineIndices) {
+            detailLines[idx].work_name = targetName;
+          }
+        }
       }
     }
 
-    // 금액이 0이 아닌 작품만 추가
     for (const [name, amount] of workAmounts) {
       if (amount !== 0) {
         rows.push({ work_name: name, amount });
       }
     }
 
-    // 파싱 결과 없으면 파일명에서 작품명 + "실 지급 총 합계"로 폴백
     if (rows.length === 0) {
       let totalPayment = 0;
       for (let i = 0; i < data.length; i++) {
@@ -597,7 +717,8 @@ function parseSecondary(
     }
   } else {
     // 기본: SuperLike 형식으로 시도
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const defaultSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[defaultSheetName];
     if (!sheet) {
       errors.push(`시트를 찾을 수 없습니다: ${fileName}`);
       return rows;
@@ -615,6 +736,22 @@ function parseSecondary(
       const payment = parseNumber(row[8]);
       if (payment !== 0) {
         rows.push({ work_name: itemName, amount: payment });
+        if (detailLines) {
+          detailLines.push({
+            work_name: itemName,
+            service_platform: row[2] ? String(row[2]).trim() : '',
+            country: row[3] ? String(row[3]).trim() : '',
+            sales_period: row[0] ? String(row[0]).trim() : '',
+            rs_rate: parseNumber(row[4]),
+            sale_currency: row[5] ? String(row[5]).trim() : '',
+            sales_amount: parseNumber(row[6]),
+            payment_krw: payment,
+            supply_amount: payment,
+            vat_amount: 0,
+            source_sheet: defaultSheetName,
+            source_row: i + 1,
+          });
+        }
       }
     }
   }
@@ -631,7 +768,8 @@ function parseSecondary(
 function parseKakaoEmoticon(
   workbook: XLSX.WorkBook,
   fileName: string,
-  errors: string[]
+  errors: string[],
+  detailLines?: ParsedRevenueLine[]
 ): ParsedRevenueRow[] {
   const rows: ParsedRevenueRow[] = [];
 
@@ -660,6 +798,22 @@ function parseKakaoEmoticon(
       const amount = parseNumber(row[2]); // 공급가 (VAT 별도)
       if (amount !== 0) {
         rows.push({ work_name: workName, amount });
+        if (detailLines) {
+          detailLines.push({
+            work_name: workName,
+            service_platform: '카카오 이모티콘',
+            country: 'KR',
+            sales_period: '',
+            rs_rate: 0,
+            sale_currency: 'KRW',
+            sales_amount: amount,
+            payment_krw: amount,
+            supply_amount: amount,
+            vat_amount: 0,
+            source_sheet: sheetName,
+            source_row: i + 1,
+          });
+        }
       }
       break;
     }
