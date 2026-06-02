@@ -1,5 +1,5 @@
 export interface TitleCreator {
-  role: '글' | '그림' | '원작' | '컬러' | '각색' | '기타';
+  role: '글/그림' | '글' | '그림' | '원작';
   name: string;
 }
 
