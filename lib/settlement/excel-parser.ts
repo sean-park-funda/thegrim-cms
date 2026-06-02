@@ -288,9 +288,11 @@ function parseDomesticPaid(
 function extractWorkNameFromDomesticPaidFileName(fileName: string): string | null {
   const base = fileName.replace(/\.(xlsx|xls)$/i, '');
   const parts = base.split('_');
-  // 3번째 부분에서 괄호 내용 제거 (MG, RS, 다중상점 등)
   if (parts.length >= 3) {
-    return parts[2].replace(/\(.*?\)/g, '').trim() || null;
+    return parts[2]
+      .replace(/\(.*?\)/g, '')   // 괄호 내용 제거 (MG, RS, 다중상점 등)
+      .replace(/\d{8,}/, '')     // 날짜 패턴 제거 (파일명 오타 대응)
+      .trim() || null;
   }
   return null;
 }
