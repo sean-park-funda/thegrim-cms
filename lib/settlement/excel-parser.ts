@@ -864,10 +864,18 @@ function extractWorkNameFromFileName(fileName: string): string {
  * "[출판][웹툰] 25년 12월 인세 정산(주식회사 블루픽)" → null
  */
 function extractWorkNameFromMgDescription(desc: string): string | null {
-  // 패턴: "YY년 MM월 카테고리_작품명"
+  // 패턴1: 꺾쇠로 감싼 작품명 — ＜작품명＞ 또는 <작품명>
+  const bracketMatch = desc.match(/[＜<]([^＞>]+)[＞>]/);
+  if (bracketMatch) {
+    return bracketMatch[1].trim();
+  }
+  // 패턴2: "YY년 MM월 카테고리_작품명" (날짜 패턴 제외)
   const underscoreMatch = desc.match(/_([^_()]+)$/);
   if (underscoreMatch) {
-    return underscoreMatch[1].trim();
+    const candidate = underscoreMatch[1].trim();
+    if (!/^\d{2,4}년/.test(candidate)) {
+      return candidate;
+    }
   }
   return null;
 }
