@@ -643,12 +643,17 @@ function parseSecondary(
 
       if (inUnpaidSection) continue;
 
-      if (typeof row[0] !== 'number') continue;
       const amount = parseNumber(row[9]);
       if (amount === 0) continue;
+      // 데이터 행 판별: A열이 숫자(행번호) 또는 문자열(작품명)
+      const col0 = row[0];
+      if (col0 == null && !row[1] && !row[2]) continue;
+      if (typeof col0 === 'string' && col0.includes('합계')) continue;
 
       const desc = col2Str;
-      const workName = extractWorkNameFromMgDescription(desc);
+      // A열에 작품명이 직접 있으면 우선 사용 (CMS용 수정본 포맷)
+      const col0WorkName = (typeof col0 === 'string' && col0.trim() && !/^\d+$/.test(col0.trim())) ? col0.trim() : null;
+      const workName = col0WorkName || extractWorkNameFromMgDescription(desc);
       const isPublishing = !workName && desc.includes('[출판]');
       if (workName) {
         workAmounts.set(workName, (workAmounts.get(workName) || 0) + amount);
