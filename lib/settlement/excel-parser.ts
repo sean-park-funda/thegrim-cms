@@ -561,7 +561,7 @@ function parseGlobalAd(
 
 /**
  * 2차사업 수익 파싱 (SuperLike + Management + 카카오 이모티콘)
- * SuperLike: invoice 시트, 7행부터, col B = 작품명, col I (idx 8) = Payment, "Carryover" 스킵
+ * SuperLike: invoice 시트, 상단 Total Payment(KRW)에서 VAT 역산(÷1.1) → 공급가, 작품명은 데이터행에서 추출
  * Management: 첫 시트, '총' 포함 행, col J (idx 9) = 금액, 파일명에서 작품명 추출
  * 카카오 이모티콘: "정산 상세 내역" 시트, Row 8 "총합" 행의 공급가(C열), 작품명은 파일명 끝에서 추출
  */
@@ -585,30 +585,85 @@ function parseSecondary(
 
     const data: (string | number | null)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+    // 상단 헤더에서 Total Payment (KRW) 추출
+    let totalPayment = 0;
+    for (let i = 0; i < Math.min(8, data.length); i++) {
+      const row = data[i];
+      if (!row) continue;
+      if (String(row[0] || '').includes('Total Payment')) {
+        totalPayment = parseNumber(row[1]);
+        break;
+      }
+    }
+
+    if (totalPayment === 0) {
+      errors.push(`Total Payment를 찾을 수 없습니다: ${fileName}`);
+      return rows;
+    }
+
+    // VAT 역산: 공급가 = Total Payment ÷ 1.1
+    const supplyTotal = Math.round(totalPayment * 10 / 11);
+    const vatTotal = totalPayment - supplyTotal;
+
+    // 데이터행에서 작품명과 비율 추출 (Carryover 제외)
+    const workItems: { name: string; payment: number; rowIdx: number; row: (string | number | null)[] }[] = [];
     for (let i = 6; i < data.length; i++) {
       const row = data[i];
       if (!row || !row[1]) continue;
-
       const itemName = String(row[1]).trim();
       if (!itemName || itemName === 'Carryover') continue;
+      workItems.push({ name: itemName, payment: parseNumber(row[8]), rowIdx: i, row });
+    }
 
-      const payment = parseNumber(row[8]);
-      if (payment !== 0) {
-        rows.push({ work_name: itemName, amount: payment });
+    if (workItems.length === 0) {
+      rows.push({ work_name: extractWorkNameFromSecondaryFileName(fileName) || fileName, amount: supplyTotal });
+    } else if (workItems.length === 1) {
+      const w = workItems[0];
+      rows.push({ work_name: w.name, amount: supplyTotal });
+      if (detailLines) {
+        detailLines.push({
+          work_name: w.name,
+          service_platform: w.row[2] ? String(w.row[2]).trim() : '',
+          country: w.row[3] ? String(w.row[3]).trim() : '',
+          sales_period: w.row[0] ? String(w.row[0]).trim() : '',
+          rs_rate: parseNumber(w.row[4]),
+          sale_currency: w.row[5] ? String(w.row[5]).trim() : '',
+          sales_amount: parseNumber(w.row[6]),
+          payment_krw: totalPayment,
+          supply_amount: supplyTotal,
+          vat_amount: vatTotal,
+          source_sheet: sheetName,
+          source_row: w.rowIdx + 1,
+        });
+      }
+    } else {
+      // 여러 작품: 개별 payment 비율로 공급가 배분
+      const totalLinePayments = workItems.reduce((s, w) => s + w.payment, 0);
+      let distributed = 0;
+      for (let j = 0; j < workItems.length; j++) {
+        const w = workItems[j];
+        const share = j === workItems.length - 1
+          ? supplyTotal - distributed
+          : Math.round(supplyTotal * w.payment / totalLinePayments);
+        rows.push({ work_name: w.name, amount: share });
+        distributed += share;
         if (detailLines) {
+          const shareVat = j === workItems.length - 1
+            ? vatTotal - detailLines.filter(d => d.source_sheet === sheetName).reduce((s, d) => s + d.vat_amount, 0)
+            : Math.round(vatTotal * w.payment / totalLinePayments);
           detailLines.push({
-            work_name: itemName,
-            service_platform: row[2] ? String(row[2]).trim() : '',
-            country: row[3] ? String(row[3]).trim() : '',
-            sales_period: row[0] ? String(row[0]).trim() : '',
-            rs_rate: parseNumber(row[4]),
-            sale_currency: row[5] ? String(row[5]).trim() : '',
-            sales_amount: parseNumber(row[6]),
-            payment_krw: payment,
-            supply_amount: payment,
-            vat_amount: 0,
+            work_name: w.name,
+            service_platform: w.row[2] ? String(w.row[2]).trim() : '',
+            country: w.row[3] ? String(w.row[3]).trim() : '',
+            sales_period: w.row[0] ? String(w.row[0]).trim() : '',
+            rs_rate: parseNumber(w.row[4]),
+            sale_currency: w.row[5] ? String(w.row[5]).trim() : '',
+            sales_amount: parseNumber(w.row[6]),
+            payment_krw: parseNumber(w.row[8]),
+            supply_amount: share,
+            vat_amount: shareVat,
             source_sheet: sheetName,
-            source_row: i + 1,
+            source_row: w.rowIdx + 1,
           });
         }
       }
