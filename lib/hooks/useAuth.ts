@@ -116,7 +116,7 @@ export function useAuth() {
       // 세션이 있는 모든 이벤트에서 상태 갱신
       if (session?.user) {
         // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED 등 세션이 있는 경우
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
           // 이미 같은 사용자로 로그인되어 있으면 불필요한 상태 업데이트 건너뛰기
           // (리렌더링으로 인한 데이터 로딩 중단 방지)
           const currentUser = useStore.getState().user;
