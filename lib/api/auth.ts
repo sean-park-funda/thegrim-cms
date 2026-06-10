@@ -703,9 +703,9 @@ export async function updateUserProfileSetting(
 // 비밀번호 재설정 이메일 발송
 export async function sendPasswordResetEmail(email: string) {
   try {
-    const redirectTo = typeof window !== 'undefined' 
-      ? `${window.location.origin}/reset-password`
-      : `${process.env.NEXT_PUBLIC_APP_URL || ''}/reset-password`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+      || (typeof window !== 'undefined' ? window.location.origin : '');
+    const redirectTo = `${baseUrl}/reset-password`;
     
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo,
