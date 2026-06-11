@@ -8,9 +8,15 @@ import { settlementFetch } from '@/lib/settlement/api';
 import { DailySalesData, fmtShort, dateStr, AggMode, aggregateData, normalizeSalesData } from '@/lib/sales/types';
 import { getSlugByWorkName, fetchAllTitlesFromDB, TEAM_LABELS, TeamLabel, TitleMasterInfo } from '@/lib/sales/title-master-data';
 import { useSidebar } from '@/components/ui/sidebar';
-import { Menu, Search, ChevronDown } from 'lucide-react';
+import { Menu, Search, ChevronDown, Download } from 'lucide-react';
 
 const fmtComma = (n: number) => n.toLocaleString();
+
+// 컬럼 가상화(가로 windowing) 기하 상수
+const FIRST_W = 180;       // 작품(고정) 열 너비
+const SUB_W = 88;          // 서브컬럼 1개 너비
+const GROUP_W = SUB_W * 4; // 날짜 그룹(서브컬럼 4개) 너비
+const OVERSCAN = 4;        // 화면 밖 선렌더 그룹 수
 
 function getRsRate(workName: string): number {
   if (workName === '외모지상주의') return 0.7;
@@ -93,6 +99,13 @@ function ChangeCell({ current, previous }: { current: number; previous: number }
 
 function getSubLabels(mode: AggMode): string[] {
   return ['네이버 매출', '수수료', '더그림 매출', compareLabel(mode)];
+}
+
+// 엑셀용 전기대비 값: 둘 다 0이면 빈칸, 이전 0이면 'NEW', 그 외 % 숫자(소수1)
+function changeValue(cur: number, prev: number): number | string {
+  if (prev === 0 && cur === 0) return '';
+  if (prev === 0) return 'NEW';
+  return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
 
 export default function WorksTablePage() {
@@ -242,6 +255,104 @@ export default function WorksTablePage() {
     return counts;
   }, [agg, titleMap]);
 
+  // ── 컬럼 가상화: 스크롤 위치 기반으로 보이는 날짜 그룹만 렌더 ──
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 });
+
+  const handleScroll = () => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = scrollRef.current;
+      if (el) setViewport({ scrollLeft: el.scrollLeft, width: el.clientWidth });
+    });
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewport({ scrollLeft: el.scrollLeft, width: el.clientWidth });
+    const ro = new ResizeObserver(() => setViewport(v => ({ ...v, width: el.clientWidth })));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dates.length, loading]);
+
+  const colWindow = useMemo(() => {
+    const total = dates.length;
+    if (total === 0) return { start: 0, end: 0, leftPad: 0, rightPad: 0 };
+    const w = viewport.width || 1200;
+    let start = Math.floor(viewport.scrollLeft / GROUP_W) - OVERSCAN;
+    let end = Math.ceil((viewport.scrollLeft + w - FIRST_W) / GROUP_W) + OVERSCAN;
+    start = Math.max(0, start);
+    end = Math.min(total, Math.max(start + 1, end));
+    return { start, end, leftPad: start * GROUP_W, rightPad: (total - end) * GROUP_W };
+  }, [dates.length, viewport]);
+
+  const visibleIdx = useMemo(() => {
+    const arr: number[] = [];
+    for (let i = colWindow.start; i < colWindow.end; i++) arr.push(i);
+    return arr;
+  }, [colWindow]);
+
+  const tableWidth = FIRST_W + dates.length * GROUP_W;
+
+  // 엑셀 다운로드 — 현재 필터/기간/집계단위를 그대로, 전체 날짜 내보내기
+  const [exporting, setExporting] = useState(false);
+  const exportExcel = async () => {
+    if (!dates.length || !visibleRows.length) return;
+    setExporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const subLabels = getSubLabels(aggMode);
+
+      const header1: (string | number)[] = ['작품'];
+      const header2: (string | number)[] = [''];
+      const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+      dates.forEach((date, di) => {
+        const h = fmtColumnHeader(date, aggMode);
+        header1.push([h.top, h.main].filter(Boolean).join(' '), '', '', '');
+        header2.push(...subLabels);
+        const c = 1 + di * 4;
+        merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 3 } });
+      });
+
+      const aoa: (string | number)[][] = [header1, header2];
+      visibleRows.forEach(row => {
+        const r: (string | number)[] = [row.name];
+        dates.forEach((date, di) => {
+          const amount = row.byDate[date] || 0;
+          const fee = Math.round(row.feeByDate[date] || 0);
+          const grim = Math.round((amount - fee) * row.rsRate);
+          const prevDate = di > 0 ? dates[di - 1] : null;
+          const prev = prevDate ? (row.byDate[prevDate] || 0) : 0;
+          r.push(amount || '', amount ? fee : '', amount ? grim : '', changeValue(amount, prev));
+        });
+        aoa.push(r);
+      });
+
+      const footer: (string | number)[] = ['합계'];
+      dates.forEach((date, di) => {
+        const dm = dateMetrics[date] || { naver: 0, fee: 0, grim: 0 };
+        const prevDate = di > 0 ? dates[di - 1] : null;
+        const prevNaver = prevDate ? (dateMetrics[prevDate]?.naver || 0) : 0;
+        footer.push(dm.naver || '', dm.fee || '', dm.grim || '', changeValue(dm.naver, prevNaver));
+      });
+      aoa.push(footer);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = merges;
+      ws['!cols'] = [{ wch: 22 }, ...dates.flatMap(() => [{ wch: 12 }, { wch: 9 }, { wch: 12 }, { wch: 9 }])];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '작품별 매출');
+      const modeLabel = PERIOD_MODES.find(p => p.mode === aggMode)?.label || '';
+      XLSX.writeFile(wb, `작품별매출_${modeLabel}_${from}_${to}.xlsx`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6 max-w-[1800px]">
@@ -290,6 +401,15 @@ export default function WorksTablePage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={exportExcel}
+            disabled={exporting || loading || !data || rows.length === 0}
+            title="현재 필터·기간 기준 전체 데이터를 엑셀로 내보냅니다"
+            className="ml-auto flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-xl border border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? '내보내는 중...' : '엑셀'}
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -328,12 +448,22 @@ export default function WorksTablePage() {
         </div>
       ) : (
         <div className="rounded-2xl bg-white/70 dark:bg-white/5 backdrop-blur-xl border border-white/60 dark:border-white/10 shadow-lg shadow-black/[0.03] overflow-hidden">
-          <div className="overflow-auto max-h-[70vh]">
-            <table className="w-full text-sm border-collapse">
+          <div ref={scrollRef} onScroll={handleScroll} className="overflow-auto max-h-[70vh]">
+            <table className="text-sm border-collapse" style={{ width: tableWidth, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: FIRST_W }} />
+                {colWindow.leftPad > 0 && <col style={{ width: colWindow.leftPad }} />}
+                {visibleIdx.map(idx => (
+                  <Fragment key={`cg-${idx}`}>
+                    {[0, 1, 2, 3].map(k => <col key={k} style={{ width: SUB_W }} />)}
+                  </Fragment>
+                ))}
+                {colWindow.rightPad > 0 && <col style={{ width: colWindow.rightPad }} />}
+              </colgroup>
               <thead className="sticky top-0 z-20">
                 {/* Row 1: 기간 그룹 헤더 */}
                 <tr className="bg-zinc-900 dark:bg-zinc-950">
-                  <th rowSpan={2} className="sticky left-0 z-30 bg-zinc-900 dark:bg-zinc-950 text-left py-2.5 px-4 font-semibold text-white min-w-44 align-middle border-r border-zinc-700">
+                  <th rowSpan={2} className="sticky left-0 z-30 bg-zinc-900 dark:bg-zinc-950 text-left py-2.5 px-4 font-semibold text-white align-middle border-r border-zinc-700">
                     <div className="relative" ref={filterRef}>
                       <button
                         onClick={() => setWorkFilterOpen(v => !v)}
@@ -373,7 +503,9 @@ export default function WorksTablePage() {
                       )}
                     </div>
                   </th>
-                  {dates.map(date => {
+                  {colWindow.leftPad > 0 && <th aria-hidden className="bg-zinc-900 dark:bg-zinc-950 p-0" />}
+                  {visibleIdx.map(idx => {
+                    const date = dates[idx];
                     const h = fmtColumnHeader(date, aggMode);
                     const isSorted = sortBy?.date === date;
                     return (
@@ -391,10 +523,13 @@ export default function WorksTablePage() {
                       </th>
                     );
                   })}
+                  {colWindow.rightPad > 0 && <th aria-hidden className="bg-zinc-900 dark:bg-zinc-950 p-0" />}
                 </tr>
                 {/* Row 2: 서브 컬럼 라벨 */}
                 <tr className="bg-zinc-800 dark:bg-zinc-900">
-                  {dates.map(date => {
+                  {colWindow.leftPad > 0 && <th aria-hidden className="bg-zinc-800 dark:bg-zinc-900 p-0" />}
+                  {visibleIdx.map(idx => {
+                    const date = dates[idx];
                     const subLabels = getSubLabels(aggMode);
                     return (
                       <Fragment key={date}>
@@ -406,6 +541,7 @@ export default function WorksTablePage() {
                       </Fragment>
                     );
                   })}
+                  {colWindow.rightPad > 0 && <th aria-hidden className="bg-zinc-800 dark:bg-zinc-900 p-0" />}
                 </tr>
               </thead>
               <tbody>
@@ -413,7 +549,7 @@ export default function WorksTablePage() {
                   const slug = getSlugByWorkName(row.name);
                   return (
                     <tr key={row.name} className="border-t border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors duration-150">
-                      <td className="sticky left-0 z-10 bg-white dark:bg-zinc-900 py-2.5 px-4 truncate max-w-56 border-r border-zinc-100 dark:border-zinc-800">
+                      <td className="sticky left-0 z-10 bg-white dark:bg-zinc-900 py-2.5 px-4 truncate border-r border-zinc-100 dark:border-zinc-800">
                         <span className={`inline-block w-5 text-right mr-2 tabular-nums text-sm ${i === 0 ? 'text-amber-500 font-bold' : i < 3 ? 'text-zinc-400 font-semibold' : 'text-zinc-300 dark:text-zinc-600'}`}>{i + 1}</span>
                         {slug ? (
                           <Link href={`/accounting/sales/master/${slug}`} className="font-bold text-zinc-900 dark:text-zinc-100 hover:text-cyan-600 dark:hover:text-cyan-400 hover:underline transition-colors">{row.name}</Link>
@@ -421,7 +557,9 @@ export default function WorksTablePage() {
                           <span className="font-bold text-zinc-900 dark:text-zinc-100">{row.name}</span>
                         )}
                       </td>
-                      {dates.map((date, dateIdx) => {
+                      {colWindow.leftPad > 0 && <td className="p-0" />}
+                      {visibleIdx.map(dateIdx => {
+                        const date = dates[dateIdx];
                         const amount = row.byDate[date] || 0;
                         const prevDateKey = dateIdx > 0 ? dates[dateIdx - 1] : null;
                         const prevAmount = prevDateKey ? (row.byDate[prevDateKey] || 0) : 0;
@@ -445,6 +583,7 @@ export default function WorksTablePage() {
                           </Fragment>
                         );
                       })}
+                      {colWindow.rightPad > 0 && <td className="p-0" />}
                     </tr>
                   );
                 })}
@@ -454,7 +593,9 @@ export default function WorksTablePage() {
                   <td className="sticky left-0 z-10 bg-zinc-50 dark:bg-zinc-800 py-2.5 px-4 font-bold text-zinc-700 dark:text-zinc-200 border-r border-zinc-200 dark:border-zinc-700">
                     합계
                   </td>
-                  {dates.map((date, dateIdx) => {
+                  {colWindow.leftPad > 0 && <td className="bg-zinc-50 dark:bg-zinc-800/50 p-0" />}
+                  {visibleIdx.map(dateIdx => {
+                    const date = dates[dateIdx];
                     const dm = dateMetrics[date];
                     const prevDateKey = dateIdx > 0 ? dates[dateIdx - 1] : null;
                     const prevNaver = prevDateKey ? (dateMetrics[prevDateKey]?.naver || 0) : 0;
@@ -475,6 +616,7 @@ export default function WorksTablePage() {
                       </Fragment>
                     );
                   })}
+                  {colWindow.rightPad > 0 && <td className="bg-zinc-50 dark:bg-zinc-800/50 p-0" />}
                 </tr>
               </tfoot>
             </table>
