@@ -154,7 +154,7 @@ export function useImageRegeneration({
         useCharacterSheets,
       });
       // 생성할 이미지들을 provider별로 그룹화
-      const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream'; styleId?: string; styleKey?: string; styleName?: string }> = [];
+      const batchRequests: Array<{ stylePrompt: string; index: number; apiProvider: 'gemini' | 'seedream' | 'openai'; styleId?: string; styleKey?: string; styleName?: string }> = [];
       
       for (let i = 0; i < regenerateCount; i++) {
         const variedPrompt = regenerateCount > 1 
@@ -418,7 +418,7 @@ export function useImageRegeneration({
               fileUrl?: string;
               imageData?: string; 
               mimeType?: string; 
-              apiProvider: 'gemini' | 'seedream';
+              apiProvider: 'gemini' | 'seedream' | 'openai';
               stylePrompt?: string;
               styleId?: string;
               styleKey?: string;

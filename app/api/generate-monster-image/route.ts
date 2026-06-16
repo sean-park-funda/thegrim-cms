@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
 import crypto from 'crypto';
-import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
+import { generateGeminiImage, generateSeedreamImage, generateOpenAIImage } from '@/lib/image-generation';
 import { supabase, ApiProvider } from '@/lib/supabase';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -42,8 +42,9 @@ export async function POST(request: NextRequest) {
     }
 
     // API 제공자 결정 (auto면 gemini 사용)
+    const useOpenAI = apiProvider === 'openai';
     const useSeedream = apiProvider === 'seedream';
-    const providerName = useSeedream ? 'Seedream' : 'Gemini';
+    const providerName = useOpenAI ? 'GPT Image 2' : useSeedream ? 'Seedream' : 'Gemini';
 
     // API 키 확인
     if (useSeedream && !SEEDREAM_API_KEY) {
@@ -72,7 +73,17 @@ export async function POST(request: NextRequest) {
     let generatedImageData: string;
     let generatedImageMimeType: string;
 
-    if (useSeedream) {
+    if (useOpenAI) {
+      // OpenAI GPT Image 2 사용
+      const result = await generateOpenAIImage({
+        provider: 'openai',
+        prompt: prompt.trim(),
+        aspectRatio: aspectRatio || '1:1',
+        timeoutMs: GEMINI_API_TIMEOUT,
+      });
+      generatedImageData = result.base64;
+      generatedImageMimeType = result.mimeType;
+    } else if (useSeedream) {
       // Seedream API 사용 (최소 3686400 픽셀 충족)
       // 1:1 -> 1920x1920 (3,686,400 픽셀)
       // 16:9 -> 2560x1440 (3,686,400 픽셀)

@@ -35,7 +35,7 @@ interface RegeneratedImage {
   fileUrl: string | null;
   base64Data: string | null;
   mimeType: string | null;
-  apiProvider: 'gemini' | 'seedream' | 'auto';
+  apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto';
   index?: number;
   styleName?: string;
 }
@@ -54,8 +54,8 @@ interface ImageRegenerationWorkspaceProps {
   savingImages: boolean;
   generationCount: number;
   onGenerationCountChange: (count: number) => void;
-  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'auto', styleId?: string, styleKey?: string, styleName?: string, isPublic?: boolean) => void;
-  onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
+  onRegenerate: (stylePrompt: string, count?: number, useLatestImageAsInput?: boolean, referenceImage?: ReferenceImageInfo | ReferenceImageInfo[], targetFileId?: string, characterSheets?: Array<{ sheetId: string }>, apiProvider?: 'gemini' | 'seedream' | 'openai' | 'auto', styleId?: string, styleKey?: string, styleName?: string, isPublic?: boolean) => void;
+  onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
   onSelectAll: () => void;
@@ -151,9 +151,10 @@ export function ImageRegenerationWorkspace({
   const [selectedCharacterSheets, setSelectedCharacterSheets] = useState<SelectedCharacterSheet[]>([]);
 
   // API Provider에 따른 모델명 반환
-  const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
+  const getModelName = (apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto'): string => {
     if (apiProvider === 'gemini') return 'gemini-3-pro';
     if (apiProvider === 'seedream') return 'seedream-4-5-251128';
+    if (apiProvider === 'openai') return 'gpt-image-1';
     return 'auto';
   };
 

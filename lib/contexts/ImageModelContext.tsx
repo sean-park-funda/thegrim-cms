@@ -19,7 +19,7 @@ const getInitialModel = (): ImageModel => {
     return 'gemini';
   }
   const stored = window.localStorage.getItem(IMAGE_MODEL_STORAGE_KEY);
-  if (stored === 'seedream' || stored === 'auto') {
+  if (stored === 'seedream' || stored === 'openai' || stored === 'auto') {
     return stored;
   }
   return 'gemini';

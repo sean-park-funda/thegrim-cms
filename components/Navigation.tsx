@@ -28,6 +28,7 @@ import {
 const MODEL_LABELS: Record<ApiProvider, string> = {
   gemini: 'Gemini',
   seedream: 'Seedream',
+  openai: 'GPT Image 2',
   auto: 'Auto',
 };
 
@@ -238,11 +239,17 @@ export function Navigation() {
                   >
                     Gemini
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => setModel('seedream')}
                     className={`text-xs ${model === 'seedream' ? 'bg-accent' : ''}`}
                   >
                     Seedream
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setModel('openai')}
+                    className={`text-xs ${model === 'openai' ? 'bg-accent' : ''}`}
+                  >
+                    GPT Image 2
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

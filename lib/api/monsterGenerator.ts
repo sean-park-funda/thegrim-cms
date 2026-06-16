@@ -19,7 +19,7 @@ export interface GenerateMonsterImageResponse {
   error?: string;
 }
 
-export type ApiProvider = 'gemini' | 'seedream' | 'auto';
+export type ApiProvider = 'gemini' | 'seedream' | 'openai' | 'auto';
 
 export async function generateMonsterPrompt(style: MonsterStyle = 'normal'): Promise<GenerateMonsterPromptResponse> {
   try {

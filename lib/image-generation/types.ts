@@ -1,6 +1,6 @@
 import type { SafetySetting } from '@google/genai';
 
-export type ImageProvider = 'gemini' | 'seedream';
+export type ImageProvider = 'gemini' | 'seedream' | 'openai';
 
 export type InlineImage = {
   mimeType: string;
@@ -54,7 +54,18 @@ export type SeedreamRequest = {
   retries?: number;
 };
 
-export type GenerateImageRequest = GeminiRequest | SeedreamRequest;
+export type OpenAIRequest = {
+  provider: 'openai';
+  apiKey?: string;
+  model?: string;
+  prompt: string;
+  images?: string[]; // base64 data URLs (PNG preferred)
+  aspectRatio?: string; // e.g. '16:9', '1:1', '9:16'
+  timeoutMs?: number;
+  retries?: number;
+};
+
+export type GenerateImageRequest = GeminiRequest | SeedreamRequest | OpenAIRequest;
 
 export type GenerateImageResult = {
   base64: string;

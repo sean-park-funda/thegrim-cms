@@ -216,7 +216,7 @@ export interface AiRegenerationPrompt {
 }
 
 // API 제공자 타입
-export type ApiProvider = 'gemini' | 'seedream' | 'auto';
+export type ApiProvider = 'gemini' | 'seedream' | 'openai' | 'auto';
 
 // AI 재생성 스타일 타입
 export interface AiRegenerationStyle {

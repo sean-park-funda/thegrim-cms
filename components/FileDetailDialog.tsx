@@ -35,7 +35,7 @@ interface RegeneratedImage {
   fileUrl: string | null; // 파일 URL (미리보기용)
   base64Data: string | null; // null이면 placeholder, 하위 호환성을 위해 유지 (임시 파일 저장 실패 시에만 사용)
   mimeType: string | null; // null이면 placeholder
-  apiProvider: 'gemini' | 'seedream' | 'auto';
+  apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto';
   index?: number; // 생성 인덱스 (placeholder 매칭용)
   error?: {
     code: string; // 에러 코드 ('GEMINI_OVERLOAD', 'GEMINI_TIMEOUT' 등)
@@ -59,13 +59,13 @@ interface FileDetailDialogProps {
     referenceImage?: { id: string },
     targetFileId?: string,
     characterSheets?: Array<{ sheetId: string }>,
-    apiProvider?: 'gemini' | 'seedream' | 'auto',
+    apiProvider?: 'gemini' | 'seedream' | 'openai' | 'auto',
     styleId?: string,
     styleKey?: string,
     styleName?: string,
     isPublic?: boolean
   ) => void;
-  onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'auto', targetImageId?: string) => void;
+  onRegenerateSingle: (prompt: string, apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto', targetImageId?: string) => void;
   onImageSelect: (id: string, selected: boolean) => void;
   onSaveImages: (processId?: string) => void;
   onSelectAll: () => void;
@@ -118,11 +118,13 @@ export function FileDetailDialog({
 }: FileDetailDialogProps) {
   const { model: globalModel } = useImageModel();
   // API Provider에 따른 모델명 반환
-  const getModelName = (apiProvider: 'gemini' | 'seedream' | 'auto'): string => {
+  const getModelName = (apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto'): string => {
     if (apiProvider === 'gemini') {
       return 'gemini-3-pro-image-preview';
     } else if (apiProvider === 'seedream') {
       return 'seedream-4-5-251128';
+    } else if (apiProvider === 'openai') {
+      return 'gpt-image-1';
     }
     return 'auto';
   };

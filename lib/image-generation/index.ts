@@ -1,5 +1,6 @@
 import { generateGeminiImage } from './providers/gemini';
 import { generateSeedreamImage } from './providers/seedream';
+import { generateOpenAIImage } from './providers/openai';
 import type {
   GenerateImageRequest,
   GenerateImageResult,
@@ -8,6 +9,7 @@ import type {
   GeminiRequest,
   ImageProvider,
   InlineImage,
+  OpenAIRequest,
   SeedreamRequest,
 } from './types';
 
@@ -19,18 +21,17 @@ export type {
   GeminiRequest,
   ImageProvider,
   InlineImage,
+  OpenAIRequest,
   SeedreamRequest,
 };
 
 export async function generateImage(request: GenerateImageRequest): Promise<GenerateImageResult> {
-  if (request.provider === 'gemini') {
-    return generateGeminiImage(request);
-  }
-
+  if (request.provider === 'gemini') return generateGeminiImage(request);
+  if (request.provider === 'openai') return generateOpenAIImage(request);
   return generateSeedreamImage(request);
 }
 
-export { generateGeminiImage, generateSeedreamImage };
+export { generateGeminiImage, generateSeedreamImage, generateOpenAIImage };
 
 
 

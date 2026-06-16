@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
+import { generateGeminiImage, generateSeedreamImage, generateOpenAIImage } from '@/lib/image-generation';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
@@ -27,7 +27,7 @@ Final output: a single combined image with all four views arranged horizontally 
 interface GenerateCharacterSheetRequest {
   imageBase64: string;
   imageMimeType: string;
-  apiProvider?: 'gemini' | 'seedream' | 'auto';
+  apiProvider?: 'gemini' | 'seedream' | 'openai' | 'auto';
 }
 
 export async function POST(request: NextRequest) {
@@ -47,14 +47,29 @@ export async function POST(request: NextRequest) {
     }
 
     // API Provider 결정 (auto면 gemini 사용)
+    const useOpenAI = apiProvider === 'openai';
     const useSeedream = apiProvider === 'seedream';
-    console.log('[캐릭터 시트 생성] API Provider:', useSeedream ? 'Seedream' : 'Gemini');
+    const providerLabel = useOpenAI ? 'GPT Image 2' : useSeedream ? 'Seedream' : 'Gemini';
+    console.log('[캐릭터 시트 생성] API Provider:', providerLabel);
 
     let base64: string;
     let mimeType: string;
     const apiRequestStart = Date.now();
 
-    if (useSeedream) {
+    if (useOpenAI) {
+      // OpenAI GPT Image 2 사용
+      console.log('[캐릭터 시트 생성] OpenAI API 호출 시작...');
+      const imageDataUrl = `data:${imageMimeType || 'image/png'};base64,${imageBase64}`;
+      const result = await generateOpenAIImage({
+        provider: 'openai',
+        prompt: CHARACTER_SHEET_PROMPT,
+        images: [imageDataUrl],
+        aspectRatio: '16:9',
+        timeoutMs: 120000,
+      });
+      base64 = result.base64;
+      mimeType = result.mimeType;
+    } else if (useSeedream) {
       // Seedream API 사용
       if (!SEEDREAM_API_KEY) {
         console.error('[캐릭터 시트 생성] SEEDREAM_API_KEY가 설정되지 않음');
@@ -130,7 +145,7 @@ export async function POST(request: NextRequest) {
 
     const apiRequestTime = Date.now() - apiRequestStart;
     console.log('[캐릭터 시트 생성] API 응답:', {
-      provider: useSeedream ? 'Seedream' : 'Gemini',
+      provider: providerLabel,
       requestTime: `${apiRequestTime}ms`,
       hasImageData: !!base64,
       mimeType,

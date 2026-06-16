@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
 import crypto from 'crypto';
-import { generateGeminiImage, generateSeedreamImage } from '@/lib/image-generation';
+import { generateGeminiImage, generateSeedreamImage, generateOpenAIImage } from '@/lib/image-generation';
 import { supabase } from '@/lib/supabase';
 
 const SEEDREAM_API_KEY = process.env.SEEDREAM_API_KEY;
@@ -351,7 +351,7 @@ interface RegenerateImageRequest {
   imageMimeType?: string; // base64 이미지의 MIME 타입
   stylePrompt: string;
   index?: number; // 이미지 생성 순서 (0부터 시작)
-  apiProvider?: 'gemini' | 'seedream' | 'auto'; // API 제공자 선택
+  apiProvider?: 'gemini' | 'seedream' | 'openai' | 'auto'; // API 제공자 선택
   // 레퍼런스 이미지 (톤먹 넣기 등) - 하위 호환성
   referenceImageUrl?: string; // 레퍼런스 이미지 URL
   referenceImageBase64?: string; // 레퍼런스 이미지 base64 데이터
@@ -388,14 +388,16 @@ export async function POST(request: NextRequest) {
     const hasCharacterSheets = !!(characterSheets && characterSheets.length > 0);
 
     // API 제공자 결정
+    const useOpenAI = apiProvider === 'openai';
     let useSeedream: boolean;
-    if (apiProvider === 'seedream') {
+    if (useOpenAI) {
+      useSeedream = false;
+    } else if (apiProvider === 'seedream') {
       useSeedream = true;
     } else if (apiProvider === 'gemini') {
       useSeedream = false;
     } else {
       // auto: 홀수 인덱스는 Gemini, 짝수 인덱스는 Seedream 사용
-      // 인덱스 0(짝수) -> Seedream, 인덱스 1(홀수) -> Gemini, 인덱스 2(짝수) -> Seedream, ...
       useSeedream = index % 2 === 0;
     }
 
@@ -404,7 +406,7 @@ export async function POST(request: NextRequest) {
       imageUrl: imageUrl || '없음',
       stylePrompt: stylePrompt.substring(0, 50) + '...',
       index,
-      provider: useSeedream ? 'Seedream' : 'Gemini',
+      provider: useOpenAI ? 'GPT Image 2' : useSeedream ? 'Seedream' : 'Gemini',
       hasReferenceImage,
       referenceFileIds: finalReferenceFileIds || '없음',
       referenceFileIdsCount: finalReferenceFileIds?.length || 0,
@@ -772,7 +774,36 @@ export async function POST(request: NextRequest) {
     // 헤더/요청에서 전달된 provider를 그대로 사용
     const finalUseSeedream = useSeedream;
 
-    if (finalUseSeedream) {
+    if (useOpenAI) {
+      // OpenAI GPT Image 2 API 호출
+      console.log('[이미지 재생성] OpenAI GPT Image 2 API 호출 시작...');
+      const openaiRequestStart = Date.now();
+
+      // 이미지들을 data URL 배열로 구성
+      const openaiImages: string[] = [];
+      if (imageBase64) {
+        openaiImages.push(`data:${mimeType};base64,${imageBase64}`);
+      }
+      if (hasReferenceImage && refImages.length > 0) {
+        for (const refImage of refImages) {
+          openaiImages.push(`data:${refImage.mimeType};base64,${refImage.base64}`);
+        }
+      }
+
+      const { base64, mimeType: openaiMimeType } = await generateOpenAIImage({
+        provider: 'openai',
+        prompt: stylePrompt,
+        images: openaiImages.length > 0 ? openaiImages : undefined,
+        aspectRatio: aspectRatio || undefined,
+        timeoutMs: GEMINI_API_TIMEOUT,
+      });
+
+      const openaiRequestTime = Date.now() - openaiRequestStart;
+      console.log('[이미지 재생성] OpenAI API 응답:', { requestTime: `${openaiRequestTime}ms` });
+
+      generatedImageData = base64;
+      generatedImageMimeType = openaiMimeType || 'image/png';
+    } else if (finalUseSeedream) {
       // Seedream API 호출
       if (!SEEDREAM_API_KEY) {
         console.error('[이미지 재생성] SEEDREAM_API_KEY가 설정되지 않음');

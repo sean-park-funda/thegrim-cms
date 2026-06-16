@@ -265,6 +265,7 @@ export function StyleEditDialog({
                 <SelectItem value="auto">자동 (Gemini + Seedream 번갈아)</SelectItem>
                 <SelectItem value="gemini">Gemini만 사용</SelectItem>
                 <SelectItem value="seedream">Seedream만 사용</SelectItem>
+                <SelectItem value="openai">GPT Image 2만 사용</SelectItem>
               </SelectContent>
             </Select>
           </div>
