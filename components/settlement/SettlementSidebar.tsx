@@ -37,6 +37,7 @@ import {
   Upload,
   HelpCircle,
   FileText,
+  FileSignature,
   BarChart3,
   MessageCircle,
   Database,
@@ -62,6 +63,7 @@ const navGroups = [
       { href: '/accounting/settlement/partners', label: '파트너', icon: Users },
       { href: '/accounting/settlement/staff', label: '인력', icon: UserCog },
       { href: '/accounting/settlement/contracts', label: '계약', icon: FileText },
+      { href: '/accounting/settlement/modusign', label: '전자계약', icon: FileSignature },
     ],
   },
   {
