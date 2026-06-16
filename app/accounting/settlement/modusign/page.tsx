@@ -24,26 +24,18 @@ type Contract = {
 
 const STATUS_LABEL: Record<string, string> = {
   COMPLETED: '체결완료',
-  REQUESTED: '진행중',
-  DECLINED: '거절됨',
-  EXPIRED: '기간만료',
-  CANCELED: '취소됨',
-};
-
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  COMPLETED: 'default',
-  REQUESTED: 'secondary',
-  DECLINED: 'destructive',
-  EXPIRED: 'outline',
-  CANCELED: 'outline',
+  WAIT_FOR_SIGNING: '서명대기',
+  REQUEST_CANCELLED: '요청취소',
+  SIGNING_CANCELLED: '서명취소',
+  REJECTED: '거절됨',
 };
 
 const STATUS_CLASS: Record<string, string> = {
   COMPLETED: 'bg-emerald-500/15 text-emerald-700 border-emerald-200',
-  REQUESTED: 'bg-blue-500/15 text-blue-700 border-blue-200',
-  DECLINED: 'bg-red-500/15 text-red-700 border-red-200',
-  EXPIRED: 'bg-gray-500/15 text-gray-600 border-gray-200',
-  CANCELED: 'bg-gray-500/15 text-gray-600 border-gray-200',
+  WAIT_FOR_SIGNING: 'bg-blue-500/15 text-blue-700 border-blue-200',
+  REQUEST_CANCELLED: 'bg-gray-500/15 text-gray-500 border-gray-200',
+  SIGNING_CANCELLED: 'bg-gray-500/15 text-gray-500 border-gray-200',
+  REJECTED: 'bg-red-500/15 text-red-700 border-red-200',
 };
 
 const LIMIT = 50;
@@ -118,7 +110,7 @@ export default function ModusignPage() {
           <div className="flex flex-wrap gap-2">
             {/* 상태 필터 */}
             <div className="flex gap-1">
-              {(['', 'COMPLETED', 'REQUESTED', 'DECLINED', 'EXPIRED'] as const).map(s => (
+              {(['', 'COMPLETED', 'WAIT_FOR_SIGNING', 'REQUEST_CANCELLED', 'SIGNING_CANCELLED', 'REJECTED'] as const).map(s => (
                 <button
                   key={s}
                   onClick={() => { setStatusFilter(s); setPage(1); }}
