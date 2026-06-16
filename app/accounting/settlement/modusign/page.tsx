@@ -7,7 +7,6 @@ import { settlementFetch } from '@/lib/settlement/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Search, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 
 type Contract = {
@@ -16,6 +15,10 @@ type Contract = {
   status: string | null;
   category: string | null;
   classification: string | null;
+  counterparty: string | null;
+  total_amount: number | null;
+  contract_start: string | null;
+  contract_end: string | null;
   sent_at: string | null;
   completed_at: string | null;
   participants: Array<{ type: string; name: string; contact?: string }> | null;
@@ -38,7 +41,24 @@ const STATUS_CLASS: Record<string, string> = {
   REJECTED: 'bg-red-500/15 text-red-700 border-red-200',
 };
 
+const CATEGORY_CLASS: Record<string, string> = {
+  웹툰: 'bg-violet-500/10 text-violet-700 border-violet-200',
+  굿즈: 'bg-amber-500/10 text-amber-700 border-amber-200',
+  카페: 'bg-orange-500/10 text-orange-700 border-orange-200',
+  인사: 'bg-blue-500/10 text-blue-700 border-blue-200',
+  총무: 'bg-slate-500/10 text-slate-600 border-slate-200',
+  자금: 'bg-green-500/10 text-green-700 border-green-200',
+  기타: 'bg-gray-500/10 text-gray-500 border-gray-200',
+};
+
 const LIMIT = 50;
+
+function fmtAmount(n: number | null) {
+  if (!n) return null;
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
+  if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
+  return n.toLocaleString();
+}
 
 export default function ModusignPage() {
   const { profile } = useStore();
@@ -49,6 +69,7 @@ export default function ModusignPage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +78,7 @@ export default function ModusignPage() {
         page: String(page),
         limit: String(LIMIT),
         ...(statusFilter && { status: statusFilter }),
+        ...(categoryFilter && { category: categoryFilter }),
         ...(search && { search }),
       });
       const res = await settlementFetch(`/api/accounting/settlement/modusign?${params}`);
@@ -68,7 +90,7 @@ export default function ModusignPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, search]);
+  }, [page, statusFilter, categoryFilter, search]);
 
   useEffect(() => {
     if (profile && canViewAccounting(profile.role)) load();
@@ -90,6 +112,8 @@ export default function ModusignPage() {
       .map(p => p.name)
       .join(', ') || '-';
 
+  const CATEGORIES = ['웹툰', '굿즈', '카페', '인사', '총무', '자금', '기타'];
+
   return (
     <div className="space-y-4">
       <Card>
@@ -107,9 +131,9 @@ export default function ModusignPage() {
 
         <CardContent className="space-y-3">
           {/* 필터 영역 */}
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-2">
             {/* 상태 필터 */}
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {(['', 'COMPLETED', 'WAIT_FOR_SIGNING', 'REQUEST_CANCELLED', 'SIGNING_CANCELLED', 'REJECTED'] as const).map(s => (
                 <button
                   key={s}
@@ -120,24 +144,52 @@ export default function ModusignPage() {
                       : 'bg-transparent text-muted-foreground border-border hover:bg-muted'
                   }`}
                 >
-                  {s === '' ? '전체' : STATUS_LABEL[s] || s}
+                  {s === '' ? '전체 상태' : STATUS_LABEL[s] || s}
                 </button>
               ))}
             </div>
 
-            {/* 검색 */}
-            <div className="flex gap-1 ml-auto">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="계약서명 검색..."
-                  value={searchInput}
-                  onChange={e => setSearchInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                  className="pl-8 h-7 text-xs w-52"
-                />
+            {/* 카테고리 필터 + 검색 */}
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="flex flex-wrap gap-1">
+                <button
+                  onClick={() => { setCategoryFilter(''); setPage(1); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${
+                    categoryFilter === ''
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-transparent text-muted-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  전체 카테고리
+                </button>
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => { setCategoryFilter(cat); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${
+                      categoryFilter === cat
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-transparent text-muted-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
               </div>
-              <Button size="sm" className="h-7 text-xs" onClick={handleSearch}>검색</Button>
+
+              <div className="flex gap-1 ml-auto">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="계약서명 검색..."
+                    value={searchInput}
+                    onChange={e => setSearchInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                    className="pl-8 h-7 text-xs w-52"
+                  />
+                </div>
+                <Button size="sm" className="h-7 text-xs" onClick={handleSearch}>검색</Button>
+              </div>
             </div>
           </div>
 
@@ -152,10 +204,13 @@ export default function ModusignPage() {
                 <thead>
                   <tr className="border-b bg-muted/50 text-left text-muted-foreground">
                     <th className="py-2 px-3 font-medium whitespace-nowrap">상태</th>
+                    <th className="py-2 px-3 font-medium whitespace-nowrap">카테고리</th>
                     <th className="py-2 px-3 font-medium">계약서명</th>
-                    <th className="py-2 px-3 font-medium whitespace-nowrap">서명자</th>
+                    <th className="py-2 px-3 font-medium whitespace-nowrap">거래처</th>
+                    <th className="py-2 px-3 font-medium whitespace-nowrap">매출/매입</th>
+                    <th className="py-2 px-3 font-medium whitespace-nowrap text-right">계약금</th>
+                    <th className="py-2 px-3 font-medium whitespace-nowrap">계약기간</th>
                     <th className="py-2 px-3 font-medium whitespace-nowrap">라벨</th>
-                    <th className="py-2 px-3 font-medium whitespace-nowrap">발송일</th>
                     <th className="py-2 px-3 font-medium whitespace-nowrap">체결일</th>
                   </tr>
                 </thead>
@@ -167,11 +222,33 @@ export default function ModusignPage() {
                           {STATUS_LABEL[c.status || ''] || c.status || '-'}
                         </span>
                       </td>
-                      <td className="py-1.5 px-3 max-w-[360px]">
+                      <td className="py-1.5 px-3 whitespace-nowrap">
+                        {c.category ? (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${CATEGORY_CLASS[c.category] || CATEGORY_CLASS['기타']}`}>
+                            {c.category}
+                          </span>
+                        ) : <span className="text-muted-foreground/40">-</span>}
+                      </td>
+                      <td className="py-1.5 px-3 max-w-[280px]">
                         <span className="line-clamp-1 font-medium">{c.title || '-'}</span>
                       </td>
-                      <td className="py-1.5 px-3 whitespace-nowrap text-muted-foreground">
-                        {signerNames(c)}
+                      <td className="py-1.5 px-3 whitespace-nowrap">
+                        {c.counterparty || <span className="text-muted-foreground/40">-</span>}
+                      </td>
+                      <td className="py-1.5 px-3 whitespace-nowrap">
+                        {c.classification ? (
+                          <span className={`text-[10px] font-medium ${c.classification === '매출' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                            {c.classification}
+                          </span>
+                        ) : <span className="text-muted-foreground/40">-</span>}
+                      </td>
+                      <td className="py-1.5 px-3 whitespace-nowrap tabular-nums text-right">
+                        {fmtAmount(c.total_amount) || <span className="text-muted-foreground/40">-</span>}
+                      </td>
+                      <td className="py-1.5 px-3 whitespace-nowrap tabular-nums text-muted-foreground text-[10px]">
+                        {c.contract_start
+                          ? `${c.contract_start}${c.contract_end ? ` ~ ${c.contract_end}` : ''}`
+                          : <span className="text-muted-foreground/40">-</span>}
                       </td>
                       <td className="py-1.5 px-3 whitespace-nowrap">
                         {(c.labels || []).map(l => (
@@ -179,9 +256,6 @@ export default function ModusignPage() {
                             {l.name}
                           </span>
                         ))}
-                      </td>
-                      <td className="py-1.5 px-3 whitespace-nowrap tabular-nums text-muted-foreground">
-                        {c.sent_at ? c.sent_at.slice(0, 10) : '-'}
                       </td>
                       <td className="py-1.5 px-3 whitespace-nowrap tabular-nums">
                         {c.completed_at ? c.completed_at.slice(0, 10) : '-'}

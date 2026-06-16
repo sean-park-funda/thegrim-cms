@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status   = searchParams.get('status') || '';
+    const category = searchParams.get('category') || '';
     const search   = searchParams.get('search') || '';
     const page     = parseInt(searchParams.get('page') || '1');
     const limit    = parseInt(searchParams.get('limit') || '50');
@@ -35,12 +36,13 @@ export async function GET(request: NextRequest) {
 
     let query = serviceClient
       .from('modusign_contracts')
-      .select('document_id, title, status, category, classification, sent_at, completed_at, participants, labels', { count: 'exact' })
+      .select('document_id, title, status, category, classification, counterparty, total_amount, contract_start, contract_end, sent_at, completed_at, participants, labels', { count: 'exact' })
       .order('completed_at', { ascending: false, nullsFirst: false })
       .order('sent_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (status) query = query.eq('status', status);
+    if (category) query = query.eq('category', category);
     if (search) query = query.ilike('title', `%${search}%`);
 
     const { data, error, count } = await query;
