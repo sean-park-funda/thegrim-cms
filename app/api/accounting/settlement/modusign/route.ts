@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { getAuthenticatedClient } from '@/lib/settlement/auth';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 // GET /api/accounting/settlement/modusign
 // query: status, search, page, limit
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 
+    // modusign_contracts는 service_role만 접근 가능 → 별도 서비스 클라이언트 사용
+    const serviceClient = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
     const { searchParams } = new URL(request.url);
     const status   = searchParams.get('status') || '';
     const search   = searchParams.get('search') || '';
@@ -26,7 +33,7 @@ export async function GET(request: NextRequest) {
     const limit    = parseInt(searchParams.get('limit') || '50');
     const offset   = (page - 1) * limit;
 
-    let query = supabase
+    let query = serviceClient
       .from('modusign_contracts')
       .select('document_id, title, status, category, classification, sent_at, completed_at, participants, labels', { count: 'exact' })
       .order('completed_at', { ascending: false, nullsFirst: false })
