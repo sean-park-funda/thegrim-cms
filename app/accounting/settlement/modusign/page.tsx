@@ -339,8 +339,14 @@ export default function ModusignPage() {
                           </span>
                         ) : <span className="text-muted-foreground/30">-</span>}
                       </td>
-                      <td className="py-1.5 px-3 max-w-[260px]">
+                      <td className="py-1.5 px-3 max-w-[300px]">
                         <span className="line-clamp-1 font-medium">{c.title || '-'}</span>
+                        {c.summary && (
+                          <span className="line-clamp-1 text-[10px] text-muted-foreground mt-0.5 block">{c.summary}</span>
+                        )}
+                        {c.special_terms && (
+                          <span className="line-clamp-1 text-[10px] text-amber-600/80 mt-0.5 block">특약: {c.special_terms}</span>
+                        )}
                       </td>
                       <td className="py-1.5 px-3 whitespace-nowrap">
                         {c.counterparty || <span className="text-muted-foreground/30">-</span>}
