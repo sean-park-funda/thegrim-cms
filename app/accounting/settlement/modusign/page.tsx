@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, FileText, Loader2 } from 'lucide-react';
 
 type Contract = {
   document_id: string;
@@ -80,6 +80,28 @@ function fmtAmountFull(n: number | null) {
 
 // ── 상세 모달 ─────────────────────────────────────
 function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const openPdf = async () => {
+    setPdfLoading(true);
+    try {
+      // 새 탭 미리 열어두기 (팝업 차단 방지)
+      const tab = window.open('', '_blank');
+      const res = await fetch(`/api/accounting/settlement/modusign/${c.document_id}/pdf`);
+      if (res.ok) {
+        if (tab) tab.location.href = res.url;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'PDF를 불러올 수 없습니다.');
+        tab?.close();
+      }
+    } catch {
+      alert('PDF 조회 중 오류가 발생했습니다.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const signers = (c.participants || [])
     .filter(p => p.type === 'SIGNER')
     .map(p => p.name);
@@ -101,6 +123,18 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
       <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold leading-snug pr-6">{c.title}</DialogTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 h-7 text-xs gap-1.5 w-fit"
+            onClick={openPdf}
+            disabled={pdfLoading}
+          >
+            {pdfLoading
+              ? <><Loader2 className="h-3 w-3 animate-spin" />불러오는 중… (15초 내외)</>
+              : <><FileText className="h-3 w-3" />원본 계약서 PDF 보기</>
+            }
+          </Button>
         </DialogHeader>
 
         <div className="space-y-4 mt-1">
