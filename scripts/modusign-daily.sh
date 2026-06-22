@@ -41,6 +41,28 @@ print(urllib.request.urlopen(req).headers.get('content-range').split('/')[-1])
 PY
 }
 
+# ── 피터보이스 릴레이 전송 헬퍼 ──────────────────────
+relay() {
+  local text="$1"
+  python3 - "$text" <<'PY'
+import sys, json, urllib.request
+text = sys.argv[1]
+cfg = json.load(open('/Users/sean/.claude-daemon/config.json'))
+url = cfg.get('api_url', 'https://peter-voice.vercel.app')
+key = cfg['api_key']
+data = json.dumps({
+    "from_project": "thegrim-account",
+    "to_project":   "thegrim-account",
+    "to_branch_id": 410,
+    "text": text,
+}).encode()
+req = urllib.request.Request(f"{url}/api/relay/message", data=data,
+    headers={"X-Api-Key": key, "Content-Type": "application/json"})
+r = json.load(urllib.request.urlopen(req))
+print("relay ok" if r.get("ok") or r.get("id") else f"relay err: {r}")
+PY
+}
+
 # ── Slack 전송 헬퍼 ───────────────────────────────
 slack() {
   local text="$1"
@@ -109,12 +131,46 @@ done
 ANALYZE_AFTER=$APREV
 ANALYZED=$(( ANALYZE_BEFORE - ANALYZE_AFTER ))
 
+# ── 분석 실패 건 집계 ────────────────────────────
+FAILED_COUNT=$(count "status=eq.COMPLETED&pdf_error=not.is.null")
+log "분석 실패(pdf_error 있음): ${FAILED_COUNT}건"
+
 # ── 결과 요약 ─────────────────────────────────────
-log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 분석 ${ANALYZED} / 미분석잔여 ${ANALYZE_AFTER} ==="
+log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 분석 ${ANALYZED} / 미분석잔여 ${ANALYZE_AFTER} / 실패 ${FAILED_COUNT} ==="
 slack "✅ 모두싸인 동기화 완료 ($(date '+%m/%d'))
 • 신규 계약: ${NEW_CONTRACTS}건 (전체 ${TOTAL_AFTER}건)
 • PDF 신규 저장: ${PDF_SAVED}건 (미저장 잔여 ${REMAIN_AFTER}건)
-• AI 상세분석: ${ANALYZED}건 (미분석 잔여 ${ANALYZE_AFTER}건)"
+• AI 상세분석: ${ANALYZED}건 (미분석 잔여 ${ANALYZE_AFTER}건)$([ "$FAILED_COUNT" -gt 0 ] && echo "
+⚠️ 분석 실패: ${FAILED_COUNT}건 (에이전트 재분석 요청됨)")"
+
+# ── 실패 건 있으면 에이전트에 릴레이 ─────────────────
+if [ "${FAILED_COUNT:-0}" -gt 0 ]; then
+  log "실패 건 감지 → 피터보이스 릴레이 전송..."
+  FAILED_DETAILS=$(python3 - <<'PY'
+import urllib.request, json
+env = {}
+for l in open('/Users/sean/Projects/thegrim-cms/.env.local'):
+    l = l.strip()
+    if '=' in l and not l.startswith('#'):
+        k, v = l.split('=', 1)
+        env[k.strip()] = v.strip().strip('"').strip("'")
+base = env['NEXT_PUBLIC_SUPABASE_URL']
+key  = env['SUPABASE_SERVICE_ROLE_KEY']
+u = f"{base}/rest/v1/modusign_contracts?status=eq.COMPLETED&pdf_error=not.is.null&select=document_id,title,pdf_error&limit=20"
+rows = json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"apikey": key, "Authorization": f"Bearer {key}"})))
+for r in rows:
+    err = (r.get('pdf_error') or '')[:80]
+    print(f"- {r.get('title','?')[:40]} | {err}")
+PY
+)
+  relay "[modusign-analysis-failed] $(date '+%Y-%m-%d') 분석 실패 ${FAILED_COUNT}건 — gpt-4.1 재분석 요청
+
+실패 목록 (최대 20건):
+${FAILED_DETAILS}
+
+처리 방법: DB에서 pdf_error IS NOT NULL 건을 조회하고, Supabase Storage PDF로 gpt-4.1 재분석 후 업데이트해줘. 복구 불가한 건(손상 PDF 등)은 별도 보고."
+  log "릴레이 전송 완료"
+fi
 
 # 오래된 로그 정리 (30일)
 find "$LOG_DIR" -name "*.log" -mtime +30 -delete 2>/dev/null || true
