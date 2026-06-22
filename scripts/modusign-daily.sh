@@ -173,7 +173,11 @@ ${FAILED_DETAILS}
 2. 각 계약의 pdf_storage_path로 Supabase Storage 서명 URL 생성 후 PDF 직접 읽기
 3. 계약 내용 직접 분석 → counterparty/category/classification/금액/정산/특약 등 추출
 4. SUPABASE PATCH로 DB 업데이트 (pdf_analyzed=true, pdf_error=null)
-5. 복구 불가(손상 PDF 등)는 Sean에게 별도 보고"
+5. 복구 불가(손상 PDF 등)는 Sean에게 별도 보고
+6. 처리 완료 후 Slack #회계시스템개발(C0AJHP6V325)에 결과 요약 전송:
+   🔄 모두싸인 분석 실패 재처리 완료 (날짜)
+   • 재분석 성공: N건
+   • 복구 불가: K건 (계약명 목록)"
   log "릴레이 전송 완료"
 fi
 
