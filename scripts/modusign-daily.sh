@@ -91,12 +91,30 @@ done
 REMAIN_AFTER=$PREV
 PDF_SAVED=$(( REMAIN_BEFORE - REMAIN_AFTER ))
 
+# 3) AI 상세분석 (거래처/계약금/특약 등 추출, 미분석분만, 진전 없을 때까지 최대 3회)
+log "[3/3] AI 상세분석(gpt-4.1)..."
+ANALYZE_FILTER="status=eq.COMPLETED&or=(pdf_analyzed.is.null,pdf_analyzed.eq.false)"
+ANALYZE_BEFORE=$(count "$ANALYZE_FILTER")
+log "미분석(완료계약): ${ANALYZE_BEFORE}건"
+APREV=$ANALYZE_BEFORE
+for i in 1 2 3; do
+  [ "$APREV" -eq 0 ] && break
+  log "  분석 시도 ${i}회..."
+  "$NODE" scripts/modusign-pdf-analyze.mjs >> "$LOG_FILE" 2>&1
+  ACUR=$(count "$ANALYZE_FILTER")
+  log "  → 미분석 ${ACUR}건"
+  [ "$ACUR" -ge "$APREV" ] && { log "  진전 없음 — 재시도 중단"; APREV=$ACUR; break; }
+  APREV=$ACUR
+done
+ANALYZE_AFTER=$APREV
+ANALYZED=$(( ANALYZE_BEFORE - ANALYZE_AFTER ))
+
 # ── 결과 요약 ─────────────────────────────────────
-log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 잔여 ${REMAIN_AFTER} ==="
+log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 분석 ${ANALYZED} / 미분석잔여 ${ANALYZE_AFTER} ==="
 slack "✅ 모두싸인 동기화 완료 ($(date '+%m/%d'))
 • 신규 계약: ${NEW_CONTRACTS}건 (전체 ${TOTAL_AFTER}건)
-• PDF 신규 저장: ${PDF_SAVED}건
-• PDF 미저장 잔여: ${REMAIN_AFTER}건"
+• PDF 신규 저장: ${PDF_SAVED}건 (미저장 잔여 ${REMAIN_AFTER}건)
+• AI 상세분석: ${ANALYZED}건 (미분석 잔여 ${ANALYZE_AFTER}건)"
 
 # 오래된 로그 정리 (30일)
 find "$LOG_DIR" -name "*.log" -mtime +30 -delete 2>/dev/null || true
