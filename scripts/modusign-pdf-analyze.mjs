@@ -278,7 +278,16 @@ async function scrapeModusignPage(page, offset) {
 // YYYY-MM-DD 형식인지 검증, 아니면 null
 function safeDate(val) {
   if (!val || typeof val !== 'string') return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(val.trim()) ? val.trim() : null;
+  const s = val.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  // 형식은 맞아도 실제 유효한 날짜인지 검증 (예: 2026-13-45, 0000-00-00 → null)
+  const [y, m, d] = s.split('-').map(Number);
+  if (y < 1900 || y > 2100) return null;
+  if (m < 1 || m > 12) return null;
+  if (d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return s;
 }
 
 // 숫자로 변환 가능한지 검증
