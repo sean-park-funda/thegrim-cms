@@ -163,12 +163,17 @@ for r in rows:
     print(f"- {r.get('title','?')[:40]} | {err}")
 PY
 )
-  relay "[modusign-analysis-failed] $(date '+%Y-%m-%d') 분석 실패 ${FAILED_COUNT}건 — gpt-4.1 재분석 요청
+  relay "[modusign-analysis-failed] $(date '+%Y-%m-%d') 분석 실패 ${FAILED_COUNT}건
 
 실패 목록 (최대 20건):
 ${FAILED_DETAILS}
 
-처리 방법: DB에서 pdf_error IS NOT NULL 건을 조회하고, Supabase Storage PDF로 gpt-4.1 재분석 후 업데이트해줘. 복구 불가한 건(손상 PDF 등)은 별도 보고."
+처리 요청:
+1. DB에서 pdf_error IS NOT NULL AND status=COMPLETED 건 조회 (SUPABASE REST)
+2. 각 계약의 pdf_storage_path로 Supabase Storage 서명 URL 생성 후 PDF 직접 읽기
+3. 계약 내용 직접 분석 → counterparty/category/classification/금액/정산/특약 등 추출
+4. SUPABASE PATCH로 DB 업데이트 (pdf_analyzed=true, pdf_error=null)
+5. 복구 불가(손상 PDF 등)는 Sean에게 별도 보고"
   log "릴레이 전송 완료"
 fi
 
