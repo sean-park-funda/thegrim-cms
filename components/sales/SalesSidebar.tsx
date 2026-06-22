@@ -35,12 +35,6 @@ interface Conversation {
 
 const navGroups = [
   {
-    label: '개요',
-    items: [
-      { href: '/accounting/sales', label: '대시보드', exact: true },
-    ],
-  },
-  {
     label: '작품 관리',
     items: [
       { href: '/accounting/sales/master', label: '작품 관리 보드' },
@@ -49,10 +43,9 @@ const navGroups = [
   {
     label: '매출 분석',
     items: [
+      { href: '/accounting/sales', label: '매출 관리 보드', exact: true },
       { href: '/accounting/sales/works', label: '작품별 매출 확인하기' },
-      { href: '/accounting/sales/compare', label: '작품 비교' },
-      { href: '/accounting/sales/ranking', label: '랭킹' },
-      { href: '/accounting/sales/growth', label: '성장률' },
+      { href: '/accounting/sales/new-works', label: '신작 매출 트래킹' },
     ],
   },
   {

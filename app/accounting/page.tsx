@@ -95,7 +95,7 @@ export default function AccountingPage() {
   ];
 
   return (
-    <div className="min-h-full p-4 md:p-8 max-w-5xl mx-auto space-y-8">
+    <div className="h-full overflow-auto p-4 md:p-8 max-w-5xl mx-auto space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">회계</h1>

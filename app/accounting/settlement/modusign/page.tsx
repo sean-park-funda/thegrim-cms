@@ -87,7 +87,7 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
     try {
       // 새 탭 미리 열어두기 (팝업 차단 방지)
       const tab = window.open('', '_blank');
-      const res = await fetch(`/api/accounting/settlement/modusign/${c.document_id}/pdf`);
+      const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}/pdf`);
       if (res.ok) {
         if (tab) tab.location.href = res.url;
       } else {
@@ -131,7 +131,7 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
             disabled={pdfLoading}
           >
             {pdfLoading
-              ? <><Loader2 className="h-3 w-3 animate-spin" />불러오는 중… (15초 내외)</>
+              ? <><Loader2 className="h-3 w-3 animate-spin" />불러오는 중…</>
               : <><FileText className="h-3 w-3" />원본 계약서 PDF 보기</>
             }
           </Button>

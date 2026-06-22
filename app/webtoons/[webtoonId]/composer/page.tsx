@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeft, Plus, Sparkles, Loader2, X, Check, Shirt, Package,
-  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2, Scissors, Expand,
+  Pencil, Trash2, Upload, RefreshCw, Save, ImageIcon, Wand2, Scissors, Expand, UserPlus,
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -19,16 +19,13 @@ import { getCharactersByWebtoon } from '@/lib/api/characters';
 import { ReferenceItem, getReferenceItems, uploadReferenceItem, deleteReferenceItem, modifyReferenceItem, createReferenceItemFromRefs, extractFromCharacter } from '@/lib/api/referenceItems';
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
 import { useStore } from '@/lib/store/useStore';
+import { ImageViewer } from '@/components/ImageViewer';
 
 interface EquippedItem {
   item: ReferenceItem;
   instruction: string;
 }
 
-function StatusLabel({ status }: { status: string }) {
-  if (status === 'submitting') return <>이미지 생성 중… (최대 2분)</>;
-  return null;
-}
 
 export default function ComposerPage() {
   const params = useParams();
@@ -113,12 +110,57 @@ export default function ComposerPage() {
   // ─── 결과 패널 ────────────────────────────────
   const [refineInstruction, setRefineInstruction] = useState('');
   const [saving, setSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const autoSavedRef = useRef(false);
+
+  // ─── 프롬프트 미리보기 ────────────────────────
+  const [analyzing, setAnalyzing] = useState(false);
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
 
   // ─── 마운트 ───────────────────────────────────
   useEffect(() => {
     _isMountedRef.current = true;
     return () => { _isMountedRef.current = false; };
   }, []);
+
+  // ─── 생성 완료 시 자동 저장 ────────────────────
+  useEffect(() => {
+    if (status === 'submitting') {
+      autoSavedRef.current = false;
+      setAutoSaveStatus('idle');
+      return;
+    }
+    if (status !== 'completed' || !resultImage || !selectedChar || autoSavedRef.current) return;
+
+    autoSavedRef.current = true;
+    setAutoSaveStatus('saving');
+
+    const charId = selectedChar.id;
+    fetch(`/api/characters/${charId}/save-sheet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageData: resultImage.base64,
+        mimeType: resultImage.mimeType,
+        fileName: `${selectedChar.name}-composed`,
+        description: '[compose] 드레스업 컴포저로 생성',
+      }),
+    })
+      .then(res => res.json())
+      .then(async data => {
+        if (data.success) {
+          setAutoSaveStatus('saved');
+          // 캐릭터 목록만 갱신, 현재 selectedSheet 유지
+          const updated = await getCharactersByWebtoon(webtoonId);
+          setCharacters(updated);
+          const updatedChar = updated.find(c => c.id === charId);
+          if (updatedChar) setSelectedChar(updatedChar);
+        } else {
+          setAutoSaveStatus('error');
+        }
+      })
+      .catch(() => setAutoSaveStatus('error'));
+  }, [status, resultImage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 캐릭터 로드 ──────────────────────────────
   useEffect(() => {
@@ -129,7 +171,8 @@ export default function ComposerPage() {
         setCharacters(data);
         if (data.length > 0) {
           setSelectedChar(data[0]);
-          setSelectedSheet(data[0].character_sheets?.[0] ?? null);
+          const nonCompose = data[0].character_sheets?.filter(s => !s.description?.startsWith('[compose]')) ?? [];
+          setSelectedSheet(nonCompose[0] ?? null);
         }
       })
       .catch(console.error)
@@ -241,6 +284,23 @@ export default function ComposerPage() {
     }
   };
 
+  // ─── 결과물을 캐릭터 시트로 등록 ─────────────
+  const handleRegisterAsCharacter = async (char: CharacterWithSheets, sheetId: string) => {
+    try {
+      await fetch(`/api/characters/${char.id}/sheets/${sheetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: '컴포저 결과' }),
+      });
+      const updated = await getCharactersByWebtoon(webtoonId);
+      setCharacters(updated);
+      const updatedChar = updated.find(c => c.id === char.id);
+      if (updatedChar) setSelectedChar(updatedChar);
+    } catch {
+      alert('등록에 실패했습니다.');
+    }
+  };
+
   // ─── 캐릭터 시트 삭제 ────────────────────────
   const handleDeleteSheet = async (char: CharacterWithSheets, sheetId: string) => {
     if (!confirm('이 시트를 삭제하시겠습니까?')) return;
@@ -284,34 +344,42 @@ export default function ComposerPage() {
   const updateInstruction = (itemId: string, value: string) =>
     setEquipped(prev => prev.map(e => e.item.id === itemId ? { ...e, instruction: value } : e));
 
-  // ─── 생성 ─────────────────────────────────────
+  // ─── 생성 파라미터 공통 헬퍼 ─────────────────────
+  const buildComposeParams = () => ({
+    baseSheetUrl: selectedSheet!.file_path,
+    outfitImages: equipped
+      .filter(e => e.item.type === 'outfit')
+      .map(e => ({ fileUrl: e.item.file_path, instruction: e.instruction || e.item.name })),
+    propImages: equipped
+      .filter(e => e.item.type === 'prop')
+      .map(e => ({ fileUrl: e.item.file_path, instruction: e.instruction || e.item.name })),
+    globalInstruction: globalInstruction.trim() || undefined,
+  });
+
+  // ─── 1단계: Gemini 분석 → 프롬프트 미리보기 ────
   const handleCompose = async () => {
     if (!selectedSheet) return;
-    const toBase64 = async (url: string) => {
-      const res = await fetch(url);
-      const buf = await res.arrayBuffer();
-      return { base64: Buffer.from(buf).toString('base64'), mimeType: res.headers.get('content-type') || 'image/png' };
-    };
+    setAnalyzing(true);
+    try {
+      const res = await fetch('/api/compose-character-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...buildComposeParams(), previewOnly: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '분석 실패');
+      setPromptPreview(data.prompt);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '이미지 분석 실패');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
-    const outfitConverted = await Promise.all(
-      equipped.filter(e => e.item.type === 'outfit').map(async e => {
-        const { base64, mimeType } = await toBase64(e.item.file_path);
-        return { base64, mimeType, instruction: e.instruction || e.item.name };
-      })
-    );
-    const propConverted = await Promise.all(
-      equipped.filter(e => e.item.type === 'prop').map(async e => {
-        const { base64, mimeType } = await toBase64(e.item.file_path);
-        return { base64, mimeType, instruction: e.instruction || e.item.name };
-      })
-    );
-
-    await compose({
-      baseSheetUrl: selectedSheet.file_path,
-      outfitImages: outfitConverted,
-      propImages: propConverted,
-      globalInstruction: globalInstruction.trim() || undefined,
-    });
+  // ─── 2단계: 프롬프트 확정 → fal.ai 제출 ─────────
+  const handleConfirmCompose = async (prompt: string) => {
+    setPromptPreview(null);
+    await compose({ ...buildComposeParams(), preBuiltPrompt: prompt });
   };
 
   const handleRefine = async () => {
@@ -560,7 +628,7 @@ export default function ComposerPage() {
   const propItems = items.filter(i => i.type === 'prop' &&
     (!propSearch.trim() || i.name.toLowerCase().includes(propSearch.toLowerCase())));
 
-  const canCompose = !!selectedSheet && equipped.length > 0 && !isLoading;
+  const canCompose = !!selectedSheet && equipped.length > 0 && !isLoading && !analyzing;
 
   // ─── 로딩 ─────────────────────────────────────
   if (loadingChars) {
@@ -590,7 +658,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             왼쪽: 캐릭터 목록
         ──────────────────────────────────────────── */}
-        <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[200px] flex-col border-r bg-muted/20`}>
+        <div className={`${mobileTab === 'character' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[200px] flex-col border-r bg-muted/20 min-h-0`}>
           {/* 컴팩트 툴바: 필터 + 기본형 + 변형 */}
           <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 border-b">
             <Select value={charFilter} onValueChange={setCharFilter}>
@@ -625,86 +693,70 @@ export default function ComposerPage() {
 
           <ScrollArea className="flex-1 min-h-0 overflow-hidden">
             <div className="p-2 grid grid-cols-2 md:grid-cols-1 gap-2 pb-16 md:pb-2">
-              {filteredChars.map(char => {
-                const thumb = char.character_sheets?.[0]?.file_path;
-                const isSelected = selectedChar?.id === char.id;
+              {filteredChars.flatMap(char => {
+                const sheets = (char.character_sheets ?? []).filter(s => !s.description?.startsWith('[compose]'));
+                if (sheets.length === 0) return [{ char, sheet: null as CharacterSheet | null }];
+                return sheets.map(sheet => ({ char, sheet: sheet as CharacterSheet | null }));
+              }).map(({ char, sheet }) => {
+                const isSelected = selectedChar?.id === char.id && selectedSheet?.id === sheet?.id;
+                const thumb = sheet?.file_path ?? null;
+                const label = sheet?.description?.startsWith('기본형') ? '기본형'
+                  : sheet?.description?.startsWith('변형') ? '변형'
+                  : null;
                 return (
-                  <div key={char.id}>
-                    <div className="group relative">
-                      <button
-                        onClick={() => handleSelectChar(char)}
-                        className={`w-full rounded-xl overflow-hidden border-2 transition-all duration-150 ${
-                          isSelected
-                            ? 'border-primary shadow-md shadow-primary/20'
-                            : 'border-border hover:border-primary/40'
-                        }`}
-                      >
-                        {/* 썸네일 */}
-                        <div className="aspect-[3/4] bg-muted relative">
-                          {thumb ? (
-                            <img src={thumb} alt={char.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ImageIcon className="h-8 w-8 opacity-20" />
-                            </div>
-                          )}
-                          {isSelected && (
-                            <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                              <Check className="h-3 w-3 text-primary-foreground" />
-                            </div>
-                          )}
-                        </div>
-                        {/* 이름 */}
-                        <div className="px-2 py-1.5 bg-card">
-                          <p className="text-xs font-medium text-center truncate">{char.name}</p>
-                        </div>
-                      </button>
-                      {/* 크게보기 버튼 */}
+                  <div key={sheet ? `${char.id}-${sheet.id}` : char.id} className="group relative">
+                    <button
+                      onClick={() => { setSelectedChar(char); setSelectedSheet(sheet ?? null); reset(); }}
+                      className={`w-full rounded-xl overflow-hidden border-2 transition-all duration-150 ${
+                        isSelected
+                          ? 'border-primary shadow-md shadow-primary/20'
+                          : 'border-border hover:border-primary/40'
+                      }`}
+                    >
+                      <div className="aspect-[3/4] bg-muted relative">
+                        {thumb ? (
+                          <img src={thumb} alt={char.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ImageIcon className="h-8 w-8 opacity-20" />
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                        {label && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                            {label}
+                          </div>
+                        )}
+                      </div>
+                      <div className="px-2 py-1.5 bg-card">
+                        <p className="text-xs font-medium text-center truncate">{char.name}</p>
+                      </div>
+                    </button>
+                    {/* 크게보기 + 삭제 버튼 */}
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {thumb && (
                         <button
-                          onClick={e => { e.stopPropagation(); setViewLarge({ url: thumb, name: char.name }); }}
-                          className="absolute bottom-8 left-1 w-6 h-6 rounded bg-background/70 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background shadow"
+                          onClick={e => { e.stopPropagation(); setViewLarge({ url: thumb, name: label ? `${char.name} (${label})` : char.name }); }}
+                          className="w-6 h-6 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/80 shadow"
                           title="크게보기"
                         >
                           <Expand className="h-3 w-3" />
                         </button>
                       )}
+                      {sheet && (
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDeleteSheet(char, sheet.id); }}
+                          className="w-6 h-6 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/80 shadow"
+                          title="시트 삭제"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
-
-                    {/* 시트 썸네일 스트립 — 선택된 캐릭터에 시트 2개 이상 */}
-                    {isSelected && (char.character_sheets?.length ?? 0) > 1 && (
-                      <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 px-0.5">
-                        {char.character_sheets!.map(sheet => {
-                          const isActiveSheet = selectedSheet?.id === sheet.id;
-                          const label = sheet.description?.startsWith('기본형') ? '기본형'
-                            : sheet.description?.startsWith('변형') ? '변형'
-                            : '원본';
-                          return (
-                            <div key={sheet.id} className="relative flex-shrink-0 group/sheet">
-                              <button
-                                onClick={() => setSelectedSheet(sheet)}
-                                title={sheet.description || sheet.file_name}
-                                className={`w-10 h-12 rounded overflow-hidden border-2 transition-all ${
-                                  isActiveSheet ? 'border-primary' : 'border-border hover:border-primary/40'
-                                }`}
-                              >
-                                <img src={sheet.file_path} alt={label} className="w-full h-full object-cover" />
-                              </button>
-                              <span className="absolute bottom-0 left-0 right-0 text-[8px] text-center bg-black/50 text-white leading-tight py-px rounded-b truncate px-0.5">
-                                {label}
-                              </span>
-                              <button
-                                onClick={e => { e.stopPropagation(); handleDeleteSheet(char, sheet.id); }}
-                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover/sheet:opacity-100 transition-opacity shadow"
-                                title="시트 삭제"
-                              >
-                                <X className="h-2 w-2" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -719,7 +771,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             가운데: 의상 + 소품 리포지터리
         ──────────────────────────────────────────── */}
-        <div className={`${mobileTab === 'items' ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden`}>
+        <div className={`${mobileTab === 'items' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[500px] flex-col min-w-0 min-h-0`}>
           <div className="flex-shrink-0 flex items-center justify-end px-4 pt-3 pb-1">
             <Button
               variant="outline"
@@ -731,7 +783,7 @@ export default function ComposerPage() {
               레퍼런스로 새 요소 만들기
             </Button>
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-6 pb-16 md:pb-4">
 
               {/* 의상 섹션 */}
@@ -768,7 +820,7 @@ export default function ComposerPage() {
                     <p className="text-xs">의상이 없습니다</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
                     {outfitItems.map(item => (
                       <ItemCard
                         key={item.id}
@@ -822,7 +874,7 @@ export default function ComposerPage() {
                     <p className="text-xs">소품이 없습니다</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
                     {propItems.map(item => (
                       <ItemCard
                         key={item.id}
@@ -849,7 +901,7 @@ export default function ComposerPage() {
         {/* ────────────────────────────────────────────
             오른쪽: 컴포즈 패널 (항상 표시)
         ──────────────────────────────────────────── */}
-        <div className={`${mobileTab === 'compose' ? 'flex' : 'hidden'} md:flex flex-1 md:flex-none md:w-[340px] flex-col border-l bg-card`}>
+        <div className={`${mobileTab === 'compose' ? 'flex' : 'hidden'} md:flex flex-1 flex-col border-l bg-card min-h-0`}>
 
           {/* 선택된 아이템 + 지시 */}
           <div className="flex-shrink-0 border-b">
@@ -863,7 +915,7 @@ export default function ComposerPage() {
                   가운데에서 의상/소품을 선택하세요
                 </p>
               ) : (
-                <div className="space-y-1.5">
+                <div className="max-h-[200px] overflow-y-auto space-y-1.5">
                   {equipped.map(({ item, instruction }) => (
                     <div key={item.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
                       <img src={item.file_path} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />
@@ -894,7 +946,7 @@ export default function ComposerPage() {
               <Input
                 value={globalInstruction}
                 onChange={e => setGlobalInstruction(e.target.value)}
-                placeholder="전체 지시 (예: 어두운 톤으로)"
+                placeholder="추가 지시 (예: 전체 톤을 어둡게)"
                 className="h-8 text-xs mt-3"
               />
             </div>
@@ -904,11 +956,13 @@ export default function ComposerPage() {
               <Button
                 onClick={handleCompose}
                 disabled={!canCompose}
-                className="w-full gap-2 h-10"
+                className="w-full gap-2 h-10 bg-gradient-to-r from-[#e17055] to-[#d35f45] hover:from-[#d35f45] hover:to-[#c44e35] text-white shadow-sm shadow-[#e17055]/25 disabled:from-muted disabled:to-muted disabled:text-muted-foreground disabled:shadow-none transition-all"
                 size="default"
               >
-                {isLoading ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /><StatusLabel status={status} /></>
+                {analyzing ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />분석 중…</>
+                ) : isLoading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />이미지 생성 중…</>
                 ) : (
                   <><Sparkles className="h-4 w-4" />시트 만들기</>
                 )}
@@ -922,7 +976,7 @@ export default function ComposerPage() {
           </div>
 
           {/* 생성 결과 */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3 pb-16 md:pb-4">
               {error && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
@@ -930,10 +984,18 @@ export default function ComposerPage() {
                 </div>
               )}
 
+              {analyzing && (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
+                  <div className="text-sm font-medium">요소 분석 중…</div>
+                  <p className="text-xs opacity-60">레퍼런스 이미지를 AI가 분석하고 있습니다</p>
+                </div>
+              )}
+
               {isLoading && !resultImage && (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
-                  <div className="text-sm"><StatusLabel status={status} /></div>
+                  <div className="text-sm font-medium">이미지 생성 중…</div>
                   <p className="text-xs opacity-60">약 2~4분 소요됩니다</p>
                 </div>
               )}
@@ -976,25 +1038,88 @@ export default function ComposerPage() {
                     </Button>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" className="flex-1 h-8 gap-1" onClick={handleCompose} disabled={!canCompose}>
                       <Sparkles className="h-3 w-3" />
                       재생성
                     </Button>
-                    <Button size="sm" className="flex-1 h-8 gap-1" onClick={handleSave} disabled={saving || isLoading}>
-                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                      시트로 저장
-                    </Button>
+                    {autoSaveStatus === 'saving' && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                        <Loader2 className="h-3 w-3 animate-spin" />저장 중…
+                      </span>
+                    )}
+                    {autoSaveStatus === 'saved' && (
+                      <span className="flex items-center gap-1 text-xs text-green-600 whitespace-nowrap">
+                        <Check className="h-3 w-3" />저장됨
+                      </span>
+                    )}
+                    {autoSaveStatus === 'error' && (
+                      <Button size="sm" className="h-8 gap-1 px-2" onClick={handleSave} disabled={saving || isLoading}>
+                        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                        다시 저장
+                      </Button>
+                    )}
                   </div>
                 </>
               )}
 
-              {!resultImage && !isLoading && !error && (
+              {!resultImage && !isLoading && !analyzing && !error && (
                 <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
                   <Sparkles className="h-10 w-10 opacity-15 mb-2" />
                   <p className="text-xs">생성 결과가 여기에 표시됩니다</p>
                 </div>
               )}
+
+              {/* 결과물 기록 */}
+              {(() => {
+                const composeResults = selectedChar?.character_sheets?.filter(s => s.description?.startsWith('[compose]')) ?? [];
+                if (composeResults.length === 0) return null;
+                return (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 pt-1 border-t">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        결과물 기록
+                      </p>
+                      <span className="text-xs text-muted-foreground">({composeResults.length})</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[...composeResults].reverse().map(sheet => (
+                        <div key={sheet.id} className="group relative rounded-lg overflow-hidden border bg-card">
+                          <div className="aspect-video relative">
+                            <img src={sheet.file_path} alt="결과물" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                              <button
+                                onClick={() => setViewLarge({ url: sheet.file_path, name: `${selectedChar?.name} 결과물` })}
+                                className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/40"
+                                title="크게보기"
+                              >
+                                <Expand className="h-3.5 w-3.5 text-white" />
+                              </button>
+                              <button
+                                onClick={() => handleRegisterAsCharacter(selectedChar!, sheet.id)}
+                                className="w-7 h-7 rounded-full bg-primary/80 backdrop-blur-sm flex items-center justify-center hover:bg-primary"
+                                title="캐릭터로 등록"
+                              >
+                                <UserPlus className="h-3.5 w-3.5 text-white" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSheet(selectedChar!, sheet.id)}
+                                className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-destructive/80"
+                                title="삭제"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-white" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-center text-muted-foreground py-1 truncate px-1">
+                            {new Date(sheet.created_at!).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </ScrollArea>
         </div>
@@ -1040,29 +1165,12 @@ export default function ComposerPage() {
       </div>
 
       {/* ── 라이트박스 ───────────────────────────── */}
-      {viewLarge && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setViewLarge(null)}
-        >
-          <div className="relative max-w-3xl max-h-full" onClick={e => e.stopPropagation()}>
-            <img
-              src={viewLarge.url}
-              alt={viewLarge.name}
-              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
-            />
-            <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl">
-              <p className="text-white text-sm font-medium text-center">{viewLarge.name}</p>
-            </div>
-            <button
-              onClick={() => setViewLarge(null)}
-              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <ImageViewer
+        imageUrl={viewLarge?.url ?? ''}
+        imageName={viewLarge?.name ?? ''}
+        open={!!viewLarge}
+        onOpenChange={open => { if (!open) setViewLarge(null); }}
+      />
 
       {/* ── 기본형 만들기 다이얼로그 ──────────────── */}
       <Dialog open={simplifyDialog} onOpenChange={o => { if (!o && !simplifyLoading) { setSimplifyDialog(false); setSimplifyInstruction(''); } }}>
@@ -1525,6 +1633,39 @@ export default function ComposerPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── 프롬프트 미리보기 다이얼로그 ─────────── */}
+      <Dialog open={!!promptPreview} onOpenChange={open => { if (!open) setPromptPreview(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>프롬프트 확인 및 수정</DialogTitle>
+          </DialogHeader>
+          <p className="flex-shrink-0 text-xs text-muted-foreground">
+            Gemini가 레퍼런스 이미지를 분석한 내용이 포함된 프롬프트입니다. 수정 후 생성을 시작하세요.
+          </p>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
+              <Textarea
+                value={promptPreview ?? ''}
+                onChange={e => setPromptPreview(e.target.value)}
+                className="text-xs font-mono resize-none min-h-[360px] w-full"
+                rows={20}
+              />
+            </ScrollArea>
+          </div>
+          <div className="flex-shrink-0 flex gap-2 justify-end pt-3 border-t">
+            <Button variant="outline" onClick={() => setPromptPreview(null)}>취소</Button>
+            <Button
+              onClick={() => handleConfirmCompose(promptPreview ?? '')}
+              className="gap-1.5"
+              disabled={!promptPreview?.trim()}
+            >
+              <Sparkles className="h-4 w-4" />
+              이 프롬프트로 생성
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── 수정본 생성 다이얼로그 ────────────────── */}
       <Dialog open={modifyDialog.open} onOpenChange={o => setModifyDialog(p => ({ ...p, open: o }))}>
         <DialogContent className="sm:max-w-md">
@@ -1594,27 +1735,25 @@ function ItemCard({
         </div>
       )}
 
-      {/* 크게보기·수정: 호버에만 / 삭제: 항상 표시 */}
-      <div className="absolute top-1.5 right-1.5 flex gap-1">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={e => { e.stopPropagation(); onViewLarge(); }}
-            className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
-            title="크게보기"
-          >
-            <Expand className="h-2.5 w-2.5" />
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); onModify(); }}
-            className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background"
-            title="수정본 만들기"
-          >
-            <Pencil className="h-2.5 w-2.5" />
-          </button>
-        </div>
+      {/* 크게보기·수정·삭제: 호버 시 컬러 버튼으로 표시 */}
+      <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={e => { e.stopPropagation(); onViewLarge(); }}
+          className="w-5 h-5 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/80 shadow-sm"
+          title="크게보기"
+        >
+          <Expand className="h-2.5 w-2.5" />
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onModify(); }}
+          className="w-5 h-5 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/80 shadow-sm"
+          title="수정본 만들기"
+        >
+          <Pencil className="h-2.5 w-2.5" />
+        </button>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="w-5 h-5 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-destructive hover:text-white"
+          className="w-5 h-5 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/80 shadow-sm"
           title="삭제"
         >
           <Trash2 className="h-2.5 w-2.5" />

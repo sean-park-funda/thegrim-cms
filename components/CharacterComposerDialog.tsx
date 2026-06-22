@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import { CharacterWithSheets, CharacterSheet } from '@/lib/supabase';
 import { useComposeCharacterSheet } from '@/hooks/useComposeCharacterSheet';
-import type { ReferenceImage } from '@/lib/types/compose';
 
-interface RefImage extends ReferenceImage {
-  id: string;        // 클라이언트 임시 ID
-  previewUrl: string; // 미리보기용 data URL
+interface RefImage {
+  id: string;
+  dataUrl: string;    // data: URL — 서버에서 fal.ai 스토리지에 자동 업로드됨
+  previewUrl: string; // 미리보기용 (동일값)
+  instruction?: string;
 }
 
 interface CharacterComposerDialogProps {
@@ -31,13 +32,9 @@ async function fileToRefImage(file: File): Promise<RefImage> {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
-      const [header, base64] = dataUrl.split(',');
-      const mimeMatch = header.match(/^data:(.*);base64$/);
-      const mimeType = mimeMatch?.[1] || file.type || 'image/png';
       resolve({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        base64,
-        mimeType,
+        dataUrl,
         previewUrl: dataUrl,
         instruction: '',
       });
@@ -154,8 +151,8 @@ export function CharacterComposerDialog({
     if (!baseSheet) return;
     await compose({
       baseSheetUrl: baseSheet.file_path,
-      outfitImages: outfitImages.map(({ base64, mimeType, instruction }) => ({ base64, mimeType, instruction })),
-      propImages: propImages.map(({ base64, mimeType, instruction }) => ({ base64, mimeType, instruction })),
+      outfitImages: outfitImages.map(({ dataUrl, instruction }) => ({ fileUrl: dataUrl, instruction })),
+      propImages: propImages.map(({ dataUrl, instruction }) => ({ fileUrl: dataUrl, instruction })),
       globalInstruction: globalInstruction.trim() || undefined,
     });
   };

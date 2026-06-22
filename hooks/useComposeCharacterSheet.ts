@@ -66,6 +66,7 @@ export function useComposeCharacterSheet() {
     outfitImages: ReferenceImage[];
     propImages: ReferenceImage[];
     globalInstruction?: string;
+    preBuiltPrompt?: string;
   }) => {
     isMountedRef.current = true;
     stopPolling();
