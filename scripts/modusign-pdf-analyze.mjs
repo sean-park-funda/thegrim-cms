@@ -130,14 +130,25 @@ async function getAllUnanalyzedIds() {
   const limit = 1000;
   while (true) {
     const rows = await supabaseGet(
-      `/modusign_contracts?status=eq.COMPLETED&or=(pdf_analyzed.is.null,pdf_analyzed.eq.false)&select=document_id,title&limit=${limit}&offset=${offset}&order=document_id.asc`
+      `/modusign_contracts?status=eq.COMPLETED&or=(pdf_analyzed.is.null,pdf_analyzed.eq.false)&select=document_id,title,pdf_storage_path&limit=${limit}&offset=${offset}&order=document_id.asc`
     );
     if (!rows.length) break;
-    for (const r of rows) all.set(r.document_id, r.title);
+    for (const r of rows) all.set(r.document_id, { title: r.title, storagePath: r.pdf_storage_path });
     if (rows.length < limit) break;
     offset += limit;
   }
   return all;
+}
+
+// ── Supabase Storage에서 PDF 다운로드 (service key 인증) ──
+const STORAGE_BUCKET = 'contract-pdfs';
+async function downloadFromStorage(storagePath, filepath) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) throw new Error(`Storage 다운로드 실패: ${res.status}`);
+  fs.writeFileSync(filepath, Buffer.from(await res.arrayBuffer()));
+  return filepath;
 }
 
 // ── PDF 다운로드 ──────────────────────────────────
@@ -373,8 +384,42 @@ async function main() {
     return;
   }
 
-  // 2. Playwright로 PDF URL 수집 + 처리
-  log('\n[2단계] Modusign PDF URL 수집 및 분석 시작...');
+  // 2. Storage에 PDF가 있는 타겟은 모두싸인 거치지 않고 바로 분석
+  const storageTargets = [...targetMap.entries()].filter(([, v]) => v.storagePath);
+  const noStorageTargets = [...targetMap.entries()].filter(([, v]) => !v.storagePath);
+
+  if (storageTargets.length > 0) {
+    log(`\n[2단계] Storage PDF 직접 분석: ${storageTargets.length}건 (동시 ${CONCURRENT})...`);
+    const tasks = storageTargets
+      .slice(0, MAX_COUNT)
+      .map(([id, v]) => async () => {
+        const filepath = `${PDF_DIR}/${id}.pdf`;
+        try {
+          await downloadFromStorage(v.storagePath, filepath);
+        } catch (e) {
+          log(`    ❌ Storage 다운로드 실패 ${v.title?.slice(0,30)}: ${e.message.slice(0,60)}`);
+          try {
+            await supabasePatch('modusign_contracts', { document_id: id }, {
+              pdf_error: e.message.slice(0, 200), pdf_analyzed: false,
+            });
+          } catch {}
+          failed++; processed++;
+          return;
+        }
+        await processContractFromFile(id, v.title, filepath, totalTarget);
+      });
+    await runConcurrent(tasks, CONCURRENT);
+    log(`  📊 Storage 분석 후: ${processed}/${totalTarget} | ✅${succeeded} ❌${failed}`);
+  }
+
+  // 3. Storage에 PDF가 없는 타겟만 Modusign 스크랩으로 폴백
+  if (noStorageTargets.length === 0 || processed >= MAX_COUNT) {
+    log(`\n=== 완료 ===`);
+    log(`총 처리: ${processed}건 | 성공: ${succeeded}건 | 실패: ${failed}건`);
+    return;
+  }
+
+  log(`\n[3단계] Storage 없는 ${noStorageTargets.length}건 — Modusign 스크랩 폴백...`);
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
@@ -386,7 +431,7 @@ async function main() {
     });
     await new Promise(r => setTimeout(r, 2000));
 
-    const remaining = new Set(targetMap.keys());
+    const remaining = new Set(noStorageTargets.map(([id]) => id));
     let modusignPage = START_PAGE;
     const MAX_PAGES = 25;
 
@@ -420,7 +465,7 @@ async function main() {
           await downloadFile(doc.file.url, filepath);
           remaining.delete(doc.id);
           readyTasks.push(() => processContractFromFile(
-            doc.id, doc.title || targetMap.get(doc.id), filepath, totalTarget
+            doc.id, doc.title || targetMap.get(doc.id)?.title, filepath, totalTarget
           ));
         } catch (e) {
           log(`    ❌ 다운로드 실패 ${doc.title?.slice(0,30)}: ${e.message.slice(0,60)}`);
