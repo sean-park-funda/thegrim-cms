@@ -88,11 +88,11 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
       // 새 탭 미리 열어두기 (팝업 차단 방지)
       const tab = window.open('', '_blank');
       const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}/pdf`);
-      if (res.ok) {
-        if (tab) tab.location.href = res.url;
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        if (tab) tab.location.href = data.url;
       } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || 'PDF를 불러올 수 없습니다.');
+        alert(data.error || 'PDF를 불러올 수 없습니다.');
         tab?.close();
       }
     } catch {

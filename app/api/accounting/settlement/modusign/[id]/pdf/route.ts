@@ -54,5 +54,5 @@ export async function GET(
     return NextResponse.json({ error: 'PDF URL 생성 실패.' }, { status: 500 });
   }
 
-  return NextResponse.redirect(signed.signedUrl);
+  return NextResponse.json({ url: signed.signedUrl });
 }
