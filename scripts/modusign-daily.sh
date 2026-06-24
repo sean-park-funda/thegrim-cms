@@ -131,9 +131,9 @@ done
 ANALYZE_AFTER=$APREV
 ANALYZED=$(( ANALYZE_BEFORE - ANALYZE_AFTER ))
 
-# ── 분석 실패 건 집계 ────────────────────────────
-FAILED_COUNT=$(count "status=eq.COMPLETED&pdf_error=not.is.null")
-log "분석 실패(pdf_error 있음): ${FAILED_COUNT}건"
+# ── 분석 실패 건 집계 (pdf_skip=true 제외) ───────
+FAILED_COUNT=$(count "status=eq.COMPLETED&pdf_error=not.is.null&pdf_skip=not.is.true")
+log "분석 실패(pdf_error 있음, skip 제외): ${FAILED_COUNT}건"
 
 # ── 결과 요약 ─────────────────────────────────────
 log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 분석 ${ANALYZED} / 미분석잔여 ${ANALYZE_AFTER} / 실패 ${FAILED_COUNT} ==="
@@ -156,7 +156,7 @@ for l in open('/Users/sean/Projects/thegrim-cms/.env.local'):
         env[k.strip()] = v.strip().strip('"').strip("'")
 base = env['NEXT_PUBLIC_SUPABASE_URL']
 key  = env['SUPABASE_SERVICE_ROLE_KEY']
-u = f"{base}/rest/v1/modusign_contracts?status=eq.COMPLETED&pdf_error=not.is.null&select=document_id,title,pdf_error&limit=20"
+u = f"{base}/rest/v1/modusign_contracts?status=eq.COMPLETED&pdf_error=not.is.null&pdf_skip=not.is.true&select=document_id,title,pdf_error&limit=20"
 rows = json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"apikey": key, "Authorization": f"Bearer {key}"})))
 for r in rows:
     err = (r.get('pdf_error') or '')[:80]
