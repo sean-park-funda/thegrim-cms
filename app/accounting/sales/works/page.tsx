@@ -169,9 +169,10 @@ export default function WorksTablePage() {
   [agg]);
 
   const rows = useMemo(() => {
-    if (!agg?.works) return [];
-    return Object.entries(agg.works)
-      .map(([name, salesRows]) => {
+    // 매출 데이터가 있는 작품들 집계
+    const salesMap: Record<string, { byDate: Record<string, number>; feeByDate: Record<string, number>; total: number; totalFee: number }> = {};
+    if (agg?.works) {
+      for (const [name, salesRows] of Object.entries(agg.works)) {
         const byDate: Record<string, number> = {};
         const feeByDate: Record<string, number> = {};
         let total = 0;
@@ -183,11 +184,19 @@ export default function WorksTablePage() {
           total += r.amount;
           totalFee += rowFee;
         }
+        salesMap[name] = { byDate, feeByDate, total, totalFee };
+      }
+    }
+    // title_master 전체 77개 기준으로 rows 생성 (매출 없는 작품도 포함)
+    const allNames = new Set([...Object.keys(salesMap), ...Array.from(titleMap.keys())]);
+    return Array.from(allNames)
+      .map(name => {
+        const s = salesMap[name] || { byDate: {}, feeByDate: {}, total: 0, totalFee: 0 };
         const titleInfo = titleMap.get(name);
-        const fee = Math.round(totalFee);
+        const fee = Math.round(s.totalFee);
         const rsRate = getRsRate(name);
-        const grimSales = Math.round((total - fee) * rsRate);
-        return { name, byDate, feeByDate, total, titleInfo, fee, grimSales, rsRate };
+        const grimSales = Math.round((s.total - fee) * rsRate);
+        return { name, byDate: s.byDate, feeByDate: s.feeByDate, total: s.total, titleInfo, fee, grimSales, rsRate };
       })
       .filter(row => {
         if (statusFilter !== 'all') {
@@ -245,15 +254,13 @@ export default function WorksTablePage() {
   }, [visibleRows, dates]);
 
   const statusCounts = useMemo(() => {
-    if (!agg?.works) return { all: 0, '연재중': 0, '완결': 0, '휴재': 0, '준비중': 0 };
     const counts: Record<string, number> = { all: 0, '연재중': 0, '완결': 0, '휴재': 0, '준비중': 0 };
-    for (const name of Object.keys(agg.works)) {
+    for (const t of titleMap.values()) {
       counts.all++;
-      const t = titleMap.get(name);
-      if (t && counts[t.status] !== undefined) counts[t.status]++;
+      if (counts[t.status] !== undefined) counts[t.status]++;
     }
     return counts;
-  }, [agg, titleMap]);
+  }, [titleMap]);
 
   // ── 컬럼 가상화: 스크롤 위치 기반으로 보이는 날짜 그룹만 렌더 ──
   const scrollRef = useRef<HTMLDivElement>(null);
