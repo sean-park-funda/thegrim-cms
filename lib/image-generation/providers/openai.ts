@@ -1,4 +1,5 @@
 import type { GenerateImageResult, OpenAIRequest } from '../types';
+import sharp from 'sharp';
 
 const DEFAULT_MODEL = 'gpt-image-2';
 const DEFAULT_TIMEOUT = 120000;
@@ -20,10 +21,11 @@ function mapAspectRatioToSize(aspectRatio?: string): string {
   return map[aspectRatio] ?? 'auto';
 }
 
-// base64 data URL → PNG Buffer
+// base64 data URL → PNG Buffer (sharp로 실제 PNG 변환)
 async function dataUrlToPngBuffer(dataUrl: string): Promise<Buffer> {
   const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '');
-  return Buffer.from(base64, 'base64');
+  const rawBuf = Buffer.from(base64, 'base64');
+  return sharp(rawBuf).png().toBuffer();
 }
 
 // OpenAI 응답 item → base64 (b64_json 우선, 없으면 url 다운로드)
