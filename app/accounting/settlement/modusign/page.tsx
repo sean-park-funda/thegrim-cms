@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ChevronLeft, ChevronRight, RefreshCw, FileText, Loader2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, FileText, Loader2, Check, Pencil } from 'lucide-react';
 
 type Contract = {
   document_id: string;
@@ -79,8 +79,18 @@ function fmtAmountFull(n: number | null) {
 }
 
 // ── 상세 모달 ─────────────────────────────────────
-function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
+function ContractModal({
+  c,
+  onClose,
+  onUpdate,
+}: {
+  c: Contract;
+  onClose: () => void;
+  onUpdate: (id: string, patch: Partial<Contract>) => void;
+}) {
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [saving, setSaving] = useState<'category' | 'classification' | null>(null);
+  const [saved, setSaved] = useState<'category' | 'classification' | null>(null);
 
   const openPdf = async () => {
     setPdfLoading(true);
@@ -99,6 +109,25 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
       alert('PDF 조회 중 오류가 발생했습니다.');
     } finally {
       setPdfLoading(false);
+    }
+  };
+
+  const handleFieldChange = async (field: 'category' | 'classification', value: string) => {
+    setSaving(field);
+    try {
+      const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error();
+      onUpdate(c.document_id, { [field]: value || null });
+      setSaved(field);
+      setTimeout(() => setSaved(null), 1500);
+    } catch {
+      alert('저장에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -147,20 +176,45 @@ function ContractModal({ c, onClose }: { c: Contract; onClose: () => void }) {
                   {STATUS_LABEL[c.status || ''] || c.status}
                 </span>
               } />
-              <Row label="카테고리" value={
-                c.category ? (
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${CATEGORY_CLASS[c.category] || CATEGORY_CLASS['기타']}`}>
-                    {c.category}
-                  </span>
-                ) : null
-              } />
-              <Row label="분류" value={
-                c.classification ? (
-                  <span className={`text-xs font-medium ${c.classification === '매출' ? 'text-emerald-600' : 'text-blue-600'}`}>
-                    {c.classification}
-                  </span>
-                ) : null
-              } />
+              {/* 카테고리 — 인라인 편집 */}
+              <div className="flex gap-3 py-2 border-b border-border/50 items-center">
+                <dt className="w-28 shrink-0 text-xs text-muted-foreground">카테고리</dt>
+                <dd className="flex-1 flex items-center gap-1.5">
+                  <select
+                    value={c.category || ''}
+                    onChange={e => handleFieldChange('category', e.target.value)}
+                    disabled={saving === 'category'}
+                    className="text-xs border rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                  >
+                    <option value="">미분류</option>
+                    {CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  {saving === 'category' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                  {saved === 'category' && <Check className="h-3 w-3 text-emerald-500" />}
+                  {saving !== 'category' && saved !== 'category' && <Pencil className="h-3 w-3 text-muted-foreground/40" />}
+                </dd>
+              </div>
+              {/* 분류(매출/매입) — 인라인 편집 */}
+              <div className="flex gap-3 py-2 border-b border-border/50 items-center">
+                <dt className="w-28 shrink-0 text-xs text-muted-foreground">분류</dt>
+                <dd className="flex-1 flex items-center gap-1.5">
+                  <select
+                    value={c.classification || ''}
+                    onChange={e => handleFieldChange('classification', e.target.value)}
+                    disabled={saving === 'classification'}
+                    className="text-xs border rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                  >
+                    <option value="">미분류</option>
+                    <option value="매출">매출</option>
+                    <option value="매입">매입</option>
+                  </select>
+                  {saving === 'classification' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                  {saved === 'classification' && <Check className="h-3 w-3 text-emerald-500" />}
+                  {saving !== 'classification' && saved !== 'classification' && <Pencil className="h-3 w-3 text-muted-foreground/40" />}
+                </dd>
+              </div>
               <Row label="거래처" value={c.counterparty} />
               <Row label="서명자" value={signers.join(', ') || null} />
               <Row label="라벨" value={
@@ -272,6 +326,11 @@ export default function ModusignPage() {
   const handleSearch = () => { setSearch(searchInput); setPage(1); };
   const totalPages = Math.ceil(total / LIMIT);
 
+  const handleUpdate = useCallback((id: string, patch: Partial<Contract>) => {
+    setContracts(prev => prev.map(c => c.document_id === id ? { ...c, ...patch } : c));
+    setSelected(prev => prev?.document_id === id ? { ...prev, ...patch } : prev);
+  }, []);
+
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
 
@@ -283,7 +342,7 @@ export default function ModusignPage() {
 
   return (
     <div className="space-y-4">
-      {selected && <ContractModal c={selected} onClose={() => setSelected(null)} />}
+      {selected && <ContractModal c={selected} onClose={() => setSelected(null)} onUpdate={handleUpdate} />}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
