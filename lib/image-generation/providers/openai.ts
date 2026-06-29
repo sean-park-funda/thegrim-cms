@@ -1,6 +1,6 @@
 import type { GenerateImageResult, OpenAIRequest } from '../types';
 
-const DEFAULT_MODEL = 'gpt-image-1';
+const DEFAULT_MODEL = 'gpt-image-2';
 const DEFAULT_TIMEOUT = 120000;
 const OPENAI_API_BASE = 'https://api.openai.com/v1';
 
