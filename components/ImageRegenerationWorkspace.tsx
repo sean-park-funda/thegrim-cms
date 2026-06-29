@@ -154,7 +154,7 @@ export function ImageRegenerationWorkspace({
   const getModelName = (apiProvider: 'gemini' | 'seedream' | 'openai' | 'auto'): string => {
     if (apiProvider === 'gemini') return 'gemini-3-pro';
     if (apiProvider === 'seedream') return 'seedream-4-5-251128';
-    if (apiProvider === 'openai') return 'gpt-image-1';
+    if (apiProvider === 'openai') return 'gpt-image-2';
     return 'auto';
   };
 

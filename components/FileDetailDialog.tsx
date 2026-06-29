@@ -124,7 +124,7 @@ export function FileDetailDialog({
     } else if (apiProvider === 'seedream') {
       return 'seedream-4-5-251128';
     } else if (apiProvider === 'openai') {
-      return 'gpt-image-1';
+      return 'gpt-image-2';
     }
     return 'auto';
   };
