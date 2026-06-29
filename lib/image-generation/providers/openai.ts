@@ -26,6 +26,18 @@ async function dataUrlToPngBuffer(dataUrl: string): Promise<Buffer> {
   return Buffer.from(base64, 'base64');
 }
 
+// OpenAI 응답 item → base64 (b64_json 우선, 없으면 url 다운로드)
+async function extractBase64(item?: { b64_json?: string; url?: string }): Promise<string> {
+  if (!item) return '';
+  if (item.b64_json) return item.b64_json;
+  if (item.url) {
+    const res = await fetch(item.url);
+    const buf = await res.arrayBuffer();
+    return Buffer.from(buf).toString('base64');
+  }
+  return '';
+}
+
 export async function generateOpenAIImage(request: OpenAIRequest): Promise<GenerateImageResult> {
   const startTime = Date.now();
   const apiKey = request.apiKey || process.env.OPENAI_API_KEY || '';
@@ -49,7 +61,6 @@ export async function generateOpenAIImage(request: OpenAIRequest): Promise<Gener
       formData.append('prompt', request.prompt);
       formData.append('n', '1');
       if (size !== 'auto') formData.append('size', size);
-      formData.append('response_format', 'b64_json');
 
       // 첫 번째 이미지를 메인 image로, 나머지는 추가 참조로 prompt에 통합
       const imgBuf = await dataUrlToPngBuffer(request.images![0]);
@@ -68,8 +79,8 @@ export async function generateOpenAIImage(request: OpenAIRequest): Promise<Gener
         throw new Error(`OpenAI edits API 오류 (${res.status}): ${err.slice(0, 400)}`);
       }
 
-      const data = await res.json() as { data: Array<{ b64_json?: string }> };
-      b64 = data.data[0]?.b64_json ?? '';
+      const data = await res.json() as { data: Array<{ b64_json?: string; url?: string }> };
+      b64 = await extractBase64(data.data[0]);
     } else {
       // 이미지 없을 때: /v1/images/generations
       const res = await fetch(`${OPENAI_API_BASE}/images/generations`, {
@@ -83,7 +94,6 @@ export async function generateOpenAIImage(request: OpenAIRequest): Promise<Gener
           prompt: request.prompt,
           n: 1,
           size: size === 'auto' ? '1024x1024' : size,
-          response_format: 'b64_json',
           moderation: 'low',
         }),
         signal: controller.signal,
@@ -94,8 +104,8 @@ export async function generateOpenAIImage(request: OpenAIRequest): Promise<Gener
         throw new Error(`OpenAI generations API 오류 (${res.status}): ${err.slice(0, 400)}`);
       }
 
-      const data = await res.json() as { data: Array<{ b64_json?: string }> };
-      b64 = data.data[0]?.b64_json ?? '';
+      const data = await res.json() as { data: Array<{ b64_json?: string; url?: string }> };
+      b64 = await extractBase64(data.data[0]);
     }
 
     if (!b64) throw new Error('OpenAI API: 이미지 데이터가 없습니다.');
