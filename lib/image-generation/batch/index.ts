@@ -9,6 +9,7 @@ import type {
 import { loadSourceFile, loadReferenceFiles, downloadImages } from './data-loader';
 import { processGeminiRequests } from './processors/gemini';
 import { processSeedreamRequests } from './processors/seedream';
+import { processOpenAIRequests } from './processors/openai';
 
 // 타입 및 유틸리티 재내보내기
 export * from './types';
@@ -24,6 +25,7 @@ export { loadSourceFile, loadReferenceFiles, loadCharacterSheets, downloadImages
 export { saveTempFile, saveGeneratedImage } from './file-storage';
 export { processGeminiRequests } from './processors/gemini';
 export { processSeedreamRequests } from './processors/seedream';
+export { processOpenAIRequests } from './processors/openai';
 
 /**
  * 이미지 배치 재생성 처리
@@ -72,10 +74,12 @@ export async function processImageBatch(
   // 4. Provider별로 그룹화
   const geminiRequests = normalizedRequests.filter(r => r.apiProvider === 'gemini');
   const seedreamRequests = normalizedRequests.filter(r => r.apiProvider === 'seedream');
+  const openaiRequests = normalizedRequests.filter(r => r.apiProvider === 'openai');
 
   console.log('[batch] Provider별 그룹화 완료:', {
     geminiCount: geminiRequests.length,
     seedreamCount: seedreamRequests.length,
+    openaiCount: openaiRequests.length,
     totalCount: normalizedRequests.length,
   });
 
@@ -107,9 +111,15 @@ export async function processImageBatch(
     isPublic,
   };
 
-  // 6. Gemini와 Seedream 그룹을 병렬 처리
-  console.log('[batch] Gemini와 Seedream 그룹 병렬 처리 시작...');
-  const [geminiResults, seedreamResults] = await Promise.all([
+  // OpenAI는 Gemini와 동일한 파라미터 형태 사용 (imageBase64 기반)
+  const openaiParams: GeminiProcessParams = {
+    ...geminiParams,
+    requests: openaiRequests,
+  };
+
+  // 6. Gemini / Seedream / OpenAI 그룹을 병렬 처리
+  console.log('[batch] Gemini / Seedream / OpenAI 그룹 병렬 처리 시작...');
+  const [geminiResults, seedreamResults, openaiResults] = await Promise.all([
     geminiRequests.length > 0
       ? processGeminiRequests(geminiParams).catch((error) => {
           console.error('[batch] Gemini 그룹 처리 실패:', error);
@@ -122,10 +132,16 @@ export async function processImageBatch(
           return [] as ProcessedImage[];
         })
       : Promise.resolve([] as ProcessedImage[]),
+    openaiRequests.length > 0
+      ? processOpenAIRequests(openaiParams).catch((error) => {
+          console.error('[batch] OpenAI 그룹 처리 실패:', error);
+          return [] as ProcessedImage[];
+        })
+      : Promise.resolve([] as ProcessedImage[]),
   ]);
 
   // 7. 결과 합치기
-  const results: ProcessedImage[] = [...geminiResults, ...seedreamResults];
+  const results: ProcessedImage[] = [...geminiResults, ...seedreamResults, ...openaiResults];
 
   const totalTime = Date.now() - startTime;
   const successCount = results.filter(r => !r.error).length;
