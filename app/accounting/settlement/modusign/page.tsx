@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store/useStore';
 import { canViewAccounting } from '@/lib/utils/permissions';
 import { settlementFetch } from '@/lib/settlement/api';
@@ -8,13 +8,14 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, ChevronLeft, ChevronRight, RefreshCw, FileText, Loader2, Check, Pencil } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, FileText, Loader2, Check, Plus, X } from 'lucide-react';
 
 type Contract = {
   document_id: string;
   title: string | null;
   status: string | null;
   category: string | null;
+  categories: string[] | null;
   classification: string | null;
   counterparty: string | null;
   total_amount: number | null;
@@ -89,8 +90,29 @@ function ContractModal({
   onUpdate: (id: string, patch: Partial<Contract>) => void;
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [saving, setSaving] = useState<'category' | 'classification' | null>(null);
-  const [saved, setSaved] = useState<'category' | 'classification' | null>(null);
+  const [saving, setSaving] = useState<'categories' | 'classification' | null>(null);
+  const [saved, setSaved] = useState<'categories' | 'classification' | null>(null);
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
+  const catDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showCatDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (catDropdownRef.current && !catDropdownRef.current.contains(e.target as Node)) {
+        setShowCatDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showCatDropdown]);
+
+  // 현재 표시할 카테고리 목록: categories 배열 우선, 없으면 category 단일값 폴백
+  const currentCategories: string[] =
+    c.categories && c.categories.length > 0
+      ? c.categories
+      : c.category
+      ? [c.category]
+      : [];
 
   const openPdf = async () => {
     setPdfLoading(true);
@@ -112,17 +134,17 @@ function ContractModal({
     }
   };
 
-  const handleFieldChange = async (field: 'category' | 'classification', value: string) => {
-    setSaving(field);
+  const saveCategories = async (next: string[]) => {
+    setSaving('categories');
     try {
       const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify({ categories: next }),
       });
       if (!res.ok) throw new Error();
-      onUpdate(c.document_id, { [field]: value || null });
-      setSaved(field);
+      onUpdate(c.document_id, { categories: next.length > 0 ? next : null });
+      setSaved('categories');
       setTimeout(() => setSaved(null), 1500);
     } catch {
       alert('저장에 실패했습니다. 다시 시도해주세요.');
@@ -130,6 +152,37 @@ function ContractModal({
       setSaving(null);
     }
   };
+
+  const addCategory = (cat: string) => {
+    if (currentCategories.includes(cat)) return;
+    saveCategories([...currentCategories, cat]);
+    setShowCatDropdown(false);
+  };
+
+  const removeCategory = (cat: string) => {
+    saveCategories(currentCategories.filter(c => c !== cat));
+  };
+
+  const handleClassificationChange = async (value: string) => {
+    setSaving('classification');
+    try {
+      const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classification: value }),
+      });
+      if (!res.ok) throw new Error();
+      onUpdate(c.document_id, { classification: value || null });
+      setSaved('classification');
+      setTimeout(() => setSaved(null), 1500);
+    } catch {
+      alert('저장에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const availableCategories = CATEGORIES.filter(cat => !currentCategories.includes(cat));
 
   const signers = (c.participants || [])
     .filter(p => p.type === 'SIGNER')
@@ -176,24 +229,55 @@ function ContractModal({
                   {STATUS_LABEL[c.status || ''] || c.status}
                 </span>
               } />
-              {/* 카테고리 — 인라인 편집 */}
-              <div className="flex gap-3 py-2 border-b border-border/50 items-center">
-                <dt className="w-28 shrink-0 text-xs text-muted-foreground">카테고리</dt>
-                <dd className="flex-1 flex items-center gap-1.5">
-                  <select
-                    value={c.category || ''}
-                    onChange={e => handleFieldChange('category', e.target.value)}
-                    disabled={saving === 'category'}
-                    className="text-xs border rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                  >
-                    <option value="">미분류</option>
-                    {CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+              {/* 카테고리 — 태그 + 플러스 버튼 */}
+              <div className="flex gap-3 py-2 border-b border-border/50">
+                <dt className="w-28 shrink-0 text-xs text-muted-foreground pt-0.5">카테고리</dt>
+                <dd className="flex-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    {currentCategories.map(cat => (
+                      <span key={cat} className={`inline-flex items-center gap-0.5 pl-1.5 pr-0.5 py-0.5 rounded text-[10px] font-medium border ${CATEGORY_CLASS[cat] || CATEGORY_CLASS['기타']}`}>
+                        {cat}
+                        <button
+                          onClick={() => removeCategory(cat)}
+                          disabled={saving === 'categories'}
+                          className="ml-0.5 p-0.5 rounded hover:bg-black/10 transition-colors"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
                     ))}
-                  </select>
-                  {saving === 'category' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                  {saved === 'category' && <Check className="h-3 w-3 text-emerald-500" />}
-                  {saving !== 'category' && saved !== 'category' && <Pencil className="h-3 w-3 text-muted-foreground/40" />}
+                    {/* 플러스 버튼 */}
+                    {availableCategories.length > 0 && (
+                      <div className="relative" ref={catDropdownRef}>
+                        <button
+                          onClick={() => setShowCatDropdown(v => !v)}
+                          disabled={saving === 'categories'}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] border border-dashed border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+                        >
+                          <Plus className="h-2.5 w-2.5" />
+                          추가
+                        </button>
+                        {showCatDropdown && (
+                          <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded shadow-md py-1 min-w-[90px]">
+                            {availableCategories.map(cat => (
+                              <button
+                                key={cat}
+                                onClick={() => addCategory(cat)}
+                                className="block w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {saving === 'categories' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                    {saved === 'categories' && <Check className="h-3 w-3 text-emerald-500" />}
+                  </div>
+                  {currentCategories.length === 0 && saving !== 'categories' && (
+                    <span className="text-[10px] text-muted-foreground/50">미분류 — 위 추가 버튼으로 설정</span>
+                  )}
                 </dd>
               </div>
               {/* 분류(매출/매입) — 인라인 편집 */}
@@ -202,7 +286,7 @@ function ContractModal({
                 <dd className="flex-1 flex items-center gap-1.5">
                   <select
                     value={c.classification || ''}
-                    onChange={e => handleFieldChange('classification', e.target.value)}
+                    onChange={e => handleClassificationChange(e.target.value)}
                     disabled={saving === 'classification'}
                     className="text-xs border rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
                   >
@@ -212,7 +296,6 @@ function ContractModal({
                   </select>
                   {saving === 'classification' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                   {saved === 'classification' && <Check className="h-3 w-3 text-emerald-500" />}
-                  {saving !== 'classification' && saved !== 'classification' && <Pencil className="h-3 w-3 text-muted-foreground/40" />}
                 </dd>
               </div>
               <Row label="거래처" value={c.counterparty} />
@@ -426,11 +509,18 @@ export default function ModusignPage() {
                         </span>
                       </td>
                       <td className="py-1.5 px-3 whitespace-nowrap">
-                        {c.category ? (
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${CATEGORY_CLASS[c.category] || CATEGORY_CLASS['기타']}`}>
-                            {c.category}
-                          </span>
-                        ) : <span className="text-muted-foreground/30">-</span>}
+                        {(() => {
+                          const cats = (c.categories && c.categories.length > 0) ? c.categories : c.category ? [c.category] : [];
+                          return cats.length > 0 ? (
+                            <span className="flex flex-wrap gap-0.5">
+                              {cats.map(cat => (
+                                <span key={cat} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${CATEGORY_CLASS[cat] || CATEGORY_CLASS['기타']}`}>
+                                  {cat}
+                                </span>
+                              ))}
+                            </span>
+                          ) : <span className="text-muted-foreground/30">-</span>;
+                        })()}
                       </td>
                       <td className="py-1.5 px-3 max-w-[300px]">
                         <span className="line-clamp-1 font-medium">{c.title || '-'}</span>
