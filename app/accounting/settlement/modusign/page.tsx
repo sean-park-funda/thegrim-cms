@@ -379,6 +379,8 @@ export default function ModusignPage() {
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [labelFilter, setLabelFilter] = useState('');
+  const [labels, setLabels] = useState<{ name: string; count: number }[]>([]);
   const [selected, setSelected] = useState<Contract | null>(null);
 
   const load = useCallback(async () => {
@@ -389,6 +391,7 @@ export default function ModusignPage() {
         limit: String(LIMIT),
         ...(statusFilter && { status: statusFilter }),
         ...(categoryFilter && { category: categoryFilter }),
+        ...(labelFilter && { label: labelFilter }),
         ...(search && { search }),
       });
       const res = await settlementFetch(`/api/accounting/settlement/modusign?${params}`);
@@ -400,11 +403,20 @@ export default function ModusignPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, categoryFilter, search]);
+  }, [page, statusFilter, categoryFilter, labelFilter, search]);
 
   useEffect(() => {
-    if (profile && canViewAccounting(profile.role)) load();
+    if (!profile || !canViewAccounting(profile.role)) return;
+    load();
   }, [profile, load]);
+
+  useEffect(() => {
+    if (!profile || !canViewAccounting(profile.role)) return;
+    settlementFetch('/api/accounting/settlement/modusign?mode=labels')
+      .then(r => r.json())
+      .then(d => setLabels(d.labels || []))
+      .catch(() => {});
+  }, [profile]);
 
   const handleSearch = () => { setSearch(searchInput); setPage(1); };
   const totalPages = Math.ceil(total / LIMIT);
@@ -443,6 +455,7 @@ export default function ModusignPage() {
         <CardContent className="space-y-3">
           {/* 필터 */}
           <div className="space-y-2">
+            {/* 1행: 상태 */}
             <div className="flex flex-wrap gap-1">
               {(['', 'COMPLETED', 'WAIT_FOR_SIGNING', 'REQUEST_CANCELLED', 'SIGNING_CANCELLED', 'REJECTED'] as const).map(s => (
                 <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
@@ -451,6 +464,7 @@ export default function ModusignPage() {
                 </button>
               ))}
             </div>
+            {/* 2행: 카테고리 + 검색 */}
             <div className="flex flex-wrap items-center gap-1">
               <div className="flex flex-wrap gap-1">
                 <button onClick={() => { setCategoryFilter(''); setPage(1); }}
@@ -475,6 +489,22 @@ export default function ModusignPage() {
                 <Button size="sm" className="h-7 text-xs" onClick={handleSearch}>검색</Button>
               </div>
             </div>
+            {/* 3행: 라벨 */}
+            {labels.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                <button onClick={() => { setLabelFilter(''); setPage(1); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${labelFilter === '' ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:bg-muted'}`}>
+                  전체 라벨
+                </button>
+                {labels.map(l => (
+                  <button key={l.name} onClick={() => { setLabelFilter(l.name); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${labelFilter === l.name ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:bg-muted'}`}>
+                    {l.name}
+                    <span className="ml-1 text-[10px] opacity-50">{l.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 테이블 */}

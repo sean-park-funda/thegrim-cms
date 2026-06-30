@@ -29,10 +29,29 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status   = searchParams.get('status') || '';
     const category = searchParams.get('category') || '';
+    const label    = searchParams.get('label') || '';
     const search   = searchParams.get('search') || '';
     const page     = parseInt(searchParams.get('page') || '1');
     const limit    = parseInt(searchParams.get('limit') || '50');
     const offset   = (page - 1) * limit;
+
+    // 라벨 목록 조회 모드
+    if (searchParams.get('mode') === 'labels') {
+      const { data } = await serviceClient
+        .from('modusign_contracts')
+        .select('labels')
+        .not('labels', 'is', null);
+      const counter: Record<string, number> = {};
+      for (const row of data || []) {
+        for (const l of (row.labels as { name: string }[] || [])) {
+          if (l.name) counter[l.name] = (counter[l.name] || 0) + 1;
+        }
+      }
+      const sorted = Object.entries(counter)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
+      return NextResponse.json({ labels: sorted });
+    }
 
     let query = serviceClient
       .from('modusign_contracts')
@@ -43,6 +62,7 @@ export async function GET(request: NextRequest) {
 
     if (status) query = query.eq('status', status);
     if (category) query = query.contains('categories', [category]);
+    if (label) query = query.contains('labels', [{ name: label }]);
     if (search) query = query.ilike('title', `%${search}%`);
 
     const { data, error, count } = await query;
