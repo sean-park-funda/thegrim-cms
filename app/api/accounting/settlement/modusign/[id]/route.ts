@@ -34,6 +34,10 @@ export async function PATCH(
   if ('classification' in body) {
     update.classification = (body.classification as string) || null;
   }
+  if ('labels' in body) {
+    const lbls = Array.isArray(body.labels) ? body.labels.filter((l: { name: string }) => l?.name) : [];
+    update.labels = lbls.length > 0 ? lbls : null;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: '수정할 항목이 없습니다.' }, { status: 400 });

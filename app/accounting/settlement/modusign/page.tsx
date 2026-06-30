@@ -90,9 +90,12 @@ function ContractModal({
   onUpdate: (id: string, patch: Partial<Contract>) => void;
 }) {
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [saving, setSaving] = useState<'categories' | 'classification' | null>(null);
-  const [saved, setSaved] = useState<'categories' | 'classification' | null>(null);
+  const [saving, setSaving] = useState<'categories' | 'classification' | 'labels' | null>(null);
+  const [saved, setSaved] = useState<'categories' | 'classification' | 'labels' | null>(null);
   const [showCatDropdown, setShowCatDropdown] = useState(false);
+  const [labelInput, setLabelInput] = useState('');
+
+  const currentLabels: string[] = (c.labels || []).map((l: { name: string }) => l.name);
   const catDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -183,6 +186,36 @@ function ContractModal({
   };
 
   const availableCategories = CATEGORIES.filter(cat => !currentCategories.includes(cat));
+
+  const saveLabels = async (next: string[]) => {
+    setSaving('labels');
+    try {
+      const res = await settlementFetch(`/api/accounting/settlement/modusign/${c.document_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ labels: next.map(name => ({ name })) }),
+      });
+      if (!res.ok) throw new Error();
+      onUpdate(c.document_id, { labels: next.map(name => ({ name })) });
+      setSaved('labels');
+      setTimeout(() => setSaved(null), 1500);
+    } catch {
+      alert('저장에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const addLabel = () => {
+    const val = labelInput.trim();
+    if (!val || currentLabels.includes(val)) return;
+    saveLabels([...currentLabels, val]);
+    setLabelInput('');
+  };
+
+  const removeLabel = (name: string) => {
+    saveLabels(currentLabels.filter(l => l !== name));
+  };
 
   const signers = (c.participants || [])
     .filter(p => p.type === 'SIGNER')
@@ -300,17 +333,46 @@ function ContractModal({
               </div>
               <Row label="거래처" value={c.counterparty} />
               <Row label="서명자" value={signers.join(', ') || null} />
-              <Row label="라벨" value={
-                (c.labels || []).length > 0 ? (
-                  <span className="flex flex-wrap gap-1">
-                    {(c.labels || []).map(l => (
-                      <span key={l.name} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-700 border border-cyan-200">
-                        {l.name}
+              {/* 라벨 — 인라인 편집 */}
+              <div className="flex gap-3 py-2 border-b border-border/50">
+                <dt className="w-28 shrink-0 text-xs text-muted-foreground pt-0.5">라벨</dt>
+                <dd className="flex-1">
+                  <div className="flex flex-wrap items-center gap-1 mb-1">
+                    {currentLabels.map(name => (
+                      <span key={name} className="inline-flex items-center gap-0.5 pl-1.5 pr-0.5 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-700 border border-cyan-200">
+                        {name}
+                        <button
+                          onClick={() => removeLabel(name)}
+                          disabled={saving === 'labels'}
+                          className="ml-0.5 p-0.5 rounded hover:bg-cyan-200/50 transition-colors"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
                       </span>
                     ))}
-                  </span>
-                ) : null
-              } />
+                    {saving === 'labels' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                    {saved === 'labels' && <Check className="h-3 w-3 text-emerald-500" />}
+                  </div>
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={labelInput}
+                      onChange={e => setLabelInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addLabel()}
+                      placeholder="라벨 추가 후 Enter"
+                      disabled={saving === 'labels'}
+                      className="text-xs border rounded px-2 py-0.5 h-6 flex-1 max-w-[160px] bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button
+                      onClick={addLabel}
+                      disabled={!labelInput.trim() || saving === 'labels'}
+                      className="inline-flex items-center px-2 py-0.5 h-6 rounded text-[10px] border border-border hover:bg-muted disabled:opacity-40 transition-colors"
+                    >
+                      <Plus className="h-2.5 w-2.5 mr-0.5" />추가
+                    </button>
+                  </div>
+                </dd>
+              </div>
               <Row label="계약기간" value={
                 c.contract_start
                   ? `${c.contract_start}${c.contract_end ? ` ~ ${c.contract_end}` : ''}`
@@ -382,6 +444,8 @@ export default function ModusignPage() {
   const [labelFilter, setLabelFilter] = useState('');
   const [labels, setLabels] = useState<{ name: string; count: number }[]>([]);
   const [selected, setSelected] = useState<Contract | null>(null);
+  const [bulkRenameInput, setBulkRenameInput] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -425,6 +489,59 @@ export default function ModusignPage() {
     setContracts(prev => prev.map(c => c.document_id === id ? { ...c, ...patch } : c));
     setSelected(prev => prev?.document_id === id ? { ...prev, ...patch } : prev);
   }, []);
+
+  const reloadLabels = useCallback(() => {
+    settlementFetch('/api/accounting/settlement/modusign?mode=labels')
+      .then(r => r.json())
+      .then(d => setLabels(d.labels || []))
+      .catch(() => {});
+  }, []);
+
+  const handleBulkRename = async () => {
+    const to = bulkRenameInput.trim();
+    if (!to || !labelFilter) return;
+    if (!confirm(`"${labelFilter}" 라벨을 "${to}"으로 전체 변경할까요?`)) return;
+    setBulkSaving(true);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/modusign/labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: labelFilter, to }),
+      });
+      const data = await res.json();
+      alert(`${data.updated}건 변경 완료`);
+      setBulkRenameInput('');
+      setLabelFilter(to);
+      reloadLabels();
+      load();
+    } catch {
+      alert('변경에 실패했습니다.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkRemove = async () => {
+    if (!labelFilter) return;
+    if (!confirm(`"${labelFilter}" 라벨을 전체 계약에서 제거할까요?`)) return;
+    setBulkSaving(true);
+    try {
+      const res = await settlementFetch('/api/accounting/settlement/modusign/labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: labelFilter }),
+      });
+      const data = await res.json();
+      alert(`${data.updated}건에서 라벨 제거 완료`);
+      setLabelFilter('');
+      reloadLabels();
+      load();
+    } catch {
+      alert('제거에 실패했습니다.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   if (!profile) return <div className="flex items-center justify-center h-full">Loading...</div>;
   if (!canViewAccounting(profile.role)) return null;
@@ -497,12 +614,43 @@ export default function ModusignPage() {
                   전체 라벨
                 </button>
                 {labels.map(l => (
-                  <button key={l.name} onClick={() => { setLabelFilter(l.name); setPage(1); }}
+                  <button key={l.name} onClick={() => { setLabelFilter(l.name); setBulkRenameInput(''); setPage(1); }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${labelFilter === l.name ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:bg-muted'}`}>
                     {l.name}
                     <span className="ml-1 text-[10px] opacity-50">{l.count}</span>
                   </button>
                 ))}
+              </div>
+            )}
+            {/* 라벨 일괄 수정 액션 바 */}
+            {labelFilter && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border/50">
+                <span className="text-xs text-muted-foreground shrink-0">
+                  <span className="font-medium text-foreground">"{labelFilter}"</span> 일괄 수정:
+                </span>
+                <input
+                  type="text"
+                  value={bulkRenameInput}
+                  onChange={e => setBulkRenameInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleBulkRename()}
+                  placeholder="새 이름 입력 후 Enter"
+                  disabled={bulkSaving}
+                  className="text-xs border rounded px-2 py-1 h-7 w-44 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button
+                  size="sm" variant="outline" className="h-7 text-xs"
+                  onClick={handleBulkRename}
+                  disabled={!bulkRenameInput.trim() || bulkSaving}
+                >
+                  {bulkSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : '이름 변경'}
+                </Button>
+                <Button
+                  size="sm" variant="outline" className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={handleBulkRemove}
+                  disabled={bulkSaving}
+                >
+                  전체 제거
+                </Button>
               </div>
             )}
           </div>
