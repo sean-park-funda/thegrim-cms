@@ -137,11 +137,14 @@ log "분석 실패(pdf_error 있음, skip 제외): ${FAILED_COUNT}건"
 
 # ── 결과 요약 ─────────────────────────────────────
 log "=== 완료 — 신규계약 ${NEW_CONTRACTS} / PDF저장 ${PDF_SAVED} / 분석 ${ANALYZED} / 미분석잔여 ${ANALYZE_AFTER} / 실패 ${FAILED_COUNT} ==="
-slack "✅ 모두싸인 동기화 완료 ($(date '+%m/%d'))
+# 실패 건 있을 때만 슬랙 전송
+if [ "${FAILED_COUNT:-0}" -gt 0 ]; then
+  slack "⚠️ 모두싸인 동기화 완료 ($(date '+%m/%d')) — 분석 실패 ${FAILED_COUNT}건 발생
 • 신규 계약: ${NEW_CONTRACTS}건 (전체 ${TOTAL_AFTER}건)
 • PDF 신규 저장: ${PDF_SAVED}건 (미저장 잔여 ${REMAIN_AFTER}건)
-• AI 상세분석: ${ANALYZED}건 (미분석 잔여 ${ANALYZE_AFTER}건)$([ "$FAILED_COUNT" -gt 0 ] && echo "
-⚠️ 분석 실패: ${FAILED_COUNT}건 (에이전트 재분석 요청됨)")"
+• AI 상세분석: ${ANALYZED}건 (미분석 잔여 ${ANALYZE_AFTER}건)
+⚠️ 분석 실패: ${FAILED_COUNT}건 (에이전트 재분석 요청됨)"
+fi
 
 # ── 실패 건 있으면 에이전트에 릴레이 ─────────────────
 if [ "${FAILED_COUNT:-0}" -gt 0 ]; then
